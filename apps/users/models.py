@@ -1,29 +1,28 @@
-
-
-# Create your models here.
 import uuid
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
+from django.utils import timezone
 
 
 class UserManager(BaseUserManager):
+    use_in_migrations = True
 
-    def create_user(self, phone, name=None, password=None, **extra_fields):
+    def create_user(self, phone, password=None, **extra_fields):
         if not phone:
             raise ValueError('Phone number is required')
-        user = self.model(phone=phone, name=name, **extra_fields)
-        user.set_unusable_password()  # OTP-only login — no password
+        user = self.model(phone=phone, **extra_fields)
+        if password:
+            user.set_password(password)
+        else:
+            user.set_unusable_password()
         user.save(using=self._db)
         return user
 
-    def create_superuser(self, phone, name=None, password=None, **extra_fields):
+    def create_superuser(self, phone, password=None, **extra_fields):
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
-        user = self.model(phone=phone, name=name, **extra_fields)
-        if password:
-            user.set_password(password)
-        user.save(using=self._db)
-        return user
+        extra_fields.setdefault('is_active', True)
+        return self.create_user(phone, password, **extra_fields)
 
 
 class User(AbstractBaseUser, PermissionsMixin):
@@ -34,27 +33,49 @@ class User(AbstractBaseUser, PermissionsMixin):
         DEVELOPER = 'developer', 'Developer'
         ADMIN     = 'admin',     'Admin'
 
-    id         = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    phone      = models.CharField(max_length=20, unique=True)
-    name       = models.CharField(max_length=200, blank=True, null=True)
-    role       = models.CharField(max_length=20, choices=Role.choices, default=Role.USER)
-    is_filer   = models.BooleanField(default=False)
-    ntn        = models.CharField(max_length=20, blank=True, null=True)
-    cnic       = models.CharField(max_length=15, blank=True, null=True)
-    is_active  = models.BooleanField(default=True)
-    is_staff   = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-    last_active = models.DateTimeField(auto_now=True)
+    id        = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    phone     = models.CharField(max_length=20, unique=True, db_index=True)
+    name      = models.CharField(max_length=200, blank=True, null=True)
+    email     = models.EmailField(blank=True)
+    role      = models.CharField(max_length=20, choices=Role.choices, default=Role.USER)
+    is_filer  = models.BooleanField(default=False)
+    ntn       = models.CharField(max_length=20, blank=True, null=True)
+    cnic      = models.CharField(max_length=15, blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+    is_staff  = models.BooleanField(default=False)
+    last_active = models.DateTimeField(null=True, blank=True)
+    created_at  = models.DateTimeField(auto_now_add=True)
 
-    USERNAME_FIELD  = 'phone'
+    USERNAME_FIELD = 'phone'
     REQUIRED_FIELDS = []
 
     objects = UserManager()
 
     class Meta:
         db_table = 'users'
-        verbose_name = 'User'
-        verbose_name_plural = 'Users'
 
     def __str__(self):
-        return f"{self.name or 'Unnamed'} ({self.phone})"
+        return f"{self.phone} ({self.role})"
+
+
+class OTPCode(models.Model):
+    phone      = models.CharField(max_length=20, db_index=True)
+    code       = models.CharField(max_length=6)
+    is_used    = models.BooleanField(default=False)
+    attempts   = models.PositiveSmallIntegerField(default=0)
+    expires_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'otp_codes'
+        ordering = ['-created_at']
+
+    def is_valid(self):
+        return (
+            not self.is_used
+            and self.attempts < 5
+            and timezone.now() < self.expires_at
+        )
+
+    def __str__(self):
+        return f"OTP for {self.phone} — used={self.is_used}"

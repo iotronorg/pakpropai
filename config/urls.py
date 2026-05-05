@@ -21,12 +21,20 @@ from django.conf import settings
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/v1/', include([
-        # These will be wired in as we build each app
-        # path('auth/',       include('apps.users.urls')),
-        # path('properties/', include('apps.properties.urls')),
-        # path('whatsapp/',   include('apps.whatsapp.urls')),
-    ])),
+     path('api/v1/', include([
+        path('auth/', include('apps.users.urls')),
+        path('whatsapp/', include('apps.whatsapp.urls')),
+        path('properties/', include('apps.properties.urls')),
+        path('verification/', include('apps.verification.urls')),
+        # Properties, WhatsApp, etc. wired in subsequent phases
+     ])),
+    # path('api/v1/', include([
+    #     # These will be wired in as we build each app
+    #     # path('auth/',       include('apps.users.urls')),
+    #     # path('properties/', include('apps.properties.urls')),
+    #     # path('whatsapp/',   include('apps.whatsapp.urls')),
+    # ])),
+    
 ]
 if settings.DEBUG:
     import debug_toolbar

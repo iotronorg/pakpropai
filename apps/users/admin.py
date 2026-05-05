@@ -1,29 +1,29 @@
-
-
-# Register your models here.
 from django.contrib import admin
-from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import User
+from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
+from .models import User, OTPCode
 
 
 @admin.register(User)
-class UserAdmin(BaseUserAdmin):
-    list_display  = ('phone', 'name', 'role', 'is_filer', 'is_active', 'created_at')
-    list_filter   = ('role', 'is_active', 'is_filer')
-    search_fields = ('phone', 'name', 'cnic', 'ntn')
-    ordering      = ('-created_at',)
-
+class UserAdmin(DjangoUserAdmin):
+    ordering = ('-created_at',)
+    list_display  = ('phone', 'name', 'role', 'is_filer', 'is_active', 'last_active', 'created_at')
+    list_filter   = ('role', 'is_filer', 'is_active')
+    search_fields = ('phone', 'name', 'email', 'ntn', 'cnic')
+    readonly_fields = ('id', 'created_at', 'last_active', 'last_login')
     fieldsets = (
-        (None,           {'fields': ('phone', 'password')}),
-        ('Personal info', {'fields': ('name', 'cnic', 'ntn')}),
-        ('Role & Tax',   {'fields': ('role', 'is_filer')}),
-        ('Permissions',  {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
-        ('Timestamps',   {'fields': ('created_at', 'last_active')}),
+        (None,           {'fields': ('id', 'phone', 'password')}),
+        ('Personal',     {'fields': ('name', 'email', 'cnic', 'ntn', 'is_filer')}),
+        ('Permissions',  {'fields': ('role', 'is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
+        ('Dates',        {'fields': ('last_login', 'last_active', 'created_at')}),
     )
-    readonly_fields   = ('created_at', 'last_active')
-    add_fieldsets     = (
-        (None, {
-            'classes': ('wide',),
-            'fields':  ('phone', 'name', 'role', 'password1', 'password2'),
-        }),
+    add_fieldsets = (
+        (None, {'classes': ('wide',), 'fields': ('phone', 'password1', 'password2')}),
     )
+
+
+@admin.register(OTPCode)
+class OTPCodeAdmin(admin.ModelAdmin):
+    list_display  = ('phone', 'code', 'is_used', 'attempts', 'expires_at', 'created_at')
+    list_filter   = ('is_used',)
+    search_fields = ('phone',)
+    readonly_fields = ('created_at',)
