@@ -12,7 +12,6 @@ import logging
 from .base import PropertyResult
 from .zameen import ZameenScraper
 from .graana import GraanaScraper
-from .olx import OLXScraper
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +19,6 @@ logger = logging.getLogger(__name__)
 SCRAPERS = [
     ZameenScraper,
     GraanaScraper,
-    OLXScraper,
 ]
 # ──────────────────────────────────────────────────────────────────────────────
 

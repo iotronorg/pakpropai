@@ -96,4 +96,7 @@ class BaseScraper:
         if m: return float(m.group(1)) * 20
         m = re.search(r'(\d+(?:\.\d+)?)\s*(?:sq\.?\s*ft|sqft)', t)
         if m: return round(float(m.group(1)) / 272.25, 2)
+        # 1 marla = 30.25 sq yd
+        m = re.search(r'(\d+(?:\.\d+)?)\s*(?:sq\.?\s*yd|sqyd|square\s*yard)', t)
+        if m: return round(float(m.group(1)) / 30.25, 2)
         return None
