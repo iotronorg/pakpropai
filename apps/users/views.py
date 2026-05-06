@@ -25,16 +25,12 @@ class SendOTPView(APIView):
         except PermissionError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_429_TOO_MANY_REQUESTS)
 
-        # In production: send via WhatsApp template message.
-        # For now we log it to the console (and admin) so you can verify.
+        # Always log so dev/staging can verify without WhatsApp credentials.
         logger.warning(f"OTP for {phone}: {otp.code}")
 
-        # Hook for Phase 4: queue WhatsApp send
-        try:
-            from apps.notifications.services import send_whatsapp_otp
-            send_whatsapp_otp(phone, otp.code)
-        except Exception as exc:
-            logger.error(f"WhatsApp OTP send failed: {exc}")
+        # Fire async delivery — non-blocking, retries up to 3× on failure.
+        from apps.notifications.tasks import send_otp_async
+        send_otp_async.delay(phone, otp.code)
 
         return Response(
             {'message': 'OTP sent to your WhatsApp.', 'phone': phone},

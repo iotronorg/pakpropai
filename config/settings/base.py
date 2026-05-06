@@ -137,10 +137,14 @@ CACHES = {
 }
 
 # WhatsApp
-WA_VERIFY_TOKEN   = env('WA_VERIFY_TOKEN', default='')
-WA_APP_SECRET     = env('WA_APP_SECRET', default='')
-WA_ACCESS_TOKEN   = env('WA_ACCESS_TOKEN', default='')
+WA_VERIFY_TOKEN    = env('WA_VERIFY_TOKEN', default='')
+WA_APP_SECRET      = env('WA_APP_SECRET', default='')
+WA_ACCESS_TOKEN    = env('WA_ACCESS_TOKEN', default='')
 WA_PHONE_NUMBER_ID = env('WA_PHONE_NUMBER_ID', default='')
+# Pre-approved Meta template for OTP (required for users outside 24-h session window).
+# Create in Meta Business Manager → WhatsApp → Message Templates.
+# Body example: "Your PakProp AI code is {{1}}. Expires in 5 minutes."
+WA_OTP_TEMPLATE_NAME = env('WA_OTP_TEMPLATE_NAME', default='')
 
 # Gemini
 GEMINI_API_KEY = env('GEMINI_API_KEY', default='')

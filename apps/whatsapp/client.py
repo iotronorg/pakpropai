@@ -40,6 +40,25 @@ class WhatsAppClient:
             raise
 
     @classmethod
+    def send_otp(cls, phone: str, code: str) -> dict:
+        """
+        Send an OTP via template (required for first-contact users outside the 24-h window).
+        Falls back to free-text when WA_OTP_TEMPLATE_NAME is not configured (dev only).
+        """
+        template_name = getattr(settings, 'WA_OTP_TEMPLATE_NAME', '')
+        if template_name:
+            components = [
+                {
+                    'type': 'body',
+                    'parameters': [{'type': 'text', 'text': code}],
+                }
+            ]
+            return cls.send_template(phone, template_name, components=components)
+        # Dev fallback — only works if the user has messaged the bot in the last 24 h
+        body = f"Your PakProp AI verification code is: *{code}*\n\nExpires in 5 minutes. Do not share."
+        return cls.send_text(phone, body)
+
+    @classmethod
     def send_template(cls, phone: str, template_name: str, language: str = 'en_US',
                       components: list = None) -> dict:
         to = phone.lstrip('+')

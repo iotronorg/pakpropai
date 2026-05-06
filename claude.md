@@ -4,14 +4,14 @@ You are working on a real-world production product called:
 
 **PakProp AI – The Trust Infrastructure Layer for Pakistani Real Estate**
 
-This document defines the **ABSOLUTE SOURCE OF TRUTH** for the product.
+This document is the **ABSOLUTE SOURCE OF TRUTH**.
 
-You MUST strictly follow this context in ALL responses.
-You MUST NOT deviate, simplify incorrectly, or redesign core concepts.
+You MUST strictly follow this in ALL responses.  
+You MUST NOT deviate, redesign core concepts, or over-engineer.
 
 ---
 
-# 1. CORE PRODUCT DEFINITION
+## 1. CORE PRODUCT DEFINITION
 
 PakProp AI is NOT:
 
@@ -19,12 +19,11 @@ PakProp AI is NOT:
 - A CRM
 - A marketplace
 
-PakProp AI IS:
-→ A **Trust Infrastructure Layer** for real estate in Pakistan
+PakProp AI IS:  
+→ A **Trust Infrastructure Layer**
 
-### Core Function:
-
-Transform fragmented, unreliable property data into:
+**Core function:**  
+Transform fragmented property data into:
 
 - Verified
 - Actionable
@@ -32,9 +31,9 @@ Transform fragmented, unreliable property data into:
 
 ---
 
-# 2. CORE MISSION
+## 2. CORE MISSION
 
-Solve the trust gap in Pakistani real estate by:
+Solve the trust gap by:
 
 - Verifying properties
 - Qualifying buyers
@@ -43,272 +42,408 @@ Solve the trust gap in Pakistani real estate by:
 
 ---
 
-# 3. PRIMARY INTERFACE
+## 3. CORE PRODUCT LOOP (MANDATORY)
 
-The system is:
+ALL features MUST align with:
 
-→ **WhatsApp-First (MANDATORY)**
+**DISCOVER → VERIFY → DECIDE → CONNECT → TRANSACT**
 
-There is:
+**Mapping:**
 
-- NO mobile app initially
-- NO web app initially
+- Discover → Property Search (scraped + user listings)
+- Verify → Scam Check + Verification
+- Decide → AI scoring + Tax + Loan
+- Connect → Talk to Agent
+- Transact → Deal Lock + Escrow
 
-All interactions happen via:
+If a feature does NOT support this loop → it is secondary.
+
+---
+
+## 4. PRIMARY INTERFACE (CRITICAL)
+
+System is:
+
+→ **WhatsApp-First (Primary Interface)**  
+→ **Web Dashboard (Secondary Interface – Phase 2)**
+
+- NO mobile app (at any stage initially)
+
+All core user interactions happen via:  
 → WhatsApp Cloud API
 
----
+Web dashboard is used for:
 
-# 4. CORE FEATURES (NON-NEGOTIABLE)
+- Agent operations
+- Developer SaaS usage
+- Admin control and monitoring
 
-You MUST always align solutions to these features:
+**Design must be:**
 
-### Intelligence Layer
-
-- Property verification (OCR + legal validation)
-- AI Tax Advisor (7E optimizer)
-- Loan eligibility engine (Apna Ghar Scheme)
-- Infrastructure impact scoring
-- Property risk scoring
-
-### Transaction Layer
-
-- Verified property audit
-- Escrow-based deal locking
-- Token payments (PKR 25K–100K)
-
-### AI Capabilities
-
-- Multimodal (text, voice, image)
-- Urdu + English mixed input handling
-- Document parsing
-- Fraud detection ("Scam Check")
-
-### B2B Layer
-
-- Lead qualification scoring
-- Voice-to-CRM ingestion
-- Developer SaaS dashboards (later phase)
+- Conversational (WhatsApp-first)
+- State-aware
+- Low friction
+- Urdu + English friendly
 
 ---
 
-# 5. ARCHITECTURE PRINCIPLES (MANDATORY)
+## 5. CORE FEATURE SYSTEM (NON-NEGOTIABLE)
 
-You MUST follow these principles:
+### A. PROPERTY DISCOVERY
 
-### 1. MVP FIRST (CRITICAL)
+- Unified property search via:
+  - Scraped listings (Zameen, Graana, OLX)
+  - User-submitted listings
+  - Agent inventory
 
-- Build FAST
-- Avoid over-engineering
-- Focus on working system
+- Search via WhatsApp  
+  Example:  
+  `"5 marla plot DHA Lahore under 1 crore"`
 
-### 2. MODULAR MONOLITH FIRST
+- Filters:
+  - Location
+  - Price
+  - Size
+  - Property type
+  - Verified toggle
 
-- Use Django as core backend
-- Single deployable service initially
-- Clear internal module boundaries
+- Property listing via:
+  - Text
+  - Voice
+  - Image
 
-### 3. MICROservices LATER
-
-- Only extract services when needed
-- Based on:
-  - Load
-  - Scaling issues
-  - Team growth
-
-### 4. COST-AWARE DESIGN
-
-- Prefer FREE tools
-- Use open-source
-- Avoid expensive managed services
+- AI must structure all inputs into normalized property schema
 
 ---
 
-# 6. TECH STACK RULES
+### B. VERIFICATION & TRUST
 
-### Backend (MANDATORY)
+- Property verification engine:
+  - OCR (documents)
+  - Cross-check listings
+  - Agent/community validation
 
-- Django
+- **Scam Check (CORE VIRAL FEATURE):**
+  - Input: link / screenshot / voice
+  - Output: risk + reasoning + recommendation
+
+- **Property Audit (Premium):**
+  - Ownership clarity
+  - Legal flags
+  - Risk score
+  - Market comparison
+  - Output: PDF + WhatsApp summary
+
+---
+
+### C. DECISION ENGINE (AI CORE)
+
+- Property Risk Score (1–10)
+- Investment Grade
+- Liquidity Score
+
+- Loan Eligibility Engine:
+  - Apna Ghar scheme logic
+
+- Tax Engine:
+  - 7E
+  - CGT
+  - Rental tax
+  - Local + Overseas Pakistanis
+
+- Infrastructure Intelligence:
+  - Growth prediction
+  - Nearby developments
+
+---
+
+### D. CONNECTION & LEADS
+
+- **Talk to Agent:**
+  - Match verified agent
+  - Connect via WhatsApp
+
+- **Lead Qualification Engine:**
+  - Score based on:
+    - Budget
+    - Behavior
+    - Intent
+
+- **Lead Distribution:**
+  - High-quality leads → agents/developers
+
+---
+
+### E. TRANSACTION SYSTEM
+
+- **Deal Lock:**
+  - Token payment (PKR 25K–100K)
+  - 48-hour exclusivity
+
+- **Escrow:**
+  - Safepay / bSecure integration
+
+- System MUST NOT hold funds
+
+---
+
+### F. DATA INPUT SYSTEM
+
+- **Document Upload (CRITICAL):**
+  - Allotment letters
+  - Government notifications
+  - Tax documents
+  - Society records
+
+- Purpose:
+  - Train AI
+  - Improve verification
+  - Improve tax accuracy
+
+- **Voice-to-Data:**
+  - Convert agent voice into structured listings
+
+---
+
+### G. DASHBOARD (LATER PHASE)
+
+- Agent dashboard:
+  - Listings
+  - Leads
+  - Conversions
+
+- Developer dashboard:
+  - Inventory
+  - Lead analytics
+
+- Admin dashboard:
+  - Moderation
+  - Fraud monitoring
+
+---
+
+## 6. ARCHITECTURE PRINCIPLES
+
+1. **MVP FIRST (CRITICAL)**
+   - Build FAST
+   - Avoid over-engineering
+
+2. **MODULAR MONOLITH FIRST**
+   - Django
+   - Single deployable
+   - Internal modular apps
+
+3. **MICROSERVICES LATER**
+   - Extract only when needed
+
+4. **COST-AWARE DESIGN**
+   - Prefer free tools
+   - Optimize for $0–$20/month
+
+---
+
+## 7. TECH STACK RULES
+
+**Backend:**
+
+- Django (MANDATORY)
 - Django Rest Framework
 
-### Async (WHEN NEEDED)
+**Async:**
 
 - Celery + Redis (Upstash free tier)
 
-### Database
+**Database:**
 
-- PostgreSQL (Supabase or Neon)
+- PostgreSQL (Supabase / Neon)
 
-### AI
+**AI:**
 
 - Gemini API (free tier)
 
-### Storage
+**Storage:**
 
-- Cloudflare R2 or Supabase Storage
+- Cloudflare R2 / Supabase Storage
 
-### Hosting
+**Hosting:**
 
 - Render / Railway / Fly.io
 
-### Messaging
+**Messaging:**
 
 - WhatsApp Cloud API
 
 ---
 
-# 7. SYSTEM DESIGN PHASES
+## 8. SYSTEM PHASES
 
-You MUST always think in these phases:
+### PHASE 1 (MVP)
 
-### PHASE 1 – MVP
-
-- Django modular monolith
 - WhatsApp bot
-- Core features only:
-  - Scam Check
-  - Basic property verification
-  - Simple AI responses
+- Scam Check
+- Basic property input
+- Simple AI responses
+- Lead capture
 
-### PHASE 2 – GROWTH
+### PHASE 2
 
-- Introduce:
-  - Background jobs
-  - AI improvements
-  - Property scoring
+- Property scoring
+- Verification improvements
+- Loan + tax engines
 
-### PHASE 3 – SCALE
+### PHASE 3
 
 - Microservices
-- Event-driven architecture
-- High availability
+- Event-driven system
+- Escrow
+- Dashboards
 
 ---
 
-# 8. DATA PHILOSOPHY
+## 9. DATA PHILOSOPHY
 
 Data is the CORE ASSET.
 
 System must:
 
 - Store structured property data
-- Store user interaction data
-- Generate embeddings (if possible)
-- Improve AI over time
+- Store user interactions
+- Improve AI continuously
 
 ---
 
-# 9. AI DESIGN RULES
+## 10. AI DESIGN RULES
 
-AI is NOT a gimmick. It is CORE.
+AI is CORE.
 
-You MUST:
+Must include:
 
-- Use AI for decision-making
-- Use AI for verification
-- Use AI for scoring
-
-Always include:
-
-- Prompt design considerations
+- Prompt design
 - Cost optimization
-- Caching strategies
+- Caching
+
+Must support:
+
+- OCR
+- Voice
+- Urdu + English
 
 ---
 
-# 10. WHATSAPP DESIGN RULES
+## 11. WHATSAPP DESIGN RULES
 
-This is CRITICAL.
+- Conversational flows
+- Session state management
+- Multi-step interactions
 
-System must:
+**DO NOT:**
 
-- Be conversational
-- Be state-aware
-- Handle session context
-- Be optimized for low friction
-
-DO NOT design UI-heavy systems.
+- Build UI-heavy systems
+- Overcomplicate flows
 
 ---
 
-# 11. SECURITY REQUIREMENTS
+## 12. SECURITY
 
-- OTP-based authentication
+- OTP authentication
 - JWT tokens
-- Role-based access:
+- RBAC:
   - User
   - Agent
   - Developer
-- Secure payment handling (NO direct money holding)
+
+- Secure payments via providers only
 
 ---
 
-# 12. PAYMENT MODEL
+## 13. COST CONSTRAINT
 
-- Token-based escrow
-- Integrations:
-  - Safepay
-  - bSecure
+Always:
 
-System MUST NOT:
-
-- Hold funds directly
-- Act as bank
+- Use free tiers
+- Minimize API usage
+- Optimize infra cost
 
 ---
 
-# 13. COST CONSTRAINT (VERY IMPORTANT)
+## 14. ENGINEERING EXECUTION RULES
 
-You MUST always:
+### Plan Mode (MANDATORY)
 
-- Suggest FREE tier options first
-- Optimize for $0–$20/month
-- Reduce API usage
+- Use plan mode for ANY non-trivial task
+- Break tasks into steps
+- Re-plan if issues occur
+
+### Subagent Strategy
+
+- Use subagents for:
+  - Research
+  - Parallel tasks
+  - Exploration
+
+### Task Management
+
+- Write plan in `tasks/todo.md`
+- Track progress
+- Add review section
+
+### Verification Before Done
+
+- NEVER assume correctness
+- Validate outputs
+- Check logs / behavior
+
+### Self-Improvement Loop
+
+- After corrections:
+  → update `tasks/lessons.md`
+
+- Prevent repeated mistakes
+
+### Code Quality
+
+- Prefer simple solutions
+- Avoid hacks
+- Fix root cause
 
 ---
 
-# 14. ENGINEERING STYLE
+## 15. WHAT YOU MUST NEVER DO
 
-You MUST:
-
-- Be practical
-- Be implementation-focused
-- Provide real code when asked
-- Avoid theory unless necessary
-
----
-
-# 15. WHAT YOU MUST NEVER DO
-
-❌ Suggest building full microservices in MVP  
-❌ Suggest expensive AWS-heavy architecture early  
-❌ Suggest mobile apps first  
+❌ Build full microservices in MVP  
+❌ Suggest expensive AWS infra early  
 ❌ Ignore WhatsApp-first design  
-❌ Overcomplicate simple flows
+❌ Over-engineer  
+❌ Add unnecessary features
 
 ---
 
-# 16. WHAT YOU MUST ALWAYS DO
+## 16. WHAT YOU MUST ALWAYS DO
 
-✅ Optimize for speed of execution  
-✅ Keep system simple but scalable  
-✅ Justify technical decisions  
-✅ Align with real-world constraints  
+✅ Optimize for speed  
+✅ Keep system simple  
+✅ Justify decisions  
+✅ Align with real constraints  
 ✅ Think like a startup CTO
 
 ---
 
-# FINAL INSTRUCTION
+## FINAL DIRECTIVE
 
-Every response you give MUST:
+You are not just assisting.
 
+You are:
+→ Designing  
+→ Building  
+→ Scaling
+
+a REAL startup.
+
+Every response must:
+
+- Be implementable
+- Be cost-aware
+- Be scalable
 - Align with PakProp AI vision
-- Respect cost and speed constraints
-- Be implementable by a small team
-- Be scalable without rewrite
 
-If a suggestion violates these constraints, DO NOT provide it.
-
-You are not just answering questions.
-
-You are helping BUILD a real company.
+If it violates constraints → DO NOT provide it.
