@@ -383,9 +383,14 @@ Always:
 
 ### Task Management
 
-- Write plan in `tasks/todo.md`
-- Track progress
-- Add review section
+- **ALWAYS read `tasks/progress.md` at the start of every session** before doing any work
+- Use it to understand what is built, what is remaining, and what phase we are in
+- After completing any non-trivial work, update `tasks/progress.md`:
+  - Mark completed items ✅
+  - Add any new architecture decisions to the log
+  - Add any new known gaps or tech debt
+  - Update "Recommended Next Steps" to reflect current reality
+- Write in-session plans to `tasks/todo.md` if needed for complex multi-step tasks
 
 ### Verification Before Done
 

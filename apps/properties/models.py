@@ -22,6 +22,16 @@ class Property(models.Model):
         MEDIUM = 'medium', 'Medium'
         HIGH   = 'high',   'High'
 
+    class FurnishedStatus(models.TextChoices):
+        FURNISHED       = 'furnished',       'Furnished'
+        UNFURNISHED     = 'unfurnished',     'Unfurnished'
+        SEMI_FURNISHED  = 'semi_furnished',  'Semi-Furnished'
+
+    class ConstructionStatus(models.TextChoices):
+        BUILDER_NEW      = 'builder',        'Builder / New'
+        READY            = 'ready',          'Ready'
+        UNDER_CONSTRUCTION = 'under_construction', 'Under Construction'
+
     id            = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     owner         = models.ForeignKey(
                         settings.AUTH_USER_MODEL,
@@ -35,8 +45,10 @@ class Property(models.Model):
     location      = models.CharField(max_length=300)
     area_marla    = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     price_pkr     = models.BigIntegerField(null=True, blank=True)
-    property_type = models.CharField(max_length=30, choices=PropertyType.choices, default=PropertyType.RESIDENTIAL)
-    legal_status  = models.CharField(max_length=30, choices=LegalStatus.choices, default=LegalStatus.UNVERIFIED)
+    property_type        = models.CharField(max_length=30, choices=PropertyType.choices, default=PropertyType.RESIDENTIAL)
+    furnished_status     = models.CharField(max_length=20, choices=FurnishedStatus.choices, null=True, blank=True)
+    construction_status  = models.CharField(max_length=25, choices=ConstructionStatus.choices, null=True, blank=True)
+    legal_status         = models.CharField(max_length=30, choices=LegalStatus.choices, default=LegalStatus.UNVERIFIED)
     ai_score      = models.SmallIntegerField(null=True, blank=True)
     risk_level    = models.CharField(max_length=20, choices=RiskLevel.choices, null=True, blank=True)
     raw_docs      = models.JSONField(default=dict, blank=True)   # Cloudflare R2 keys

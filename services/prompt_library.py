@@ -100,6 +100,20 @@ Schema:
 }}
 """,
 
+    'batch_verdicts': """You are a Pakistani real estate advisor. Give a one-line investment verdict for each listing.
+
+Listings:
+{listings}
+
+Be concise, practical, and specific to the Pakistani market.
+
+Output ONLY a JSON object. No prose, no markdown fences.
+Schema: {{"verdicts": [{{"id": "<source_id>", "verdict": "<one sentence max>"}}]}}
+""",
+
+    'voice_transcribe': """Transcribe this voice message to text exactly as spoken.
+Output ONLY the transcription. No labels, no quotes, no explanation.""",
+
     'ocr_property_doc': """You are extracting structured data from a Pakistani property document image.
 
 Extract the following fields if present:

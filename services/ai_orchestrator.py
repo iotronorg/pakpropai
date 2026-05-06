@@ -79,3 +79,31 @@ class AIOrchestrator:
             image_bytes,
             mime_type=mime_type,
         )
+
+    @classmethod
+    def transcribe_voice(cls, audio_bytes: bytes, mime_type: str = 'audio/ogg') -> str:
+        return GeminiClient.transcribe_audio(audio_bytes, mime_type)
+
+    @classmethod
+    def batch_verdicts(cls, results: list, user=None) -> dict:
+        """
+        One Gemini call to score up to 5 property listings.
+        Returns {source_id: verdict_text}.
+        """
+        lines = []
+        for i, r in enumerate(results[:5], 1):
+            price = f"PKR {r.price_pkr:,}" if r.price_pkr else "price unknown"
+            area  = f"{r.area_marla}M" if r.area_marla else ""
+            lines.append(
+                f"{i}. [{r.source_id}] {r.title} | {r.city}, {r.location} | {area} | {price}"
+            )
+        listings_text = "\n".join(lines)
+        prompt = render('batch_verdicts', listings=listings_text)
+        try:
+            raw = GeminiClient.generate_json(
+                prompt, user=user, interaction_type='property_score',
+                max_output_tokens=500,
+            )
+            return {item['id']: item['verdict'] for item in raw.get('verdicts', [])}
+        except Exception:
+            return {}

@@ -136,6 +136,26 @@ class GeminiClient:
             logger.error(f"Gemini vision call failed: {exc}")
             raise
 
+    @classmethod
+    def transcribe_audio(cls, audio_bytes: bytes, mime_type: str = 'audio/ogg') -> str:
+        """Transcribe a WhatsApp voice message using Gemini multimodal."""
+        from services.prompt_library import render
+        model = genai.GenerativeModel(cls.DEFAULT_MODEL)
+        try:
+            response = model.generate_content([
+                render('voice_transcribe'),
+                {'mime_type': mime_type, 'data': audio_bytes},
+            ])
+            text = (response.text or '').strip()
+            cls._log(None, 'voice_transcribe', cls.DEFAULT_MODEL, 0, 0,
+                     cached_hit=False, response_ms=0,
+                     input_data={'mime_type': mime_type, 'bytes': len(audio_bytes)},
+                     output_data={'transcript': text[:200]})
+            return text
+        except Exception as exc:
+            logger.error(f"Gemini audio transcription failed: {exc}")
+            raise
+
     # --- circuit breaker --------------------------------------------------
 
     FAIL_KEY      = 'ai:gemini:failures'
