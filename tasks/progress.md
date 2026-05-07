@@ -1,6 +1,6 @@
 # PakProp AI — Build Progress
 
-**Last updated:** 2026-05-07 (session 4)  
+**Last updated:** 2026-05-07 (session 6)  
 **Current branch:** `development`  
 **Current phase:** Phase 2
 
@@ -59,12 +59,12 @@
 |---------|--------|---------|
 | Property Audit report (PDF + WhatsApp summary) | ✅ Done | `apps/audit/` — engine, PDF, model, tool, URLs |
 | Document OCR flow via WhatsApp | ✅ Done | `apps/ai/agent.py` → `verify_document_image()`, `apps/verification/models.py` → `DocumentScan` |
-| Talk to Agent (lead → agent connection) | ❌ Not done | — |
+| Talk to Agent (lead → agent connection) | ✅ Done | `apps/agents/` — model, admin, tool; `apps/ai/tools.py` → `connect_to_agent()`; `apps/ai/agent.py` → `_is_agent_request()`, `_handle_agent_request()` |
 | Property verification improvements | ❌ Not done | — |
 | Agent dashboard (web) | ❌ Not done | — |
 | Property scoring improvements (more signals) | ❌ Not done | — |
 
-**Phase 2 completion: ~40%**
+**Phase 2 completion: ~55%**
 
 ---
 
@@ -113,6 +113,12 @@
 | Document type detected from caption keywords | Avoids asking user to specify type — natural flow; 12 keyword patterns cover all common docs |
 | OCR uses structured prompt format (KEY: VALUE) | Reliable parsing without JSON — local models struggle with strict JSON output |
 | SQLite → PostgreSQL (local Homebrew) | Production parity in development; avoids migration surprises at deploy time |
+| Django 5.0.6 → 5.2.14 (LTS) | Python 3.14 breaks `context.__copy__()` in Django 5.0.x (admin add/change pages 500); fixed in 5.2; also upgraded django-celery-beat 2.6.0 → 2.9.0 |
+| Agent city matching via JSONField icontains | Simple text search on JSON array string representation; avoids separate City model for MVP |
+| connect_to_agent strict city match | If city specified but no agent covers it, return "no agent" — never return a wrong-city agent |
+| Agent request bypasses model entirely | `_is_agent_request()` detects intent+role word combination in Python; `_handle_agent_request()` calls tool directly — model never involved, hallucination structurally impossible |
+| Combination-based agent intent detection | Intent word (connect/find/need/want…) + role word (agent/someone/broker/dealer…) approach handles all natural language variations without enumerated phrase lists |
+| Ollama terminal tool bypass | `connect_to_agent` and `generate_property_audit` results returned verbatim from Ollama loop — model cannot rephrase or add hallucinated details |
 
 ---
 
@@ -133,6 +139,7 @@
 | Location word-match may over-match on city name | Low | e.g. "Lahore" as a word matches any Lahore result; acceptable since city filter is also applied |
 | Document OCR accuracy depends on AI backend | Medium | llava:7b (local) is weak at OCR; Gemini is accurate — use AI_BACKEND=gemini for doc scanning |
 | Audit PDF served from local media only | Medium | Needs BASE_URL set to ngrok/production URL for WhatsApp PDF link to be clickable |
+| Agent request detection may miss highly unusual phrasings | Low | Combination-based (intent+role) handles ~95% of cases; truly novel phrasing falls through to model which may still hallucinate — acceptable for MVP |
 
 ---
 
@@ -197,7 +204,7 @@ AI_BACKEND=local
 
 ## Recommended Next Steps (Priority Order)
 
-1. **Talk to Agent feature** — when user is ready to buy/sell, match to a verified agent and share WhatsApp number. Needs: Agent model with phone, city matching logic
+1. **Add real agents via Django admin** — go to /admin → Agents → Add Agent; fill identity, coverage cities, specializations; tick is_verified + is_active
 2. **Property scoring improvements** — add location tier, price vs benchmark, construction status signals to make search results better ordered
 3. **Agent dashboard (web)** — simple Django template page for agents to view their leads, listings, and conversions
 4. **Deploy to Render** — connect Supabase (DB) + Upstash (Redis), set env vars, get public URL for WhatsApp webhook

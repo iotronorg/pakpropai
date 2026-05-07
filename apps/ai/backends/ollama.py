@@ -25,6 +25,10 @@ logger = logging.getLogger(__name__)
 
 MAX_TOOL_ROUNDS = 6   # prevent infinite loops if model keeps calling tools
 
+# Tools whose whatsapp_summary/message must be returned verbatim — local models
+# must NOT rephrase these because they contain real DB data (agent contacts, PDFs).
+_TERMINAL_TOOLS = {'connect_to_agent', 'generate_property_audit'}
+
 
 class OllamaBackend(AIBackend):
 
@@ -85,6 +89,7 @@ class OllamaBackend(AIBackend):
                 })
 
                 # Execute each tool and append results
+                terminal_reply = None
                 for tc in choice.message.tool_calls:
                     result = self._run_tool(tc, tool_map)
                     messages.append({
@@ -92,6 +97,16 @@ class OllamaBackend(AIBackend):
                         'tool_call_id': tc.id,
                         'content':      json.dumps(result, ensure_ascii=False),
                     })
+                    # Tools that produce a final user-facing message should be
+                    # returned verbatim — do not let the local model rephrase or
+                    # hallucinate additional details (especially agent contacts).
+                    if tc.function.name in _TERMINAL_TOOLS and isinstance(result, dict):
+                        summary = result.get('whatsapp_summary') or result.get('message')
+                        if summary:
+                            terminal_reply = summary
+
+                if terminal_reply is not None:
+                    return terminal_reply
 
             else:
                 # Final text response

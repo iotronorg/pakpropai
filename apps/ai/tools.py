@@ -553,3 +553,212 @@ def list_property(
     except Exception as exc:
         logger.error(f"list_property tool failed: {exc}")
         return {'success': False, 'error': 'Failed to create listing. Please try again.'}
+
+
+# ─── Connect to Agent ─────────────────────────────────────────────────────────
+
+def connect_to_agent(
+    city: str = '',
+    intent: str = 'buy',
+    budget_pkr: int = 0,
+    property_type: str = '',
+    specific_area: str = '',
+) -> dict:
+    """
+    Match the user with a verified real estate agent and return the agent's contact details.
+    Call this when the user says 'talk to agent', 'connect me with an agent',
+    'I want to speak to someone', 'refer me to an agent', 'I need an agent',
+    or when they are clearly ready to proceed with buying, selling, or renting.
+
+    Args:
+        city: City user is interested in e.g. 'Lahore', 'Karachi', 'Islamabad', 'Rawalpindi'
+        intent: User's intent — 'buy', 'sell', 'rent', or 'invest'
+        budget_pkr: User's budget in PKR (0 if not mentioned)
+        property_type: 'plot', 'house', 'apartment', 'commercial' (optional)
+        specific_area: Specific area/society they mentioned e.g. 'DHA Phase 5' (optional)
+    """
+    try:
+        from apps.agents.models import Agent
+        from django.utils import timezone
+        from django.db.models import Q
+
+        phone = _ctx_phone.get() or ''
+        user  = _ctx_user.get()
+
+        # Build queryset — verified + active agents only
+        qs = Agent.objects.filter(is_active=True, is_verified=True)
+
+        # City match — STRICT: if city was specified, only return agents for that city.
+        # Never return an agent from a different city just because no local one exists.
+        if city:
+            city_qs = qs.filter(cities__icontains=city)
+            if not city_qs.exists():
+                city_qs = qs.filter(primary_city__icontains=city)
+            agents = city_qs  # may be empty — handled below as "no agent" case
+        else:
+            agents = qs       # no city specified → any verified agent
+
+        # Specialization preference (soft match — prefer but don't filter out)
+        spec_map = {
+            'buy':        ['residential_buy', 'plots', 'luxury', 'new_projects'],
+            'sell':       ['residential_buy', 'plots', 'commercial', 'luxury'],
+            'rent':       ['residential_rent', 'commercial'],
+            'invest':     ['plots', 'new_projects', 'residential_buy', 'commercial'],
+            'commercial': ['commercial', 'industrial'],
+        }
+        preferred_specs = spec_map.get(intent.lower(), [])
+
+        spec_agent = None
+        for spec in preferred_specs:
+            spec_qs = agents.filter(specializations__icontains=spec)
+            if spec_qs.exists():
+                spec_agent = spec_qs.order_by('-is_featured', '-rating').first()
+                break
+
+        agent = spec_agent or agents.order_by('-is_featured', '-rating').first()
+
+        # No agents available for the requested city (or at all)
+        if not agent:
+            _capture_agent_request_lead(user, phone, city, intent, budget_pkr, specific_area)
+            city_str = f"*{city}*" if city else "your area"
+            no_agent_msg = (
+                f"We don't have a verified agent registered for {city_str} yet.\n\n"
+                "Your request has been noted. Our team will connect you with an "
+                "authorized PakProp AI agent for your area shortly — we'll reach out "
+                "to you on this WhatsApp number."
+            )
+            # INSTRUCTION FOR MODEL: return this message verbatim — do not add any agent details
+            return {
+                'found': False,
+                'message': no_agent_msg,
+                'whatsapp_summary': no_agent_msg,
+                '_instruction': 'Return the whatsapp_summary above VERBATIM. Do NOT add any agent names, phone numbers, or contact details.',
+            }
+
+        # Update agent metrics
+        Agent.objects.filter(pk=agent.pk).update(
+            total_leads=agent.total_leads + 1,
+            last_active_at=timezone.now(),
+        )
+
+        # Capture lead
+        _capture_agent_request_lead(user, phone, city, intent, budget_pkr, specific_area,
+                                    agent_id=agent.id)
+
+        # Build WhatsApp agent card
+        lines = [
+            f"✅ *Agent Found!*",
+            "",
+        ]
+
+        if agent.agent_type == Agent.AgentType.INDIVIDUAL:
+            lines.append(f"👤 *{agent.name}*")
+        else:
+            lines.append(f"🏢 *{agent.name}*")
+
+        if agent.company_name:
+            lines.append(f"   {agent.company_name} ({agent.get_agent_type_display()})")
+
+        if agent.designation:
+            lines.append(f"   {agent.designation}")
+
+        lines.append("")
+
+        # Coverage
+        cities_display = ', '.join(agent.cities[:3]) if agent.cities else agent.primary_city
+        areas_display  = ', '.join(agent.areas[:4]) if agent.areas else ''
+        if cities_display:
+            coverage = f"📍 *Cities:* {cities_display}"
+            if areas_display:
+                coverage += f"\n   *Areas:* {areas_display}"
+            lines.append(coverage)
+
+        # Specializations
+        if agent.specializations_str and agent.specializations_str != '—':
+            lines.append(f"💼 *Specializes in:* {agent.specializations_str}")
+
+        # Experience + rating
+        exp_parts = []
+        if agent.years_experience:
+            exp_parts.append(f"{agent.years_experience} years experience")
+        if float(agent.rating) > 0:
+            exp_parts.append(f"⭐ {agent.rating}/5 rating")
+        if agent.closed_deals:
+            exp_parts.append(f"{agent.closed_deals} deals closed")
+        if exp_parts:
+            lines.append(f"📊 {' · '.join(exp_parts)}")
+
+        if agent.license_number:
+            lines.append(f"🪪 License: {agent.license_number}")
+
+        lines.append("")
+        lines.append(f"📞 *WhatsApp: {agent.contact_whatsapp}*")
+
+        if agent.email:
+            lines.append(f"📧 {agent.email}")
+        if agent.website:
+            lines.append(f"🌐 {agent.website}")
+        if agent.office_address:
+            lines.append(f"🏢 {agent.office_address}")
+
+        if agent.instagram_handle:
+            lines.append(f"📸 @{agent.instagram_handle}")
+
+        lines += [
+            "",
+            "✅ *Verified by PakProp AI*",
+            "",
+            "_Feel free to contact them directly on WhatsApp. "
+            "Mention PakProp AI when you reach out._",
+        ]
+
+        if agent.bio:
+            lines += ["", f"_{agent.bio}_"]
+
+        summary = '\n'.join(lines)
+
+        # INSTRUCTION FOR MODEL: return whatsapp_summary VERBATIM — do not modify any details
+        return {
+            'found': True,
+            'agent_id': agent.id,
+            'agent_name': agent.name,
+            'agent_whatsapp': agent.contact_whatsapp,
+            'whatsapp_summary': summary,
+            'message': summary,
+            '_instruction': 'Return the whatsapp_summary field EXACTLY as shown. Do NOT change any names, numbers, or details.',
+        }
+
+    except Exception as exc:
+        logger.error(f"connect_to_agent tool failed: {exc}", exc_info=True)
+        return {
+            'found': False,
+            'error': str(exc),
+            'whatsapp_summary': 'Sorry, I could not find an agent right now. Please try again.',
+        }
+
+
+def _capture_agent_request_lead(user, phone: str, city: str, intent: str,
+                                 budget_pkr: int, specific_area: str,
+                                 agent_id=None):
+    try:
+        from apps.leads.models import Lead
+        intent_map = {
+            'buy': Lead.Intent.BUY, 'sell': Lead.Intent.SELL,
+            'rent': Lead.Intent.RENT, 'invest': Lead.Intent.INVEST,
+        }
+        lead_intent = intent_map.get(intent.lower(), Lead.Intent.BUY)
+        signals = {'source': 'talk_to_agent', 'specific_area': specific_area}
+        if agent_id:
+            signals['matched_agent_id'] = agent_id
+        if user:
+            Lead.objects.update_or_create(
+                user=user, intent=lead_intent,
+                defaults={
+                    'city_interest': city,
+                    'budget_max': budget_pkr if budget_pkr > 0 else None,
+                    'intent_signals': signals,
+                    'score': 80,
+                },
+            )
+    except Exception as exc:
+        logger.error(f"_capture_agent_request_lead failed: {exc}")
