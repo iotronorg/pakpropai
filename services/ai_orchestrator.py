@@ -1,24 +1,21 @@
+"""
+AIOrchestrator — handles non-conversational structured AI tasks.
+(property scoring, document OCR, voice transcription)
+
+Conversational WhatsApp interactions go through apps.ai.agent.PakPropAgent.
+"""
 from apps.ai.client import GeminiClient
 from .prompt_library import render
 
 
 class AIOrchestrator:
 
-    # @classmethod
-    # def classify_intent(cls, message: str, user=None) -> dict:
-    #     prompt = render('intent_classify', message=message)
-    #     return GeminiClient.generate_json(
-    #         prompt, user=user, interaction_type='intent_classify',
-    #         max_output_tokens=128,
-    #     )
-    
     @classmethod
     def classify_intent(cls, message: str, user=None) -> dict:
         prompt = render('intent_classify', message=message)
         return GeminiClient.generate_json(
             prompt, user=user, interaction_type='intent_classify',
-            max_output_tokens=256,   # was 128 — too tight
-            temperature=0.1,
+            max_output_tokens=256, temperature=0.1,
         )
 
     @classmethod
@@ -39,10 +36,12 @@ class AIOrchestrator:
         )
 
     @classmethod
-    def tax_7e(cls, fmv: int, filer_status: str, properties_count: int = 1, user=None) -> dict:
+    def tax_7e(cls, fmv: int, filer_status: str,
+               properties_count: int = 1, user=None) -> dict:
         prompt = render(
             'tax_7e_advisor',
-            fmv=fmv, filer_status=filer_status, properties_count=properties_count,
+            fmv=fmv, filer_status=filer_status,
+            properties_count=properties_count,
         )
         return GeminiClient.generate_json(
             prompt, user=user, interaction_type='tax_advisory',
@@ -73,7 +72,8 @@ class AIOrchestrator:
         )
 
     @classmethod
-    def ocr_document(cls, image_bytes: bytes, mime_type: str = 'image/jpeg') -> str:
+    def ocr_document(cls, image_bytes: bytes,
+                     mime_type: str = 'image/jpeg') -> str:
         return GeminiClient.vision(
             render('ocr_property_doc'),
             image_bytes,
@@ -81,15 +81,12 @@ class AIOrchestrator:
         )
 
     @classmethod
-    def transcribe_voice(cls, audio_bytes: bytes, mime_type: str = 'audio/ogg') -> str:
+    def transcribe_voice(cls, audio_bytes: bytes,
+                         mime_type: str = 'audio/ogg') -> str:
         return GeminiClient.transcribe_audio(audio_bytes, mime_type)
 
     @classmethod
     def batch_verdicts(cls, results: list, user=None) -> dict:
-        """
-        One Gemini call to score up to 5 property listings.
-        Returns {source_id: verdict_text}.
-        """
         lines = []
         for i, r in enumerate(results[:5], 1):
             price = f"PKR {r.price_pkr:,}" if r.price_pkr else "price unknown"
@@ -97,8 +94,7 @@ class AIOrchestrator:
             lines.append(
                 f"{i}. [{r.source_id}] {r.title} | {r.city}, {r.location} | {area} | {price}"
             )
-        listings_text = "\n".join(lines)
-        prompt = render('batch_verdicts', listings=listings_text)
+        prompt = render('batch_verdicts', listings="\n".join(lines))
         try:
             raw = GeminiClient.generate_json(
                 prompt, user=user, interaction_type='property_score',

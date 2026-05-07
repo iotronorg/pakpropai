@@ -1,6 +1,6 @@
 # PakProp AI — Build Progress
 
-**Last updated:** 2026-05-06  
+**Last updated:** 2026-05-07  
 **Current branch:** `development`  
 **Current phase:** Phase 1 MVP
 
@@ -19,26 +19,31 @@
 | Prompt library | ✅ Done | `services/prompt_library.py` |
 | AI orchestrator | ✅ Done | `services/ai_orchestrator.py` |
 | Scam Check flow (WhatsApp) | ✅ Done | `apps/verification/services.py`, `apps/whatsapp/router.py` |
-| Multi-step conversation state machine (FSM) | ✅ Done | `apps/whatsapp/sessions.py`, `router.py` |
-| Tax (7E) advisory flow | ✅ Done | `apps/whatsapp/handlers.py` |
-| Loan eligibility flow | ✅ Done | `apps/whatsapp/handlers.py` |
-| Lead capture (auto on every completed flow) | ✅ Done | `apps/whatsapp/handlers.py` → `apps/leads/models.py` |
-| Property listing via WhatsApp (5-step guided) | ✅ Done | `apps/whatsapp/handlers.py` |
+| Multi-step conversation state machine (FSM) | ✅ Replaced by AI agent | `apps/ai/agent.py` |
+| Tax (7E) advisory flow | ✅ Done (tool-based) | `apps/ai/tools.py` → `calculate_7e_tax()` |
+| Loan eligibility flow | ✅ Done (tool-based) | `apps/ai/tools.py` → `check_loan_eligibility()` |
+| Lead capture (auto on every completed flow) | ✅ Done | `apps/ai/tools.py` → `list_property()`, `apps/leads/models.py` |
+| Property listing via WhatsApp (AI-guided) | ✅ Done (AI-native) | `apps/ai/tools.py` → `list_property()` |
 | Property search — DB listings | ✅ Done | `apps/properties/search.py` |
 | Property search — web scrapers (Zameen, Graana, OLX) | ✅ Done | `apps/properties/scrapers/` |
 | Modular scraper registry (add sites in one line) | ✅ Done | `apps/properties/scrapers/registry.py` |
 | Paginated search results (3 per message, "more" to continue) | ✅ Done | `apps/properties/search.py` |
 | AI batch verdicts on search results | ✅ Done | `services/ai_orchestrator.py` → `batch_verdicts()` |
 | Voice message transcription (Gemini multimodal) | ✅ Done | `apps/ai/client.py`, `apps/whatsapp/router.py` |
-| Furnished / unfurnished / semi-furnished filter | ✅ Done | `apps/properties/models.py`, `handlers.py` |
-| Builder / ready / under-construction filter | ✅ Done | `apps/properties/models.py`, `handlers.py` |
+| Image / document analysis via WhatsApp | ✅ Done | `apps/ai/agent.py` → `chat_with_image()` |
+| Furnished / unfurnished / semi-furnished filter | ✅ Done | `apps/properties/models.py`, AI tool params |
+| Builder / ready / under-construction filter | ✅ Done | `apps/properties/models.py`, AI tool params |
 | AI scoring task (async, Celery) | ✅ Done | `apps/properties/tasks.py` |
+| **AI Agent (reasoning + tools + memory)** | ✅ Done | `apps/ai/agent.py`, `apps/ai/tools.py`, `apps/ai/knowledge.py` |
+| **Pakistani RE knowledge base** | ✅ Done | `apps/ai/knowledge.py` |
+| **SDK migration (google.generativeai → google.genai)** | ✅ Done | `apps/ai/client.py`, `requirements/base.txt` |
+| **Python 3.14 compatibility** | ✅ Done | `requirements/base.txt` |
 | **Deployment (Render + Supabase + Upstash)** | ❌ Not done | — |
 | **Real property data / agent onboarding** | ❌ Not done | — |
 | **WhatsApp OTP template (Meta Business Manager)** | ❌ Needs setup | `.env: WA_OTP_TEMPLATE_NAME` |
 
-**Phase 1 completion: ~90%**  
-The two remaining gaps are operational (deployment + data), not code.
+**Phase 1 completion: ~95%**  
+Remaining gaps are operational (deployment + data), not code.
 
 ---
 
@@ -80,6 +85,13 @@ The two remaining gaps are operational (deployment + data), not code.
 | Scraper results cached 1 hour in Redis | Avoids hammering sites, improves response time |
 | Money stored as integer PKR (no floats) | Financial correctness |
 | OTP via WhatsApp template (not free-text) | Meta policy: new users are outside 24-h window |
+| AI Agent replaces FSM (keyword router removed) | AI handles all conversation natively; more robust, no hardcoded flows |
+| Automatic Function Calling (AFC) via google.genai | AI decides which tools to call; no manual dispatch needed |
+| Conversation history in Redis (24h TTL, 20 turns) | Persistent context across messages without DB overhead |
+| Pakistani RE knowledge in system prompt (not RAG) | Laws rarely change; simpler than vector DB for MVP |
+| psycopg2 → psycopg[binary] (psycopg3) | psycopg2 has no Python 3.14 pre-built wheel |
+| google.generativeai → google.genai | Old SDK deprecated by Google; new SDK required for continued support |
+| Primary model: gemini-2.5-flash-lite | Working free-tier model on this API key (gemini-2.0-flash quota exhausted) |
 
 ---
 
@@ -93,6 +105,9 @@ The two remaining gaps are operational (deployment + data), not code.
 | No rate limiting on WhatsApp bot (per user) | Medium | Add Redis-based throttle before going live |
 | `WA_APP_SECRET` blank = all webhook signatures accepted (dev) | High | Must be set in production |
 | Scraper search is synchronous in request cycle | Medium | Move to Celery task + cache result for heavy traffic |
+| Free tier Gemini quota: gemini-2.5-flash-lite works; gemini-2.0-flash exhausted | Medium | Monitor usage; upgrade API key if needed at launch |
+| Agent system prompt is large (~2KB); sent on every request | Low | Acceptable cost for MVP; add prompt caching if volume grows |
+| `handlers.py` still exists (FSM flows) but is only used for `_upsert_lead()` | Low | Clean up later; harmless for now |
 
 ---
 
@@ -127,5 +142,6 @@ GEMINI_API_KEY=
 2. **Register webhook in Meta** — use the public URL, set `WA_VERIFY_TOKEN`
 3. **Create OTP template in Meta Business Manager** — body: `Your PakProp AI code is {{1}}. Expires in 5 minutes.`
 4. **Seed 5–10 real property listings** — so search returns real results during demos
-5. **Phase 2: Document OCR flow** — user sends property doc image → Gemini extracts fields → verification record created
-6. **Phase 2: Property Audit PDF** — generate report, upload to R2, send download link on WhatsApp
+5. **Get a fresh Gemini API key** — current key has `gemini-2.0-flash` quota exhausted; new key gets full free tier limits (1500 req/day, 15 RPM)
+6. **Phase 2: Property Audit PDF** — generate report via AI agent, upload to R2, send download link on WhatsApp
+7. **Phase 2: Document OCR flow** — already works via `chat_with_image()`; add a dedicated `/verify doc` command that saves to `verification` table

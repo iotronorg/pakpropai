@@ -46,7 +46,7 @@ class GraanaScraper(BaseScraper):
 
     def search(self, city='', location='', area_marla=None,
                max_price=None, property_type='') -> list[PropertyResult]:
-        key = f"scraper:graana:{city}:{location}:{area_marla}:{max_price}:{property_type}"
+        key = f"scraper_graana_{city}_{location}_{area_marla}_{max_price}_{property_type}"
         cached = cache.get(key)
         if cached is not None:
             return [PropertyResult.from_dict(d) for d in cached]

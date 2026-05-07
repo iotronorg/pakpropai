@@ -1,37 +1,19 @@
+"""
+WhatsApp message router.
+Receives parsed webhook payloads, routes to PakPropAgent, sends replies.
+
+The FSM/keyword logic is replaced entirely by the AI agent — it handles
+all conversation flows, tool use, and context natively.
+"""
 import logging
+
 from django.utils import timezone
 
 from apps.users.models import User
 from .client import WhatsAppClient
 from .models import WhatsAppMessage, WhatsAppSession
-from .sessions import SessionManager
 
 logger = logging.getLogger(__name__)
-
-KEYWORDS = {
-    'property_search': ['plot', 'house', 'flat', 'apartment', 'property', 'marla', 'kanal', 'find me'],
-    'list_property':   ['list property', 'add listing', 'list my', 'sell my', 'add property', 'post listing'],
-    'tax_query':       ['tax', '7e', 'fbr', 'filer', 'section 7'],
-    'verify_doc':      ['verify', 'verification', 'document', 'registry'],
-    'check_loan':      ['loan', 'eligibility', 'mortgage', 'apna ghar'],
-    'scam_check':      ['scam', 'fraud', 'check agent'],
-    'lock_deal':       ['token', 'escrow', 'lock deal'],
-}
-
-_GREETINGS = ('hi', 'hello', 'salam', 'aoa', 'start', 'assalam', '/start')
-
-# States where the user is in the middle of a multi-turn flow
-_FLOW_STATES = {
-    'AWAITING_TAX_INPUT',
-    'AWAITING_LOAN_INPUT',
-    'AWAITING_PROPERTY_DETAILS',
-    'SEARCH_PAGINATING',
-    'LISTING_CITY',
-    'LISTING_LOCATION',
-    'LISTING_DETAILS',
-    'LISTING_PRICE',
-    'LISTING_CONFIRM',
-}
 
 
 class MessageRouter:
@@ -47,199 +29,111 @@ class MessageRouter:
         session_db.user = user
         session_db.message_count += 1
         session_db.last_message_at = timezone.now()
-        session_db.save()
+        session_db.save(update_fields=['user', 'message_count', 'last_message_at'])
 
         msg_type = message_data.get('type', 'text')
-        raw_body = cls._extract_body(message_data)
 
-        # Transcribe voice before routing
+        # ── Resolve message text ───────────────────────────────────────────
         if msg_type == 'audio':
             text = cls._transcribe_voice(message_data, phone)
             if not text:
                 cls._send_and_log(
                     phone,
                     "I received your voice message but couldn't transcribe it. "
-                    "Please try again or type your message.",
+                    "Please type your message or try again.",
                     session_db,
                 )
                 return
+            display_body = f"[voice] {text}"
+
+        elif msg_type == 'image':
+            caption = message_data.get('image', {}).get('caption', '')
+            image_bytes, mime = cls._download_media(
+                message_data.get('image', {}).get('id'),
+                message_data.get('image', {}).get('mime_type', 'image/jpeg'),
+            )
+            if image_bytes:
+                reply = cls._handle_image(phone, image_bytes, mime, caption, user)
+                cls._send_and_log(phone, reply, session_db)
+                cls._log_inbound(message_data, session_db, caption or '[image]', msg_type)
+                return
+            text = caption or "I received an image but couldn't download it."
+            display_body = text
+
+        elif msg_type == 'document':
+            caption = message_data.get('document', {}).get('caption', '')
+            doc_bytes, mime = cls._download_media(
+                message_data.get('document', {}).get('id'),
+                message_data.get('document', {}).get('mime_type', 'application/pdf'),
+            )
+            if doc_bytes and mime.startswith('image/'):
+                reply = cls._handle_image(phone, doc_bytes, mime, caption, user)
+                cls._send_and_log(phone, reply, session_db)
+                cls._log_inbound(message_data, session_db, caption or '[document]', msg_type)
+                return
+            text = caption or "I received a document."
+            display_body = text
+
         else:
-            text = raw_body
+            text = message_data.get('text', {}).get('body', '').strip()
+            display_body = text
 
-        WhatsAppMessage.objects.update_or_create(
-            wa_message_id=message_data.get('id', ''),
-            defaults={
-                'session':     session_db,
-                'direction':   'inbound',
-                'msg_type':    msg_type,
-                'body':        text or raw_body,
-                'raw_payload': message_data,
-            },
-        )
+        if not text:
+            return
 
-        session = SessionManager.get(phone)
+        cls._log_inbound(message_data, session_db, display_body, msg_type)
+
+        # ── Hard reset commands (bypass agent) ────────────────────────────
+        text_lower = text.lower().strip()
+        if text_lower in ('reset', '/start', 'menu', 'main menu'):
+            from apps.ai.agent import get_agent
+            get_agent().clear_history(phone)
+            cls._send_and_log(phone, cls._greeting(), session_db)
+            return
+
+        # ── Route through AI agent ─────────────────────────────────────────
         try:
-            response_text = cls._handle(text.strip(), phone, user, session)
+            from apps.ai.agent import get_agent
+            agent  = get_agent()
+            reply  = agent.chat(phone, text, user)
         except Exception:
-            logger.exception(f"Handler crash phone={phone}")
-            response_text = "Sorry, something went wrong. Please try again in a moment."
-
-        cls._send_and_log(phone, response_text, session_db)
-
-    # ── FSM core ──────────────────────────────────────────────────────────────
-
-    @classmethod
-    def _handle(cls, text: str, phone: str, user, session: dict) -> str:
-        state = session.get('state', 'IDLE')
-        ctx   = session.get('context', {})
-
-        # Global reset
-        if text.lower().strip() in ('cancel', 'menu', 'main menu', 'back', 'reset', '/start'):
-            SessionManager.update(phone, state='IDLE', context={})
-            return cls._greeting()
-
-        # "more" — paginate previous search
-        if text.lower().strip() in ('more', 'next', 'show more', 'aur') and state in ('SEARCH_PAGINATING', 'IDLE'):
-            from .handlers import handle_more_results
-            reply, new_state, ctx_patch = handle_more_results(phone, user, ctx)
-            ctx.update(ctx_patch)
-            SessionManager.update(phone, state=new_state, context=ctx)
-            return reply
-
-        # Route by active state
-        if state == 'AWAITING_TAX_INPUT':
-            from .handlers import handle_tax_input
-            reply, new_state, ctx_patch = handle_tax_input(text, phone, user, ctx)
-
-        elif state == 'AWAITING_LOAN_INPUT':
-            from .handlers import handle_loan_input
-            reply, new_state, ctx_patch = handle_loan_input(text, phone, user, ctx)
-
-        elif state in ('AWAITING_PROPERTY_DETAILS', 'SEARCH_PAGINATING'):
-            from .handlers import handle_property_details
-            reply, new_state, ctx_patch = handle_property_details(text, phone, user, ctx)
-
-        elif state == 'LISTING_CITY':
-            from .handlers import handle_listing_city
-            reply, new_state, ctx_patch = handle_listing_city(text, phone, user, ctx)
-
-        elif state == 'LISTING_LOCATION':
-            from .handlers import handle_listing_location
-            reply, new_state, ctx_patch = handle_listing_location(text, phone, user, ctx)
-
-        elif state == 'LISTING_DETAILS':
-            from .handlers import handle_listing_details
-            reply, new_state, ctx_patch = handle_listing_details(text, phone, user, ctx)
-
-        elif state == 'LISTING_PRICE':
-            from .handlers import handle_listing_price
-            reply, new_state, ctx_patch = handle_listing_price(text, phone, user, ctx)
-
-        elif state == 'LISTING_CONFIRM':
-            from .handlers import handle_listing_confirm
-            reply, new_state, ctx_patch = handle_listing_confirm(text, phone, user, ctx)
-
-        else:
-            intent = cls.classify_intent(text)
-            reply, new_state, ctx_patch = cls._start_flow(intent, text, phone, user, ctx)
-
-        ctx.update(ctx_patch)
-        SessionManager.update(phone, state=new_state, context=ctx)
-        return reply
-
-    @classmethod
-    def _start_flow(cls, intent: str, text: str, phone: str, user, ctx: dict) -> tuple:
-        from .handlers import (
-            start_tax_flow, start_loan_flow,
-            start_property_search, start_listing_flow,
-        )
-        from apps.verification.services import FraudCheckService
-
-        if intent == 'greeting':
-            return cls._greeting(), 'IDLE', {}
-
-        if intent == 'tax_query':
-            return start_tax_flow(text, phone, user, ctx)
-
-        if intent == 'check_loan':
-            return start_loan_flow(text, phone, user, ctx)
-
-        if intent == 'property_search':
-            return start_property_search(text, phone, user, ctx)
-
-        if intent == 'list_property':
-            return start_listing_flow(text, phone, user, ctx)
-
-        if intent == 'verify_doc':
-            return (
-                "Send a clear photo of the property document and I'll run a verification check.",
-                'IDLE', {}
+            logger.exception(f"Agent crashed for phone={phone}")
+            reply = (
+                "Something went wrong on my end. Please try again in a moment.\n"
+                "Type *menu* to restart."
             )
 
-        if intent == 'scam_check':
-            words        = text.lower().split()
-            keyword_only = all(w in {'scam', 'fraud', 'check', 'verify', 'agent'} for w in words)
-            if keyword_only:
-                return (
-                    "Send the agent's name, phone, or registry number to scan for fraud.\n"
-                    "Example: *check agent Asif File Park Gulberg registry 4471*",
-                    'IDLE', {}
-                )
-            try:
-                r          = FraudCheckService.check(text, user=user)
-                risk_label = {'low': 'LOW', 'medium': 'MED', 'high': 'HIGH'}.get(r.get('risk'), '?')
-                flags      = '\n'.join(f"- {f}" for f in r.get('flags', [])) or '- No major flags'
-                steps      = '\n'.join(f"{i+1}. {s}" for i, s in enumerate(r.get('verify_steps', [])))
-                reply = (f"Risk: {risk_label} ({r.get('risk', 'unknown').upper()})\n\n"
-                         f"Flags:\n{flags}\n\n"
-                         f"Recommendation: {r.get('recommendation', '-')}\n\n"
-                         f"Next steps:\n{steps}")
-            except Exception:
-                logger.exception("scam_check failed")
-                reply = "Scam check is briefly down. Try again in a few minutes."
-            return reply, 'IDLE', {}
+        cls._send_and_log(phone, reply, session_db)
 
-        if intent == 'lock_deal':
-            return "To lock a deal: share property ID, agreed price, and seller's phone.", 'IDLE', {}
-
-        return (
-            "I didn't understand that. You can ask about:\n"
-            "• Property search (or send a voice note)\n"
-            "• List a property\n"
-            "• Tax (7E)\n"
-            "• Loan eligibility\n"
-            "• Scam check\n"
-            "• Token lock",
-            'IDLE', {}
-        )
-
-    # ── Intent classification ─────────────────────────────────────────────────
+    # ─── Image handling ───────────────────────────────────────────────────────
 
     @classmethod
-    def classify_intent(cls, text: str) -> str:
-        text_lower = text.lower()
-
-        # Multi-word keywords must be checked before single-word ones
-        for intent in ('list_property', 'scam_check', 'lock_deal'):
-            if any(w in text_lower for w in KEYWORDS[intent]):
-                return intent
-
-        for intent, words in KEYWORDS.items():
-            if any(w in text_lower for w in words):
-                return intent
-
-        if any(g in text_lower for g in _GREETINGS):
-            return 'greeting'
-
+    def _handle_image(cls, phone: str, image_bytes: bytes, mime: str,
+                      caption: str, user) -> str:
         try:
-            from services.ai_orchestrator import AIOrchestrator
-            result = AIOrchestrator.classify_intent(text)
-            return result.get('intent', 'unknown')
+            from apps.ai.agent import get_agent
+            return get_agent().chat_with_image(phone, image_bytes, mime, caption, user)
         except Exception as exc:
-            logger.warning(f"AI intent fallback failed: {exc}")
-            return 'unknown'
+            logger.error(f"Image analysis failed: {exc}")
+            return (
+                "I received your image but couldn't analyze it right now.\n"
+                "For property documents, please describe what you need verified."
+            )
 
-    # ── Voice transcription ───────────────────────────────────────────────────
+    # ─── Media download ───────────────────────────────────────────────────────
+
+    @classmethod
+    def _download_media(cls, media_id: str, mime_type: str) -> tuple:
+        if not media_id:
+            return None, mime_type
+        try:
+            data = WhatsAppClient.download_media(media_id)
+            return data, mime_type
+        except Exception as exc:
+            logger.error(f"Media download failed id={media_id}: {exc}")
+            return None, mime_type
+
+    # ─── Voice transcription ──────────────────────────────────────────────────
 
     @classmethod
     def _transcribe_voice(cls, message_data: dict, phone: str) -> str:
@@ -252,36 +146,43 @@ class MessageRouter:
             audio_bytes = WhatsAppClient.download_media(media_id)
             from services.ai_orchestrator import AIOrchestrator
             transcript = AIOrchestrator.transcribe_voice(audio_bytes, mime_type)
-            logger.info(f"Voice transcribed for {phone}: {transcript[:80]}")
+            logger.info(f"Voice transcribed phone={phone}: {transcript[:80]}")
             return transcript
         except Exception as exc:
-            logger.error(f"Voice transcription failed for {phone}: {exc}")
+            logger.error(f"Voice transcription failed phone={phone}: {exc}")
             return ''
 
-    # ── Utilities ─────────────────────────────────────────────────────────────
-
-    @staticmethod
-    def _extract_body(msg: dict) -> str:
-        t = msg.get('type')
-        if t == 'text':     return msg.get('text', {}).get('body', '')
-        if t == 'audio':    return '[voice message]'
-        if t == 'image':    return msg.get('image', {}).get('caption', '[image]')
-        if t == 'document': return msg.get('document', {}).get('caption', '[document]')
-        return ''
+    # ─── Utilities ────────────────────────────────────────────────────────────
 
     @staticmethod
     def _greeting() -> str:
         return (
-            "Salam! Welcome to PakProp AI.\n\n"
-            "I can help you with:\n"
-            "• Property search (text or voice)\n"
-            "• List a property\n"
-            "• Tax (7E) calculations\n"
-            "• Loan eligibility\n"
-            "• Document verification\n"
-            "• Scam check\n\n"
-            "What would you like to do?"
+            "Salam! Welcome to *PakProp AI* 🏠\n\n"
+            "Pakistan's real estate intelligence assistant. I can help with:\n\n"
+            "• 🔍 *Property search* — text or voice\n"
+            "• 📋 *List your property* for sale\n"
+            "• 💰 *Tax advice* — Section 7E, CGT, rental tax\n"
+            "• 🏦 *Loan eligibility* — Apna Ghar & banks\n"
+            "• 🛡️ *Scam/fraud check* — verify any deal\n"
+            "• 📄 *Document verification* — send a photo\n\n"
+            "What would you like to do? Just ask in English or Urdu."
         )
+
+    @classmethod
+    def _log_inbound(cls, message_data: dict, session_db, body: str, msg_type: str):
+        try:
+            WhatsAppMessage.objects.update_or_create(
+                wa_message_id=message_data.get('id', ''),
+                defaults={
+                    'session':     session_db,
+                    'direction':   'inbound',
+                    'msg_type':    msg_type,
+                    'body':        body[:2000],
+                    'raw_payload': message_data,
+                },
+            )
+        except Exception:
+            pass
 
     @classmethod
     def _send_and_log(cls, phone: str, body: str, session_db):
@@ -293,8 +194,8 @@ class MessageRouter:
                 wa_message_id = wa_id or f"out-{timezone.now().timestamp()}",
                 direction     = 'outbound',
                 msg_type      = 'text',
-                body          = body,
+                body          = body[:2000],
                 raw_payload   = resp,
             )
-        except Exception:
-            logger.error(f"Failed to send WA reply to {phone}")
+        except Exception as exc:
+            logger.error(f"Failed to send reply to {phone}: {exc}")

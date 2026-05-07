@@ -1,9 +1,14 @@
+"""
+Low-level Gemini client using the new google.genai SDK.
+Used by AIOrchestrator for non-conversational tasks (OCR, property scoring, voice transcription).
+Conversational chat goes through apps.ai.agent.PakPropAgent instead.
+"""
 import hashlib
 import json
 import logging
+import re
 import time
 
-import google.generativeai as genai
 from django.conf import settings
 from django.core.cache import cache
 
@@ -11,19 +16,22 @@ from .models import AIInteraction
 
 logger = logging.getLogger(__name__)
 
-genai.configure(api_key=settings.GEMINI_API_KEY)
+
+def _get_client():
+    from google import genai
+    return genai.Client(api_key=settings.GEMINI_API_KEY)
 
 
 class GeminiClient:
 
-    # DEFAULT_MODEL = 'gemini-1.5-flash'
-    DEFAULT_MODEL = 'gemini-3-flash-preview' 
-    PRO_MODEL     = 'gemini-1.5-pro'
+    DEFAULT_MODEL = 'gemini-2.5-flash-lite'
+    PRO_MODEL     = 'gemini-2.5-flash-lite'
 
-    @classmethod
-    def _cache_key(cls, model: str, prompt: str) -> str:
-        h = hashlib.sha256(f"{model}::{prompt}".encode()).hexdigest()
-        return f"ai:response:{h}"
+    FAIL_KEY     = 'ai:gemini:failures'
+    FAIL_LIMIT   = 5
+    FAIL_TIMEOUT = 300
+
+    # ─── Text generation ──────────────────────────────────────────────────────
 
     @classmethod
     def generate(cls, prompt: str, *,
@@ -35,132 +43,124 @@ class GeminiClient:
                  cache_ttl: int = 3600,
                  use_cache: bool = True,
                  expect_json: bool = False) -> str:
+
+        if not settings.GEMINI_API_KEY:
+            raise RuntimeError("GEMINI_API_KEY not configured")
+
         model = model or cls.DEFAULT_MODEL
-        cache_key = cls._cache_key(model, prompt)
+        cache_key = f"ai:resp:{hashlib.sha256(f'{model}::{prompt}'.encode()).hexdigest()}"
 
         if use_cache:
             cached = cache.get(cache_key)
             if cached:
-                cls._log(user, interaction_type, model, 0, 0, cached_hit=True, response_ms=0,
-                         input_data={'prompt_preview': prompt[:300]}, output_data={'preview': cached[:300]})
+                cls._log(user, interaction_type, model, 0, 0, True, 0,
+                         {'prompt_preview': prompt[:200]}, {'preview': cached[:200]})
                 return cached
 
         started = time.time()
         try:
-            generation_config = {
-                'max_output_tokens': max_output_tokens,
-                'temperature':       temperature,
-            }
+            from google.genai import types
+            client = _get_client()
+            cfg = types.GenerateContentConfig(
+                max_output_tokens=max_output_tokens,
+                temperature=temperature,
+            )
             if expect_json:
-                generation_config['response_mime_type'] = 'application/json'
+                cfg.response_mime_type = 'application/json'
 
-            gen_model = genai.GenerativeModel(model_name=model, generation_config=generation_config)
-            response  = gen_model.generate_content(prompt)
-            text      = response.text or ''
+            response = client.models.generate_content(
+                model=model,
+                contents=prompt,
+                config=cfg,
+            )
+            text = (response.text or '').strip()
         except Exception as exc:
-            logger.error(f"Gemini call failed ({model}): {exc}")
+            logger.error(f"GeminiClient.generate failed ({model}): {exc}")
             cls._record_failure()
             raise
 
         elapsed_ms = int((time.time() - started) * 1000)
 
         usage = getattr(response, 'usage_metadata', None)
-        prompt_tokens   = getattr(usage, 'prompt_token_count', 0) if usage else 0
-        response_tokens = getattr(usage, 'candidates_token_count', 0) if usage else 0
+        ptok = getattr(usage, 'prompt_token_count', 0) if usage else 0
+        rtok = getattr(usage, 'candidates_token_count', 0) if usage else 0
 
-        if use_cache:
+        if use_cache and text:
             cache.set(cache_key, text, cache_ttl)
 
-        cls._log(user, interaction_type, model, prompt_tokens, response_tokens,
-                 cached_hit=False, response_ms=elapsed_ms,
-                 input_data={'prompt_preview': prompt[:300]},
-                 output_data={'preview': text[:300]})
+        cls._log(user, interaction_type, model, ptok, rtok, False, elapsed_ms,
+                 {'prompt_preview': prompt[:200]}, {'preview': text[:200]})
         return text
-
-    # @classmethod
-    # def generate_json(cls, prompt: str, **kwargs) -> dict:
-    #     text = cls.generate(prompt, expect_json=True, **kwargs)
-    #     try:
-    #         return json.loads(text)
-    #     except json.JSONDecodeError:
-    #         logger.error(f"Gemini returned non-JSON: {text[:300]}")
-    #         return {}
 
     @classmethod
     def generate_json(cls, prompt: str, **kwargs) -> dict:
         text = cls.generate(prompt, expect_json=True, **kwargs)
         return cls._parse_json(text)
 
-    @staticmethod
-    def _parse_json(text: str) -> dict:
-        """Extract JSON even if Gemini wraps it in prose or markdown fences."""
-        import json
-        import re
+    # ─── Vision / OCR ─────────────────────────────────────────────────────────
 
-        if not text:
-            return {}
-
-        # Try straight parse first
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError:
-            pass
-
-        # Strip ```json ... ``` fences
-        fenced = re.search(r'```(?:json)?\s*(\{.*?\}|\[.*?\])\s*```', text, re.DOTALL)
-        if fenced:
-            try:
-                return json.loads(fenced.group(1))
-            except json.JSONDecodeError:
-                pass
-
-        # Last resort: grab the first {...} block in the text
-        brace = re.search(r'\{.*\}', text, re.DOTALL)
-        if brace:
-            try:
-                return json.loads(brace.group(0))
-            except json.JSONDecodeError:
-                pass
-
-        logger.error(f"Gemini returned non-JSON (full): {text[:500]}")
-        return {}
-    
     @classmethod
-    def vision(cls, prompt: str, image_bytes: bytes, mime_type: str = 'image/jpeg', **kwargs) -> str:
-        """Multimodal call — used for OCR."""
-        model = genai.GenerativeModel(cls.PRO_MODEL)
+    def vision(cls, prompt: str, image_bytes: bytes,
+               mime_type: str = 'image/jpeg', **kwargs) -> str:
+        if not settings.GEMINI_API_KEY:
+            raise RuntimeError("GEMINI_API_KEY not configured")
         try:
-            response = model.generate_content([prompt, {'mime_type': mime_type, 'data': image_bytes}])
-            return response.text or ''
+            from google import genai
+            from google.genai import types
+            client = _get_client()
+            response = client.models.generate_content(
+                model=cls.PRO_MODEL,
+                contents=[
+                    types.Part.from_text(prompt),
+                    types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+                ],
+                config=types.GenerateContentConfig(
+                    max_output_tokens=1024,
+                    temperature=0.1,
+                ),
+            )
+            return (response.text or '').strip()
         except Exception as exc:
-            logger.error(f"Gemini vision call failed: {exc}")
+            logger.error(f"GeminiClient.vision failed: {exc}")
+            cls._record_failure()
             raise
 
+    # ─── Audio transcription ──────────────────────────────────────────────────
+
     @classmethod
-    def transcribe_audio(cls, audio_bytes: bytes, mime_type: str = 'audio/ogg') -> str:
-        """Transcribe a WhatsApp voice message using Gemini multimodal."""
-        from services.prompt_library import render
-        model = genai.GenerativeModel(cls.DEFAULT_MODEL)
+    def transcribe_audio(cls, audio_bytes: bytes,
+                         mime_type: str = 'audio/ogg') -> str:
+        if not settings.GEMINI_API_KEY:
+            raise RuntimeError("GEMINI_API_KEY not configured")
         try:
-            response = model.generate_content([
-                render('voice_transcribe'),
-                {'mime_type': mime_type, 'data': audio_bytes},
-            ])
+            from google import genai
+            from google.genai import types
+            client = _get_client()
+            response = client.models.generate_content(
+                model=cls.DEFAULT_MODEL,
+                contents=[
+                    types.Part.from_text(
+                        "Transcribe this voice message exactly as spoken. "
+                        "Output ONLY the transcription, no labels or explanation."
+                    ),
+                    types.Part.from_bytes(data=audio_bytes, mime_type=mime_type),
+                ],
+                config=types.GenerateContentConfig(
+                    max_output_tokens=512,
+                    temperature=0.1,
+                ),
+            )
             text = (response.text or '').strip()
-            cls._log(None, 'voice_transcribe', cls.DEFAULT_MODEL, 0, 0,
-                     cached_hit=False, response_ms=0,
-                     input_data={'mime_type': mime_type, 'bytes': len(audio_bytes)},
-                     output_data={'transcript': text[:200]})
+            cls._log(None, 'voice_transcribe', cls.DEFAULT_MODEL, 0, 0, False, 0,
+                     {'mime_type': mime_type, 'bytes': len(audio_bytes)},
+                     {'transcript': text[:200]})
             return text
         except Exception as exc:
-            logger.error(f"Gemini audio transcription failed: {exc}")
+            logger.error(f"GeminiClient.transcribe_audio failed: {exc}")
+            cls._record_failure()
             raise
 
-    # --- circuit breaker --------------------------------------------------
-
-    FAIL_KEY      = 'ai:gemini:failures'
-    FAIL_LIMIT    = 5
-    FAIL_TIMEOUT  = 300
+    # ─── Circuit breaker ──────────────────────────────────────────────────────
 
     @classmethod
     def _record_failure(cls):
@@ -174,22 +174,44 @@ class GeminiClient:
     def is_healthy(cls) -> bool:
         return cache.get(cls.FAIL_KEY, 0) < cls.FAIL_LIMIT
 
-    # --- logging ----------------------------------------------------------
+    # ─── Helpers ──────────────────────────────────────────────────────────────
 
     @staticmethod
-    def _log(user, interaction_type, model, prompt_tokens, response_tokens,
-             cached_hit, response_ms, input_data, output_data):
+    def _parse_json(text: str) -> dict:
+        if not text:
+            return {}
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            pass
+        fenced = re.search(r'```(?:json)?\s*(\{.*?\}|\[.*?\])\s*```', text, re.DOTALL)
+        if fenced:
+            try:
+                return json.loads(fenced.group(1))
+            except json.JSONDecodeError:
+                pass
+        brace = re.search(r'\{.*\}', text, re.DOTALL)
+        if brace:
+            try:
+                return json.loads(brace.group(0))
+            except json.JSONDecodeError:
+                pass
+        logger.error(f"Could not parse JSON from Gemini response: {text[:300]}")
+        return {}
+
+    @staticmethod
+    def _log(user, interaction_type, model, ptok, rtok, cached, ms, inp, out):
         try:
             AIInteraction.objects.create(
                 user=user,
                 interaction_type=interaction_type,
-                prompt_tokens=prompt_tokens,
-                response_tokens=response_tokens,
+                prompt_tokens=ptok,
+                response_tokens=rtok,
                 model_used=model,
-                was_cached=cached_hit,
-                response_ms=response_ms,
-                input_data=input_data,
-                output_data=output_data,
+                was_cached=cached,
+                response_ms=ms,
+                input_data=inp,
+                output_data=out,
             )
         except Exception as exc:
-            logger.warning(f"Failed to log AIInteraction: {exc}")
+            logger.warning(f"AIInteraction log failed: {exc}")
