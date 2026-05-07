@@ -48,9 +48,17 @@ class PakPropAgent:
             )
 
         from apps.ai import tools as tool_module
-        from apps.ai.knowledge import SYSTEM_PROMPT
 
         tool_module.set_context(user, phone)
+
+        # Greetings get an instant structured reply — no model call needed
+        if self._is_greeting(message):
+            reply = self._greeting_reply(message)
+            history = self._load_history(phone)
+            self._save_history(phone, history, message, reply)
+            return reply
+
+        from apps.ai.knowledge import SYSTEM_PROMPT
 
         history = self._load_history(phone)
         start   = time.time()
@@ -131,6 +139,51 @@ class PakPropAgent:
         if len(updated) > MAX_TURNS * 2:
             updated = updated[-(MAX_TURNS * 2):]
         cache.set(HISTORY_KEY.format(phone=phone), updated, HISTORY_TTL)
+
+    # ─── Greeting detection ───────────────────────────────────────────────────
+
+    _GREETINGS = {
+        'hi', 'hello', 'hey', 'helo', 'hii', 'hiii',
+        'aoa', 'aoa!', 'salam', 'salaam', 'slam',
+        'assalam o alaikum', 'assalamualaikum', 'assalam', 'as salam',
+        'walaikum assalam', 'wa alaikum assalam',
+        'good morning', 'good afternoon', 'good evening', 'good night',
+        'start', 'help',
+    }
+
+    @classmethod
+    def _is_greeting(cls, message: str) -> bool:
+        return message.strip().lower().rstrip('!?.') in cls._GREETINGS
+
+    @staticmethod
+    def _greeting_reply(message: str) -> str:
+        text = message.strip().lower().rstrip('!?.')
+        urdu_greetings = {'aoa', 'salam', 'salaam', 'slam', 'assalam o alaikum',
+                          'assalamualaikum', 'assalam', 'as salam'}
+        if text in urdu_greetings:
+            return (
+                "Wa Alaikum Assalam! 🙏\n\n"
+                "Main *PakProp AI* hoon — Pakistan ka real estate intelligence assistant.\n\n"
+                "Main aapki in chezon mein madad kar sakta hoon:\n\n"
+                "1. 🔍 *Property Search* — Zameen, Graana aur local listings se\n"
+                "2. 💰 *Tax Advice* — Section 7E, CGT, rental tax\n"
+                "3. 🏦 *Loan Eligibility* — Apna Ghar scheme aur bank financing\n"
+                "4. 🛡️ *Scam/Fraud Check* — Kisi bhi deal ka risk check karein\n"
+                "5. 📋 *Property Listing* — Apni property list karein buyers ke liye\n"
+                "6. 📄 *Document Check* — Property papers ki photo bhejein\n\n"
+                "Aap kya dhundh rahe hain? 🏠"
+            )
+        return (
+            "Hello! 👋 Welcome to *PakProp AI* — Pakistan's real estate intelligence assistant.\n\n"
+            "Here's what I can help you with:\n\n"
+            "1. 🔍 *Property Search* — Live listings from Zameen, Graana & local DB\n"
+            "2. 💰 *Tax Advice* — Section 7E, CGT, rental & withholding tax\n"
+            "3. 🏦 *Loan Eligibility* — Apna Ghar scheme & bank financing\n"
+            "4. 🛡️ *Scam/Fraud Check* — Verify any deal or agent\n"
+            "5. 📋 *List Your Property* — Sell or rent via WhatsApp\n"
+            "6. 📄 *Document Verification* — Send a photo of any property paper\n\n"
+            "What are you looking for today? 🏠"
+        )
 
     # ─── Error handling ───────────────────────────────────────────────────────
 

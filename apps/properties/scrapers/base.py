@@ -72,6 +72,25 @@ class BaseScraper:
     # ── shared helpers ────────────────────────────────────────────────────────
 
     @staticmethod
+    def location_matches(result_location: str, query_location: str) -> bool:
+        """
+        Word-level match so 'DHA Lahore' matches 'DHA Phase 8, DHA Defence'.
+        Splits query into words (>=3 chars) and returns True if ANY word
+        appears in the result location string.
+        """
+        if not query_location:
+            return True
+        target = (result_location or '').lower()
+        words  = [w.lower() for w in query_location.split() if len(w) >= 3]
+        return any(w in target for w in words)
+
+    @staticmethod
+    def safe_cache_key(prefix: str, **parts) -> str:
+        """Build a Redis-safe cache key — no spaces, colons, or special chars."""
+        segment = '_'.join(str(v).replace(' ', '-').replace(':', '') for v in parts.values())
+        return f"{prefix}_{segment}"
+
+    @staticmethod
     def parse_pkr(text: str) -> Optional[int]:
         import re
         t = text.lower().replace(',', '').replace('rs.', '').replace('pkr', '').strip()

@@ -1,6 +1,6 @@
 # PakProp AI — Build Progress
 
-**Last updated:** 2026-05-07  
+**Last updated:** 2026-05-07 (session 2)  
 **Current branch:** `development`  
 **Current phase:** Phase 1 MVP
 
@@ -40,11 +40,15 @@
 | **Python 3.14 compatibility** | ✅ Done | `requirements/base.txt` |
 | **Dual AI backend (Gemini ↔ Ollama local)** | ✅ Done | `apps/ai/backends/`, `config/settings/base.py` |
 | **Scraper location filter bug fix** | ✅ Done | `apps/properties/scrapers/zameen.py`, `graana.py` |
+| **Scraper cache key sanitization** | ✅ Done | `apps/properties/scrapers/base.py` → `safe_cache_key()` |
+| **Greeting handler (instant, no model call)** | ✅ Done | `apps/ai/agent.py` → `_is_greeting()`, `_greeting_reply()` |
+| **Per-message backend logging** | ✅ Done | `apps/whatsapp/router.py` → yellow console line per message |
+| **Batch verdicts skip in local mode** | ✅ Done | `apps/properties/search.py` |
 | **Deployment (Render + Supabase + Upstash)** | ❌ Not done | — |
 | **Real property data / agent onboarding** | ❌ Not done | — |
 | **WhatsApp OTP template (Meta Business Manager)** | ❌ Needs setup | `.env: WA_OTP_TEMPLATE_NAME` |
 
-**Phase 1 completion: ~97%**  
+**Phase 1 completion: ~98%**  
 Remaining gaps are operational (deployment + data), not code.
 
 ---
@@ -98,7 +102,9 @@ Remaining gaps are operational (deployment + data), not code.
 | No LangGraph/LangChain for local backend | Simple for-loop handles the Ollama tool-call agentic cycle; OpenAI SDK as HTTP client |
 | qwen2.5:7b as local model | Best tool-calling + bilingual (Urdu/English) support at 7B size; fits in 32GB RAM |
 | batch_verdicts skipped when AI_BACKEND=local | Prevents stray Gemini API calls when testing locally; verdicts are cosmetic only |
-| Scraper location filter as post-fetch substring match | Zameen/Graana URLs don't support location query params; filter client-side after city fetch |
+| Scraper location filter as post-fetch word-level match | Zameen/Graana URLs don't support location params; filter client-side. Word match ('DHA Lahore' → ['DHA','Lahore']) handles city-appended queries |
+| Greeting handled in code, not by model | qwen2.5:7b ignores system prompt instructions for greetings; hardcoded response is instant, free, and always consistent |
+| WhatsApp test accounts restrict recipient numbers | Meta #131030 error — test app allows max 5 pre-approved numbers; add in Meta Dev Portal → WhatsApp → API Setup |
 
 ---
 
@@ -115,7 +121,8 @@ Remaining gaps are operational (deployment + data), not code.
 | Free tier Gemini quota: 20 req/day on gemini-2.5-flash-lite | High | Use AI_BACKEND=local for dev; get paid key for production |
 | Agent system prompt is large (~2KB); sent on every request | Low | Acceptable cost for MVP; add prompt caching if volume grows |
 | `handlers.py` still exists (FSM flows) but is only used for `_upsert_lead()` | Low | Clean up later; harmless for now |
-| Location filter is substring match — broad queries may over-filter | Low | e.g. "DHA" matches "DHA Phase 1–9"; acceptable for MVP |
+| WhatsApp test account: max 5 recipient numbers | High | Must add each test number in Meta Dev Portal before it can receive messages |
+| Location word-match may over-match on city name | Low | e.g. "Lahore" as a word matches any Lahore result; acceptable since city filter is also applied |
 
 ---
 

@@ -58,7 +58,10 @@ class ZameenScraper(BaseScraper):
 
     def search(self, city='', location='', area_marla=None,
                max_price=None, property_type='') -> list[PropertyResult]:
-        key = f"scraper_zameen_{city}_{location}_{area_marla}_{max_price}_{property_type}"
+        key = self.safe_cache_key(
+            'scraper_zameen', city=city, location=location,
+            area=area_marla, price=max_price, ptype=property_type,
+        )
         cached = cache.get(key)
         if cached is not None:
             return [PropertyResult.from_dict(d) for d in cached]
@@ -66,8 +69,7 @@ class ZameenScraper(BaseScraper):
         results = self._fetch(city, property_type)
 
         if location:
-            loc = location.lower()
-            results = [r for r in results if loc in (r.location or '').lower()]
+            results = [r for r in results if self.location_matches(r.location, location)]
         if max_price:
             results = [r for r in results if not r.price_pkr or r.price_pkr <= max_price]
         if area_marla:
