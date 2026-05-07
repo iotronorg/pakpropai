@@ -319,6 +319,165 @@ def run_fraud_check(description: str) -> dict:
         return {'risk': 'unknown', 'flags': [], 'error': str(exc)}
 
 
+# ─── Property Audit ──────────────────────────────────────────────────────────
+
+def generate_property_audit(
+    city: str,
+    location: str,
+    estimated_value_pkr: int,
+    property_type: str = 'residential',
+    area_marla: float = 0.0,
+    owner_name: str = '',
+    description: str = '',
+) -> dict:
+    """
+    Generate a comprehensive property audit report with risk score, investment grade,
+    market comparison, tax analysis, ROI projections, and role-specific insights.
+    Call this when the user asks for 'property audit', 'audit report', 'property check',
+    or wants a detailed analysis of a specific property.
+
+    Args:
+        city: City where the property is located e.g. 'Lahore', 'Karachi', 'Islamabad'
+        location: Specific area e.g. 'DHA Phase 5', 'Bahria Town', 'Gulberg 3'
+        estimated_value_pkr: Estimated property value in PKR (e.g. 15000000 for 1.5 crore)
+        property_type: One of 'plot', 'house', 'apartment', 'commercial' (default: residential)
+        area_marla: Size in Marla (0 if not known)
+        owner_name: Owner name if known (optional)
+        description: Any additional details, concerns, or context about the property
+    """
+    try:
+        import os
+        from django.conf import settings as django_settings
+        from apps.audit.services import AuditEngine
+        from apps.audit.pdf import generate_audit_pdf
+        from apps.audit.models import PropertyAudit
+
+        phone = _ctx_phone.get() or ''
+        user  = _ctx_user.get()
+
+        audit_data = AuditEngine.run(
+            city=city,
+            location=location,
+            property_type=property_type,
+            estimated_value_pkr=estimated_value_pkr,
+            area_marla=area_marla if area_marla > 0 else None,
+            owner_name=owner_name,
+            description=description,
+            phone=phone,
+        )
+
+        # Save to DB
+        scores = audit_data['scores']
+        audit  = PropertyAudit.objects.create(
+            user=user,
+            phone=phone,
+            city=city,
+            location=location,
+            property_type=property_type,
+            area_marla=area_marla if area_marla > 0 else None,
+            estimated_value_pkr=estimated_value_pkr,
+            owner_name=owner_name,
+            description=description,
+            risk_score=scores['risk_score'],
+            investment_grade=scores['investment_grade'],
+            liquidity_score=scores['liquidity_score'],
+            audit_data=audit_data,
+        )
+
+        # Generate PDF
+        media_root = django_settings.MEDIA_ROOT
+        audits_dir = os.path.join(str(media_root), 'audits')
+        os.makedirs(audits_dir, exist_ok=True)
+        pdf_filename = f"audit_{audit.id}.pdf"
+        pdf_path     = os.path.join(audits_dir, pdf_filename)
+
+        generate_audit_pdf(audit_data, pdf_path)
+
+        audit.pdf_file = f"audits/{pdf_filename}"
+        audit.save(update_fields=['pdf_file'])
+
+        base_url  = getattr(django_settings, 'BASE_URL', 'http://127.0.0.1:8000')
+        pdf_url   = f"{base_url}/api/v1/audit/download/{audit.id}/"
+
+        # Build WhatsApp summary
+        ov  = audit_data['overview']
+        fin = audit_data['financial_analysis']
+        mkt = audit_data['market_analysis']
+        rec = audit_data['recommendations']
+
+        area_str  = f"{ov['area_marla']}M " if ov.get('area_marla') else ''
+        value_str = f"PKR {estimated_value_pkr:,}"
+
+        summary_lines = [
+            f"🏠 *PROPERTY AUDIT REPORT*",
+            f"📍 {area_str}{property_type.title()} — {location}, {city}",
+            f"💰 Value: {value_str}",
+            "",
+            f"*Risk Score: {scores['risk_score']}/10 — {scores['risk_label']}*",
+            f"*Investment Grade: {scores['investment_grade']} ({scores['investment_grade_label']})*",
+            f"*Verdict: {scores['verdict']}* — _{scores['verdict_reason']}_",
+            "",
+            "📊 *MARKET ANALYSIS*",
+            f"Price vs Market: {mkt['price_vs_market']}",
+        ]
+
+        if mkt.get('price_vs_market_pct') is not None:
+            pct = mkt['price_vs_market_pct']
+            summary_lines.append(f"Market Difference: {'+' if pct > 0 else ''}{pct:.1f}%")
+
+        summary_lines += [
+            f"Fair Value Range: PKR {mkt['estimated_fair_value_min']:,} – PKR {mkt['estimated_fair_value_max']:,}",
+            "",
+            "💰 *TAX OBLIGATIONS*",
+        ]
+
+        tax = fin['tax_table']
+        if tax['7e_annual_filer'] > 0:
+            summary_lines.append(f"7E Tax (filer): PKR {tax['7e_annual_filer']:,}/year")
+        else:
+            summary_lines.append("7E Tax: Exempt (below PKR 25M threshold)")
+        summary_lines.append(f"WHT on sale (filer): PKR {tax['wht_filer']:,}")
+        summary_lines.append(f"Stamp Duty: PKR {tax['stamp_duty_estimate']:,}")
+
+        true_cost = fin['true_cost_buyer']['total']
+        net_seller = fin['net_in_hand_seller']['net']
+        summary_lines += [
+            "",
+            f"🏦 *FOR BUYER* — Total cost incl. fees: *PKR {true_cost:,}*",
+            f"💼 *FOR SELLER* — Net in hand: *PKR {net_seller:,}*",
+            f"📈 *5-YR PROJECTION* — PKR {fin['roi_projections']['5_year']['value']:,}",
+            "",
+            "⚠️ *TOP ACTIONS*",
+        ]
+        for i, action in enumerate(rec['top_3_actions'], 1):
+            summary_lines.append(f"{i}. {action}")
+
+        summary_lines += [
+            "",
+            f"📄 *Full PDF Report:* {pdf_url}",
+            "",
+            "_Consult a registered property lawyer and CA for final decisions._",
+        ]
+
+        return {
+            'success': True,
+            'audit_id': audit.id,
+            'whatsapp_summary': '\n'.join(summary_lines),
+            'pdf_url': pdf_url,
+            'risk_score': scores['risk_score'],
+            'investment_grade': scores['investment_grade'],
+            'verdict': scores['verdict'],
+        }
+
+    except Exception as exc:
+        logger.error(f"generate_property_audit failed: {exc}", exc_info=True)
+        return {
+            'success': False,
+            'error': 'Audit generation failed. Please try again.',
+            'whatsapp_summary': 'Sorry, I could not generate the audit report right now. Please try again.',
+        }
+
+
 # ─── List Property ────────────────────────────────────────────────────────────
 
 def list_property(

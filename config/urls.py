@@ -18,26 +18,20 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
+from django.conf.urls.static import static
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-     path('api/v1/', include([
-        path('auth/', include('apps.users.urls')),
-        path('whatsapp/', include('apps.whatsapp.urls')),
-        path('properties/', include('apps.properties.urls')),
+    path('api/v1/', include([
+        path('auth/',         include('apps.users.urls')),
+        path('whatsapp/',     include('apps.whatsapp.urls')),
+        path('properties/',   include('apps.properties.urls')),
         path('verification/', include('apps.verification.urls')),
-        # Properties, WhatsApp, etc. wired in subsequent phases
-     ])),
-    # path('api/v1/', include([
-    #     # These will be wired in as we build each app
-    #     # path('auth/',       include('apps.users.urls')),
-    #     # path('properties/', include('apps.properties.urls')),
-    #     # path('whatsapp/',   include('apps.whatsapp.urls')),
-    # ])),
-    
+        path('audit/',        include('apps.audit.urls')),
+    ])),
 ]
+
 if settings.DEBUG:
     import debug_toolbar
-    urlpatterns = [
-        path('__debug__/', include(debug_toolbar.urls)),
-    ] + urlpatterns
+    urlpatterns = [path('__debug__/', include(debug_toolbar.urls))] + urlpatterns
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

@@ -1,6 +1,6 @@
 # PakProp AI — Build Progress
 
-**Last updated:** 2026-05-07 (session 2)  
+**Last updated:** 2026-05-07 (session 3)  
 **Current branch:** `development`  
 **Current phase:** Phase 1 MVP
 
@@ -57,7 +57,7 @@ Remaining gaps are operational (deployment + data), not code.
 
 | Feature | Status |
 |---------|--------|
-| Property Audit report (PDF + WhatsApp summary) | ❌ |
+| Property Audit report (PDF + WhatsApp summary) | ✅ AuditEngine + PDF done (`apps/audit/`) |
 | Document OCR flow via WhatsApp | ❌ |
 | Property verification improvements | ❌ |
 | Agent dashboard (web) | ❌ |

@@ -37,6 +37,7 @@ LOCAL_APPS = [
     'apps.leads',
     'apps.escrow',
     'apps.reports',
+    'apps.audit',
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -155,3 +156,10 @@ AI_BACKEND         = env('AI_BACKEND',         default='gemini').strip().lower()
 LOCAL_MODEL        = env('LOCAL_MODEL',        default='qwen2.5:7b')
 LOCAL_VISION_MODEL = env('LOCAL_VISION_MODEL', default='llava:7b')
 OLLAMA_BASE_URL    = env('OLLAMA_BASE_URL',    default='http://localhost:11434')
+
+# Media files (uploaded docs, generated PDFs)
+MEDIA_URL  = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
+# Base URL for generating absolute links (PDF download, etc.)
+BASE_URL = env('BASE_URL', default='http://127.0.0.1:8000')

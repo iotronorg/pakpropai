@@ -69,6 +69,7 @@ class PakPropAgent:
             tool_module.check_loan_eligibility,
             tool_module.run_fraud_check,
             tool_module.list_property,
+            tool_module.generate_property_audit,
         ]
 
         try:
