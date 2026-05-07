@@ -1,8 +1,8 @@
 # PakProp AI — Build Progress
 
-**Last updated:** 2026-05-07 (session 3)  
+**Last updated:** 2026-05-07 (session 4)  
 **Current branch:** `development`  
-**Current phase:** Phase 1 MVP
+**Current phase:** Phase 2
 
 ---
 
@@ -44,24 +44,27 @@
 | **Greeting handler (instant, no model call)** | ✅ Done | `apps/ai/agent.py` → `_is_greeting()`, `_greeting_reply()` |
 | **Per-message backend logging** | ✅ Done | `apps/whatsapp/router.py` → yellow console line per message |
 | **Batch verdicts skip in local mode** | ✅ Done | `apps/properties/search.py` |
+| **PostgreSQL migration (from SQLite)** | ✅ Done | `.env` → `DATABASE_URL=postgres://localhost/pakpropai` |
 | **Deployment (Render + Supabase + Upstash)** | ❌ Not done | — |
 | **Real property data / agent onboarding** | ❌ Not done | — |
 | **WhatsApp OTP template (Meta Business Manager)** | ❌ Needs setup | `.env: WA_OTP_TEMPLATE_NAME` |
 
-**Phase 1 completion: ~98%**  
-Remaining gaps are operational (deployment + data), not code.
+**Phase 1 completion: 100%** — All code complete. Remaining gaps are operational only.
 
 ---
 
-## Phase 2 Checklist (not started)
+## Phase 2 Checklist
 
-| Feature | Status |
-|---------|--------|
-| Property Audit report (PDF + WhatsApp summary) | ✅ AuditEngine + PDF done (`apps/audit/`) |
-| Document OCR flow via WhatsApp | ❌ |
-| Property verification improvements | ❌ |
-| Agent dashboard (web) | ❌ |
-| Property scoring improvements (more signals) | ❌ |
+| Feature | Status | File(s) |
+|---------|--------|---------|
+| Property Audit report (PDF + WhatsApp summary) | ✅ Done | `apps/audit/` — engine, PDF, model, tool, URLs |
+| Document OCR flow via WhatsApp | ✅ Done | `apps/ai/agent.py` → `verify_document_image()`, `apps/verification/models.py` → `DocumentScan` |
+| Talk to Agent (lead → agent connection) | ❌ Not done | — |
+| Property verification improvements | ❌ Not done | — |
+| Agent dashboard (web) | ❌ Not done | — |
+| Property scoring improvements (more signals) | ❌ Not done | — |
+
+**Phase 2 completion: ~40%**
 
 ---
 
@@ -105,6 +108,11 @@ Remaining gaps are operational (deployment + data), not code.
 | Scraper location filter as post-fetch word-level match | Zameen/Graana URLs don't support location params; filter client-side. Word match ('DHA Lahore' → ['DHA','Lahore']) handles city-appended queries |
 | Greeting handled in code, not by model | qwen2.5:7b ignores system prompt instructions for greetings; hardcoded response is instant, free, and always consistent |
 | WhatsApp test accounts restrict recipient numbers | Meta #131030 error — test app allows max 5 pre-approved numbers; add in Meta Dev Portal → WhatsApp → API Setup |
+| Audit engine is fully deterministic (no AI call) | Pure rule-based scoring using hardcoded Pakistani RE benchmarks — fast, free, consistent |
+| DocumentScan model has no property FK | WhatsApp users send docs without having a listed property; standalone model is more flexible |
+| Document type detected from caption keywords | Avoids asking user to specify type — natural flow; 12 keyword patterns cover all common docs |
+| OCR uses structured prompt format (KEY: VALUE) | Reliable parsing without JSON — local models struggle with strict JSON output |
+| SQLite → PostgreSQL (local Homebrew) | Production parity in development; avoids migration surprises at deploy time |
 
 ---
 
@@ -123,6 +131,8 @@ Remaining gaps are operational (deployment + data), not code.
 | `handlers.py` still exists (FSM flows) but is only used for `_upsert_lead()` | Low | Clean up later; harmless for now |
 | WhatsApp test account: max 5 recipient numbers | High | Must add each test number in Meta Dev Portal before it can receive messages |
 | Location word-match may over-match on city name | Low | e.g. "Lahore" as a word matches any Lahore result; acceptable since city filter is also applied |
+| Document OCR accuracy depends on AI backend | Medium | llava:7b (local) is weak at OCR; Gemini is accurate — use AI_BACKEND=gemini for doc scanning |
+| Audit PDF served from local media only | Medium | Needs BASE_URL set to ngrok/production URL for WhatsApp PDF link to be clickable |
 
 ---
 
@@ -134,8 +144,9 @@ SECRET_KEY=
 DEBUG=False
 ALLOWED_HOSTS=
 
-# Database
-DATABASE_URL=
+# Database (PostgreSQL)
+DATABASE_URL=postgres://localhost/pakpropai          # local
+# DATABASE_URL=postgresql://user:pass@host/db        # Supabase/Neon for production
 
 # Redis
 REDIS_URL=
@@ -156,6 +167,10 @@ AI_BACKEND=gemini            # 'gemini' (default) or 'local' (Ollama)
 LOCAL_MODEL=qwen2.5:7b       # optional, this is the default
 LOCAL_VISION_MODEL=llava:7b  # optional
 OLLAMA_BASE_URL=http://localhost:11434  # optional
+
+# Base URL (for PDF download links in WhatsApp)
+BASE_URL=http://127.0.0.1:8000         # local dev
+# BASE_URL=https://yourapp.onrender.com  # production
 ```
 
 ---
@@ -182,10 +197,11 @@ AI_BACKEND=local
 
 ## Recommended Next Steps (Priority Order)
 
-1. **Deploy to Render** — connect Supabase (DB) + Upstash (Redis), set env vars, get public URL for WhatsApp webhook
-2. **Register webhook in Meta** — use the public URL, set `WA_VERIFY_TOKEN`
-3. **Create OTP template in Meta Business Manager** — body: `Your PakProp AI code is {{1}}. Expires in 5 minutes.`
-4. **Seed 5–10 real property listings** — so search returns real results during demos
-5. **Get a fresh Gemini API key** — current key has only 20 req/day on gemini-2.5-flash-lite; new key gets full free tier limits
-6. **Phase 2: Property Audit PDF** — generate report via AI agent, upload to R2, send download link on WhatsApp
-7. **Phase 2: Document OCR flow** — already works via `chat_with_image()`; add a dedicated `/verify doc` command that saves to `verification` table
+1. **Talk to Agent feature** — when user is ready to buy/sell, match to a verified agent and share WhatsApp number. Needs: Agent model with phone, city matching logic
+2. **Property scoring improvements** — add location tier, price vs benchmark, construction status signals to make search results better ordered
+3. **Agent dashboard (web)** — simple Django template page for agents to view their leads, listings, and conversions
+4. **Deploy to Render** — connect Supabase (DB) + Upstash (Redis), set env vars, get public URL for WhatsApp webhook
+5. **Register webhook in Meta** — use the public URL, set `WA_VERIFY_TOKEN`
+6. **Create OTP template in Meta Business Manager** — body: `Your PakProp AI code is {{1}}. Expires in 5 minutes.`
+7. **Get a fresh Gemini API key** — current key has only 20 req/day; new key gets 1500 req/day free tier
+8. **Seed 5–10 real property listings** — so search returns real results during demos

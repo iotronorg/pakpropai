@@ -109,17 +109,32 @@ class MessageRouter:
 
     # ─── Image handling ───────────────────────────────────────────────────────
 
+    _DOC_CAPTION_KEYWORDS = {
+        'verify', 'check', 'fard', 'allotment', 'deed', 'registry',
+        'noc', 'document', 'doc', 'certificate', 'cnic', 'poa',
+        'scan', 'ocr', 'read', 'tassdeq', 'tasdeeq',
+    }
+
+    @classmethod
+    def _is_document_request(cls, caption: str) -> bool:
+        cap = caption.lower()
+        return any(kw in cap for kw in cls._DOC_CAPTION_KEYWORDS)
+
     @classmethod
     def _handle_image(cls, phone: str, image_bytes: bytes, mime: str,
                       caption: str, user) -> str:
         try:
             from apps.ai.agent import get_agent
-            return get_agent().chat_with_image(phone, image_bytes, mime, caption, user)
+            agent = get_agent()
+            if cls._is_document_request(caption):
+                return agent.verify_document_image(phone, image_bytes, mime, caption, user)
+            return agent.chat_with_image(phone, image_bytes, mime, caption, user)
         except Exception as exc:
             logger.error(f"Image analysis failed: {exc}")
             return (
                 "I received your image but couldn't analyze it right now.\n"
-                "For property documents, please describe what you need verified."
+                "For property documents, send the photo with a caption like:\n"
+                "*'verify fard'*, *'check allotment letter'*, or *'scan NOC'*"
             )
 
     # ─── Media download ───────────────────────────────────────────────────────
