@@ -94,8 +94,10 @@ class MessageRouter:
         # ── Route through AI agent ─────────────────────────────────────────
         try:
             from apps.ai.agent import get_agent
-            agent  = get_agent()
-            reply  = agent.chat(phone, text, user)
+            agent   = get_agent()
+            backend = agent._get_backend().label
+            print(f"\033[93m[MSG] phone={phone} backend={backend} msg={text[:60]!r}\033[0m")
+            reply   = agent.chat(phone, text, user)
         except Exception:
             logger.exception(f"Agent crashed for phone={phone}")
             reply = (
@@ -144,8 +146,8 @@ class MessageRouter:
             return ''
         try:
             audio_bytes = WhatsAppClient.download_media(media_id)
-            from services.ai_orchestrator import AIOrchestrator
-            transcript = AIOrchestrator.transcribe_voice(audio_bytes, mime_type)
+            from apps.ai.agent import get_agent
+            transcript = get_agent().transcribe_audio(audio_bytes, mime_type)
             logger.info(f"Voice transcribed phone={phone}: {transcript[:80]}")
             return transcript
         except Exception as exc:

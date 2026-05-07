@@ -91,6 +91,9 @@ class PropertySearchService:
         if not unscored:
             return
         try:
+            from django.conf import settings
+            if getattr(settings, 'AI_BACKEND', 'gemini') == 'local':
+                return  # skip Gemini call in local mode — no quota to burn
             from services.ai_orchestrator import AIOrchestrator
             verdicts = AIOrchestrator.batch_verdicts(unscored)
             for r in unscored:

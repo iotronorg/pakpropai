@@ -148,3 +148,10 @@ WA_OTP_TEMPLATE_NAME = env('WA_OTP_TEMPLATE_NAME', default='')
 
 # Gemini
 GEMINI_API_KEY = env('GEMINI_API_KEY', default='')
+GEMINI_MODEL   = env('GEMINI_MODEL',   default='gemini-2.5-flash-lite')
+
+# AI backend switcher: 'gemini' (cloud) or 'local' (Ollama)
+AI_BACKEND         = env('AI_BACKEND',         default='gemini').strip().lower()
+LOCAL_MODEL        = env('LOCAL_MODEL',        default='qwen2.5:7b')
+LOCAL_VISION_MODEL = env('LOCAL_VISION_MODEL', default='llava:7b')
+OLLAMA_BASE_URL    = env('OLLAMA_BASE_URL',    default='http://localhost:11434')

@@ -51,8 +51,11 @@ class GraanaScraper(BaseScraper):
         if cached is not None:
             return [PropertyResult.from_dict(d) for d in cached]
 
-        results = self._fetch(city, location, property_type)
+        results = self._fetch(city, property_type)
 
+        if location:
+            loc = location.lower()
+            results = [r for r in results if loc in (r.location or '').lower()]
         if max_price:
             results = [r for r in results if not r.price_pkr or r.price_pkr <= max_price]
         if area_marla:
@@ -62,7 +65,7 @@ class GraanaScraper(BaseScraper):
         cache.set(key, [r.to_dict() for r in results], self.CACHE_TTL)
         return results
 
-    def _fetch(self, city: str, location: str, property_type: str) -> list[PropertyResult]:
+    def _fetch(self, city: str, property_type: str) -> list[PropertyResult]:
         type_slug = _TYPE_SLUGS.get(property_type.lower(), 'residential')
         params    = [f"type={type_slug}"]
         if city:
