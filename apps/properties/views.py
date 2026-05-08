@@ -42,8 +42,13 @@ class PropertyViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        prop = serializer.save(owner=self.request.user)
-        # Phase 7: kick off async scoring
+        if self.request.user.role == 'admin':
+            # Admin explicitly selects owner; may be None for anonymous listings
+            extra = {}
+        else:
+            # Non-admin always owns their own listing
+            extra = {'owner': self.request.user}
+        prop = serializer.save(**extra)
         try:
             from apps.properties.tasks import score_property_task
             score_property_task.delay(str(prop.id))

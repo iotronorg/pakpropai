@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from .models import Property
+from apps.users.models import User
 
 
 class PropertyListSerializer(serializers.ModelSerializer):
@@ -18,7 +19,8 @@ class PropertyDetailSerializer(serializers.ModelSerializer):
         model  = Property
         fields = ('id', 'owner', 'owner_phone', 'title', 'description',
                   'city', 'location', 'area_marla', 'price_pkr',
-                  'property_type', 'legal_status', 'ai_score', 'risk_level',
+                  'property_type', 'furnished_status', 'construction_status',
+                  'legal_status', 'ai_score', 'risk_level', 'assigned_agent',
                   'raw_docs', 'ai_analysis', 'is_active',
                   'created_at', 'updated_at')
         read_only_fields = ('id', 'owner', 'owner_phone', 'ai_score', 'risk_level',
@@ -26,10 +28,15 @@ class PropertyDetailSerializer(serializers.ModelSerializer):
 
 
 class PropertyCreateSerializer(serializers.ModelSerializer):
+    owner = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(), required=False, allow_null=True
+    )
+
     class Meta:
         model  = Property
         fields = ('title', 'description', 'city', 'location', 'area_marla',
-                  'price_pkr', 'property_type')
+                  'price_pkr', 'property_type', 'furnished_status',
+                  'construction_status', 'legal_status', 'assigned_agent', 'owner')
 
     def validate_price_pkr(self, v):
         if v is not None and v <= 0:

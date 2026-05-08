@@ -1,4 +1,5 @@
 import logging
+from django.db.models import Q
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -94,6 +95,9 @@ class UserListView(APIView):
         role = request.query_params.get('role')
         if role:
             qs = qs.filter(role=role)
+        search = request.query_params.get('search')
+        if search:
+            qs = qs.filter(Q(phone__icontains=search) | Q(name__icontains=search))
         serializer = UserListSerializer(qs, many=True)
         return Response({'count': qs.count(), 'results': serializer.data})
 

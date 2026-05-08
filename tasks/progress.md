@@ -1,6 +1,6 @@
 # PakProp AI — Build Progress
 
-**Last updated:** 2026-05-08 (session 16)  
+**Last updated:** 2026-05-08 (session 19)  
 **Current branch:** `development`  
 **Current phase:** Phase 3 — all core features complete + RBAC hardened + live system config
 
@@ -133,6 +133,72 @@
 
 **Type update (`types/index.ts`):**
 - Added `years_experience: number` to `AgentProfile` interface (was missing, caused TS error in detail modal)
+
+### Admin Property CRUD (session 17)
+
+**Backend — `apps/properties/serializers.py`:**
+- `PropertyCreateSerializer` expanded: added `furnished_status`, `construction_status`, `legal_status`, `assigned_agent` — admin can now set all fields at create time
+- `PropertyDetailSerializer` expanded: added `furnished_status`, `construction_status`, `assigned_agent` to fields so PATCH updates these too
+
+**Frontend — `src/lib/api.ts`:**
+- Added `createProperty(data)` → `POST /properties/`
+- Added `deleteProperty(id)` → `DELETE /properties/{id}/`
+
+**Frontend — `src/types/index.ts`:**
+- `Property` interface extended with `owner`, `owner_phone`, `description`, `furnished_status`, `construction_status`, `assigned_agent`, `is_active`, `updated_at`
+
+**Frontend — `src/app/admin/properties/page.tsx` (full rewrite):**
+- **Add Property** modal — sectioned form: Basic Info, Location, Size & Price, Property Details, Admin Controls
+- **Edit Property** modal — same form, pre-filled from current property values
+- **View Details** modal — all fields including owner phone, AI score, risk level, agent, timestamps
+- **Delete** — confirm modal → `DELETE /properties/{id}/`
+- Inline **Verify** and **Rescore** buttons kept from previous version
+- All 4 property types, 3 furnished statuses, 3 construction statuses, 4 legal statuses as dropdowns
+- Error extraction from DRF validation response shown inline in the form
+- `formToPayload()` — converts string form state to typed API payload (nulls for empty optional fields)
+
+### Admin Property Owner Picker (session 18)
+
+**Backend — `apps/users/views.py`:**
+- Added `?search=` filter to `UserListView.get()`: `Q(phone__icontains=search) | Q(name__icontains=search)` — admin can look up any user by phone or name
+
+**Backend — `apps/properties/serializers.py`:**
+- `PropertyCreateSerializer`: added `owner = PrimaryKeyRelatedField(queryset=User.objects.all(), required=False, allow_null=True)` so admin can assign any user as owner on create
+
+**Backend — `apps/properties/views.py`:**
+- `perform_create`: admin path uses `owner` from validated_data (may be `None` for anonymous listing); non-admin path always forces `owner=request.user`
+
+**Frontend — `src/lib/api.ts`:**
+- Added `searchUsers(query)` → `GET /auth/users/?search=<query>`
+
+**Frontend — `src/app/admin/properties/page.tsx`:**
+- Added `owner` + `owner_display` fields to `BLANK_FORM`
+- `OwnerPicker` component: phone/name search input → results list showing name, role badge, phone → click to select → shows selected owner card with Remove button
+- Owner section inserted between Property Details and Admin Controls in the form
+- `formToPayload()` sends `owner: UUID | null`
+- Edit form pre-fills owner from existing `property.owner` + `property.owner_phone`
+- Supports all 3 owner types: Client (role=user), Agent (role=agent), Developer (role=developer)
+
+### Admin Agent CRUD (session 19)
+
+**Backend — `apps/agents/views.py`:**
+- `AgentListView` upgraded from `ListAPIView` → `ListCreateAPIView`: `POST /agents/` now creates an agent (admin only via `perform_create` guard)
+- `AgentAdminDetailView` upgraded from `RetrieveUpdateAPIView` → `RetrieveUpdateDestroyAPIView`: `DELETE /agents/{id}/` now works (admin only)
+- Both views now use `AgentAdminSerializer` (allows writing is_verified/is_active/is_featured and all identity fields)
+
+**Frontend — `src/lib/api.ts`:**
+- Added `createAgent(data)` → `POST /agents/`
+- Added `deleteAgent(id)` → `DELETE /agents/{id}/`
+
+**Frontend — `src/app/admin/agents/page.tsx` (full rewrite):**
+- **Agent ID** displayed prominently in the table as a monospace badge `#N` with a one-click copy-to-clipboard button
+- **View** modal: ID shown in a large callout at the top with Copy ID button — unambiguous reference for property assignment
+- **+ Add Agent** modal — 5 sections: Identity (name, type, phone, WhatsApp, email), Professional (company, designation, license, experience, bio), Geographic Coverage (primary city, all cities, areas — comma-separated), Specializations (7 checkboxes), Status (verified/active/featured)
+- **Edit** modal — same form pre-filled; modal title shows `Edit Agent — #N` for clarity
+- **Delete** confirm — warns that leads/properties will be unlinked
+- Quick-toggle **Verify/Unverify** and **Activate/Deactivate** buttons stay in the table row
+- `agentToForm()` — converts `AgentProfile` → form state (arrays → comma-separated strings)
+- `formToPayload()` — converts form state → API payload (comma-separated strings → arrays)
 
 ### Live System Config (session 14)
 

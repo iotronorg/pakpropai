@@ -16,19 +16,8 @@ class AgentMeView(generics.RetrieveUpdateAPIView):
             raise NotFound("No agent profile linked to this account.")
 
 
-class AgentListView(generics.ListAPIView):
-    """GET /agents/ — admin-only list of all agents."""
-    serializer_class   = AgentSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get_queryset(self):
-        if self.request.user.role != 'admin':
-            return Agent.objects.none()
-        return Agent.objects.select_related('user', 'parent_organization').all()
-
-
 class AgentAdminSerializer(AgentSerializer):
-    """Extends AgentSerializer to allow admins to write is_verified/is_active/is_featured."""
+    """Extends AgentSerializer to allow admins to write all status + identity fields."""
     class Meta(AgentSerializer.Meta):
         read_only_fields = (
             'id', 'total_leads', 'total_listings',
@@ -37,8 +26,24 @@ class AgentAdminSerializer(AgentSerializer):
         )
 
 
-class AgentAdminDetailView(generics.RetrieveUpdateAPIView):
-    """GET/PATCH /agents/{id}/ — admin only; can toggle is_verified, is_active, is_featured."""
+class AgentListView(generics.ListCreateAPIView):
+    """GET /agents/ — admin list of all agents. POST /agents/ — admin creates agent."""
+    serializer_class   = AgentAdminSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        if self.request.user.role != 'admin':
+            return Agent.objects.none()
+        return Agent.objects.select_related('user', 'parent_organization').all()
+
+    def perform_create(self, serializer):
+        if self.request.user.role != 'admin':
+            raise PermissionDenied("Admin access required.")
+        serializer.save()
+
+
+class AgentAdminDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """GET/PATCH/DELETE /agents/{id}/ — admin only."""
     serializer_class   = AgentAdminSerializer
     permission_classes = [permissions.IsAuthenticated]
     queryset           = Agent.objects.select_related('user', 'parent_organization').all()
