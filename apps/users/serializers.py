@@ -41,5 +41,25 @@ class UserListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model  = User
-        fields = ('id', 'phone', 'name', 'email', 'role', 'is_active', 'date_joined')
-        read_only_fields = ('id', 'phone', 'date_joined')
+        fields = ('id', 'phone', 'name', 'email', 'role', 'is_active',
+                  'date_joined', 'last_active', 'ntn', 'cnic', 'is_filer')
+        read_only_fields = ('id', 'phone', 'date_joined', 'last_active')
+
+
+class UserCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = User
+        fields = ('phone', 'name', 'email', 'role')
+
+    def validate_phone(self, value):
+        v = value.strip().replace(' ', '').replace('-', '')
+        if not v.startswith('+'):
+            v = '+' + v
+        if not v.startswith('+92') or len(v) != 13:
+            raise serializers.ValidationError(
+                'Phone must be a valid Pakistani number in +92XXXXXXXXXX format.'
+            )
+        return v
+
+    def create(self, validated_data):
+        return User.objects.create_user(**validated_data)

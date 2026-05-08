@@ -31,6 +31,15 @@ class MessageRouter:
         session_db.last_message_at = timezone.now()
         session_db.save(update_fields=['user', 'message_count', 'last_message_at'])
 
+        # Deactivated clients cannot use the service.
+        if not user.is_active:
+            cls._send_and_log(
+                phone,
+                "⛔ Your account has been suspended. Please contact support for assistance.",
+                session_db,
+            )
+            return
+
         # Non-client roles (agent, developer, admin) use the web dashboard.
         # If they message the bot, redirect them and stop processing.
         if user.role != 'user':

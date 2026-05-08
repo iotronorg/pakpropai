@@ -415,31 +415,59 @@ class PakPropAgent:
 
     @staticmethod
     def _greeting_reply(message: str) -> str:
+        from apps.config.services import SystemConfigService
+        features = SystemConfigService.get_features()
+
         text = message.strip().lower().rstrip('!?.')
         urdu_greetings = {'aoa', 'salam', 'salaam', 'slam', 'assalam o alaikum',
                           'assalamualaikum', 'assalam', 'as salam'}
+
+        EN_LINES = {
+            'feature_property_search':       "🔍 *Property Search* — Live listings from Zameen, Graana & local DB",
+            'feature_property_listing':      "📋 *List Your Property* — Sell or rent via WhatsApp",
+            'feature_tax_advice':            "💰 *Tax Advice* — Section 7E, CGT, rental & withholding tax",
+            'feature_loan_eligibility':      "🏦 *Loan Eligibility* — Apna Ghar scheme & bank financing",
+            'feature_scam_check':            "🛡️ *Scam/Fraud Check* — Verify any deal or agent",
+            'feature_document_verification': "📄 *Document Verification* — Send a photo of any property paper",
+            'feature_talk_to_agent':         "🤝 *Talk to an Agent* — Connect with a verified local agent",
+            'feature_deal_lock':             "🔒 *Deal Lock* — Reserve a property with a token payment",
+            'feature_property_audit':        "📊 *Property Audit* — Full risk & investment report (PDF)",
+        }
+        UR_LINES = {
+            'feature_property_search':       "🔍 *Property Search* — Zameen, Graana aur local listings se",
+            'feature_property_listing':      "📋 *Property Listing* — Apni property list karein buyers ke liye",
+            'feature_tax_advice':            "💰 *Tax Advice* — Section 7E, CGT, rental tax",
+            'feature_loan_eligibility':      "🏦 *Loan Eligibility* — Apna Ghar scheme aur bank financing",
+            'feature_scam_check':            "🛡️ *Scam/Fraud Check* — Kisi bhi deal ka risk check karein",
+            'feature_document_verification': "📄 *Document Check* — Property papers ki photo bhejein",
+            'feature_talk_to_agent':         "🤝 *Agent se Baat* — Verified agent se connect karein",
+            'feature_deal_lock':             "🔒 *Deal Lock* — Token de kar property reserve karein",
+            'feature_property_audit':        "📊 *Property Audit* — Detailed risk aur investment report",
+        }
+
         if text in urdu_greetings:
+            lines = '\n'.join(
+                f"{i+1}. {line}"
+                for i, (k, line) in enumerate(UR_LINES.items())
+                if features.get(k, True)
+            )
             return (
                 "Wa Alaikum Assalam! 🙏\n\n"
                 "Main *PakProp AI* hoon — Pakistan ka real estate intelligence assistant.\n\n"
                 "Main aapki in chezon mein madad kar sakta hoon:\n\n"
-                "1. 🔍 *Property Search* — Zameen, Graana aur local listings se\n"
-                "2. 💰 *Tax Advice* — Section 7E, CGT, rental tax\n"
-                "3. 🏦 *Loan Eligibility* — Apna Ghar scheme aur bank financing\n"
-                "4. 🛡️ *Scam/Fraud Check* — Kisi bhi deal ka risk check karein\n"
-                "5. 📋 *Property Listing* — Apni property list karein buyers ke liye\n"
-                "6. 📄 *Document Check* — Property papers ki photo bhejein\n\n"
+                f"{lines}\n\n"
                 "Aap kya dhundh rahe hain? 🏠"
             )
+
+        lines = '\n'.join(
+            f"{i+1}. {line}"
+            for i, (k, line) in enumerate(EN_LINES.items())
+            if features.get(k, True)
+        )
         return (
             "Hello! 👋 Welcome to *PakProp AI* — Pakistan's real estate intelligence assistant.\n\n"
             "Here's what I can help you with:\n\n"
-            "1. 🔍 *Property Search* — Live listings from Zameen, Graana & local DB\n"
-            "2. 💰 *Tax Advice* — Section 7E, CGT, rental & withholding tax\n"
-            "3. 🏦 *Loan Eligibility* — Apna Ghar scheme & bank financing\n"
-            "4. 🛡️ *Scam/Fraud Check* — Verify any deal or agent\n"
-            "5. 📋 *List Your Property* — Sell or rent via WhatsApp\n"
-            "6. 📄 *Document Verification* — Send a photo of any property paper\n\n"
+            f"{lines}\n\n"
             "What are you looking for today? 🏠"
         )
 

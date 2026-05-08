@@ -6,7 +6,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import User
-from .serializers import SendOTPSerializer, VerifyOTPSerializer, UserSerializer, UserListSerializer
+from .serializers import SendOTPSerializer, VerifyOTPSerializer, UserSerializer, UserListSerializer, UserCreateSerializer
 from .services import OTPService
 
 logger = logging.getLogger(__name__)
@@ -53,6 +53,12 @@ class VerifyOTPView(APIView):
         except ValueError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
+        if not user.is_active:
+            return Response(
+                {'error': 'Your account has been deactivated. Please contact support.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         refresh = RefreshToken.for_user(user)
         return Response({
             'access':  str(refresh.access_token),
@@ -77,16 +83,31 @@ class MeView(APIView):
 class UserListView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def get(self, request):
+    def _require_admin(self, request):
         if request.user.role != User.Role.ADMIN:
             return Response({'error': 'Admin access required.'}, status=status.HTTP_403_FORBIDDEN)
+
+    def get(self, request):
+        err = self._require_admin(request)
+        if err: return err
         qs = User.objects.all().order_by('-created_at')
+        role = request.query_params.get('role')
+        if role:
+            qs = qs.filter(role=role)
         serializer = UserListSerializer(qs, many=True)
         return Response({'count': qs.count(), 'results': serializer.data})
 
+    def post(self, request):
+        err = self._require_admin(request)
+        if err: return err
+        serializer = UserCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        return Response(UserListSerializer(user).data, status=status.HTTP_201_CREATED)
+
     def patch(self, request, pk):
-        if request.user.role != User.Role.ADMIN:
-            return Response({'error': 'Admin access required.'}, status=status.HTTP_403_FORBIDDEN)
+        err = self._require_admin(request)
+        if err: return err
         try:
             user = User.objects.get(pk=pk)
         except User.DoesNotExist:
@@ -95,3 +116,15 @@ class UserListView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+    def delete(self, request, pk):
+        err = self._require_admin(request)
+        if err: return err
+        try:
+            user = User.objects.get(pk=pk)
+        except User.DoesNotExist:
+            return Response({'error': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        if str(user.pk) == str(request.user.pk):
+            return Response({'error': 'Cannot delete your own account.'}, status=status.HTTP_400_BAD_REQUEST)
+        user.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

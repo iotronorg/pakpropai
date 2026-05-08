@@ -1,6 +1,6 @@
 # PakProp AI — Build Progress
 
-**Last updated:** 2026-05-08 (session 14)  
+**Last updated:** 2026-05-08 (session 16)  
 **Current branch:** `development`  
 **Current phase:** Phase 3 — all core features complete + RBAC hardened + live system config
 
@@ -114,6 +114,25 @@
 | Event-driven architecture / microservices extraction | ❌ | Post-launch only — extract when scale demands it |
 
 **Phase 3 completion: 95%** — Deal Lock + Escrow + Fraud Monitor + RBAC + System Config done. Microservices deferred post-launch.
+
+### Admin Dashboard Fixes (session 16)
+
+**Agents page — empty list bug fixed:**
+- Root cause: `/admin/agents` used `UserManagementPage` which hit `GET /auth/users/?role=agent` (only finds `User` objects with `role=agent`); agents created via Django admin without a linked user account were invisible
+- Fix: `/admin/agents/page.tsx` fully rewritten — now calls `GET /api/v1/agents/` (`AgentListView`), which returns all `Agent` model records regardless of linked user
+- New columns: Name, Phone, Type, Cities, Verified, Active, Featured, Rating
+- Quick-toggle buttons for Verify/Unverify and Activate/Deactivate directly in the table row
+- Inline edit row: name, phone, email, primary city, verified/active/featured checkboxes (all via `PATCH /agents/{id}/`)
+- Full details modal: all agent fields including specializations, experience, bio, company, org, stats
+- Empty state message directs admin to use Django admin panel to add agents
+
+**User edit form expanded (admin/clients/developers/admins pages):**
+- `UserManagementPage.tsx` inline edit row previously only saved `name` and `email`
+- Now also saves `cnic`, `ntn`, `is_filer` — all fields the `UserListSerializer` accepts as writable
+- Added CNIC input (monospace, 12345-1234567-1 format), NTN input, Tax Filer checkbox
+
+**Type update (`types/index.ts`):**
+- Added `years_experience: number` to `AgentProfile` interface (was missing, caused TS error in detail modal)
 
 ### Live System Config (session 14)
 
@@ -331,6 +350,12 @@
 | Voice and doc-verification gated at router level | These are not AI tools — they are router-level media handlers; feature flags applied before any AI call is made |
 | `active_payment_gateway` enforced in both API and WhatsApp tool | Single source of truth; admin switches from manual→safepay and both the web checkout API and the WhatsApp deal lock tool switch simultaneously |
 | `app_label = 'sysconfig'` to avoid conflict with Django's built-in 'config' namespace | `makemigrations config` fails because Django reserves 'config'; using a distinct label avoids the collision |
+| Admin user management CRUD in `/auth/users/` API | `POST /auth/users/` (create with role), `DELETE /auth/users/<id>/` — used by the 4 new admin frontend pages |
+| `UserCreateSerializer` — phone + name + email + role | Validates +92XXXXXXXXXX format; `create_user()` so phone is set as username; role pre-set from frontend |
+| `UserListSerializer` extended | Added `last_active`, `ntn`, `cnic`, `is_filer` to detail view fields |
+| `is_active` gate at OTP verify | Deactivated users (`is_active=False`) get 403 at `POST /auth/otp/verify/`; blocks dashboard login for agents/developers/admins |
+| `is_active` gate in WhatsApp router | Deactivated clients get "⛔ Your account has been suspended" message; processing stops before any AI call |
+| "Client" terminology | WhatsApp-only users have `role='user'` in DB; frontend and admin UI display them as "Client" everywhere |
 | `IsOwnerOrReadOnly` admin bypass added to object-level check | Without bypass, admin 403s on any property they didn't personally create — verified/rescore silently failed in the UI |
 | `AgentAdminDetailView` is a separate view from `AgentMeView` | `AgentMeView` is self-service (agent updates own profile); admin view has a different serializer that makes is_verified/is_active writable — clean separation of concerns |
 | WhatsApp role guard redirects non-client roles immediately | Agents/admins who message the bot accidentally get a friendly redirect, and their interaction never pollutes the lead table or triggers AI inference |
