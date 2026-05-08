@@ -33,6 +33,7 @@ urllib3==2.6.3
 vine==5.1.0
 wcwidth==0.7.0
 whitenoise==6.7.0
+django-cors-headers==4.3.1
 google-genai>=1.0.0
 openai>=1.0.0
 django-celery-beat==2.9.0

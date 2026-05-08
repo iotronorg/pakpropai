@@ -37,6 +37,9 @@ def run_verification_task(self, verification_id: str, image_bytes: bytes = None,
         v.status      = Verification.Status.FAILED if flags else Verification.Status.PASSED
         v.verified_at = timezone.now()
         v.save()
+
+        from .services import VerificationSignalService
+        VerificationSignalService.refresh(v)
         logger.info(f"Verification {verification_id} → {v.status} ({len(flags)} flags)")
     except Exception as exc:
         logger.error(f"Verification {verification_id} failed: {exc}")

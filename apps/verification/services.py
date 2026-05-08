@@ -1,9 +1,60 @@
 import logging
 from django.core.cache import cache
+from django.utils import timezone
 
 from services.ai_orchestrator import AIOrchestrator
 
 logger = logging.getLogger(__name__)
+
+
+class VerificationSignalService:
+    """Computes a 0-100 integrity score from all available signals on a Verification."""
+
+    # Document types that carry the most legal weight in Pakistan
+    CORE_DOC_TYPES = {'fard', 'sale_deed', 'allotment'}
+
+    @classmethod
+    def compute_score(cls, verification) -> int:
+        scans = list(verification.document_scans.all())
+        score = 40  # neutral baseline
+
+        # --- document signals ---
+        for scan in scans:
+            if scan.confidence == 'HIGH':
+                score += 12
+            elif scan.confidence == 'MEDIUM':
+                score += 6
+            else:
+                score += 2
+
+            # deduct for each red flag found in this scan
+            score -= len(scan.red_flags) * 15
+
+        # bonus: has at least one core legal document
+        submitted_types = {s.document_type for s in scans}
+        if submitted_types & cls.CORE_DOC_TYPES:
+            score += 15
+
+        # bonus: multiple document types (completeness)
+        if len(submitted_types) >= 3:
+            score += 10
+
+        # --- verification-level fraud flags ---
+        score -= len(verification.fraud_flags) * 20
+
+        # bonus: no flags anywhere
+        all_red_flags = sum(len(s.red_flags) for s in scans)
+        if all_red_flags == 0 and not verification.fraud_flags and scans:
+            score += 10
+
+        return max(0, min(100, score))
+
+    @classmethod
+    def refresh(cls, verification) -> int:
+        score = cls.compute_score(verification)
+        verification.signal_score = score
+        verification.save(update_fields=['signal_score'])
+        return score
 
 
 class FraudCheckService:

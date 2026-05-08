@@ -9,7 +9,8 @@ class OTPService:
 
     OTP_LENGTH      = 6
     OTP_LIFETIME    = timedelta(minutes=5)
-    MAX_PER_HOUR    = 5    # rate limit per phone
+    # MAX_PER_HOUR    = 5    # rate limit per phone
+    MAX_PER_HOUR    = 100    # rate limit per phone
 
     @classmethod
     def generate_code(cls) -> str:

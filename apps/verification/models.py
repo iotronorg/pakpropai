@@ -23,6 +23,10 @@ class DocumentScan(models.Model):
 
     user          = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
                                       null=True, blank=True, related_name='document_scans')
+    verification  = models.ForeignKey(
+                        'Verification', on_delete=models.SET_NULL,
+                        null=True, blank=True, related_name='document_scans'
+                    )
     phone         = models.CharField(max_length=20, blank=True)
     document_type = models.CharField(max_length=20, choices=DocType.choices, default=DocType.OTHER)
 
@@ -61,6 +65,13 @@ class Verification(models.Model):
         DISPUTED = 'disputed', 'Disputed'
 
     id            = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    reviewer      = models.ForeignKey(
+                        settings.AUTH_USER_MODEL,
+                        on_delete=models.SET_NULL,
+                        null=True, blank=True,
+                        related_name='reviewed_verifications'
+                    )
+    signal_score  = models.SmallIntegerField(null=True, blank=True)
     property      = models.ForeignKey(
                         'properties.Property',
                         on_delete=models.CASCADE,

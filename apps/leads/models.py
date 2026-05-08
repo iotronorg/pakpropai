@@ -13,6 +13,12 @@ class Lead(models.Model):
         LOAN   = 'loan',   'Loan Inquiry'
         TAX    = 'tax',    'Tax Advisory'
 
+    class Status(models.TextChoices):
+        NEW       = 'new',       'New'
+        WARM      = 'warm',      'Warm'
+        QUALIFIED = 'qualified', 'Qualified'
+        COLD      = 'cold',      'Cold'
+
     id             = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user           = models.ForeignKey(
                          settings.AUTH_USER_MODEL,
@@ -25,6 +31,7 @@ class Lead(models.Model):
     city_interest  = models.CharField(max_length=100, blank=True)
     budget_min     = models.BigIntegerField(null=True, blank=True)
     budget_max     = models.BigIntegerField(null=True, blank=True)
+    status         = models.CharField(max_length=20, choices=Status.choices, default=Status.NEW)
     notes          = models.TextField(blank=True)
     last_scored_at = models.DateTimeField(auto_now=True)
     created_at     = models.DateTimeField(auto_now_add=True)

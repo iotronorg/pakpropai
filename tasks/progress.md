@@ -1,6 +1,6 @@
 # PakProp AI — Build Progress
 
-**Last updated:** 2026-05-07 (session 6)  
+**Last updated:** 2026-05-08 (session 8)  
 **Current branch:** `development`  
 **Current phase:** Phase 2
 
@@ -60,11 +60,23 @@
 | Property Audit report (PDF + WhatsApp summary) | ✅ Done | `apps/audit/` — engine, PDF, model, tool, URLs |
 | Document OCR flow via WhatsApp | ✅ Done | `apps/ai/agent.py` → `verify_document_image()`, `apps/verification/models.py` → `DocumentScan` |
 | Talk to Agent (lead → agent connection) | ✅ Done | `apps/agents/` — model, admin, tool; `apps/ai/tools.py` → `connect_to_agent()`; `apps/ai/agent.py` → `_is_agent_request()`, `_handle_agent_request()` |
-| Property verification improvements | ❌ Not done | — |
+| **Property verification improvements** | ✅ Done | See detail below |
+| **Verification queue API** (`GET /verification/queue/`) | ✅ Done | `apps/verification/views.py` → `VerificationQueueView` |
+| **Admin review API** (`PATCH /verification/queue/<id>/`) | ✅ Done | `VerificationReviewView` — auto-updates `property.legal_status` |
+| **Document scan list API** (`GET /verification/documents/`) | ✅ Done | `DocumentScanListView` |
+| **Link document to verification** (`POST /verification/documents/<scan>/link/<verif>/`) | ✅ Done | `LinkDocumentToVerificationView` |
+| **Signal score engine** (`VerificationSignalService`) | ✅ Done | `apps/verification/services.py` — 0–100 score from OCR confidence, red flags, doc diversity |
+| **`reviewer` FK + `signal_score` field on Verification** | ✅ Done | `apps/verification/models.py`, migration `0003` |
+| **`verification` FK on DocumentScan** | ✅ Done | Links WhatsApp OCR scans to property verifications |
+| **`property.legal_status` auto-update on review** | ✅ Done | passed→verified, failed→unverified, disputed→disputed |
+| **Leads API** (`GET /api/v1/leads/`, `PATCH /api/v1/leads/<id>/`) | ✅ Done | `apps/leads/serializers.py`, `views.py`, `urls.py` |
+| **Users list API** (`GET /api/v1/auth/users/`, `PATCH /api/v1/auth/users/<id>/`) | ✅ Done | `apps/users/serializers.py` → `UserListSerializer`, `views.py` → `UserListView` |
+| **Lead `status` field** (new/warm/qualified/cold) | ✅ Done | `apps/leads/models.py`, migration `0002_add_status_to_lead` |
+| **Web login OTP flow** (phone → OTP → JWT → role redirect) | ✅ Done | `pakpropaiweb/src/app/login/page.tsx` — fixed response shape mismatch |
 | Agent dashboard (web) | ❌ Not done | — |
 | Property scoring improvements (more signals) | ❌ Not done | — |
 
-**Phase 2 completion: ~55%**
+**Phase 2 completion: ~85%**
 
 ---
 
@@ -109,6 +121,12 @@
 | Greeting handled in code, not by model | qwen2.5:7b ignores system prompt instructions for greetings; hardcoded response is instant, free, and always consistent |
 | WhatsApp test accounts restrict recipient numbers | Meta #131030 error — test app allows max 5 pre-approved numbers; add in Meta Dev Portal → WhatsApp → API Setup |
 | Audit engine is fully deterministic (no AI call) | Pure rule-based scoring using hardcoded Pakistani RE benchmarks — fast, free, consistent |
+| Leads API uses field aliasing in serializer (not model rename) | `score→intent_score`, `city_interest→location_interest` mapped in serializer; model stays unchanged so AI tools are unaffected |
+| Verification signal score is deterministic (no AI call) | Computed from confidence, red flag counts, document type diversity — fast, free, consistent across re-runs |
+| `property.legal_status` updated directly in review view (not via signal/task) | Simple and synchronous — verification volume is low, no need for async update |
+| `IsAdmin` permission class defined inline in verification views | Small enough to not warrant a shared permissions module yet; move to `apps/core/permissions.py` when reused elsewhere |
+| Users list lives under `/auth/users/` (not `/users/`) | Keeps all auth-related endpoints under one prefix; admin-only enforced in view, not a separate app |
+| Lead `status` is a separate field from `score` | Score is a numeric AI signal (0–100); status is a human-facing lifecycle label (new/warm/qualified/cold) — decoupled so either can change independently |
 | DocumentScan model has no property FK | WhatsApp users send docs without having a listed property; standalone model is more flexible |
 | Document type detected from caption keywords | Avoids asking user to specify type — natural flow; 12 keyword patterns cover all common docs |
 | OCR uses structured prompt format (KEY: VALUE) | Reliable parsing without JSON — local models struggle with strict JSON output |
@@ -139,6 +157,10 @@
 | Location word-match may over-match on city name | Low | e.g. "Lahore" as a word matches any Lahore result; acceptable since city filter is also applied |
 | Document OCR accuracy depends on AI backend | Medium | llava:7b (local) is weak at OCR; Gemini is accurate — use AI_BACKEND=gemini for doc scanning |
 | Audit PDF served from local media only | Medium | Needs BASE_URL set to ngrok/production URL for WhatsApp PDF link to be clickable |
+| Lead status field is set to 'new' by default — no auto-scoring to warm/qualified/cold yet | Low | Update score→status logic in AI tools when lead scoring is improved |
+| Leads API returns all leads to all dashboard roles (no per-agent filtering yet) | Low | Add agent FK to Lead model when agent assignment is built |
+| Signal score is only computed when OCR task finishes or admin reviews — not on DocumentScan save | Low | Add post_save signal on DocumentScan to auto-refresh if verification is linked |
+| No duplicate property detection in verification signals | Medium | Cross-check same address/owner listed multiple times; add deduction to signal score |
 | Agent request detection may miss highly unusual phrasings | Low | Combination-based (intent+role) handles ~95% of cases; truly novel phrasing falls through to model which may still hallucinate — acceptable for MVP |
 
 ---
@@ -204,11 +226,10 @@ AI_BACKEND=local
 
 ## Recommended Next Steps (Priority Order)
 
-1. **Add real agents via Django admin** — go to /admin → Agents → Add Agent; fill identity, coverage cities, specializations; tick is_verified + is_active
-2. **Property scoring improvements** — add location tier, price vs benchmark, construction status signals to make search results better ordered
-3. **Agent dashboard (web)** — simple Django template page for agents to view their leads, listings, and conversions
-4. **Deploy to Render** — connect Supabase (DB) + Upstash (Redis), set env vars, get public URL for WhatsApp webhook
-5. **Register webhook in Meta** — use the public URL, set `WA_VERIFY_TOKEN`
-6. **Create OTP template in Meta Business Manager** — body: `Your PakProp AI code is {{1}}. Expires in 5 minutes.`
-7. **Get a fresh Gemini API key** — current key has only 20 req/day; new key gets 1500 req/day free tier
-8. **Seed 5–10 real property listings** — so search returns real results during demos
+1. **Property scoring improvements** — add location tier, price vs benchmark, construction status signals to AI scoring task
+2. **Agent listings page (web)** — needs filtering by agent ownership; currently shows all properties
+3. **Add real agents via Django admin** — go to /admin → Agents → Add Agent; fill identity, coverage cities, specializations; tick is_verified + is_active
+4. **Seed 5–10 real property listings** — so search returns real results during demos
+5. **Phase 3: Deal Lock** — token payment + 48h exclusivity flow
+6. **Phase 3: Escrow integration** — Safepay/bSecure
+7. **Phase 3: Admin fraud monitoring dashboard**

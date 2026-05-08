@@ -6,7 +6,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import User
-from .serializers import SendOTPSerializer, VerifyOTPSerializer, UserSerializer
+from .serializers import SendOTPSerializer, VerifyOTPSerializer, UserSerializer, UserListSerializer
 from .services import OTPService
 
 logger = logging.getLogger(__name__)
@@ -69,6 +69,29 @@ class MeView(APIView):
 
     def patch(self, request):
         serializer = UserSerializer(request.user, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+
+class UserListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role != User.Role.ADMIN:
+            return Response({'error': 'Admin access required.'}, status=status.HTTP_403_FORBIDDEN)
+        qs = User.objects.all().order_by('-created_at')
+        serializer = UserListSerializer(qs, many=True)
+        return Response({'count': qs.count(), 'results': serializer.data})
+
+    def patch(self, request, pk):
+        if request.user.role != User.Role.ADMIN:
+            return Response({'error': 'Admin access required.'}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            user = User.objects.get(pk=pk)
+        except User.DoesNotExist:
+            return Response({'error': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        serializer = UserListSerializer(user, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)

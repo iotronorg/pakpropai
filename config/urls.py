@@ -24,6 +24,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/v1/', include([
         path('auth/',         include('apps.users.urls')),
+        path('leads/',        include('apps.leads.urls')),
         path('whatsapp/',     include('apps.whatsapp.urls')),
         path('properties/',   include('apps.properties.urls')),
         path('verification/', include('apps.verification.urls')),

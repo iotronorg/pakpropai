@@ -34,3 +34,12 @@ class UserSerializer(serializers.ModelSerializer):
         fields = ('id', 'phone', 'name', 'email', 'role', 'is_filer',
                   'ntn', 'cnic', 'last_active', 'created_at')
         read_only_fields = ('id', 'phone', 'role', 'last_active', 'created_at')
+
+
+class UserListSerializer(serializers.ModelSerializer):
+    date_joined = serializers.DateTimeField(source='created_at', read_only=True)
+
+    class Meta:
+        model  = User
+        fields = ('id', 'phone', 'name', 'email', 'role', 'is_active', 'date_joined')
+        read_only_fields = ('id', 'phone', 'date_joined')
