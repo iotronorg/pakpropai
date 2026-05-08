@@ -1,8 +1,8 @@
 # PakProp AI — Build Progress
 
-**Last updated:** 2026-05-08 (session 12)  
+**Last updated:** 2026-05-08 (session 13)  
 **Current branch:** `development`  
-**Current phase:** Phase 3 — all core features complete locally
+**Current phase:** Phase 3 — all core features complete + RBAC hardened
 
 ---
 
@@ -109,9 +109,39 @@
 | **Deal Lock (token payment + 48h exclusivity)** | ✅ Done | See detail below |
 | **Escrow integration (Safepay / bSecure)** | ✅ Done | See detail below |
 | **Admin fraud monitoring dashboard** | ✅ Done | See detail below |
+| **RBAC hardening** | ✅ Done | See detail below |
 | Event-driven architecture / microservices extraction | ❌ | Post-launch only — extract when scale demands it |
 
-**Phase 3 completion: 75%** — Deal Lock + Escrow + Fraud Monitor done. Microservices deferred post-launch.
+**Phase 3 completion: 90%** — Deal Lock + Escrow + Fraud Monitor + RBAC done. Microservices deferred post-launch.
+
+### RBAC Hardening (session 13)
+
+**`apps/core/permissions.py` — `IsOwnerOrReadOnly` admin bypass:**
+- Added `if getattr(request.user, 'role', None) == 'admin': return True` to object-level check
+- Without this, admin could not edit/verify/rescore any property they didn't personally create
+
+**`apps/agents/views.py` — `AgentAdminDetailView` (new):**
+- `AgentAdminSerializer` extends `AgentSerializer`; removes `is_verified`, `is_active`, `is_featured` from `read_only_fields`
+- `AgentAdminDetailView` (RetrieveUpdateAPIView) — admin-only, allows `PATCH /agents/<pk>/` to toggle verified/active/featured status
+
+**`apps/agents/urls.py` — new route:**
+- `path('<int:pk>/', AgentAdminDetailView.as_view(), name='agents-admin-detail')`
+
+**`apps/verification/views.py` — `DocumentScanListView` fixes:**
+- Added `?verification=<uuid>` filter: frontend scan modal now fetches scans scoped to a single verification
+- Agent scoping: agents only see scans for verifications on their own properties (via `verification__property_id__in=agent_prop_ids`)
+
+**`apps/payments/views.py` — admin checkout:**
+- `CreateCheckoutView` now allows admin to initiate checkout: `if deal.buyer != request.user and request.user.role != 'admin'`
+
+**`apps/audit/views.py` — auth guard:**
+- `download_pdf` now returns `HttpResponseForbidden` for unauthenticated requests
+
+**`apps/whatsapp/router.py` — non-client role guard:**
+- After `get_or_create`, if `user.role != 'user'`, send dashboard redirect message and return immediately
+- `_upsert_lead(user)` moved inside the `role == 'user'` path — agents/admins no longer auto-create leads on WhatsApp message
+
+---
 
 ### Admin Fraud Monitoring Dashboard (session 12)
 
@@ -257,6 +287,12 @@
 | `FraudBlacklist` stored in DB, synced to Redis on save/delete | DB provides listability (Redis KEYS * is O(N) and unsafe); Redis provides O(1) fast-path check. Both updated atomically in model hooks |
 | Fraud alerts are synthesised at query time, not pre-computed | Volume is low enough for MVP; no need for a separate event log table yet |
 | Celery beat schedule for lock expiry uses 30-minute interval | Locks are 48h — 30 min granularity means max 30 min of overshoot, acceptable for MVP |
+| `IsOwnerOrReadOnly` admin bypass added to object-level check | Without bypass, admin 403s on any property they didn't personally create — verified/rescore silently failed in the UI |
+| `AgentAdminDetailView` is a separate view from `AgentMeView` | `AgentMeView` is self-service (agent updates own profile); admin view has a different serializer that makes is_verified/is_active writable — clean separation of concerns |
+| WhatsApp role guard redirects non-client roles immediately | Agents/admins who message the bot accidentally get a friendly redirect, and their interaction never pollutes the lead table or triggers AI inference |
+| `_upsert_lead` scoped to `role='user'` only | Auto-lead creation for agents/developers created noise in lead pipeline; now only genuine client interactions generate leads |
+| `/payments/return` added to Next.js PUBLIC_PATHS | Payment gateway redirect does not carry session cookies — middleware must allow it without role routing |
+| Client role blocks at OTP verify step (not after token store) | Storing tokens then redirecting `user` role back to `/login` caused an infinite redirect loop; intercepting before token store is clean and reversible |
 
 ---
 
@@ -369,12 +405,9 @@ AI_BACKEND=local
 5. **Start Celery beat** — `celery -A config beat -l info` for deal lock expiry; `celery -A config worker -l info` for scoring/OTP tasks
 
 ### Feature gaps (pre-launch polish)
-6. **Agent dashboard profile page** — consume `GET /api/v1/agents/me/` to show agent's own profile details; currently the overview page has placeholder stats
-7. **Lead agent name column** — `assigned_agent_name` is now in the serializer; display it in agent/admin lead tables
-8. **Admin Properties rescore button** — `rescoreProperty` / `rescoreAllProperties` are wired in `api.ts`; add button to admin properties page
-9. **Payment return page** — replace the raw JSON return at `/payments/return/` with a styled Next.js success/failure page
+6. **Onboard real agents** — Django admin → Agents → Add Agent; fill name, phone, cities, specializations; tick `is_verified` + `is_active`; link to a User account for dashboard login
 
 ### Future (post-launch)
-10. **WhatsApp rate limiting** — Redis-based per-user throttle before volume grows
-11. **Scraper → Celery task** — move synchronous scraper calls off the request cycle
-12. **Event-driven architecture** — extract AI scoring, notifications, and payment processing into separate services when scale demands it
+7. **WhatsApp rate limiting** — Redis-based per-user throttle before volume grows
+8. **Scraper → Celery task** — move synchronous scraper calls off the request cycle
+9. **Event-driven architecture** — extract AI scoring, notifications, and payment processing into separate services when scale demands it

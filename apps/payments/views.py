@@ -29,7 +29,7 @@ class CreateCheckoutView(APIView):
     def post(self, request, deal_id):
         deal = get_object_or_404(EscrowDeal, id=deal_id)
 
-        if deal.buyer != request.user:
+        if deal.buyer != request.user and request.user.role != 'admin':
             return Response({'detail': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
 
         if deal.status != EscrowDeal.Status.INITIATED:

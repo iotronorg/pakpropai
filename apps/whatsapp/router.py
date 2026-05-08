@@ -31,7 +31,22 @@ class MessageRouter:
         session_db.last_message_at = timezone.now()
         session_db.save(update_fields=['user', 'message_count', 'last_message_at'])
 
-        # Every WhatsApp interaction auto-registers the user as a lead.
+        # Non-client roles (agent, developer, admin) use the web dashboard.
+        # If they message the bot, redirect them and stop processing.
+        if user.role != 'user':
+            cls._send_and_log(
+                phone,
+                (
+                    "👋 Hi! Your account has dashboard access.\n\n"
+                    "Please use the *PakProp AI web dashboard* to manage your "
+                    "listings, leads, and settings.\n\n"
+                    "This WhatsApp number is for property buyers and clients only."
+                ),
+                session_db,
+            )
+            return
+
+        # Every WhatsApp client interaction auto-registers the user as a lead.
         # This is a fire-and-forget upsert — never blocks message processing.
         try:
             from apps.whatsapp.handlers import _upsert_lead

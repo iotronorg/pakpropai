@@ -1,9 +1,11 @@
-from django.http import FileResponse, Http404
+from django.http import FileResponse, Http404, HttpResponseForbidden
 from django.shortcuts import get_object_or_404
 from .models import PropertyAudit
 
 
 def download_pdf(request, audit_id):
+    if not request.user.is_authenticated:
+        return HttpResponseForbidden("Authentication required.")
     audit = get_object_or_404(PropertyAudit, id=audit_id)
     if not audit.pdf_file:
         raise Http404

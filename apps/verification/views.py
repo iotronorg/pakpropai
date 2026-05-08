@@ -108,16 +108,29 @@ class DocumentScanListView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if request.user.role not in ('admin', 'agent', 'developer'):
+        role = request.user.role
+        if role not in ('admin', 'agent', 'developer'):
             return Response({'error': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
 
         qs = DocumentScan.objects.select_related('user', 'verification').all()
 
-        doc_type = request.query_params.get('document_type')
-        if doc_type:
+        # Agents only see scans for their own properties' verifications
+        if role == 'agent':
+            try:
+                from apps.properties.models import Property
+                agent_prop_ids = Property.objects.filter(
+                    owner=request.user
+                ).values_list('id', flat=True)
+                qs = qs.filter(verification__property_id__in=agent_prop_ids)
+            except Exception:
+                qs = qs.none()
+
+        # Filters
+        if verification_id := request.query_params.get('verification'):
+            qs = qs.filter(verification_id=verification_id)
+        if doc_type := request.query_params.get('document_type'):
             qs = qs.filter(document_type=doc_type)
-        scan_status = request.query_params.get('status')
-        if scan_status:
+        if scan_status := request.query_params.get('status'):
             qs = qs.filter(status=scan_status)
 
         serializer = DocumentScanSerializer(qs, many=True)
