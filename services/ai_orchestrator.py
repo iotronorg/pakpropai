@@ -20,6 +20,9 @@ class AIOrchestrator:
 
     @classmethod
     def score_property(cls, property_obj, user=None) -> dict:
+        from apps.properties.scoring import PropertyScoringEngine
+        signals       = PropertyScoringEngine.compute_signals(property_obj)
+        baseline      = PropertyScoringEngine.deterministic_score(signals)
         prompt = render(
             'property_score',
             title=property_obj.title,
@@ -29,6 +32,14 @@ class AIOrchestrator:
             area_marla=property_obj.area_marla or 0,
             price_pkr=property_obj.price_pkr or 0,
             legal_status=property_obj.legal_status,
+            construction_status=signals['construction_status'],
+            furnished_status=signals['furnished_status'],
+            location_tier=signals['location_tier'],
+            price_signal=signals['price_signal'],
+            completeness_pct=signals['completeness_pct'],
+            passed_verifications=signals['passed_verifications'],
+            document_count=signals['document_count'],
+            baseline_score=baseline,
         )
         return GeminiClient.generate_json(
             prompt, user=user, interaction_type='property_score',

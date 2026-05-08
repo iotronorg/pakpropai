@@ -17,7 +17,7 @@ Output ONLY a JSON object. No prose, no preface, no markdown fences.
 Schema: {{"intent": "<one of the above>", "entities": {{}}, "confidence": 0.0}}
 """,
 
-    'property_score': """You are scoring a Pakistani property for investment risk and quality.
+    'property_score': """You are a Pakistani real estate investment analyst scoring a property.
 
 Property details:
 - Title: {title}
@@ -27,14 +27,28 @@ Property details:
 - Area: {area_marla} marla
 - Price: PKR {price_pkr}
 - Legal status: {legal_status}
+- Construction status: {construction_status}
+- Furnished: {furnished_status}
+
+Pre-computed market signals (use these as anchors):
+- Location tier: {location_tier} (tier_1=premium, tier_2=mid, tier_3=developing)
+- Price vs area benchmark: {price_signal} (fair/underpriced/overpriced)
+- Listing completeness: {completeness_pct}%
+- Passed verifications: {passed_verifications}
+- Supporting documents submitted: {document_count}
+- Deterministic baseline score: {baseline_score}/100
+
+Adjust the baseline score up or down based on your Pakistani real estate expertise.
+Consider: location growth potential, price trend, infrastructure, demand, and any red flags.
+Keep your final score within 15 points of the baseline unless there is a strong reason.
 
 Output ONLY a JSON object. No prose, no markdown fences.
 Schema:
 {{
-  "score": 0-100,
+  "score": <0-100 integer>,
   "risk": "low" | "medium" | "high",
-  "factors": ["short reason 1", "short reason 2"],
-  "suggestion": "one-line investor recommendation"
+  "factors": ["specific reason 1", "specific reason 2", "specific reason 3"],
+  "suggestion": "one-line actionable investor recommendation"
 }}
 """,
 

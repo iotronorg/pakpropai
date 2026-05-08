@@ -7,7 +7,8 @@ class PropertyListSerializer(serializers.ModelSerializer):
     class Meta:
         model  = Property
         fields = ('id', 'title', 'city', 'location', 'area_marla', 'price_pkr',
-                  'property_type', 'legal_status', 'ai_score', 'risk_level', 'created_at')
+                  'property_type', 'construction_status', 'furnished_status',
+                  'legal_status', 'ai_score', 'risk_level', 'created_at')
 
 
 class PropertyDetailSerializer(serializers.ModelSerializer):

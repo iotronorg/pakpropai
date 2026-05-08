@@ -65,6 +65,25 @@ class PropertyViewSet(viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED,
         )
 
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated],
+            url_path='rescore')
+    def rescore(self, request, pk=None):
+        if request.user.role != 'admin':
+            return Response({'error': 'Admin only.'}, status=status.HTTP_403_FORBIDDEN)
+        prop = self.get_object()
+        from apps.properties.tasks import score_property_task
+        score_property_task.delay(str(prop.id))
+        return Response({'queued': True, 'property_id': str(prop.id)})
+
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated],
+            url_path='rescore-all')
+    def rescore_all(self, request):
+        if request.user.role != 'admin':
+            return Response({'error': 'Admin only.'}, status=status.HTTP_403_FORBIDDEN)
+        from apps.properties.tasks import rescore_all_properties_task
+        rescore_all_properties_task.delay()
+        return Response({'queued': True})
+
     @action(detail=False, methods=['get'])
     def mine(self, request):
         qs = self.get_queryset().filter(owner=request.user)
