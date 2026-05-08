@@ -17,9 +17,14 @@ from .models import AIInteraction
 logger = logging.getLogger(__name__)
 
 
+def _get_gemini_key() -> str:
+    from apps.config.services import SystemConfigService
+    return SystemConfigService.get('gemini_api_key') or getattr(settings, 'GEMINI_API_KEY', '')
+
+
 def _get_client():
     from google import genai
-    return genai.Client(api_key=settings.GEMINI_API_KEY)
+    return genai.Client(api_key=_get_gemini_key())
 
 
 class GeminiClient:
@@ -44,7 +49,7 @@ class GeminiClient:
                  use_cache: bool = True,
                  expect_json: bool = False) -> str:
 
-        if not settings.GEMINI_API_KEY:
+        if not _get_gemini_key():
             raise RuntimeError("GEMINI_API_KEY not configured")
 
         model = model or cls.DEFAULT_MODEL
@@ -102,7 +107,7 @@ class GeminiClient:
     @classmethod
     def vision(cls, prompt: str, image_bytes: bytes,
                mime_type: str = 'image/jpeg', **kwargs) -> str:
-        if not settings.GEMINI_API_KEY:
+        if not _get_gemini_key():
             raise RuntimeError("GEMINI_API_KEY not configured")
         try:
             from google import genai
@@ -130,7 +135,7 @@ class GeminiClient:
     @classmethod
     def transcribe_audio(cls, audio_bytes: bytes,
                          mime_type: str = 'audio/ogg') -> str:
-        if not settings.GEMINI_API_KEY:
+        if not _get_gemini_key():
             raise RuntimeError("GEMINI_API_KEY not configured")
         try:
             from google import genai

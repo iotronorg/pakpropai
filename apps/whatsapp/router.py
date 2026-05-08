@@ -58,6 +58,14 @@ class MessageRouter:
 
         # ── Resolve message text ───────────────────────────────────────────
         if msg_type == 'audio':
+            from apps.config.services import SystemConfigService
+            if not SystemConfigService.get_features().get('feature_voice_messages', True):
+                cls._send_and_log(
+                    phone,
+                    "Voice messages are not supported at the moment. Please type your message.",
+                    session_db,
+                )
+                return
             text = cls._transcribe_voice(message_data, phone)
             if not text:
                 cls._send_and_log(
@@ -148,8 +156,14 @@ class MessageRouter:
                       caption: str, user) -> str:
         try:
             from apps.ai.agent import get_agent
+            from apps.config.services import SystemConfigService
             agent = get_agent()
             if cls._is_document_request(caption):
+                if not SystemConfigService.get_features().get('feature_document_verification', True):
+                    return (
+                        "Document verification is not currently available.\n"
+                        "Please contact support for assistance."
+                    )
                 return agent.verify_document_image(phone, image_bytes, mime, caption, user)
             return agent.chat_with_image(phone, image_bytes, mime, caption, user)
         except Exception as exc:
@@ -194,17 +208,26 @@ class MessageRouter:
 
     # ─── Utilities ────────────────────────────────────────────────────────────
 
-    @staticmethod
-    def _greeting() -> str:
+    @classmethod
+    def _greeting(cls) -> str:
+        from apps.config.services import SystemConfigService
+        features = SystemConfigService.get_features()
+        LINES = {
+            'feature_property_search':       "• 🔍 *Property search* — text or voice",
+            'feature_property_listing':      "• 📋 *List your property* for sale",
+            'feature_tax_advice':            "• 💰 *Tax advice* — Section 7E, CGT, rental tax",
+            'feature_loan_eligibility':      "• 🏦 *Loan eligibility* — Apna Ghar & banks",
+            'feature_scam_check':            "• 🛡️ *Scam/fraud check* — verify any deal",
+            'feature_document_verification': "• 📄 *Document verification* — send a photo",
+            'feature_talk_to_agent':         "• 🤝 *Talk to an agent* — connect with a verified agent",
+            'feature_deal_lock':             "• 🔒 *Deal Lock* — reserve a property (token payment)",
+            'feature_property_audit':        "• 📊 *Property Audit* — detailed risk & investment report",
+        }
+        lines = '\n'.join(v for k, v in LINES.items() if features.get(k, True))
         return (
             "Salam! Welcome to *PakProp AI* 🏠\n\n"
             "Pakistan's real estate intelligence assistant. I can help with:\n\n"
-            "• 🔍 *Property search* — text or voice\n"
-            "• 📋 *List your property* for sale\n"
-            "• 💰 *Tax advice* — Section 7E, CGT, rental tax\n"
-            "• 🏦 *Loan eligibility* — Apna Ghar & banks\n"
-            "• 🛡️ *Scam/fraud check* — verify any deal\n"
-            "• 📄 *Document verification* — send a photo\n\n"
+            f"{lines}\n\n"
             "What would you like to do? Just ask in English or Urdu."
         )
 

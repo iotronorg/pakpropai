@@ -28,6 +28,7 @@ THIRD_PARTY_APPS = [
 ]
 
 LOCAL_APPS = [
+    'apps.config',
     'apps.users',
     'apps.properties',
     'apps.ai',

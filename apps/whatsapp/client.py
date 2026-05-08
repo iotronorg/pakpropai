@@ -1,10 +1,19 @@
 import logging
 import requests
-from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
 WA_API_URL = "https://graph.facebook.com/v20.0"
+
+
+def _wa_token() -> str:
+    from apps.config.services import SystemConfigService
+    return SystemConfigService.get('wa_access_token')
+
+
+def _wa_phone_id() -> str:
+    from apps.config.services import SystemConfigService
+    return SystemConfigService.get('wa_phone_number_id')
 
 
 class WhatsAppClient:
@@ -12,13 +21,13 @@ class WhatsAppClient:
     @classmethod
     def _headers(cls):
         return {
-            'Authorization': f'Bearer {settings.WA_ACCESS_TOKEN}',
+            'Authorization': f'Bearer {_wa_token()}',
             'Content-Type':  'application/json',
         }
 
     @classmethod
     def _phone_url(cls):
-        return f"{WA_API_URL}/{settings.WA_PHONE_NUMBER_ID}/messages"
+        return f"{WA_API_URL}/{_wa_phone_id()}/messages"
 
     @classmethod
     def send_text(cls, phone: str, body: str) -> dict:
@@ -43,9 +52,10 @@ class WhatsAppClient:
     def send_otp(cls, phone: str, code: str) -> dict:
         """
         Send an OTP via template (required for first-contact users outside the 24-h window).
-        Falls back to free-text when WA_OTP_TEMPLATE_NAME is not configured (dev only).
+        Falls back to free-text when wa_otp_template_name is not configured (dev only).
         """
-        template_name = getattr(settings, 'WA_OTP_TEMPLATE_NAME', '')
+        from apps.config.services import SystemConfigService
+        template_name = SystemConfigService.get('wa_otp_template_name')
         if template_name:
             components = [
                 {
@@ -78,10 +88,11 @@ class WhatsAppClient:
 
     @classmethod
     def download_media(cls, media_id: str) -> bytes:
+        token = _wa_token()
         # Step 1: get the media URL
         info = requests.get(
             f"{WA_API_URL}/{media_id}",
-            headers={'Authorization': f'Bearer {settings.WA_ACCESS_TOKEN}'},
+            headers={'Authorization': f'Bearer {token}'},
             timeout=10,
         )
         info.raise_for_status()
@@ -90,7 +101,7 @@ class WhatsAppClient:
         # Step 2: download the bytes (auth required)
         media = requests.get(
             media_url,
-            headers={'Authorization': f'Bearer {settings.WA_ACCESS_TOKEN}'},
+            headers={'Authorization': f'Bearer {token}'},
             timeout=30,
         )
         media.raise_for_status()

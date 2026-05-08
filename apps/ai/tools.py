@@ -843,22 +843,23 @@ def initiate_deal_lock(
             status          = EscrowDeal.Status.INITIATED,
         )
 
-        # Try to generate an online payment link if Safepay is configured
+        # Try to generate an online payment link if an online gateway is configured
         online_link = ''
-        from django.conf import settings as _settings
-        if getattr(_settings, 'SAFEPAY_MERCHANT_KEY', '') and getattr(_settings, 'SAFEPAY_SECRET_KEY', ''):
+        from apps.config.services import SystemConfigService
+        active_gw = SystemConfigService.get_active_gateway()
+        if active_gw in ('safepay', 'bsecure'):
             try:
                 from apps.payments.services import PaymentService
-                base_url = getattr(_settings, 'BASE_URL', '')
+                base_url = SystemConfigService.get('base_url')
                 result = PaymentService.create_checkout(
                     deal=deal,
-                    gateway='safepay',
+                    gateway=active_gw,
                     redirect_url=f"{base_url}/payments/return/?status=success&deal_id={deal.id}",
                     cancel_url=f"{base_url}/payments/return/?status=cancelled&deal_id={deal.id}",
                 )
                 online_link = result.get('checkout_url', '')
             except Exception as exc:
-                logger.warning(f"Could not create Safepay checkout for deal {deal.id}: {exc}")
+                logger.warning(f"Could not create {active_gw} checkout for deal {deal.id}: {exc}")
 
         _PAYMENT_INSTRUCTIONS = {
             'jazzcash':  f"Send *PKR {token_amount_pkr:,}* to JazzCash *03001234567*. Use your WhatsApp number as reference.",

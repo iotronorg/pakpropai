@@ -35,17 +35,35 @@ class PakPropAgent:
 
     # ─── Public interface ─────────────────────────────────────────────────────
 
+    def _get_tools(self, tool_module) -> list:
+        """Returns the active tool list based on admin feature flags."""
+        from apps.config.services import SystemConfigService
+        features = SystemConfigService.get_features()
+        mapping = [
+            ('feature_property_search',    tool_module.search_properties),
+            ('feature_property_listing',   tool_module.list_property),
+            ('feature_scam_check',         tool_module.run_fraud_check),
+            ('feature_tax_advice',         tool_module.calculate_7e_tax),
+            ('feature_loan_eligibility',   tool_module.check_loan_eligibility),
+            ('feature_talk_to_agent',      tool_module.connect_to_agent),
+            ('feature_deal_lock',          tool_module.initiate_deal_lock),
+            ('feature_property_audit',     tool_module.generate_property_audit),
+        ]
+        return [fn for flag, fn in mapping if features.get(flag, True)]
+
     def chat(self, phone: str, message: str, user=None) -> str:
         """Process a WhatsApp text message. Returns the agent's reply."""
         backend = self._get_backend()
 
         # Gemini requires an API key; local (Ollama) does not
-        if backend.label.startswith('gemini') and not settings.GEMINI_API_KEY:
-            return (
-                "AI service is not configured yet.\n"
-                "Please set GEMINI_API_KEY in your environment.\n\n"
-                "Get a free key at: aistudio.google.com"
-            )
+        if backend.label.startswith('gemini'):
+            from apps.config.services import SystemConfigService
+            if not SystemConfigService.get('gemini_api_key'):
+                return (
+                    "AI service is not configured yet.\n"
+                    "Please ask the admin to set the Gemini API key in System Setup.\n\n"
+                    "Get a free key at: aistudio.google.com"
+                )
 
         from apps.ai import tools as tool_module
 
@@ -70,17 +88,7 @@ class PakPropAgent:
 
         history = self._load_history(phone)
         start   = time.time()
-
-        tools = [
-            tool_module.search_properties,
-            tool_module.calculate_7e_tax,
-            tool_module.check_loan_eligibility,
-            tool_module.run_fraud_check,
-            tool_module.list_property,
-            tool_module.generate_property_audit,
-            tool_module.connect_to_agent,
-            tool_module.initiate_deal_lock,
-        ]
+        tools   = self._get_tools(tool_module)
 
         try:
             reply = backend.chat(message, history, tools, SYSTEM_PROMPT)
@@ -97,8 +105,10 @@ class PakPropAgent:
         """Process an image/document message through the agent."""
         backend = self._get_backend()
 
-        if backend.label.startswith('gemini') and not settings.GEMINI_API_KEY:
-            return "AI service not configured. Please set GEMINI_API_KEY."
+        if backend.label.startswith('gemini'):
+            from apps.config.services import SystemConfigService
+            if not SystemConfigService.get('gemini_api_key'):
+                return "AI service not configured. Please set the Gemini API key in System Setup."
 
         from apps.ai import tools as tool_module
         from apps.ai.knowledge import SYSTEM_PROMPT

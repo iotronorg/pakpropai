@@ -74,6 +74,9 @@ class PropertySearchService:
 
     @classmethod
     def _from_scrapers(cls, city, location, area_marla, max_price, property_type) -> list[PropertyResult]:
+        from apps.config.services import SystemConfigService
+        if not SystemConfigService.scraper_enabled():
+            return []
         try:
             return search_all_scrapers(
                 city=city, location=location, area_marla=area_marla,

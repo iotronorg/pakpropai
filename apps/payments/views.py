@@ -38,10 +38,18 @@ class CreateCheckoutView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        gateway = request.data.get('gateway') or request.query_params.get('gateway', 'safepay')
-        if gateway not in SUPPORTED_ONLINE_GATEWAYS:
+        from apps.config.services import SystemConfigService
+        active_gw = SystemConfigService.get_active_gateway()
+        if active_gw == 'manual':
             return Response(
-                {'detail': f"Use ?gateway=safepay or ?gateway=bsecure. Got: {gateway}"},
+                {'detail': 'Online payment is disabled. Admin has set the gateway to manual only.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        gateway = request.data.get('gateway') or request.query_params.get('gateway', active_gw)
+        if gateway not in SUPPORTED_ONLINE_GATEWAYS or gateway != active_gw:
+            return Response(
+                {'detail': f"Only the '{active_gw}' gateway is currently enabled."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

@@ -1,8 +1,8 @@
 # PakProp AI — Build Progress
 
-**Last updated:** 2026-05-08 (session 13)  
+**Last updated:** 2026-05-08 (session 14)  
 **Current branch:** `development`  
-**Current phase:** Phase 3 — all core features complete + RBAC hardened
+**Current phase:** Phase 3 — all core features complete + RBAC hardened + live system config
 
 ---
 
@@ -110,9 +110,46 @@
 | **Escrow integration (Safepay / bSecure)** | ✅ Done | See detail below |
 | **Admin fraud monitoring dashboard** | ✅ Done | See detail below |
 | **RBAC hardening** | ✅ Done | See detail below |
+| **Live System Config** | ✅ Done | See detail below |
 | Event-driven architecture / microservices extraction | ❌ | Post-launch only — extract when scale demands it |
 
-**Phase 3 completion: 90%** — Deal Lock + Escrow + Fraud Monitor + RBAC done. Microservices deferred post-launch.
+**Phase 3 completion: 95%** — Deal Lock + Escrow + Fraud Monitor + RBAC + System Config done. Microservices deferred post-launch.
+
+### Live System Config (session 14)
+
+**New app: `apps/config/`** — DB-backed runtime configuration replacing static `.env`-only settings
+
+**`SystemConfig` model (`apps/config/models.py`):**
+- Key-value table (`key`, `value`, `updated_at`, `updated_by`)
+- `DEFAULTS` — all 31 config keys with sensible defaults
+- `SENSITIVE_KEYS` — 7 keys masked as `"__configured__"` in GET responses
+- `REQUIRED_KEYS` — 4 keys that must be set for the bot to function
+- `ENV_KEY_MAP` — maps config keys → Django settings names for `.env` fallback
+- Migration `0001_initial` applied
+
+**`SystemConfigService` (`apps/config/services.py`):**
+- `get(key)` → Redis (60s TTL) → DB → Django settings (env) → DEFAULTS — zero-downtime runtime changes
+- `bulk_set(data, user)` — batch write with cache invalidation per key
+- `is_set(key)` — True if value in DB or env (not just DEFAULTS)
+- `get_features()` → `{feature_key: bool}` for all `feature_*` keys
+- `scraper_enabled()`, `get_active_gateway()` — convenience accessors
+- `get_missing_required()` — list of unset required keys for setup banner
+
+**`ConfigView` (`GET/PATCH /api/v1/config/`):**
+- Admin-only (uses inline `IsAdmin` permission)
+- GET: sensitive keys masked; includes `setup_complete: bool` + `missing_required: list`
+- PATCH: skips `"__configured__"` sentinel (never clears an unchanged secret); returns updated config
+
+**6 subsystems updated to read from `SystemConfigService`:**
+- `apps/whatsapp/client.py` — WA token + phone ID (late import, avoids circular)
+- `apps/ai/client.py` — Gemini API key (`_get_gemini_key()` helper)
+- `apps/ai/agent.py` — new `_get_tools()` filters tool list by feature flags; Gemini key check uses config
+- `apps/properties/search.py` — `_from_scrapers()` returns `[]` immediately if `scraper_search_enabled=false`
+- `apps/payments/views.py` — `CreateCheckoutView` validates gateway against `active_payment_gateway`; returns 400 if manual-only or wrong gateway
+- `apps/ai/tools.py` — `initiate_deal_lock` uses `get_active_gateway()` for online payment link
+- `apps/whatsapp/router.py` — voice gate (feature_voice_messages), doc verification gate (feature_document_verification), dynamic `_greeting()` classmethod builds feature list from enabled flags
+
+---
 
 ### RBAC Hardening (session 13)
 
@@ -287,6 +324,13 @@
 | `FraudBlacklist` stored in DB, synced to Redis on save/delete | DB provides listability (Redis KEYS * is O(N) and unsafe); Redis provides O(1) fast-path check. Both updated atomically in model hooks |
 | Fraud alerts are synthesised at query time, not pre-computed | Volume is low enough for MVP; no need for a separate event log table yet |
 | Celery beat schedule for lock expiry uses 30-minute interval | Locks are 48h — 30 min granularity means max 30 min of overshoot, acceptable for MVP |
+| DB-backed system config with `.env` fallback | Admin can change API keys and feature flags at runtime without redeployment; `.env` values still work as bootstrap — DB overrides env |
+| Redis cache (60s TTL) in front of DB config reads | Every WhatsApp message reads config; Redis prevents N DB queries per message. Short TTL means admin changes propagate within 60s |
+| Sensitive keys returned as `"__configured__"` sentinel | Frontend can show "already set" state without exposing the actual key; PATCH ignores sentinel so blank submit never clears an existing secret |
+| Feature flags remove tools from AI model before chat | Disabled tools are never sent to Gemini/Ollama — the model cannot call what it doesn't know about; cleaner than post-call rejection |
+| Voice and doc-verification gated at router level | These are not AI tools — they are router-level media handlers; feature flags applied before any AI call is made |
+| `active_payment_gateway` enforced in both API and WhatsApp tool | Single source of truth; admin switches from manual→safepay and both the web checkout API and the WhatsApp deal lock tool switch simultaneously |
+| `app_label = 'sysconfig'` to avoid conflict with Django's built-in 'config' namespace | `makemigrations config` fails because Django reserves 'config'; using a distinct label avoids the collision |
 | `IsOwnerOrReadOnly` admin bypass added to object-level check | Without bypass, admin 403s on any property they didn't personally create — verified/rescore silently failed in the UI |
 | `AgentAdminDetailView` is a separate view from `AgentMeView` | `AgentMeView` is self-service (agent updates own profile); admin view has a different serializer that makes is_verified/is_active writable — clean separation of concerns |
 | WhatsApp role guard redirects non-client roles immediately | Agents/admins who message the bot accidentally get a friendly redirect, and their interaction never pollutes the lead table or triggers AI inference |
@@ -320,7 +364,7 @@
 | Agent request detection may miss highly unusual phrasings | Low | Combination-based (intent+role) handles ~95% of cases; truly novel phrasing falls through to model which may still hallucinate — acceptable for MVP |
 | Safepay / bSecure credentials not set locally | High | System works without them (falls back to manual); set keys in `.env` to enable online payment links in WhatsApp + admin |
 | `expire_deal_locks` Celery beat task requires beat worker running | Medium | Run `celery -A config beat -l info` alongside the worker; without it, expired locks are never auto-marked |
-| Payment return URL is a raw JSON response, not a web page | Low | Sufficient for MVP; replace with a styled Next.js page at `/payments/return` if user-facing return matters |
+| Config API keys stored in DB (not encrypted) | Medium | Acceptable for MVP single-server deploy; use Django-encrypted-fields or secrets manager (AWS/GCP) before multi-tenant production |
 | Fraud alerts feed has no pagination | Low | Capped at 200 rows in the view; add cursor pagination when volume grows |
 | Blacklist Redis sync is best-effort — if Redis is down at write time, cache is stale until next restart | Low | Acceptable for fraud blacklist; add retry or post-startup sync if Redis restarts frequently |
 
