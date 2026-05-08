@@ -18,6 +18,22 @@ class Agent(models.Model):
         LUXURY           = 'luxury',            'Luxury / High-end'
         INDUSTRIAL       = 'industrial',        'Industrial / Warehouse'
 
+    # ── System User Link ──────────────────────────────────────────────────────
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='agent_profile',
+        help_text='Dashboard login account for this agent'
+    )
+    parent_organization = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='team_members',
+        help_text='Developer or agency this agent belongs to (null = independent)'
+    )
+
     # ── Identity ──────────────────────────────────────────────────────────────
     name            = models.CharField(max_length=200)
     agent_type      = models.CharField(

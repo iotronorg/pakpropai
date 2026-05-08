@@ -31,6 +31,14 @@ class MessageRouter:
         session_db.last_message_at = timezone.now()
         session_db.save(update_fields=['user', 'message_count', 'last_message_at'])
 
+        # Every WhatsApp interaction auto-registers the user as a lead.
+        # This is a fire-and-forget upsert — never blocks message processing.
+        try:
+            from apps.whatsapp.handlers import _upsert_lead
+            _upsert_lead(user)
+        except Exception:
+            pass
+
         msg_type = message_data.get('type', 'text')
 
         # ── Resolve message text ───────────────────────────────────────────

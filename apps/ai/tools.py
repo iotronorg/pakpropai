@@ -643,7 +643,7 @@ def connect_to_agent(
 
         # Capture lead
         _capture_agent_request_lead(user, phone, city, intent, budget_pkr, specific_area,
-                                    agent_id=agent.id)
+                                    agent=agent)
 
         # Build WhatsApp agent card
         lines = [
@@ -739,7 +739,7 @@ def connect_to_agent(
 
 def _capture_agent_request_lead(user, phone: str, city: str, intent: str,
                                  budget_pkr: int, specific_area: str,
-                                 agent_id=None):
+                                 agent=None):
     try:
         from apps.leads.models import Lead
         intent_map = {
@@ -748,17 +748,154 @@ def _capture_agent_request_lead(user, phone: str, city: str, intent: str,
         }
         lead_intent = intent_map.get(intent.lower(), Lead.Intent.BUY)
         signals = {'source': 'talk_to_agent', 'specific_area': specific_area}
-        if agent_id:
-            signals['matched_agent_id'] = agent_id
+        if agent:
+            signals['matched_agent_id'] = agent.id
         if user:
-            Lead.objects.update_or_create(
+            lead, _ = Lead.objects.update_or_create(
                 user=user, intent=lead_intent,
                 defaults={
-                    'city_interest': city,
-                    'budget_max': budget_pkr if budget_pkr > 0 else None,
+                    'city_interest':  city,
+                    'budget_max':     budget_pkr if budget_pkr > 0 else None,
                     'intent_signals': signals,
-                    'score': 80,
+                    'score':          80,
+                    'status':         Lead.Status.QUALIFIED,
                 },
             )
+            if agent and not lead.assigned_agent_id:
+                lead.assigned_agent = agent
+                lead.save(update_fields=['assigned_agent'])
     except Exception as exc:
         logger.error(f"_capture_agent_request_lead failed: {exc}")
+
+
+# ─── Deal Lock ────────────────────────────────────────────────────────────────
+
+def initiate_deal_lock(
+    property_id: str,
+    token_amount_pkr: int,
+    payment_method: str = 'jazzcash',
+) -> dict:
+    """
+    Lock a property exclusively for the buyer for 48 hours by paying a token amount.
+    Use this when a user says they want to 'lock', 'reserve', 'book token', or 'secure' a property.
+
+    Args:
+        property_id: The UUID of the property to lock (from search results).
+        token_amount_pkr: Token amount in PKR. Must be between 25,000 and 100,000.
+        payment_method: Payment method — one of 'jazzcash', 'easypaisa', 'bank', 'manual'.
+    """
+    user  = _ctx_user.get()
+    phone = _ctx_phone.get()
+
+    if not user or not phone:
+        return {'success': False, 'message': 'Could not identify your account. Please try again.'}
+
+    if token_amount_pkr < 25_000 or token_amount_pkr > 100_000:
+        return {
+            'success': False,
+            'message': (
+                "Token amount must be between *PKR 25,000* and *PKR 100,000*.\n"
+                "Please specify an amount in this range."
+            ),
+        }
+
+    valid_methods = {'jazzcash', 'easypaisa', 'bank', 'manual'}
+    if payment_method not in valid_methods:
+        payment_method = 'jazzcash'
+
+    try:
+        from apps.properties.models import Property
+        from apps.escrow.models import EscrowDeal
+
+        try:
+            prop = Property.objects.get(id=property_id, is_active=True)
+        except Property.DoesNotExist:
+            return {'success': False, 'message': 'Property not found. Please search again and use the exact property ID.'}
+
+        # Check for existing active lock
+        existing = EscrowDeal.objects.filter(
+            property=prop,
+            status__in=[EscrowDeal.Status.INITIATED, EscrowDeal.Status.LOCKED]
+        ).first()
+        if existing:
+            if existing.buyer == user:
+                return {
+                    'success': False,
+                    'message': (
+                        f"You already have an active deal lock on *{prop.title}*.\n"
+                        f"Status: *{existing.get_status_display()}*"
+                    ),
+                }
+            return {
+                'success': False,
+                'message': (
+                    f"⚠️ *{prop.title}* is currently locked by another buyer.\n"
+                    "Please check back after the lock expires (within 48 hours)."
+                ),
+            }
+
+        deal = EscrowDeal.objects.create(
+            property        = prop,
+            buyer           = user,
+            token_amount    = token_amount_pkr,
+            payment_gateway = payment_method,
+            initiated_via   = EscrowDeal.Channel.WHATSAPP,
+            status          = EscrowDeal.Status.INITIATED,
+        )
+
+        # Try to generate an online payment link if Safepay is configured
+        online_link = ''
+        from django.conf import settings as _settings
+        if getattr(_settings, 'SAFEPAY_MERCHANT_KEY', '') and getattr(_settings, 'SAFEPAY_SECRET_KEY', ''):
+            try:
+                from apps.payments.services import PaymentService
+                base_url = getattr(_settings, 'BASE_URL', '')
+                result = PaymentService.create_checkout(
+                    deal=deal,
+                    gateway='safepay',
+                    redirect_url=f"{base_url}/payments/return/?status=success&deal_id={deal.id}",
+                    cancel_url=f"{base_url}/payments/return/?status=cancelled&deal_id={deal.id}",
+                )
+                online_link = result.get('checkout_url', '')
+            except Exception as exc:
+                logger.warning(f"Could not create Safepay checkout for deal {deal.id}: {exc}")
+
+        _PAYMENT_INSTRUCTIONS = {
+            'jazzcash':  f"Send *PKR {token_amount_pkr:,}* to JazzCash *03001234567*. Use your WhatsApp number as reference.",
+            'easypaisa': f"Send *PKR {token_amount_pkr:,}* to EasyPaisa *03001234567*. Use your WhatsApp number as reference.",
+            'bank':      f"Transfer *PKR {token_amount_pkr:,}* to Account *1234567890* (HBL — PakProp AI). Reference: your WhatsApp number.",
+            'manual':    "Our team will contact you with payment details within 1 hour.",
+        }
+        payment_msg = _PAYMENT_INSTRUCTIONS.get(payment_method, _PAYMENT_INSTRUCTIONS['manual'])
+
+        online_section = (
+            f"\n💳 *Pay Online (instant):*\n{online_link}\n"
+        ) if online_link else ''
+
+        summary = (
+            f"🔒 *Deal Lock Requested!*\n\n"
+            f"🏠 *Property:* {prop.title}\n"
+            f"📍 *Location:* {prop.city} — {prop.location}\n"
+            f"💰 *Token Amount:* PKR {token_amount_pkr:,}\n"
+            f"🔑 *Lock ID:* `{str(deal.id)[:8].upper()}`\n\n"
+            f"*Payment Instructions:*\n{payment_msg}"
+            f"{online_section}\n\n"
+            "✅ Once payment is confirmed, your *48-hour exclusivity* window begins automatically.\n"
+            "You will receive a WhatsApp confirmation immediately."
+        )
+
+        return {
+            'success':      True,
+            'deal_id':      str(deal.id),
+            'property':     prop.title,
+            'token_amount': token_amount_pkr,
+            'whatsapp_summary': summary,
+            '_instruction': 'Return the whatsapp_summary VERBATIM.',
+        }
+
+    except Exception as exc:
+        logger.error(f"initiate_deal_lock failed: {exc}", exc_info=True)
+        return {
+            'success': False,
+            'message': 'Could not process your deal lock request. Please try again.',
+        }

@@ -49,6 +49,13 @@ class Property(models.Model):
     furnished_status     = models.CharField(max_length=20, choices=FurnishedStatus.choices, null=True, blank=True)
     construction_status  = models.CharField(max_length=25, choices=ConstructionStatus.choices, null=True, blank=True)
     legal_status         = models.CharField(max_length=30, choices=LegalStatus.choices, default=LegalStatus.UNVERIFIED)
+    assigned_agent = models.ForeignKey(
+                         'agents.Agent',
+                         on_delete=models.SET_NULL,
+                         null=True, blank=True,
+                         related_name='assigned_properties',
+                         help_text='Agent responsible for selling this property'
+                     )
     ai_score      = models.SmallIntegerField(null=True, blank=True)
     risk_level    = models.CharField(max_length=20, choices=RiskLevel.choices, null=True, blank=True)
     raw_docs      = models.JSONField(default=dict, blank=True)   # Cloudflare R2 keys

@@ -79,6 +79,7 @@ class PakPropAgent:
             tool_module.list_property,
             tool_module.generate_property_audit,
             tool_module.connect_to_agent,
+            tool_module.initiate_deal_lock,
         ]
 
         try:

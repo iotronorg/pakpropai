@@ -5,12 +5,23 @@ from .views import (
     VerificationReviewView,
     DocumentScanListView,
     LinkDocumentToVerificationView,
+    FraudStatsView,
+    FraudAlertsView,
+    FraudBlacklistView,
+    FraudBlacklistDeleteView,
+    FlaggedUsersView,
 )
 
 urlpatterns = [
-    path('fraud-check/',                                      FraudCheckView.as_view(),               name='fraud-check'),
-    path('queue/',                                            VerificationQueueView.as_view(),         name='verification-queue'),
-    path('queue/<uuid:pk>/',                                  VerificationReviewView.as_view(),        name='verification-review'),
-    path('documents/',                                        DocumentScanListView.as_view(),          name='document-scan-list'),
-    path('documents/<int:scan_id>/link/<uuid:verification_id>/', LinkDocumentToVerificationView.as_view(), name='link-document'),
+    path('fraud-check/',                                          FraudCheckView.as_view(),              name='fraud-check'),
+    path('queue/',                                                VerificationQueueView.as_view(),        name='verification-queue'),
+    path('queue/<uuid:pk>/',                                      VerificationReviewView.as_view(),       name='verification-review'),
+    path('documents/',                                            DocumentScanListView.as_view(),         name='document-scan-list'),
+    path('documents/<int:scan_id>/link/<uuid:verification_id>/',  LinkDocumentToVerificationView.as_view(), name='link-document'),
+    # Fraud monitoring
+    path('fraud/stats/',                   FraudStatsView.as_view(),           name='fraud-stats'),
+    path('fraud/alerts/',                  FraudAlertsView.as_view(),          name='fraud-alerts'),
+    path('fraud/blacklist/',               FraudBlacklistView.as_view(),       name='fraud-blacklist'),
+    path('fraud/blacklist/<int:pk>/',      FraudBlacklistDeleteView.as_view(), name='fraud-blacklist-delete'),
+    path('fraud/users/',                   FlaggedUsersView.as_view(),         name='fraud-users'),
 ]

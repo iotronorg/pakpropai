@@ -1,8 +1,8 @@
 # PakProp AI — Build Progress
 
-**Last updated:** 2026-05-08 (session 10)  
+**Last updated:** 2026-05-08 (session 12)  
 **Current branch:** `development`  
-**Current phase:** Phase 2
+**Current phase:** Phase 3 — all core features complete locally
 
 ---
 
@@ -75,20 +75,127 @@
 | **Web login OTP flow** (phone → OTP → JWT → role redirect) | ✅ Done | `pakpropaiweb/src/app/login/page.tsx` — fixed response shape mismatch |
 | **Agent listings page (web)** | ✅ Done | `pakpropaiweb/src/app/agent/listings/page.tsx` — filter tabs, score bar, request verification |
 | **Property scoring improvements** | ✅ Done | `apps/properties/scoring.py` — `PropertyScoringEngine`; enriched AI prompt; deterministic fallback |
+| **4-role user model refactor** | ✅ Done | See detail below |
 
 **Phase 2 completion: 100%** ✅
 
+### 4-Role User Model Refactor (session 11)
+
+**Model changes (all migrated):**
+- `Agent.user` — OneToOneField to User → links dashboard account to agent profile
+- `Agent.parent_organization` — self-FK → agents belong to developer/agency orgs
+- `Lead.assigned_agent` — FK to Agent → leads are routed to specific agents
+- `Property.assigned_agent` — FK to Agent → properties assigned to managing agent
+
+**Behavior changes:**
+- WhatsApp router auto-upserts a Lead on every message (`_upsert_lead(user)` in `router.py`)
+- `connect_to_agent` tool sets `lead.assigned_agent` + `lead.status = QUALIFIED` when match found
+- Lead ViewSet scopes results by role: agents see only their assigned leads; admin/developer see all
+- `PATCH /leads/<id>/` allows status/notes edits by dashboard users
+
+**New APIs:**
+- `GET /api/v1/agents/` — admin-only list of all agents
+- `GET /api/v1/agents/me/` — returns the agent profile linked to the logged-in user
+- `Lead` serializer now exposes `assigned_agent_id` + `assigned_agent_name`
+
+**CLAUDE.md updated** — section 12 now documents all 4 roles with DB model relationships
+
 ---
 
-## Phase 3 Checklist (not started)
+## Phase 3 Checklist
 
-| Feature | Status |
-|---------|--------|
-| Deal Lock (token payment + 48h exclusivity) | ❌ |
-| Escrow integration (Safepay / bSecure) | ❌ |
-| Developer dashboard | ❌ |
-| Admin fraud monitoring dashboard | ❌ |
-| Event-driven architecture / microservices extraction | ❌ |
+| Feature | Status | File(s) |
+|---------|--------|---------|
+| **Deal Lock (token payment + 48h exclusivity)** | ✅ Done | See detail below |
+| **Escrow integration (Safepay / bSecure)** | ✅ Done | See detail below |
+| **Admin fraud monitoring dashboard** | ✅ Done | See detail below |
+| Event-driven architecture / microservices extraction | ❌ | Post-launch only — extract when scale demands it |
+
+**Phase 3 completion: 75%** — Deal Lock + Escrow + Fraud Monitor done. Microservices deferred post-launch.
+
+### Admin Fraud Monitoring Dashboard (session 12)
+
+**New model: `FraudBlacklist`** (`apps/verification/models.py`):
+- Stores blacklist tokens in DB (token, reason, added_by, expires_at)
+- `save()` + `delete()` auto-sync Redis cache — existing `FraudCheckService` fast-path stays consistent
+- Migration `0004_fraud_blacklist` applied
+
+**New APIs (`/api/v1/verification/fraud/`):**
+- `GET /fraud/stats/` — aggregate counts: suspicious scans, red-flag docs, fraud verifications, disputed/high-risk properties, blacklist size, 7-day alert count
+- `GET /fraud/alerts/` — chronological feed synthesised from: suspicious DocumentScans, Verifications with fraud_flags, high-risk Properties
+- `GET /fraud/users/` — flagged users: submitted suspicious docs, own high-risk/disputed properties, high WhatsApp message volume
+- `GET /fraud/blacklist/` — list active blacklist entries
+- `POST /fraud/blacklist/` — add token (optionally with ttl_days)
+- `DELETE /fraud/blacklist/<id>/` — remove token (purges Redis too)
+
+**Frontend `/admin/fraud`:**
+- 8-card stats grid (alerts 7d, suspicious docs, high-risk props, disputed props, red-flag scans, fraud verifications, blacklisted tokens, system status)
+- Stats auto-refresh every 60 seconds
+- **Alerts tab** — severity-coded feed (🔴 high / 🟡 medium) with type icon, phone, detail, date
+- **Flagged Users tab** — table with risk badge, reason, flags, last seen
+- **Blacklist tab** — add form (token + reason + optional TTL) + live table with Remove button
+- "🚨 Fraud Monitor" added to admin sidebar
+
+### Escrow Integration (session 12)
+
+**Payment model (`apps/payments/models.py`) updated:**
+- Added `gateway` (safepay/bsecure/jazzcash/easypaisa/manual), `checkout_token`, `checkout_url`, `webhook_payload`
+- Indexed on `status` and `checkout_token`
+
+**Gateway clients (`apps/payments/services.py`):**
+- `SafepayGateway` — creates checkout session, verifies HMAC-SHA256 webhook signature, parses webhook payload
+- `bSecureGateway` — OAuth token exchange, creates order, verifies webhook
+- `PaymentService.create_checkout()` — factory entry point, saves `Payment` record
+- `PaymentService.handle_webhook()` — verifies signature → finds deal → activates lock → WhatsApp notifies buyer
+
+**APIs (`/api/v1/payments/`):**
+- `POST /payments/checkout/<deal_id>/` — creates Safepay or bSecure checkout session, returns redirect URL
+- `GET /payments/return/?status=success&deal_id=<uuid>` — buyer return landing (webhook does the real activation)
+- `POST /payments/webhook/safepay/` — Safepay payment notification (HMAC verified, no auth)
+- `POST /payments/webhook/bsecure/` — bSecure payment notification
+- `GET /payments/` — admin payment list
+
+**WhatsApp tool updated:** `initiate_deal_lock` now auto-generates a Safepay checkout link if credentials are set
+
+**Settings added:** `SAFEPAY_MERCHANT_KEY`, `SAFEPAY_SECRET_KEY`, `SAFEPAY_ENVIRONMENT`, `BSECURE_CLIENT_ID`, `BSECURE_CLIENT_SECRET`, `BSECURE_ENVIRONMENT`
+
+**Frontend:**
+- Admin Deals page now has two tabs: Deal Locks + Payments
+- "💳 Pay Online" button → creates Safepay checkout → opens in new tab
+- "Confirm Manual" replaces old "Confirm Payment" (for non-online payments)
+- Payments tab: full table with status badges, gateway, reference, deal link
+
+### Deal Lock (session 12)
+
+**Model (`apps/escrow/models.py` — `EscrowDeal`):**
+- `seller` now nullable — buyer initiates without knowing seller
+- Added: `agent` FK, `lock_started_at`, `payment_gateway`, `payment_ref`, `initiated_via`, `admin_notes`
+- Added `Status.EXPIRED` — separate from `CANCELLED`
+- `activate_lock()` — sets LOCKED + starts 48h window
+- `hours_remaining()` — computes hours left on active lock
+
+**APIs (`/api/v1/deals/`):**
+- `POST /deals/lock/` — buyer requests lock (status=INITIATED)
+- `PATCH /deals/lock/<id>/confirm/` — admin confirms payment → LOCKED + WhatsApp notify
+- `PATCH /deals/lock/<id>/cancel/` — buyer or admin cancels
+- `GET /deals/` — admin/agent/developer list (filterable by `?status=`)
+- `GET /deals/mine/` — buyer's own locks
+- `GET /deals/lock/<id>/` — single lock detail
+
+**Celery task (`apps/escrow/tasks.py`):**
+- `expire_deal_locks` — runs every 30 min, marks past-expiry LOCKED deals as EXPIRED + notifies buyer via WhatsApp
+
+**AI Tool (`apps/ai/tools.py`):**
+- `initiate_deal_lock(property_id, token_amount_pkr, payment_method)` — creates deal lock from WhatsApp
+- Blocks duplicate locks on same property
+- Returns verbatim payment instructions per gateway
+
+**Frontend:**
+- `GET/POST /deals/*` API calls added to `api.ts`
+- `DealLock` type added to `types/index.ts`
+- Admin: Deal Locks page (`/admin/deals`) — filter tabs, confirm payment modal, cancel, hours-remaining timer
+- Agent Listings: 🔒 Locked badge shown on locked properties
+- "Deal Locks" added to admin sidebar
 
 ---
 
@@ -136,10 +243,20 @@
 | SQLite → PostgreSQL (local Homebrew) | Production parity in development; avoids migration surprises at deploy time |
 | Django 5.0.6 → 5.2.14 (LTS) | Python 3.14 breaks `context.__copy__()` in Django 5.0.x (admin add/change pages 500); fixed in 5.2; also upgraded django-celery-beat 2.6.0 → 2.9.0 |
 | Agent city matching via JSONField icontains | Simple text search on JSON array string representation; avoids separate City model for MVP |
+| Self-referential FK for org hierarchy (Agent.parent_organization → Agent) | Reuses existing Agent model; avoids a separate Organization model — agents under developer/agency orgs share same profile structure |
+| Lead scoping via `user.agent_profile` reverse OneToOne | Access pattern is `request.user.agent_profile`; if unlinked, `RelatedObjectDoesNotExist` is caught → empty queryset |
+| Auto-lead upsert in WhatsApp router (not in AI tools) | Every WhatsApp interaction must register a lead regardless of what the user says — router level guarantees no path is missed |
 | connect_to_agent strict city match | If city specified but no agent covers it, return "no agent" — never return a wrong-city agent |
 | Agent request bypasses model entirely | `_is_agent_request()` detects intent+role word combination in Python; `_handle_agent_request()` calls tool directly — model never involved, hallucination structurally impossible |
 | Combination-based agent intent detection | Intent word (connect/find/need/want…) + role word (agent/someone/broker/dealer…) approach handles all natural language variations without enumerated phrase lists |
 | Ollama terminal tool bypass | `connect_to_agent` and `generate_property_audit` results returned verbatim from Ollama loop — model cannot rephrase or add hallucinated details |
+| `EscrowDeal.seller` is nullable | Buyer initiates lock without knowing the seller — seller is populated later when deal progresses to full transaction |
+| Deal lock 48h window starts on admin confirmation, not on initiation | Prevents clock running while payment is in transit; fair to buyer |
+| Webhook endpoints have no auth, verified by HMAC only | Gateways cannot authenticate via JWT — HMAC-SHA256 signature is the industry-standard approach; endpoints return 200 regardless to prevent gateway retries on legitimate failures |
+| Manual confirmation flow kept alongside online payment | Some buyers will pay via JazzCash/bank and call in — admin confirm path must always exist regardless of gateway status |
+| `FraudBlacklist` stored in DB, synced to Redis on save/delete | DB provides listability (Redis KEYS * is O(N) and unsafe); Redis provides O(1) fast-path check. Both updated atomically in model hooks |
+| Fraud alerts are synthesised at query time, not pre-computed | Volume is low enough for MVP; no need for a separate event log table yet |
+| Celery beat schedule for lock expiry uses 30-minute interval | Locks are 48h — 30 min granularity means max 30 min of overshoot, acceptable for MVP |
 
 ---
 
@@ -161,10 +278,15 @@
 | Document OCR accuracy depends on AI backend | Medium | llava:7b (local) is weak at OCR; Gemini is accurate — use AI_BACKEND=gemini for doc scanning |
 | Audit PDF served from local media only | Medium | Needs BASE_URL set to ngrok/production URL for WhatsApp PDF link to be clickable |
 | Lead status field is set to 'new' by default — no auto-scoring to warm/qualified/cold yet | Low | Update score→status logic in AI tools when lead scoring is improved |
-| Leads API returns all leads to all dashboard roles (no per-agent filtering yet) | Low | Add agent FK to Lead model when agent assignment is built |
+| Lead ViewSet scoping requires `user.agent_profile` to exist — if User has `role=agent` but no Agent record linked, they get empty queryset | Medium | Create Agent record and set `agent.user = user` in admin when onboarding agents |
 | Signal score is only computed when OCR task finishes or admin reviews — not on DocumentScan save | Low | Add post_save signal on DocumentScan to auto-refresh if verification is linked |
 | No duplicate property detection in verification signals | Medium | Cross-check same address/owner listed multiple times; add deduction to signal score |
 | Agent request detection may miss highly unusual phrasings | Low | Combination-based (intent+role) handles ~95% of cases; truly novel phrasing falls through to model which may still hallucinate — acceptable for MVP |
+| Safepay / bSecure credentials not set locally | High | System works without them (falls back to manual); set keys in `.env` to enable online payment links in WhatsApp + admin |
+| `expire_deal_locks` Celery beat task requires beat worker running | Medium | Run `celery -A config beat -l info` alongside the worker; without it, expired locks are never auto-marked |
+| Payment return URL is a raw JSON response, not a web page | Low | Sufficient for MVP; replace with a styled Next.js page at `/payments/return` if user-facing return matters |
+| Fraud alerts feed has no pagination | Low | Capped at 200 rows in the view; add cursor pagination when volume grows |
+| Blacklist Redis sync is best-effort — if Redis is down at write time, cache is stale until next restart | Low | Acceptable for fraud blacklist; add retry or post-startup sync if Redis restarts frequently |
 
 ---
 
@@ -189,6 +311,16 @@ WA_APP_SECRET=
 WA_ACCESS_TOKEN=
 WA_PHONE_NUMBER_ID=
 WA_OTP_TEMPLATE_NAME=      ← create in Meta Business Manager
+
+# Safepay (online payments — primary gateway)
+SAFEPAY_MERCHANT_KEY=      ← from Safepay Dashboard → Settings → API Keys
+SAFEPAY_SECRET_KEY=
+SAFEPAY_ENVIRONMENT=sandbox   # or 'production'
+
+# bSecure (online payments — secondary gateway)
+BSECURE_CLIENT_ID=
+BSECURE_CLIENT_SECRET=
+BSECURE_ENVIRONMENT=sandbox   # or 'production'
 
 # Gemini AI (cloud backend)
 GEMINI_API_KEY=
@@ -229,8 +361,20 @@ AI_BACKEND=local
 
 ## Recommended Next Steps (Priority Order)
 
-1. **Add real agents via Django admin** — go to /admin → Agents → Add Agent; fill identity, coverage cities, specializations; tick is_verified + is_active
-2. **Seed 5–10 real property listings + run rescore-all** — so search returns real scored results during demos
-3. **Phase 3: Deal Lock** — token payment + 48h exclusivity flow
-4. **Phase 3: Escrow integration** — Safepay/bSecure
-5. **Phase 3: Admin fraud monitoring dashboard**
+### Operational (do before launch)
+1. **Onboard real agents** — Django admin → Agents → Add Agent; fill name, phone, cities, specializations; tick `is_verified` + `is_active`; link to a User account so they can log into the dashboard
+2. **Seed real property listings** — have agents list via WhatsApp, or bulk-import via Django shell; then run `/admin → Properties → Rescore All` to compute AI scores
+3. **Set Safepay credentials** — `SAFEPAY_MERCHANT_KEY` + `SAFEPAY_SECRET_KEY` in `.env`; register webhook URL `https://yourdomain.com/api/v1/payments/webhook/safepay/` in Safepay dashboard
+4. **Set production env vars** — `WA_APP_SECRET`, `WA_ACCESS_TOKEN`, `GEMINI_API_KEY`, `BASE_URL`, `DATABASE_URL`
+5. **Start Celery beat** — `celery -A config beat -l info` for deal lock expiry; `celery -A config worker -l info` for scoring/OTP tasks
+
+### Feature gaps (pre-launch polish)
+6. **Agent dashboard profile page** — consume `GET /api/v1/agents/me/` to show agent's own profile details; currently the overview page has placeholder stats
+7. **Lead agent name column** — `assigned_agent_name` is now in the serializer; display it in agent/admin lead tables
+8. **Admin Properties rescore button** — `rescoreProperty` / `rescoreAllProperties` are wired in `api.ts`; add button to admin properties page
+9. **Payment return page** — replace the raw JSON return at `/payments/return/` with a styled Next.js success/failure page
+
+### Future (post-launch)
+10. **WhatsApp rate limiting** — Redis-based per-user throttle before volume grows
+11. **Scraper → Celery task** — move synchronous scraper calls off the request cycle
+12. **Event-driven architecture** — extract AI scoring, notifications, and payment processing into separate services when scale demands it

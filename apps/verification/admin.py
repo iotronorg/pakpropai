@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Verification, DocumentScan
+from .models import Verification, DocumentScan, FraudBlacklist
 
 
 @admin.register(Verification)
@@ -16,3 +16,10 @@ class DocumentScanAdmin(admin.ModelAdmin):
     list_filter     = ('document_type', 'status', 'confidence')
     search_fields   = ('owner_name', 'phone', 'cnic_number', 'property_address')
     readonly_fields = ('created_at', 'raw_ocr', 'extracted_fields', 'red_flags', 'whatsapp_summary')
+
+
+@admin.register(FraudBlacklist)
+class FraudBlacklistAdmin(admin.ModelAdmin):
+    list_display  = ('token', 'reason', 'added_by', 'expires_at', 'created_at')
+    search_fields = ('token', 'reason')
+    readonly_fields = ('created_at',)

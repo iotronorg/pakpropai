@@ -25,6 +25,13 @@ class Lead(models.Model):
                          on_delete=models.CASCADE,
                          related_name='leads'
                      )
+    assigned_agent = models.ForeignKey(
+                         'agents.Agent',
+                         on_delete=models.SET_NULL,
+                         null=True, blank=True,
+                         related_name='assigned_leads',
+                         help_text='Agent responsible for following up this lead'
+                     )
     intent         = models.CharField(max_length=20, choices=Intent.choices, null=True, blank=True)
     score          = models.SmallIntegerField(default=0)
     intent_signals = models.JSONField(default=dict, blank=True)

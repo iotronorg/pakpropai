@@ -343,16 +343,36 @@ Must support:
 
 ---
 
-## 12. SECURITY
+## 12. SECURITY & USER ROLES
 
 - OTP authentication
 - JWT tokens
-- RBAC:
-  - User
-  - Agent
-  - Developer
-
 - Secure payments via providers only
+
+### RBAC — 4 User Roles
+
+**1. Client (role=`user`)**
+- Interacts exclusively via WhatsApp
+- No web dashboard access
+- Gets auto-created as Lead on first message
+- Can search, verify, get tax/loan advice, connect to agents
+
+**2. Agent (role=`agent`)**
+- Has an `Agent` profile linked via `User.agent_profile` (OneToOneField)
+- Can belong to a Developer org via `Agent.parent_organization`
+- Web dashboard: manages listings, views assigned leads only
+- API: `GET /agents/me/` returns their agent profile
+- Lead ViewSet: returns only `lead.assigned_agent == request.user.agent_profile`
+
+**3. Developer / Agency (role=`developer`)**
+- An organization — also represented as an `Agent` record (`agent_type=agency/developer`)
+- Web dashboard: inventory management, lead analytics across all team agents
+- Sees all leads (not scoped to single agent)
+
+**4. System Admin (role=`admin`)**
+- Full access to all dashboard APIs
+- Verifies agents, reviews verification queue, fraud monitoring
+- Sees all leads, all properties, all agents
 
 ---
 

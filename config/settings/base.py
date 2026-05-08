@@ -133,6 +133,13 @@ CELERY_TIMEZONE = 'Asia/Karachi'
 
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 
+CELERY_BEAT_SCHEDULE = {
+    'expire-deal-locks': {
+        'task':     'apps.escrow.tasks.expire_deal_locks',
+        'schedule': 1800,  # every 30 minutes
+    },
+}
+
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.redis.RedisCache',
@@ -166,3 +173,16 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 # Base URL for generating absolute links (PDF download, etc.)
 BASE_URL = env('BASE_URL', default='http://127.0.0.1:8000')
+
+# Safepay (primary online payment gateway)
+# Sign up at: https://getsafepay.com
+# Dashboard → Settings → API Keys
+SAFEPAY_MERCHANT_KEY  = env('SAFEPAY_MERCHANT_KEY',  default='')
+SAFEPAY_SECRET_KEY    = env('SAFEPAY_SECRET_KEY',    default='')
+SAFEPAY_ENVIRONMENT   = env('SAFEPAY_ENVIRONMENT',   default='sandbox')  # 'sandbox' | 'production'
+
+# bSecure (secondary online payment gateway)
+# Sign up at: https://bsecure.pk
+BSECURE_CLIENT_ID     = env('BSECURE_CLIENT_ID',     default='')
+BSECURE_CLIENT_SECRET = env('BSECURE_CLIENT_SECRET', default='')
+BSECURE_ENVIRONMENT   = env('BSECURE_ENVIRONMENT',   default='sandbox')  # 'sandbox' | 'production'

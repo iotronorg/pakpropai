@@ -12,9 +12,16 @@ class Payment(models.Model):
         REFUNDED  = 'refunded',  'Refunded'
 
     class Purpose(models.TextChoices):
-        ESCROW_TOKEN    = 'escrow_token',    'Escrow Token'
+        ESCROW_TOKEN     = 'escrow_token',     'Escrow Token'
         VERIFICATION_FEE = 'verification_fee', 'Verification Fee'
-        REPORT_FEE      = 'report_fee',      'Report Fee'
+        REPORT_FEE       = 'report_fee',       'Report Fee'
+
+    class Gateway(models.TextChoices):
+        SAFEPAY   = 'safepay',   'Safepay'
+        BSECURE   = 'bsecure',   'bSecure'
+        JAZZCASH  = 'jazzcash',  'JazzCash'
+        EASYPAISA = 'easypaisa', 'EasyPaisa'
+        MANUAL    = 'manual',    'Manual'
 
     id          = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user        = models.ForeignKey(
@@ -28,17 +35,25 @@ class Payment(models.Model):
                       null=True, blank=True,
                       related_name='payments'
                   )
-    amount_pkr  = models.BigIntegerField()
-    purpose     = models.CharField(max_length=30, choices=Purpose.choices)
-    status      = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
-    reference   = models.CharField(max_length=200, blank=True)  # Bank/payment gateway ref
-    metadata    = models.JSONField(default=dict, blank=True)
-    created_at  = models.DateTimeField(auto_now_add=True)
-    updated_at  = models.DateTimeField(auto_now=True)
+    amount_pkr    = models.BigIntegerField()
+    purpose       = models.CharField(max_length=30, choices=Purpose.choices)
+    gateway       = models.CharField(max_length=20, choices=Gateway.choices, default=Gateway.MANUAL)
+    status        = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    reference     = models.CharField(max_length=200, blank=True, help_text='Gateway transaction ID or bank ref')
+    checkout_token = models.CharField(max_length=500, blank=True, help_text='Gateway checkout session token')
+    checkout_url   = models.URLField(max_length=1000, blank=True, help_text='Redirect URL for online payment')
+    webhook_payload = models.JSONField(default=dict, blank=True, help_text='Raw webhook payload for audit')
+    metadata      = models.JSONField(default=dict, blank=True)
+    created_at    = models.DateTimeField(auto_now_add=True)
+    updated_at    = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'payments'
         ordering = ['-created_at']
+        indexes  = [
+            models.Index(fields=['status']),
+            models.Index(fields=['checkout_token']),
+        ]
 
     def __str__(self):
-        return f"PKR {self.amount_pkr:,} — {self.purpose} ({self.status})"
+        return f"PKR {self.amount_pkr:,} — {self.purpose} [{self.gateway}] ({self.status})"

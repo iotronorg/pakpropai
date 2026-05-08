@@ -25,6 +25,9 @@ urlpatterns = [
     path('api/v1/', include([
         path('auth/',         include('apps.users.urls')),
         path('leads/',        include('apps.leads.urls')),
+        path('agents/',       include('apps.agents.urls')),
+        path('deals/',        include('apps.escrow.urls')),
+        path('payments/',     include('apps.payments.urls')),
         path('whatsapp/',     include('apps.whatsapp.urls')),
         path('properties/',   include('apps.properties.urls')),
         path('verification/', include('apps.verification.urls')),

@@ -14,4 +14,14 @@ class LeadViewSet(viewsets.ModelViewSet):
     http_method_names  = ['get', 'patch', 'head', 'options']
 
     def get_queryset(self):
-        return Lead.objects.select_related('user').all()
+        qs = Lead.objects.select_related('user', 'assigned_agent')
+        role = self.request.user.role
+        if role == 'agent':
+            # Agents only see leads assigned to their agent profile
+            try:
+                agent = self.request.user.agent_profile
+                return qs.filter(assigned_agent=agent)
+            except Exception:
+                return qs.none()
+        # admin and developer see all leads
+        return qs.all()

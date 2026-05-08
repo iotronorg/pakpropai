@@ -1,6 +1,7 @@
 import uuid
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 
 
 class DocumentScan(models.Model):
@@ -96,3 +97,55 @@ class Verification(models.Model):
 
     def __str__(self):
         return f"Verification {self.status} — {self.property.title}"
+
+
+class FraudBlacklist(models.Model):
+    """
+    Persistent fraud blacklist.
+    On save/delete the token is synced to the Redis cache so FraudCheckService
+    fast-path checks stay consistent.
+    """
+    token      = models.CharField(max_length=200, unique=True,
+                     help_text='Keyword, phone, CNIC, society name, or any fraud signal')
+    reason     = models.TextField(blank=True, help_text='Why this token was blacklisted')
+    added_by   = models.ForeignKey(
+                     settings.AUTH_USER_MODEL,
+                     on_delete=models.SET_NULL,
+                     null=True, blank=True,
+                     related_name='blacklist_entries',
+                 )
+    expires_at = models.DateTimeField(null=True, blank=True,
+                     help_text='Auto-expiry date. Null = never expires.')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'fraud_blacklist'
+        ordering = ['-created_at']
+
+    def is_active(self) -> bool:
+        return self.expires_at is None or self.expires_at > timezone.now()
+
+    def sync_to_cache(self):
+        from django.core.cache import cache
+        if self.is_active():
+            ttl = None
+            if self.expires_at:
+                ttl = int((self.expires_at - timezone.now()).total_seconds())
+            cache.set(f'fraud:blacklist:{self.token.lower()}', True, ttl)
+        else:
+            cache.delete(f'fraud:blacklist:{self.token.lower()}')
+
+    def remove_from_cache(self):
+        from django.core.cache import cache
+        cache.delete(f'fraud:blacklist:{self.token.lower()}')
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self.sync_to_cache()
+
+    def delete(self, *args, **kwargs):
+        self.remove_from_cache()
+        super().delete(*args, **kwargs)
+
+    def __str__(self):
+        return f"Blacklist: {self.token}"
