@@ -3,6 +3,7 @@ from .views import (
     DealLockInitiateView,
     DealLockConfirmView,
     DealLockCancelView,
+    DealLockSellerConfirmView,
     DealLockListView,
     MyDealLocksView,
     DealLockDetailView,
@@ -14,5 +15,6 @@ urlpatterns = [
     path('lock/',                     DealLockInitiateView.as_view(), name='deal-initiate'),
     path('lock/<uuid:pk>/',           DealLockDetailView.as_view(),  name='deal-detail'),
     path('lock/<uuid:pk>/confirm/',   DealLockConfirmView.as_view(), name='deal-confirm'),
-    path('lock/<uuid:pk>/cancel/',    DealLockCancelView.as_view(),  name='deal-cancel'),
+    path('lock/<uuid:pk>/cancel/',         DealLockCancelView.as_view(),         name='deal-cancel'),
+    path('lock/<uuid:pk>/seller-confirm/', DealLockSellerConfirmView.as_view(),  name='deal-seller-confirm'),
 ]

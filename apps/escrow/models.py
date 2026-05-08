@@ -57,8 +57,9 @@ class EscrowDeal(models.Model):
     payment_gateway = models.CharField(max_length=20, choices=Gateway.choices, default=Gateway.MANUAL, blank=True)
     payment_ref     = models.CharField(max_length=200, blank=True, help_text='Gateway transaction ID or bank ref')
     initiated_via   = models.CharField(max_length=20, choices=Channel.choices, default=Channel.WHATSAPP)
-    buyer_confirmed  = models.BooleanField(default=False)
-    seller_confirmed = models.BooleanField(default=False)
+    buyer_confirmed          = models.BooleanField(default=False)
+    seller_confirmed         = models.BooleanField(default=False)
+    seller_confirmation_token = models.CharField(max_length=8, blank=True)
     lock_started_at = models.DateTimeField(null=True, blank=True, help_text='When admin confirmed payment')
     lock_expires_at = models.DateTimeField(null=True, blank=True, help_text='lock_started_at + 48h')
     admin_notes     = models.TextField(blank=True)
@@ -73,6 +74,13 @@ class EscrowDeal(models.Model):
             models.Index(fields=['status']),
             models.Index(fields=['property']),
             models.Index(fields=['buyer']),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['property'],
+                condition=models.Q(status__in=['initiated', 'locked']),
+                name='unique_active_deal_lock_per_property',
+            )
         ]
 
     def activate_lock(self):

@@ -3,7 +3,7 @@ import logging
 from django.conf import settings
 from django.db import connection
 from django.core.cache import cache
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -104,3 +104,64 @@ class HealthCheckView(APIView):
             },
             status=status_code,
         )
+
+
+class AuditLogView(APIView):
+    """
+    GET /api/v1/audit-log/
+    Returns paginated audit log entries. Admin-only.
+
+    Query params:
+      actor=<uuid>         — filter by actor user ID
+      action=<action>      — filter by action type
+      target_model=<name>  — filter by model (e.g. User, Lead)
+      target_id=<id>       — filter by target pk
+      limit=<n>            — page size (default 50, max 200)
+      offset=<n>           — offset for pagination
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role != 'admin':
+            return Response({'detail': 'Admin access required.'}, status=403)
+
+        from .models import AuditLog
+
+        qs = AuditLog.objects.select_related('actor').order_by('-created_at')
+
+        if actor := request.query_params.get('actor'):
+            qs = qs.filter(actor_id=actor)
+        if action := request.query_params.get('action'):
+            qs = qs.filter(action=action)
+        if model := request.query_params.get('target_model'):
+            qs = qs.filter(target_model__iexact=model)
+        if target_id := request.query_params.get('target_id'):
+            qs = qs.filter(target_id=target_id)
+
+        limit  = min(int(request.query_params.get('limit',  50)), 200)
+        offset = max(int(request.query_params.get('offset', 0)),  0)
+        total  = qs.count()
+        page   = qs[offset: offset + limit]
+
+        results = [
+            {
+                'id':           entry.id,
+                'actor_phone':  entry.actor.phone if entry.actor else None,
+                'action':       entry.action,
+                'target_model': entry.target_model,
+                'target_id':    entry.target_id,
+                'detail':       entry.detail,
+                'before':       entry.before,
+                'after':        entry.after,
+                'ip_address':   str(entry.ip_address) if entry.ip_address else None,
+                'created_at':   entry.created_at.isoformat(),
+            }
+            for entry in page
+        ]
+
+        return Response({
+            'count':   total,
+            'limit':   limit,
+            'offset':  offset,
+            'results': results,
+        })

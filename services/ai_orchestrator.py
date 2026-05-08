@@ -4,16 +4,40 @@ AIOrchestrator — handles non-conversational structured AI tasks.
 
 Conversational WhatsApp interactions go through apps.ai.agent.PakPropAgent.
 """
+import hashlib
+import json
+from django.core.cache import cache
 from apps.ai.client import GeminiClient
 from .prompt_library import render
+
+_AI_CACHE_TTL = 3600       # 1 hour — conversational / scoring
+_TAX_CACHE_TTL = 86400     # 24 hours — pure math, deterministic
+
+
+def _cache_key(namespace: str, **inputs) -> str:
+    raw = json.dumps(inputs, sort_keys=True, default=str)
+    digest = hashlib.sha256(raw.encode()).hexdigest()[:16]
+    return f"ai:{namespace}:{digest}"
+
+
+def _cached_call(cache_key: str, ttl: int, fn, *args, **kwargs):
+    result = cache.get(cache_key)
+    if result is not None:
+        return result
+    result = fn(*args, **kwargs)
+    cache.set(cache_key, result, ttl)
+    return result
 
 
 class AIOrchestrator:
 
     @classmethod
     def classify_intent(cls, message: str, user=None) -> dict:
+        key = _cache_key('intent', message=message)
         prompt = render('intent_classify', message=message)
-        return GeminiClient.generate_json(
+        return _cached_call(
+            key, _AI_CACHE_TTL,
+            GeminiClient.generate_json,
             prompt, user=user, interaction_type='intent_classify',
             max_output_tokens=256, temperature=0.1,
         )
@@ -49,12 +73,15 @@ class AIOrchestrator:
     @classmethod
     def tax_7e(cls, fmv: int, filer_status: str,
                properties_count: int = 1, user=None) -> dict:
+        key = _cache_key('tax7e', fmv=fmv, filer_status=filer_status, count=properties_count)
         prompt = render(
             'tax_7e_advisor',
             fmv=fmv, filer_status=filer_status,
             properties_count=properties_count,
         )
-        return GeminiClient.generate_json(
+        return _cached_call(
+            key, _TAX_CACHE_TTL,
+            GeminiClient.generate_json,
             prompt, user=user, interaction_type='tax_advisory',
             max_output_tokens=300,
         )
@@ -62,6 +89,8 @@ class AIOrchestrator:
     @classmethod
     def loan_eligibility(cls, monthly_income: int, loan_amount: int,
                          tenure_years: int, existing_emi: int = 0, user=None) -> dict:
+        key = _cache_key('loan', income=monthly_income, amount=loan_amount,
+                         tenure=tenure_years, emi=existing_emi)
         prompt = render(
             'loan_eligibility',
             monthly_income=monthly_income,
@@ -69,15 +98,20 @@ class AIOrchestrator:
             tenure_years=tenure_years,
             existing_emi=existing_emi,
         )
-        return GeminiClient.generate_json(
+        return _cached_call(
+            key, _TAX_CACHE_TTL,
+            GeminiClient.generate_json,
             prompt, user=user, interaction_type='loan_check',
             max_output_tokens=400,
         )
 
     @classmethod
     def fraud_check(cls, query: str, user=None) -> dict:
+        key = _cache_key('fraud', query=query)
         prompt = render('fraud_check', query=query)
-        return GeminiClient.generate_json(
+        return _cached_call(
+            key, _AI_CACHE_TTL,
+            GeminiClient.generate_json,
             prompt, user=user, interaction_type='fraud_check',
             max_output_tokens=400,
         )

@@ -1,10 +1,45 @@
 import logging
+from datetime import timedelta
+from django.conf import settings
 from django.db.models import Q
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.exceptions import TokenError
+from apps.core.throttles import OtpSendThrottle
+
+_ACCESS_LIFETIME  = int(settings.SIMPLE_JWT.get('ACCESS_TOKEN_LIFETIME',  timedelta(minutes=15)).total_seconds())
+_REFRESH_LIFETIME = int(settings.SIMPLE_JWT.get('REFRESH_TOKEN_LIFETIME', timedelta(days=7)).total_seconds())
+_COOKIE_SAMESITE  = 'Lax'
+_COOKIE_SECURE    = not settings.DEBUG  # True in production
+
+
+def _set_auth_cookies(response, access_token: str, refresh_token: str):
+    """Attach httpOnly auth cookies to a DRF Response."""
+    response.set_cookie(
+        'access_token', access_token,
+        max_age=_ACCESS_LIFETIME,
+        httponly=True,
+        samesite=_COOKIE_SAMESITE,
+        secure=_COOKIE_SECURE,
+        path='/',
+    )
+    response.set_cookie(
+        'refresh_token', refresh_token,
+        max_age=_REFRESH_LIFETIME,
+        httponly=True,
+        samesite=_COOKIE_SAMESITE,
+        secure=_COOKIE_SECURE,
+        path='/',
+    )
+
+
+def _clear_auth_cookies(response):
+    """Delete auth cookies from the client."""
+    response.delete_cookie('access_token',  path='/', samesite=_COOKIE_SAMESITE)
+    response.delete_cookie('refresh_token', path='/', samesite=_COOKIE_SAMESITE)
 
 from .models import User
 from .serializers import SendOTPSerializer, VerifyOTPSerializer, UserSerializer, UserListSerializer, UserCreateSerializer
@@ -15,6 +50,7 @@ logger = logging.getLogger(__name__)
 
 class SendOTPView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [OtpSendThrottle]
 
     def post(self, request):
         serializer = SendOTPSerializer(data=request.data)
@@ -61,11 +97,9 @@ class VerifyOTPView(APIView):
             )
 
         refresh = RefreshToken.for_user(user)
-        return Response({
-            'access':  str(refresh.access_token),
-            'refresh': str(refresh),
-            'user':    UserSerializer(user).data,
-        })
+        response = Response({'user': UserSerializer(user).data})
+        _set_auth_cookies(response, str(refresh.access_token), str(refresh))
+        return response
 
 
 class MeView(APIView):
@@ -79,6 +113,50 @@ class MeView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+
+class CookieTokenRefreshView(APIView):
+    """POST /auth/token/refresh/ — issue a new access token from the httpOnly refresh cookie."""
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        raw_refresh = request.COOKIES.get('refresh_token')
+        if not raw_refresh:
+            return Response({'error': 'No refresh token cookie.'}, status=status.HTTP_401_UNAUTHORIZED)
+        try:
+            refresh = RefreshToken(raw_refresh)
+            new_access = str(refresh.access_token)
+        except TokenError as exc:
+            response = Response({'error': str(exc)}, status=status.HTTP_401_UNAUTHORIZED)
+            _clear_auth_cookies(response)
+            return response
+
+        response = Response({'detail': 'Token refreshed.'})
+        response.set_cookie(
+            'access_token', new_access,
+            max_age=_ACCESS_LIFETIME,
+            httponly=True,
+            samesite=_COOKIE_SAMESITE,
+            secure=_COOKIE_SECURE,
+            path='/',
+        )
+        return response
+
+
+class LogoutView(APIView):
+    """POST /auth/logout/ — blacklist the refresh token and clear auth cookies."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        raw_refresh = request.COOKIES.get('refresh_token') or request.data.get('refresh', '')
+        response = Response({'detail': 'Logged out.'}, status=status.HTTP_200_OK)
+        if raw_refresh:
+            try:
+                RefreshToken(raw_refresh).blacklist()
+            except TokenError:
+                pass  # already expired — still clear cookies
+        _clear_auth_cookies(response)
+        return response
 
 
 class UserListView(APIView):

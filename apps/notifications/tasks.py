@@ -34,6 +34,12 @@ def send_whatsapp_async(self, notification_id: str):
         n.wa_message_id = resp.get('messages', [{}])[0].get('id', '')
         n.sent_at       = timezone.now()
         n.save()
+    except ValueError as exc:
+        # 24h window expired — retrying won't help; mark as skipped
+        n.status = Notification.Status.FAILED
+        n.error  = str(exc)[:1000]
+        n.save()
+        logger.warning(f"WA 24h window expired for notification {notification_id}: {exc}")
     except Exception as exc:
         n.status = Notification.Status.FAILED
         n.error  = str(exc)[:1000]

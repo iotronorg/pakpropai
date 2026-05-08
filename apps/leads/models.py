@@ -5,6 +5,12 @@ from django.conf import settings
 
 class Lead(models.Model):
 
+    class Source(models.TextChoices):
+        WHATSAPP = 'whatsapp', 'WhatsApp'
+        REFERRAL = 'referral', 'Referral'
+        WEB      = 'web',      'Web Portal'
+        MANUAL   = 'manual',   'Manual Entry'
+
     class Intent(models.TextChoices):
         BUY    = 'buy',    'Buying'
         SELL   = 'sell',   'Selling'
@@ -38,9 +44,11 @@ class Lead(models.Model):
     city_interest  = models.CharField(max_length=100, blank=True)
     budget_min     = models.BigIntegerField(null=True, blank=True)
     budget_max     = models.BigIntegerField(null=True, blank=True)
-    status         = models.CharField(max_length=20, choices=Status.choices, default=Status.NEW)
-    notes          = models.TextField(blank=True)
-    last_scored_at = models.DateTimeField(auto_now=True)
+    source              = models.CharField(max_length=20, choices=Source.choices, default=Source.WHATSAPP)
+    status              = models.CharField(max_length=20, choices=Status.choices, default=Status.NEW)
+    notes               = models.TextField(blank=True)
+    last_contacted_at   = models.DateTimeField(null=True, blank=True)
+    last_scored_at      = models.DateTimeField(auto_now=True)
     created_at     = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -49,3 +57,86 @@ class Lead(models.Model):
 
     def __str__(self):
         return f"Lead: {self.user.phone} — score {self.score}"
+
+
+class LeadActivity(models.Model):
+    """Chronological timeline of all events on a lead."""
+
+    class ActionType(models.TextChoices):
+        CREATED    = 'created',    'Lead Created'
+        ASSIGNED   = 'assigned',   'Agent Assigned'
+        STATUS     = 'status',     'Status Changed'
+        NOTE       = 'note',       'Note Added'
+        CONTACTED  = 'contacted',  'Client Contacted'
+        SCORED     = 'scored',     'Score Updated'
+        DEAL_LOCK  = 'deal_lock',  'Deal Lock Initiated'
+
+    lead       = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name='activities')
+    actor      = models.ForeignKey(
+                     settings.AUTH_USER_MODEL,
+                     on_delete=models.SET_NULL,
+                     null=True, blank=True,
+                     related_name='lead_activities',
+                 )
+    action     = models.CharField(max_length=20, choices=ActionType.choices)
+    notes      = models.TextField(blank=True)
+    meta       = models.JSONField(default=dict, blank=True, help_text='e.g. {"old_status": "new", "new_status": "warm"}')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'lead_activities'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.action} on Lead {self.lead_id}"
+
+
+class Appointment(models.Model):
+    """Property visit or meeting scheduled between a lead and an agent."""
+
+    class Status(models.TextChoices):
+        SCHEDULED  = 'scheduled',  'Scheduled'
+        CONFIRMED  = 'confirmed',  'Confirmed'
+        COMPLETED  = 'completed',  'Completed'
+        CANCELLED  = 'cancelled',  'Cancelled'
+        NO_SHOW    = 'no_show',    'No Show'
+        RESCHEDULED = 'rescheduled', 'Rescheduled'
+
+    id           = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    lead         = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name='appointments')
+    property     = models.ForeignKey(
+                       'properties.Property',
+                       on_delete=models.SET_NULL,
+                       null=True, blank=True,
+                       related_name='appointments',
+                   )
+    agent        = models.ForeignKey(
+                       'agents.Agent',
+                       on_delete=models.SET_NULL,
+                       null=True, blank=True,
+                       related_name='appointments',
+                   )
+    scheduled_at      = models.DateTimeField()
+    duration_minutes  = models.PositiveSmallIntegerField(default=60)
+    status            = models.CharField(max_length=20, choices=Status.choices, default=Status.SCHEDULED)
+    notes             = models.TextField(blank=True)
+    reminder_sent_at  = models.DateTimeField(null=True, blank=True)
+    created_by        = models.ForeignKey(
+                            settings.AUTH_USER_MODEL,
+                            on_delete=models.SET_NULL,
+                            null=True, blank=True,
+                            related_name='created_appointments',
+                        )
+    created_at   = models.DateTimeField(auto_now_add=True)
+    updated_at   = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'appointments'
+        ordering = ['scheduled_at']
+        indexes  = [
+            models.Index(fields=['scheduled_at']),
+            models.Index(fields=['status']),
+        ]
+
+    def __str__(self):
+        return f"Appointment [{self.status}] — {self.lead} @ {self.scheduled_at:%Y-%m-%d %H:%M}"

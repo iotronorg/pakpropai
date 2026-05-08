@@ -1,4 +1,5 @@
 import logging
+import secrets
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -40,14 +41,18 @@ class DealLockInitiateView(APIView):
         amount  = ser.validated_data['token_amount']
         gateway = ser.validated_data['payment_gateway']
 
+        seller_token = secrets.token_hex(4).upper()  # 8-char hex token
         deal = EscrowDeal.objects.create(
-            property        = prop,
-            buyer           = request.user,
-            token_amount    = amount,
-            payment_gateway = gateway,
-            initiated_via   = EscrowDeal.Channel.DASHBOARD,
-            status          = EscrowDeal.Status.INITIATED,
+            property                  = prop,
+            buyer                     = request.user,
+            token_amount              = amount,
+            payment_gateway           = gateway,
+            initiated_via             = EscrowDeal.Channel.DASHBOARD,
+            status                    = EscrowDeal.Status.INITIATED,
+            seller_confirmation_token = seller_token,
         )
+
+        _notify_seller_lock_initiated(deal, seller_token)
 
         instructions = _PAYMENT_INSTRUCTIONS.get(gateway, _PAYMENT_INSTRUCTIONS['manual'])
         payment_message = instructions.format(amount=amount)
@@ -155,6 +160,41 @@ class DealLockDetailView(generics.RetrieveAPIView):
         return EscrowDeal.objects.filter(buyer=user).select_related('property', 'buyer', 'seller', 'agent')
 
 
+class DealLockSellerConfirmView(APIView):
+    """POST /deals/lock/<id>/seller-confirm/ — seller confirms awareness of deal lock."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        deal = get_object_or_404(EscrowDeal, pk=pk)
+
+        # Allow: the seller themselves, the assigned agent, or admin
+        is_admin  = request.user.role == 'admin'
+        is_seller = deal.property.owner_id == request.user.pk
+        is_agent  = (deal.agent and hasattr(request.user, 'agent_profile')
+                     and deal.agent == request.user.agent_profile)
+
+        if not (is_admin or is_seller or is_agent):
+            return Response({'detail': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
+
+        if deal.seller_confirmed:
+            return Response({'detail': 'Seller has already confirmed.'})
+
+        if deal.status not in (EscrowDeal.Status.INITIATED, EscrowDeal.Status.LOCKED):
+            return Response(
+                {'detail': f"Cannot confirm a deal in '{deal.status}' status."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        token = request.data.get('token', '').strip().upper()
+        if token and not is_admin:
+            if token != deal.seller_confirmation_token:
+                return Response({'detail': 'Invalid confirmation token.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        deal.seller_confirmed = True
+        deal.save(update_fields=['seller_confirmed', 'updated_at'])
+        return Response({'detail': 'Seller confirmation recorded.', 'id': str(deal.id)})
+
+
 def _notify_buyer_lock_active(deal: EscrowDeal):
     try:
         from apps.whatsapp.client import WhatsAppClient
@@ -172,3 +212,25 @@ def _notify_buyer_lock_active(deal: EscrowDeal):
         WhatsAppClient.send_text(phone, msg)
     except Exception as exc:
         logger.warning(f"Deal lock WhatsApp notify failed: {exc}")
+
+
+def _notify_seller_lock_initiated(deal: EscrowDeal, token: str):
+    """Notify the property owner that a buyer has initiated a deal lock."""
+    try:
+        seller_user = deal.property.owner
+        if not seller_user or not seller_user.phone:
+            return
+        from apps.whatsapp.client import WhatsAppClient
+        phone = seller_user.phone.lstrip('+')
+        msg = (
+            f"🔒 *Deal Lock Request*\n\n"
+            f"A buyer has requested a 48-hour deal lock on your property:\n"
+            f"🏠 *{deal.property.title}*\n"
+            f"💰 *Token Amount:* PKR {deal.token_amount:,}\n\n"
+            f"Your confirmation code: *{token}*\n\n"
+            "Please contact your agent or reply with your code to confirm. "
+            "If you did not authorize this, contact support immediately."
+        )
+        WhatsAppClient.send_text(phone, msg)
+    except Exception as exc:
+        logger.warning(f"Seller deal lock notify failed: {exc}")

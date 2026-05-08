@@ -56,6 +56,7 @@ class Property(models.Model):
                          related_name='assigned_properties',
                          help_text='Agent responsible for selling this property'
                      )
+    installment_available = models.BooleanField(default=False)
     ai_score      = models.SmallIntegerField(null=True, blank=True)
     risk_level    = models.CharField(max_length=20, choices=RiskLevel.choices, null=True, blank=True)
     raw_docs      = models.JSONField(default=dict, blank=True)   # Cloudflare R2 keys

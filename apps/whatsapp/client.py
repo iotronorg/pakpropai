@@ -1,9 +1,33 @@
 import logging
 import requests
+from datetime import timedelta
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
 WA_API_URL = "https://graph.facebook.com/v20.0"
+_24H = timedelta(hours=24)
+
+
+def is_within_24h_window(phone: str) -> bool:
+    """
+    Returns True if the user has sent us an inbound message in the last 24 hours.
+    WhatsApp only allows free-form outbound messages within this window.
+    """
+    from .models import WhatsAppSession
+    normalized = phone.lstrip('+')
+    try:
+        session = WhatsAppSession.objects.filter(phone=normalized).order_by('-last_message_at').first()
+        if not session:
+            return False
+        # Only count the window if there's been a recent INBOUND message
+        cutoff = timezone.now() - _24H
+        return session.messages.filter(
+            direction='inbound',
+            created_at__gte=cutoff,
+        ).exists()
+    except Exception:
+        return False
 
 
 def _wa_token() -> str:
@@ -30,8 +54,17 @@ class WhatsAppClient:
         return f"{WA_API_URL}/{_wa_phone_id()}/messages"
 
     @classmethod
-    def send_text(cls, phone: str, body: str) -> dict:
-        # Meta expects the phone WITHOUT the leading "+"
+    def send_text(cls, phone: str, body: str, skip_window_check: bool = False) -> dict:
+        """
+        Send a free-form text message.
+        Raises ValueError if the 24-hour customer-service window has closed
+        (unless skip_window_check=True, which is only for template-triggered flows).
+        """
+        if not skip_window_check and not is_within_24h_window(phone):
+            raise ValueError(
+                f"Cannot send free-form message to {phone}: outside 24-hour WhatsApp window. "
+                "Use send_template() with a pre-approved template instead."
+            )
         to = phone.lstrip('+')
         payload = {
             'messaging_product': 'whatsapp',

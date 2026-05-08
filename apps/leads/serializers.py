@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Lead
+from .models import Lead, Appointment
 
 
 class LeadSerializer(serializers.ModelSerializer):
@@ -27,3 +27,20 @@ class LeadSerializer(serializers.ModelSerializer):
             'location_interest', 'budget_min', 'budget_max',
             'assigned_agent_id', 'assigned_agent_name', 'created_at',
         )
+
+
+class AppointmentSerializer(serializers.ModelSerializer):
+    lead_phone      = serializers.CharField(source='lead.user.phone', read_only=True)
+    agent_name      = serializers.CharField(source='agent.name', read_only=True, allow_null=True)
+    property_title  = serializers.CharField(source='property.title', read_only=True, allow_null=True)
+
+    class Meta:
+        model  = Appointment
+        fields = (
+            'id', 'lead', 'lead_phone', 'property', 'property_title',
+            'agent', 'agent_name', 'scheduled_at', 'duration_minutes',
+            'status', 'notes', 'reminder_sent_at', 'created_by',
+            'created_at', 'updated_at',
+        )
+        read_only_fields = ('id', 'lead_phone', 'agent_name', 'property_title',
+                            'reminder_sent_at', 'created_by', 'created_at', 'updated_at')

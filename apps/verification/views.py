@@ -9,6 +9,7 @@ from rest_framework.views import APIView
 from .models import Verification, DocumentScan, FraudBlacklist
 from .serializers import VerificationSerializer, DocumentScanSerializer
 from .services import FraudCheckService, VerificationSignalService
+from apps.core.throttles import FraudCheckThrottle
 
 
 class IsAdmin(IsAuthenticated):
@@ -20,6 +21,7 @@ class IsAdmin(IsAuthenticated):
 
 class FraudCheckView(APIView):
     permission_classes = [IsAuthenticated]
+    throttle_classes = [FraudCheckThrottle]
 
     def post(self, request):
         query = (request.data.get('query') or '').strip()

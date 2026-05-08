@@ -23,8 +23,9 @@ THIRD_PARTY_APPS = [
     'corsheaders',
     'rest_framework',
     'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
     'django_celery_results',
-     'django_celery_beat',
+    'django_celery_beat',
 ]
 
 LOCAL_APPS = [
@@ -102,9 +103,15 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTH_USER_MODEL = 'users.User'
 
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGINS = [
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+]
+
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'apps.users.authentication.JWTCookieOrHeaderAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
@@ -114,6 +121,17 @@ REST_FRAMEWORK = {
     ),
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
+    'DEFAULT_THROTTLE_CLASSES': (
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ),
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '30/min',
+        'user': '120/min',
+        'otp_send': '3/hour',
+        'ai_query': '10/min',
+        'fraud_check': '20/min',
+    },
 }
 
 from datetime import timedelta
@@ -122,6 +140,8 @@ SIMPLE_JWT = {
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
     'ALGORITHM': 'HS256',
     'AUTH_HEADER_TYPES': ('Bearer',),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
 }
 
 # Redis / Celery
@@ -139,6 +159,22 @@ CELERY_BEAT_SCHEDULE = {
     'expire-deal-locks': {
         'task':     'apps.escrow.tasks.expire_deal_locks',
         'schedule': 1800,  # every 30 minutes
+    },
+    'nightly-property-rescore': {
+        'task':     'apps.properties.tasks.rescore_all_properties_task',
+        'schedule': 86400,  # every 24 hours
+    },
+    'daily-stale-lead-detection': {
+        'task':     'apps.leads.tasks.mark_stale_leads',
+        'schedule': 86400,  # every 24 hours
+    },
+    'daily-stale-lead-reminders': {
+        'task':     'apps.leads.tasks.send_stale_lead_reminders',
+        'schedule': 86400,  # every 24 hours
+    },
+    'daily-agent-performance-snapshot': {
+        'task':     'apps.agents.tasks.refresh_agent_performance_snapshots',
+        'schedule': 86400,  # every 24 hours
     },
 }
 

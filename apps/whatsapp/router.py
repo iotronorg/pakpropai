@@ -6,8 +6,51 @@ The FSM/keyword logic is replaced entirely by the AI agent — it handles
 all conversation flows, tool use, and context natively.
 """
 import logging
+import re
+import unicodedata
 
 from django.utils import timezone
+
+# ── Prompt injection sanitization ─────────────────────────────────────────────
+
+_INJECTION_PATTERNS = re.compile(
+    r'(ignore\s+(all\s+)?(previous|prior|above)\s+instructions?'
+    r'|you\s+are\s+now\s+'
+    r'|new\s+instructions?:'
+    r'|system\s*:'
+    r'|assistant\s*:'
+    r'|<\s*/?(?:system|instructions?|prompt)\s*>'
+    r'|act\s+as\s+(if\s+you\s+are|a\s+)'
+    r'|pretend\s+(you\s+are|to\s+be)'
+    r'|disregard\s+(all|your)\s+'
+    r'|your\s+(true|real|actual)\s+(purpose|role|instructions?)'
+    r'|forget\s+(all\s+)?previous\s+'
+    r'|do\s+anything\s+now'
+    r'|dan\s+mode)',
+    re.IGNORECASE,
+)
+
+_MAX_TEXT_LEN = 2000
+
+
+def _sanitize(text: str) -> str:
+    """
+    Strip control chars, null bytes, zero-width unicode, and obvious injection phrases.
+    Returns clean text or raises ValueError if the message is a clear injection attempt.
+    """
+    # Remove null bytes and control characters (keep newlines and tabs)
+    text = ''.join(
+        ch for ch in text
+        if ch in ('\n', '\t') or (not unicodedata.category(ch).startswith('C'))
+    )
+    # Collapse excessive whitespace runs
+    text = re.sub(r'[ \t]{4,}', '   ', text)
+    # Truncate
+    text = text[:_MAX_TEXT_LEN]
+    # Detect injection attempts
+    if _INJECTION_PATTERNS.search(text):
+        raise ValueError("Prompt injection attempt detected.")
+    return text.strip()
 
 from apps.users.models import User
 from .client import WhatsAppClient
@@ -115,7 +158,17 @@ class MessageRouter:
             display_body = text
 
         else:
-            text = message_data.get('text', {}).get('body', '').strip()
+            raw_text = message_data.get('text', {}).get('body', '').strip()
+            try:
+                text = _sanitize(raw_text)
+            except ValueError:
+                logger.warning(f"Injection attempt from {phone}: {raw_text[:100]!r}")
+                cls._send_and_log(
+                    phone,
+                    "I can't process that message. Please ask about properties, verification, or tax advice.",
+                    session_db,
+                )
+                return
             display_body = text
 
         if not text:
@@ -129,6 +182,15 @@ class MessageRouter:
             from apps.ai.agent import get_agent
             get_agent().clear_history(phone)
             cls._send_and_log(phone, cls._greeting(), session_db)
+            return
+
+        # ── Per-user AI rate limit (10 requests/min/phone) ────────────────
+        if not cls._check_rate_limit(phone):
+            cls._send_and_log(
+                phone,
+                "You're sending messages too fast. Please wait a moment and try again.",
+                session_db,
+            )
             return
 
         # ── Route through AI agent ─────────────────────────────────────────
@@ -257,9 +319,21 @@ class MessageRouter:
             pass
 
     @classmethod
+    def _check_rate_limit(cls, phone: str, limit: int = 10, window: int = 60) -> bool:
+        """Returns False if the phone has exceeded limit messages in the last window seconds."""
+        from django.core.cache import cache
+        key = f"wa:rate:{phone}"
+        count = cache.get(key, 0)
+        if count >= limit:
+            return False
+        # Increment atomically; set TTL only on first request
+        cache.set(key, count + 1, timeout=window if count == 0 else None)
+        return True
+
+    @classmethod
     def _send_and_log(cls, phone: str, body: str, session_db):
         try:
-            resp  = WhatsAppClient.send_text(phone, body)
+            resp  = WhatsAppClient.send_text(phone, body, skip_window_check=True)
             wa_id = resp.get('messages', [{}])[0].get('id', '')
             WhatsAppMessage.objects.create(
                 session       = session_db,

@@ -608,14 +608,32 @@ def connect_to_agent(
         }
         preferred_specs = spec_map.get(intent.lower(), [])
 
+        # Load-balanced selection: featured first, then fewest recent leads (last 7 days),
+        # then highest rating. This distributes leads evenly within the same tier.
+        def _pick_agent(qs):
+            from django.utils import timezone as _tz
+            from datetime import timedelta
+            from django.db.models import Count, Q as _Q
+            week_ago = _tz.now() - timedelta(days=7)
+            return (
+                qs.annotate(
+                    recent_leads=Count(
+                        'assigned_leads',
+                        filter=_Q(assigned_leads__created_at__gte=week_ago),
+                    )
+                )
+                .order_by('-is_featured', 'recent_leads', '-rating')
+                .first()
+            )
+
         spec_agent = None
         for spec in preferred_specs:
             spec_qs = agents.filter(specializations__icontains=spec)
             if spec_qs.exists():
-                spec_agent = spec_qs.order_by('-is_featured', '-rating').first()
+                spec_agent = _pick_agent(spec_qs)
                 break
 
-        agent = spec_agent or agents.order_by('-is_featured', '-rating').first()
+        agent = spec_agent or _pick_agent(agents)
 
         # No agents available for the requested city (or at all)
         if not agent:

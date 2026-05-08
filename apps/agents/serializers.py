@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from .models import Agent
+from apps.core.validators import validate_photo
 
 
 class AgentSerializer(serializers.ModelSerializer):
@@ -19,6 +20,7 @@ class AgentSerializer(serializers.ModelSerializer):
             'total_leads', 'total_listings', 'closed_deals', 'rating',
             'user_phone', 'user_email',
             'parent_organization', 'parent_organization_name',
+            'profile_photo',
             'joined_at', 'updated_at',
         )
         read_only_fields = (
@@ -26,3 +28,8 @@ class AgentSerializer(serializers.ModelSerializer):
             'closed_deals', 'rating', 'user_phone', 'user_email',
             'parent_organization_name', 'joined_at', 'updated_at',
         )
+
+    def validate_profile_photo(self, value):
+        if value:
+            validate_photo(value)
+        return value
