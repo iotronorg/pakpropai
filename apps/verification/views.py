@@ -137,6 +137,28 @@ class DocumentScanListView(APIView):
         return Response({'count': qs.count(), 'results': serializer.data})
 
 
+class DocumentScanDetailView(APIView):
+    """GET /verification/documents/<id>/ — single document scan detail."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        role = request.user.role
+        if role not in ('admin', 'agent', 'developer'):
+            return Response({'error': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            scan = DocumentScan.objects.select_related('user', 'verification').get(pk=pk)
+        except DocumentScan.DoesNotExist:
+            return Response({'error': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        if role == 'agent':
+            from apps.properties.models import Property
+            agent_prop_ids = Property.objects.filter(owner=request.user).values_list('id', flat=True)
+            if not DocumentScan.objects.filter(
+                pk=pk, verification__property_id__in=agent_prop_ids
+            ).exists():
+                return Response({'error': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
+        return Response(DocumentScanSerializer(scan).data)
+
+
 class LinkDocumentToVerificationView(APIView):
     """Link a DocumentScan to a Verification and recompute signal score."""
     permission_classes = [IsAdmin]

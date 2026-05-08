@@ -4,6 +4,7 @@ from .views import (
     VerificationQueueView,
     VerificationReviewView,
     DocumentScanListView,
+    DocumentScanDetailView,
     LinkDocumentToVerificationView,
     FraudStatsView,
     FraudAlertsView,
@@ -16,7 +17,8 @@ urlpatterns = [
     path('fraud-check/',                                          FraudCheckView.as_view(),              name='fraud-check'),
     path('queue/',                                                VerificationQueueView.as_view(),        name='verification-queue'),
     path('queue/<uuid:pk>/',                                      VerificationReviewView.as_view(),       name='verification-review'),
-    path('documents/',                                            DocumentScanListView.as_view(),         name='document-scan-list'),
+    path('documents/',                                            DocumentScanListView.as_view(),           name='document-scan-list'),
+    path('documents/<int:pk>/',                                   DocumentScanDetailView.as_view(),          name='document-scan-detail'),
     path('documents/<int:scan_id>/link/<uuid:verification_id>/',  LinkDocumentToVerificationView.as_view(), name='link-document'),
     # Fraud monitoring
     path('fraud/stats/',                   FraudStatsView.as_view(),           name='fraud-stats'),
