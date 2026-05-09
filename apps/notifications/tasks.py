@@ -1,8 +1,36 @@
 import logging
+from datetime import timedelta
+
 from celery import shared_task
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
+
+
+@shared_task
+def retry_failed_notifications():
+    """
+    Runs every 30 minutes. Re-queues FAILED notifications from the last 48h,
+    excluding ones that failed due to the WhatsApp 24h messaging window
+    (those won't succeed on retry — the client must message first).
+    """
+    from .models import Notification
+
+    cutoff = timezone.now() - timedelta(hours=48)
+    qs = Notification.objects.filter(
+        status=Notification.Status.FAILED,
+        created_at__gte=cutoff,
+    ).exclude(error__icontains='24')
+
+    count = 0
+    for n in qs:
+        n.status = Notification.Status.PENDING
+        n.save(update_fields=['status'])
+        send_whatsapp_async.delay(str(n.id))
+        count += 1
+
+    logger.info(f"retry_failed_notifications: re-queued {count} notification(s)")
+    return count
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=15)

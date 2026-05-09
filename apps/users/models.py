@@ -1,7 +1,13 @@
 import uuid
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
+from django.core.validators import RegexValidator
 from django.db import models
 from django.utils import timezone
+
+_cnic_validator = RegexValidator(
+    regex=r'^\d{5}-\d{7}-\d$',
+    message='CNIC must be in the format XXXXX-XXXXXXX-X',
+)
 
 
 class UserManager(BaseUserManager):
@@ -40,7 +46,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     role      = models.CharField(max_length=20, choices=Role.choices, default=Role.USER)
     is_filer  = models.BooleanField(default=False)
     ntn       = models.CharField(max_length=20, blank=True, null=True)
-    cnic      = models.CharField(max_length=15, blank=True, null=True)
+    cnic      = models.CharField(max_length=15, blank=True, null=True, validators=[_cnic_validator])
     is_active = models.BooleanField(default=True)
     is_staff  = models.BooleanField(default=False)
     last_active = models.DateTimeField(null=True, blank=True)

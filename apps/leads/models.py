@@ -1,4 +1,5 @@
 import uuid
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.conf import settings
 
@@ -54,6 +55,11 @@ class Lead(models.Model):
     class Meta:
         db_table = 'leads'
         ordering = ['-score', '-created_at']
+
+    def clean(self):
+        if self.budget_min is not None and self.budget_max is not None:
+            if self.budget_min > self.budget_max:
+                raise ValidationError({'budget_min': 'Minimum budget cannot exceed maximum budget.'})
 
     def __str__(self):
         return f"Lead: {self.user.phone} — score {self.score}"

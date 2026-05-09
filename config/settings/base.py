@@ -55,6 +55,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'apps.core.middleware.LastActiveMiddleware',
     'apps.core.middleware.TenantIsolationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -181,6 +182,10 @@ CELERY_BEAT_SCHEDULE = {
     'appointment-reminders': {
         'task':     'apps.leads.tasks.send_appointment_reminders',
         'schedule': 900,    # every 15 minutes
+    },
+    'retry-failed-notifications': {
+        'task':     'apps.notifications.tasks.retry_failed_notifications',
+        'schedule': 1800,   # every 30 minutes
     },
 }
 

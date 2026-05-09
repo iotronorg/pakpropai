@@ -1,6 +1,41 @@
 import logging
 
+from django.core.cache import cache
+from django.utils import timezone
+
 logger = logging.getLogger(__name__)
+
+_LAST_ACTIVE_TTL = 300  # seconds — throttle DB writes to once per 5 min per user
+
+
+class LastActiveMiddleware:
+    """
+    Updates User.last_active on each authenticated API request, throttled to once
+    every 5 minutes via Redis to avoid a DB write on every single request.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+        self._touch(request)
+        return response
+
+    @staticmethod
+    def _touch(request):
+        user = getattr(request, 'user', None)
+        if user is None or not user.is_authenticated:
+            return
+        key = f'last_active:{user.pk}'
+        if cache.get(key):
+            return
+        try:
+            user.last_active = timezone.now()
+            user.save(update_fields=['last_active'])
+            cache.set(key, 1, _LAST_ACTIVE_TTL)
+        except Exception:
+            pass  # never block the response
 
 
 class TenantIsolationMiddleware:
