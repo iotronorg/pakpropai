@@ -40,3 +40,5 @@ django-celery-beat==2.9.0
 beautifulsoup4==4.12.3
 lxml==5.4.0
 reportlab>=4.0.0
+boto3>=1.34.0
+django-storages[s3]>=1.14.0

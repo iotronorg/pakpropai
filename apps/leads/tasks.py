@@ -3,6 +3,8 @@ from datetime import timedelta
 from celery import shared_task
 from django.utils import timezone
 
+REMINDER_WINDOW_MINUTES = 60   # send reminder this many minutes before appointment
+
 logger = logging.getLogger(__name__)
 
 STALE_DAYS = 7   # leads with no contact for this many days are marked cold
@@ -92,4 +94,59 @@ def send_stale_lead_reminders():
             logger.warning(f"stale_lead_reminder failed for agent {agent.id}: {exc}")
 
     logger.info(f"send_stale_lead_reminders: notified {sent} agents")
+    return sent
+
+
+@shared_task
+def send_appointment_reminders():
+    """
+    Runs every 15 minutes. Sends a WhatsApp reminder to clients whose appointment
+    starts within the next hour and haven't been reminded yet.
+    """
+    from .models import Appointment
+
+    now = timezone.now()
+    window_end = now + timedelta(minutes=REMINDER_WINDOW_MINUTES)
+
+    due = Appointment.objects.filter(
+        scheduled_at__gt=now,
+        scheduled_at__lte=window_end,
+        reminder_sent_at__isnull=True,
+        status__in=(Appointment.Status.SCHEDULED, Appointment.Status.CONFIRMED),
+    ).select_related('lead__user', 'property', 'agent__user')
+
+    sent = 0
+    for appt in due:
+        try:
+            from apps.whatsapp.client import WhatsAppClient
+
+            client = appt.lead.user
+            if not client or not client.phone:
+                continue
+
+            time_str = appt.scheduled_at.strftime('%I:%M %p')
+            date_str = appt.scheduled_at.strftime('%A, %d %B %Y')
+            prop_title = appt.property.title if appt.property else 'the property'
+            agent_name = appt.agent.display_name if appt.agent else 'your agent'
+
+            msg = (
+                f"🏠 *Visit Reminder*\n\n"
+                f"You have a property visit scheduled:\n\n"
+                f"📍 *{prop_title}*\n"
+                f"📅 {date_str}\n"
+                f"🕐 {time_str}\n"
+                f"👤 Agent: {agent_name}\n\n"
+                "Reply *CONFIRM* to confirm or *CANCEL* to cancel your visit."
+            )
+
+            WhatsAppClient.send_text(client.phone.lstrip('+'), msg)
+
+            appt.reminder_sent_at = now
+            appt.save(update_fields=['reminder_sent_at'])
+            sent += 1
+
+        except Exception as exc:
+            logger.warning(f"Appointment reminder failed for appt {appt.pk}: {exc}")
+
+    logger.info(f"send_appointment_reminders: sent {sent} reminder(s)")
     return sent

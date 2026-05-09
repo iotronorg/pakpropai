@@ -197,8 +197,6 @@ class DealLockSellerConfirmView(APIView):
 
 def _notify_buyer_lock_active(deal: EscrowDeal):
     try:
-        from apps.whatsapp.client import WhatsAppClient
-        phone = deal.buyer.phone.lstrip('+')
         hrs = deal.hours_remaining()
         msg = (
             f"✅ *Deal Lock Confirmed!*\n\n"
@@ -209,9 +207,10 @@ def _notify_buyer_lock_active(deal: EscrowDeal):
             "This property is now exclusively reserved for you. "
             "Contact your agent to proceed with the full transaction."
         )
-        WhatsAppClient.send_text(phone, msg)
+        from apps.notifications.services import notify_user
+        notify_user(deal.buyer, title="Deal Lock Confirmed", message=msg)
     except Exception as exc:
-        logger.warning(f"Deal lock WhatsApp notify failed: {exc}")
+        logger.warning(f"Deal lock notify failed: {exc}")
 
 
 def _notify_seller_lock_initiated(deal: EscrowDeal, token: str):

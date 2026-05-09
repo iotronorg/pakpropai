@@ -1,13 +1,18 @@
 from django.db.models import Q
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 
 from apps.core.permissions import IsOwnerOrReadOnly
-from .models import Property
+from .models import Property, PropertyImage
 from .serializers import (PropertyCreateSerializer, PropertyDetailSerializer,
-                          PropertyListSerializer)
+                          PropertyImageSerializer, PropertyListSerializer)
+
+_ALLOWED_IMAGE_TYPES = {'image/jpeg', 'image/png', 'image/webp'}
+_MAX_IMAGE_SIZE      = 5 * 1024 * 1024   # 5 MB
+_MAX_IMAGES_PER_PROP = 10
 
 
 class PropertyViewSet(viewsets.ModelViewSet):
@@ -92,5 +97,66 @@ class PropertyViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def mine(self, request):
         qs = self.get_queryset().filter(owner=request.user)
-        serializer = PropertyListSerializer(qs, many=True)
+        serializer = PropertyListSerializer(qs, many=True, context={'request': request})
         return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated],
+            url_path='upload-images', parser_classes=[MultiPartParser])
+    def upload_images(self, request, pk=None):
+        prop = self.get_object()
+
+        if prop.owner != request.user and request.user.role != 'admin':
+            return Response({'detail': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
+
+        files = request.FILES.getlist('images')
+        if not files:
+            return Response({'detail': 'No images provided.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        existing = prop.images.count()
+        if existing + len(files) > _MAX_IMAGES_PER_PROP:
+            return Response(
+                {'detail': f'Max {_MAX_IMAGES_PER_PROP} images per property. {existing} already uploaded.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        for f in files:
+            if f.content_type not in _ALLOWED_IMAGE_TYPES:
+                return Response(
+                    {'detail': f'{f.name}: unsupported type. Use JPEG, PNG, or WebP.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if f.size > _MAX_IMAGE_SIZE:
+                return Response(
+                    {'detail': f'{f.name}: exceeds 5 MB limit.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        created = [
+            PropertyImage.objects.create(
+                property=prop,
+                image=f,
+                order=existing + i,
+                uploaded_by=request.user,
+            )
+            for i, f in enumerate(files)
+        ]
+
+        serializer = PropertyImageSerializer(created, many=True, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['delete'], permission_classes=[IsAuthenticated],
+            url_path=r'images/(?P<image_id>[0-9a-f-]+)')
+    def delete_image(self, request, pk=None, image_id=None):
+        prop = self.get_object()
+
+        if prop.owner != request.user and request.user.role != 'admin':
+            return Response({'detail': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            img = prop.images.get(id=image_id)
+        except PropertyImage.DoesNotExist:
+            return Response({'detail': 'Image not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        img.image.delete(save=False)
+        img.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

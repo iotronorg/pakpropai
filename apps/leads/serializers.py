@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Lead, Appointment
+from .models import Lead, Appointment, ConversationMessage
 
 
 class LeadSerializer(serializers.ModelSerializer):
@@ -27,6 +27,16 @@ class LeadSerializer(serializers.ModelSerializer):
             'location_interest', 'budget_min', 'budget_max',
             'assigned_agent_id', 'assigned_agent_name', 'created_at',
         )
+
+
+class ConversationMessageSerializer(serializers.ModelSerializer):
+    sender_phone = serializers.CharField(source='sender.phone', read_only=True, allow_null=True)
+    sender_name  = serializers.CharField(source='sender.name',  read_only=True, allow_null=True)
+
+    class Meta:
+        model  = ConversationMessage
+        fields = ('id', 'direction', 'channel', 'body',
+                  'sender_phone', 'sender_name', 'wa_message_id', 'created_at')
 
 
 class AppointmentSerializer(serializers.ModelSerializer):

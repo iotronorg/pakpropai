@@ -3,6 +3,11 @@ from django.db import models
 from django.conf import settings
 
 
+def _property_image_path(instance, filename):
+    ext = filename.rsplit('.', 1)[-1].lower()
+    return f"property_images/{instance.property_id}/{uuid.uuid4().hex}.{ext}"
+
+
 class Property(models.Model):
 
     class PropertyType(models.TextChoices):
@@ -77,3 +82,29 @@ class Property(models.Model):
 
     def __str__(self):
         return f"{self.title} — {self.city}"
+
+
+class PropertyImage(models.Model):
+    id          = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    property    = models.ForeignKey(
+                      Property,
+                      on_delete=models.CASCADE,
+                      related_name='images',
+                  )
+    image       = models.ImageField(upload_to=_property_image_path)
+    caption     = models.CharField(max_length=200, blank=True)
+    order       = models.PositiveSmallIntegerField(default=0)
+    uploaded_by = models.ForeignKey(
+                      settings.AUTH_USER_MODEL,
+                      on_delete=models.SET_NULL,
+                      null=True, blank=True,
+                      related_name='uploaded_images',
+                  )
+    created_at  = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'property_images'
+        ordering = ['order', 'created_at']
+
+    def __str__(self):
+        return f"Image #{self.order} — {self.property.title}"

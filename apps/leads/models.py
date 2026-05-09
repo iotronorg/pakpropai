@@ -140,3 +140,38 @@ class Appointment(models.Model):
 
     def __str__(self):
         return f"Appointment [{self.status}] — {self.lead} @ {self.scheduled_at:%Y-%m-%d %H:%M}"
+
+
+class ConversationMessage(models.Model):
+    """CRM message log — one record per message exchanged with a lead."""
+
+    class Direction(models.TextChoices):
+        INBOUND  = 'inbound',  'Inbound (from client)'
+        OUTBOUND = 'outbound', 'Outbound (to client)'
+
+    class Channel(models.TextChoices):
+        WHATSAPP  = 'whatsapp',  'WhatsApp'
+        DASHBOARD = 'dashboard', 'Dashboard Note'
+
+    id        = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    lead      = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name='messages')
+    direction = models.CharField(max_length=10, choices=Direction.choices)
+    channel   = models.CharField(max_length=20, choices=Channel.choices,
+                                 default=Channel.WHATSAPP)
+    body      = models.TextField()
+    sender    = models.ForeignKey(
+                    settings.AUTH_USER_MODEL,
+                    on_delete=models.SET_NULL,
+                    null=True, blank=True,
+                    related_name='sent_crm_messages',
+                    help_text='Set for outbound dashboard messages; null for inbound/AI replies'
+                )
+    wa_message_id = models.CharField(max_length=200, blank=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'conversation_messages'
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"{self.direction} [{self.channel}] — lead {self.lead_id}"

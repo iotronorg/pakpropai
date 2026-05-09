@@ -5,10 +5,20 @@ class OtpSendThrottle(AnonRateThrottle):
     scope = 'otp_send'
 
     def get_cache_key(self, request, view):
-        # Key by phone number so the limit is per-phone, not per-IP
         phone = request.data.get('phone', '')
         if phone:
             return f'throttle_otp_{phone}'
+        return super().get_cache_key(request, view)
+
+
+class OtpDailyThrottle(AnonRateThrottle):
+    """Hard cap: 10 OTP requests per phone number per day."""
+    scope = 'otp_daily'
+
+    def get_cache_key(self, request, view):
+        phone = request.data.get('phone', '')
+        if phone:
+            return f'throttle_otp_daily_{phone}'
         return super().get_cache_key(request, view)
 
 

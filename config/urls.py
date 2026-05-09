@@ -19,7 +19,6 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
-from apps.whatsapp.urls import notification_urlpatterns
 from apps.core.urls import api_urlpatterns as core_api_urlpatterns
 
 urlpatterns = [
@@ -37,7 +36,7 @@ urlpatterns = [
         path('verification/', include('apps.verification.urls')),
         path('audit/',         include('apps.audit.urls')),
         path('reports/',       include('apps.reports.urls')),
-        path('notifications/', include(notification_urlpatterns)),
+        path('notifications/', include('apps.notifications.urls')),
         *core_api_urlpatterns,
     ])),
 ]

@@ -23,9 +23,11 @@ class Notification(models.Model):
                      related_name='notifications'
                  )
     channel    = models.CharField(max_length=20, choices=Channel.choices, default=Channel.WHATSAPP)
+    title      = models.CharField(max_length=200, blank=True)
     message    = models.TextField()
     status     = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
-    wa_message_id = models.CharField(max_length=100, blank=True)  # Meta's message ID for delivery tracking
+    is_read    = models.BooleanField(default=False, db_index=True)
+    wa_message_id = models.CharField(max_length=100, blank=True)
     error      = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     sent_at    = models.DateTimeField(null=True, blank=True)

@@ -304,9 +304,10 @@ class MessageRouter:
 
     @classmethod
     def _log_inbound(cls, message_data: dict, session_db, body: str, msg_type: str):
+        wa_message_id = message_data.get('id', '')
         try:
             WhatsAppMessage.objects.update_or_create(
-                wa_message_id=message_data.get('id', ''),
+                wa_message_id=wa_message_id,
                 defaults={
                     'session':     session_db,
                     'direction':   'inbound',
@@ -317,18 +318,41 @@ class MessageRouter:
             )
         except Exception:
             pass
+        # Mirror inbound messages to CRM conversation log (enables dashboard chat view)
+        cls._persist_crm_inbound(session_db.user, body, wa_message_id)
+
+    @classmethod
+    def _persist_crm_inbound(cls, user, body: str, wa_message_id: str):
+        try:
+            from apps.leads.models import Lead, ConversationMessage
+            lead = Lead.objects.filter(user=user).order_by('-created_at').first()
+            if lead and body:
+                ConversationMessage.objects.get_or_create(
+                    wa_message_id=wa_message_id,
+                    defaults={
+                        'lead':      lead,
+                        'direction': ConversationMessage.Direction.INBOUND,
+                        'channel':   ConversationMessage.Channel.WHATSAPP,
+                        'body':      body[:2000],
+                    },
+                )
+        except Exception:
+            pass
 
     @classmethod
     def _check_rate_limit(cls, phone: str, limit: int = 10, window: int = 60) -> bool:
-        """Returns False if the phone has exceeded limit messages in the last window seconds."""
+        """Fixed-window rate limit: returns False if phone exceeds `limit` msgs in `window` seconds."""
         from django.core.cache import cache
         key = f"wa:rate:{phone}"
-        count = cache.get(key, 0)
-        if count >= limit:
-            return False
-        # Increment atomically; set TTL only on first request
-        cache.set(key, count + 1, timeout=window if count == 0 else None)
-        return True
+        # cache.add sets key=0 with TTL only if absent — preserves existing TTL on subsequent calls
+        cache.add(key, 0, timeout=window)
+        try:
+            count = cache.incr(key)
+        except ValueError:
+            # Race: key expired between add and incr
+            cache.set(key, 1, timeout=window)
+            return True
+        return count <= limit
 
     @classmethod
     def _send_and_log(cls, phone: str, body: str, session_db):

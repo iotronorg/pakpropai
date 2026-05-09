@@ -1,19 +1,45 @@
 from rest_framework import serializers
-from .models import Property
+from .models import Property, PropertyImage
 from apps.users.models import User
+
+
+class PropertyImageSerializer(serializers.ModelSerializer):
+    url = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = PropertyImage
+        fields = ('id', 'url', 'caption', 'order', 'created_at')
+
+    def get_url(self, obj):
+        request = self.context.get('request')
+        if not obj.image:
+            return None
+        url = obj.image.url
+        return request.build_absolute_uri(url) if request else url
 
 
 class PropertyListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for list views."""
+    primary_image = serializers.SerializerMethodField()
+
     class Meta:
         model  = Property
         fields = ('id', 'title', 'city', 'location', 'area_marla', 'price_pkr',
                   'property_type', 'construction_status', 'furnished_status',
-                  'legal_status', 'ai_score', 'risk_level', 'created_at')
+                  'legal_status', 'ai_score', 'risk_level', 'primary_image', 'created_at')
+
+    def get_primary_image(self, obj):
+        first = obj.images.first()
+        if not first:
+            return None
+        request = self.context.get('request')
+        url = first.image.url
+        return request.build_absolute_uri(url) if request else url
 
 
 class PropertyDetailSerializer(serializers.ModelSerializer):
     owner_phone = serializers.CharField(source='owner.phone', read_only=True)
+    images      = PropertyImageSerializer(many=True, read_only=True)
 
     class Meta:
         model  = Property
@@ -21,10 +47,10 @@ class PropertyDetailSerializer(serializers.ModelSerializer):
                   'city', 'location', 'area_marla', 'price_pkr',
                   'property_type', 'furnished_status', 'construction_status',
                   'legal_status', 'ai_score', 'risk_level', 'assigned_agent',
-                  'raw_docs', 'ai_analysis', 'is_active',
+                  'raw_docs', 'ai_analysis', 'is_active', 'images',
                   'created_at', 'updated_at')
         read_only_fields = ('id', 'owner', 'owner_phone', 'ai_score', 'risk_level',
-                            'ai_analysis', 'created_at', 'updated_at')
+                            'ai_analysis', 'images', 'created_at', 'updated_at')
 
 
 class PropertyCreateSerializer(serializers.ModelSerializer):

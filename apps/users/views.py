@@ -8,7 +8,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
-from apps.core.throttles import OtpSendThrottle
+from apps.core.throttles import OtpSendThrottle, OtpDailyThrottle
 
 _ACCESS_LIFETIME  = int(settings.SIMPLE_JWT.get('ACCESS_TOKEN_LIFETIME',  timedelta(minutes=15)).total_seconds())
 _REFRESH_LIFETIME = int(settings.SIMPLE_JWT.get('REFRESH_TOKEN_LIFETIME', timedelta(days=7)).total_seconds())
@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 
 class SendOTPView(APIView):
     permission_classes = [AllowAny]
-    throttle_classes = [OtpSendThrottle]
+    throttle_classes = [OtpSendThrottle, OtpDailyThrottle]
 
     def post(self, request):
         serializer = SendOTPSerializer(data=request.data)

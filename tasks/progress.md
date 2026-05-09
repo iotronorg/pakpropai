@@ -1,8 +1,10 @@
 # PakProp AI — Build Progress
 
-**Last updated:** 2026-05-08 (session 19)  
+**Last updated:** 2026-05-09 (sessions 21–23 — frontend alignment + notifications)  
 **Current branch:** `development`  
-**Current phase:** Phase 3 — all core features complete + RBAC hardened + live system config
+**Current phase:** Phase 4 + Phase 5 complete → Phase 6 (analytics, time-series, deployment prep)  
+**Audit report folder:** `../audit-reports/` — read before every session  
+**Overall system score:** Backend 87% | Frontend 76% | Production-ready 55%
 
 ---
 
@@ -428,6 +430,11 @@
 | `_upsert_lead` scoped to `role='user'` only | Auto-lead creation for agents/developers created noise in lead pipeline; now only genuine client interactions generate leads |
 | `/payments/return` added to Next.js PUBLIC_PATHS | Payment gateway redirect does not carry session cookies — middleware must allow it without role routing |
 | Client role blocks at OTP verify step (not after token store) | Storing tokens then redirecting `user` role back to `/login` caused an infinite redirect loop; intercepting before token store is clean and reversible |
+| `notify_user()` unified helper (not inline WhatsApp calls) | All notification events go through one function that creates a DB record + queues async WhatsApp delivery — consistent bell + WhatsApp without duplicating send logic in every caller |
+| `Notification.is_read` + `title` for dashboard bell | Original model was outbound delivery tracker only; `is_read` + `title` repurpose it for in-dashboard inbox without a separate model — one source of truth per notification event |
+| `NotificationBell` marks all read on panel open | Avoids a per-item read action; simpler UX — once opened, unread badge clears; individual mark-read stays available via API for future fine-grained control |
+| `/notifications/` URL moved from `apps/whatsapp/urls.py` to `apps/notifications/urls.py` | `notification_urlpatterns` in whatsapp urls was a misplaced stub returning WhatsApp sessions under a misleading name; proper app owns its own URL config |
+| Frontend `Lead` type uses `intent_score` not `score` | Backend serializer aliases model field `score` → `intent_score` in API response; frontend types must match the API shape, not the DB model |
 
 ---
 
@@ -435,29 +442,30 @@
 
 | Item | Priority | Notes |
 |------|----------|-------|
+| `WA_APP_SECRET` blank = all webhook signatures accepted (dev) | **High** | Must be set in production |
+| Free tier Gemini quota: 20 req/day on gemini-2.5-flash-lite | **High** | Use AI_BACKEND=local for dev; get paid key for production |
+| WhatsApp test account: max 5 recipient numbers | **High** | Must add each test number in Meta Dev Portal before it can receive messages |
+| Safepay / bSecure credentials not set locally | **High** | System works without them (falls back to manual); set keys in `.env` to enable online payment links |
+| No analytics time-series endpoints | **Medium** | `GET /reports/leads/` etc. return totals only — no weekly/monthly trend data; needed for useful dashboard charts |
+| Scraper search is synchronous in request cycle | Medium | Move to Celery task + cache result for heavy traffic |
+| Voice transcription depends on Gemini multimodal audio support | Medium | Ollama backend returns '' — user asked to type instead |
+| Document OCR accuracy depends on AI backend | Medium | llava:7b (local) is weak at OCR; Gemini is accurate — use AI_BACKEND=gemini for doc scanning |
+| Audit PDF / report PDF served from local media only | Medium | Needs BASE_URL set to ngrok/production URL for WhatsApp PDF link to be clickable |
+| `expire_deal_locks` Celery beat task requires beat worker running | Medium | Run `celery -A config beat -l info` alongside the worker |
+| Config API keys stored in DB (not encrypted) | Medium | Acceptable for MVP; use Django-encrypted-fields before multi-tenant production |
+| Lead ViewSet scoping requires `user.agent_profile` to exist | Medium | If User has `role=agent` but no Agent record linked → empty queryset; fix by creating Agent record in admin |
+| No duplicate property detection in verification signals | Medium | Cross-check same address/owner listed multiple times |
+| Notification WhatsApp delivery silently fails if 24h window expired | Medium | Client has to reply first; `send_whatsapp_async` marks status=FAILED but dashboard bell still shows unread |
 | Scraper selectors may break if sites change HTML | Medium | Architecture is modular — just update `_parse_card()` |
 | No property deduplication across DB + scrapers | Low | Could show same listing twice; acceptable for MVP |
-| Voice transcription depends on Gemini multimodal audio support | Medium | Ollama backend returns '' — user asked to type instead |
-| No rate limiting on WhatsApp bot (per user) | Medium | Add Redis-based throttle before going live |
-| `WA_APP_SECRET` blank = all webhook signatures accepted (dev) | High | Must be set in production |
-| Scraper search is synchronous in request cycle | Medium | Move to Celery task + cache result for heavy traffic |
-| Free tier Gemini quota: 20 req/day on gemini-2.5-flash-lite | High | Use AI_BACKEND=local for dev; get paid key for production |
 | Agent system prompt is large (~2KB); sent on every request | Low | Acceptable cost for MVP; add prompt caching if volume grows |
-| `handlers.py` still exists (FSM flows) but is only used for `_upsert_lead()` | Low | Clean up later; harmless for now |
-| WhatsApp test account: max 5 recipient numbers | High | Must add each test number in Meta Dev Portal before it can receive messages |
-| Location word-match may over-match on city name | Low | e.g. "Lahore" as a word matches any Lahore result; acceptable since city filter is also applied |
-| Document OCR accuracy depends on AI backend | Medium | llava:7b (local) is weak at OCR; Gemini is accurate — use AI_BACKEND=gemini for doc scanning |
-| Audit PDF served from local media only | Medium | Needs BASE_URL set to ngrok/production URL for WhatsApp PDF link to be clickable |
-| Lead status field is set to 'new' by default — no auto-scoring to warm/qualified/cold yet | Low | Update score→status logic in AI tools when lead scoring is improved |
-| Lead ViewSet scoping requires `user.agent_profile` to exist — if User has `role=agent` but no Agent record linked, they get empty queryset | Medium | Create Agent record and set `agent.user = user` in admin when onboarding agents |
-| Signal score is only computed when OCR task finishes or admin reviews — not on DocumentScan save | Low | Add post_save signal on DocumentScan to auto-refresh if verification is linked |
-| No duplicate property detection in verification signals | Medium | Cross-check same address/owner listed multiple times; add deduction to signal score |
-| Agent request detection may miss highly unusual phrasings | Low | Combination-based (intent+role) handles ~95% of cases; truly novel phrasing falls through to model which may still hallucinate — acceptable for MVP |
-| Safepay / bSecure credentials not set locally | High | System works without them (falls back to manual); set keys in `.env` to enable online payment links in WhatsApp + admin |
-| `expire_deal_locks` Celery beat task requires beat worker running | Medium | Run `celery -A config beat -l info` alongside the worker; without it, expired locks are never auto-marked |
-| Config API keys stored in DB (not encrypted) | Medium | Acceptable for MVP single-server deploy; use Django-encrypted-fields or secrets manager (AWS/GCP) before multi-tenant production |
-| Fraud alerts feed has no pagination | Low | Capped at 200 rows in the view; add cursor pagination when volume grows |
-| Blacklist Redis sync is best-effort — if Redis is down at write time, cache is stale until next restart | Low | Acceptable for fraud blacklist; add retry or post-startup sync if Redis restarts frequently |
+| `handlers.py` still exists (FSM flows) but is only used for `_upsert_lead()` | Low | Clean up later; harmless |
+| Lead status field is set to 'new' by default — no auto-scoring | Low | Update score→status logic in AI tools when scoring is improved |
+| Signal score is only computed when OCR task finishes or admin reviews | Low | Add post_save signal on DocumentScan to auto-refresh if verification is linked |
+| Agent request detection may miss highly unusual phrasings | Low | ~95% coverage; novel phrasings fall through to model |
+| Fraud alerts feed has no pagination | Low | Capped at 200 rows; add cursor pagination when volume grows |
+| Blacklist Redis sync is best-effort | Low | Add retry or post-startup sync if Redis restarts frequently |
+| No property deduplication across DB + scrapers | Low | Could show same listing twice; acceptable for MVP |
 
 ---
 
@@ -530,19 +538,163 @@ AI_BACKEND=local
 
 ---
 
-## Recommended Next Steps (Priority Order)
+## Phase 4 — Launch Blocker Resolution (Start Here)
+*Full audit: `../audit-reports/` — read `PAKPROP_CRITICAL_PRODUCTION_BLOCKERS.md` before starting*
+*Estimated: ~36 hours to clear all 10 blockers*
 
-### Operational (do before launch)
-1. **Onboard real agents** — Django admin → Agents → Add Agent; fill name, phone, cities, specializations; tick `is_verified` + `is_active`; link to a User account so they can log into the dashboard
-2. **Seed real property listings** — have agents list via WhatsApp, or bulk-import via Django shell; then run `/admin → Properties → Rescore All` to compute AI scores
-3. **Set Safepay credentials** — `SAFEPAY_MERCHANT_KEY` + `SAFEPAY_SECRET_KEY` in `.env`; register webhook URL `https://yourdomain.com/api/v1/payments/webhook/safepay/` in Safepay dashboard
-4. **Set production env vars** — `WA_APP_SECRET`, `WA_ACCESS_TOKEN`, `GEMINI_API_KEY`, `BASE_URL`, `DATABASE_URL`
-5. **Start Celery beat** — `celery -A config beat -l info` for deal lock expiry; `celery -A config worker -l info` for scoring/OTP tasks
+### Critical (must fix before any production traffic)
+1. **WhatsApp rate limiting** — add `_check_rate_limit(phone)` in `apps/whatsapp/router.py`; Redis counter 10 msg/min/phone; daily OTP cap 10/day in notifications — **2h**
+2. **CRM conversations** — `ConversationThread` + `ConversationMessage` models; `GET /leads/{id}/conversations/`; `POST /leads/{id}/send-message/` — **12h** (frontend also needed — see pakpropaiweb/tasks/progress.md)
+3. **WhatsApp OTP template** — register in Meta BM; add startup guard for `WA_APP_SECRET` — **1h + external**
+4. **Payment E2E test** — set Safepay sandbox keys, run checkout → webhook → deal lock cycle with integration test — **4h**
+5. **Property images** — `PropertyImage` model + Cloudflare R2 storage + `POST /properties/{id}/upload-images/` — **6h**
+6. **Multi-tenant middleware** — `apps/core/middleware.py` → `TenantIsolationMiddleware`; enforce org scoping at middleware level — **3h**
 
-### Feature gaps (pre-launch polish)
-6. **Onboard real agents** — Django admin → Agents → Add Agent; fill name, phone, cities, specializations; tick `is_verified` + `is_active`; link to a User account for dashboard login
+### High priority (pre-launch polish)
+7. Verification status notifications — `post_save` signal → WhatsApp notify owner on APPROVED/REJECTED — **2h**
+8. Deal lock expiry notification — modify `expire_deal_locks` task to notify buyer + seller — **2h**
+9. Appointment reminders task — `send_appointment_reminders` Celery task every 15min — **3h**
+10. Production CORS + security headers in `settings/production.py` — **1h**
 
-### Future (post-launch)
-7. **WhatsApp rate limiting** — Redis-based per-user throttle before volume grows
-8. **Scraper → Celery task** — move synchronous scraper calls off the request cycle
-9. **Event-driven architecture** — extract AI scoring, notifications, and payment processing into separate services when scale demands it
+### Phase 5 — Feature Completion (~23h)
+11. Report generation: `POST /reports/generate/` + Celery task + `GET /reports/{id}/` + download — ✅ **8h**
+12. Appointment CRUD: `confirm/`, `reschedule/`, `cancel/`, `complete/` — ✅ **2h**
+13. Lead auto-assignment: `suggest_agents_for_lead()` + `POST /leads/{id}/assign/` + auto-assign — ✅ **6h**
+14. Developer team management: `GET/POST /agents/team/` + `DELETE /agents/team/{id}/` — ✅ **4h**
+15. Conversation DB persistence: `ConversationMessage` model + router hook — ✅ **4h** (done in Phase 4 Blocker 9)
+
+### Phase 6 — Analytics + Advanced Features (~40h)
+See `../audit-reports/PAKPROP_IMPLEMENTATION_PRIORITY_PLAN.md` Phase 3 for full list.
+
+### Operational (parallel with Phase 4)
+- **Onboard real agents** — Django admin → Agents → Add Agent
+- **Seed real property listings** — agent WhatsApp listing or bulk Django shell import → Rescore All
+- **Set Safepay production credentials** after sandbox E2E test passes
+- **Start Celery beat** — `celery -A config beat -l info` alongside `celery -A config worker -l info`
+
+---
+
+## Recommended Next Steps (as of 2026-05-09)
+
+Priority order for remaining work before deployment:
+
+### 1. Analytics time-series endpoints (backend + frontend) — ~6h
+Add weekly/monthly breakdown to the existing analytics views:
+- `GET /reports/leads/?period=weekly` — leads by week for funnel chart
+- `GET /reports/properties/?period=monthly` — inventory over time
+- Update admin/reports and developer/reports pages with simple sparkline charts
+
+### 2. Production settings hardening — ~2h
+- `config/settings/production.py` — `SECURE_SSL_REDIRECT`, `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE`, `ALLOWED_HOSTS` check
+- `WA_APP_SECRET` startup guard (server refuses to start if unset in production)
+- CORS whitelist to frontend domain only
+
+### 3. Deployment — Render + Supabase + Upstash — ~4h
+- `Procfile` + `render.yaml`
+- Set all env vars in Render dashboard
+- Run `collectstatic`, apply migrations on deploy
+- Point `NEXT_PUBLIC_API_URL` to Render backend URL
+
+### 4. WhatsApp OTP template registration (external, ~30 min setup)
+- Meta Business Manager → WhatsApp → Message Templates → create OTP template
+- Set `WA_OTP_TEMPLATE_NAME` in `.env`
+
+### 5. Onboard first real agents + seed listings (operational)
+- Django admin → Agents → Add Agent (set `agent.user` for dashboard access)
+- WhatsApp listing flow or shell import for initial property inventory
+- Run `POST /properties/rescore-all/` after seeding
+
+## Phase 4 Checklist
+
+| Item | Status | Hours |
+|---|---|---|
+| WhatsApp rate limiting | ✅ Done | 2h |
+| CRM ConversationThread model + APIs | ✅ Done | 12h |
+| WhatsApp OTP template registration | ⏸️ deferred to production | external |
+| Payment gateway E2E test | ✅ Done | 4h |
+| Property image upload | ✅ Done | 6h |
+| Multi-tenant isolation middleware | ✅ Done | 3h |
+| Verification status notifications | ✅ Done | 2h |
+| Deal lock expiry notifications | ✅ Done | 2h |
+| Appointment reminders Celery task | ✅ Done | 3h |
+| Production CORS + security headers | ✅ Done | 1h |
+
+**Phase 4 completion: 100%** (WhatsApp OTP template deferred to operational setup at launch)
+
+---
+
+## Phase 5 — Frontend Alignment + Notifications (sessions 21–23)
+
+### Backend additions
+
+| Item | Status | File(s) |
+|------|--------|---------|
+| Notifications API — `GET /notifications/` (inbox + unread count) | ✅ Done | `apps/notifications/views.py`, `urls.py` |
+| Notifications API — `POST /notifications/mark-read/` | ✅ Done | `apps/notifications/views.py` |
+| `Notification.title` + `Notification.is_read` fields + migration | ✅ Done | `apps/notifications/models.py`, migration `0002` |
+| `notify_user()` unified helper | ✅ Done | `apps/notifications/services.py` |
+| Lead assignment → notify agent (dashboard + WhatsApp) | ✅ Done | `apps/leads/services.py` |
+| Appointment confirm/cancel/reschedule → notify client | ✅ Done | `apps/leads/views.py` → `_notify_appointment()` |
+| Deal lock confirmed → notify buyer | ✅ Done | `apps/escrow/views.py` → `_notify_buyer_lock_active()` |
+| Report ready → notify via unified `notify_user` | ✅ Done | `apps/reports/tasks.py` |
+| `/notifications/` URL moved to `apps/notifications/urls.py` | ✅ Done | `config/urls.py` |
+
+**Phase 5 backend completion: 100%**
+
+### Frontend — `pakpropaiweb/`
+
+#### Foundation
+
+| Item | Status | File(s) |
+|------|--------|---------|
+| `src/lib/api.ts` — full rewrite: 40+ named API functions, all routes correct | ✅ Done | `src/lib/api.ts` |
+| `src/types/index.ts` — added `PropertyImage`, `ConversationMessage`, `Appointment`, `Report`, `Notification` | ✅ Done | `src/types/index.ts` |
+| Fixed `VerificationRequest` — UUID id, `signal_score`, `fraud_flags`, `notes` | ✅ Done | `src/types/index.ts` |
+| Fixed `Lead` — `intent_score` alias matches serializer, correct field set | ✅ Done | `src/types/index.ts` |
+| Added `primary_image`, `images[]`, `installment_available` to `Property` | ✅ Done | `src/types/index.ts` |
+| Added `title`, `is_read` to `Notification` | ✅ Done | `src/types/index.ts` |
+
+#### Page fixes (existing pages)
+
+| Item | Status | File(s) |
+|------|--------|---------|
+| `admin/verification/page.tsx` — replaced raw `api.get/patch` with `getVerificationQueue()` / `reviewVerification()` | ✅ Done | `src/app/admin/verification/page.tsx` |
+| `agent/leads/page.tsx` — replaced raw `api.get` with `getLeads()`, removed duplicate local type | ✅ Done | `src/app/agent/leads/page.tsx` |
+| `developer/leads/page.tsx` — same fix | ✅ Done | `src/app/developer/leads/page.tsx` |
+
+#### New pages built
+
+| Page | Role | Features |
+|------|------|---------|
+| `/admin/leads` | Admin | Full leads table, search + status filter, auto-assign button, CRM chat panel |
+| `/admin/appointments` | Admin | Appointments table, confirm/cancel/complete actions, status filter |
+| `/admin/reports` | Admin | Lead funnel analytics, property inventory stats, agent performance table |
+| `/agent/appointments` | Agent | Upcoming/past split view, confirm and mark-complete actions |
+| `/developer/team` | Developer | Team member table, add-agent dropdown, remove member |
+| `/developer/reports` | Developer | Report generator form + history table with PDF download, quick lead/property stats |
+
+#### Feature additions to existing pages
+
+| Item | Status | File(s) |
+|------|--------|---------|
+| `agent/listings` — `PropertyImageUploader` component per card, primary image thumbnail, photo count | ✅ Done | `src/app/agent/listings/page.tsx` |
+| `admin/properties` — `PropertyImagesSection` in detail modal (upload + per-image delete) | ✅ Done | `src/app/admin/properties/page.tsx` |
+| `agent/leads` — `ConversationPanel` slide-in with full chat thread + send message | ✅ Done | `src/app/agent/leads/page.tsx` |
+| `admin/leads` — same `ConversationPanel` + CRM Chat column | ✅ Done | `src/app/admin/leads/page.tsx` |
+
+#### Navigation
+
+| Item | Status | File(s) |
+|------|--------|---------|
+| Admin sidebar — added Leads, Appointments, Reports nav items | ✅ Done | `src/components/layout/Sidebar.tsx` |
+| Agent sidebar — added Appointments nav item | ✅ Done | `src/components/layout/Sidebar.tsx` |
+| Developer sidebar — added My Team, Reports nav items | ✅ Done | `src/components/layout/Sidebar.tsx` |
+
+#### Notification bell
+
+| Item | Status | File(s) |
+|------|--------|---------|
+| `NotificationBell` component — bell icon, red unread badge, dropdown panel, mark-all-read, 30s auto-poll | ✅ Done | `src/components/ui/NotificationBell.tsx` |
+| `DashboardLayout` — added top header bar with notification bell (all 3 roles) | ✅ Done | `src/components/layout/DashboardLayout.tsx` |
+
+**Phase 5 frontend completion: 100%**
