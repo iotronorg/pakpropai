@@ -57,6 +57,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'apps.core.middleware.LastActiveMiddleware',
     'apps.core.middleware.TenantIsolationMiddleware',
+    'apps.core.middleware.RequestAuditMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -111,6 +112,14 @@ CORS_ALLOWED_ORIGINS = [
     'http://127.0.0.1:3000',
 ]
 
+# CSRF — allow JS to read the cookie; must match CORS origins
+CSRF_COOKIE_HTTPONLY = False   # JS needs to read csrftoken to send X-CSRFToken
+CSRF_COOKIE_SAMESITE = 'Lax'
+CSRF_TRUSTED_ORIGINS = [
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+]
+
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'apps.users.authentication.JWTCookieOrHeaderAuthentication',
@@ -146,6 +155,8 @@ SIMPLE_JWT = {
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
 }
+
+from celery.schedules import crontab
 
 # Redis / Celery
 REDIS_URL = env('REDIS_URL', default='redis://localhost:6379/0')
@@ -186,6 +197,14 @@ CELERY_BEAT_SCHEDULE = {
     'retry-failed-notifications': {
         'task':     'apps.notifications.tasks.retry_failed_notifications',
         'schedule': 1800,   # every 30 minutes
+    },
+    'whatsapp-token-health-check': {
+        'task':     'apps.whatsapp.tasks.check_whatsapp_token_health',
+        'schedule': 21600,  # every 6 hours
+    },
+    'monthly-report-generation': {
+        'task':     'apps.reports.tasks.generate_monthly_reports',
+        'schedule': crontab(hour=6, minute=0, day_of_month=1),  # 1st of each month at 06:00 PKT
     },
 }
 
@@ -257,3 +276,49 @@ SAFEPAY_ENVIRONMENT   = env('SAFEPAY_ENVIRONMENT',   default='sandbox')  # 'sand
 BSECURE_CLIENT_ID     = env('BSECURE_CLIENT_ID',     default='')
 BSECURE_CLIENT_SECRET = env('BSECURE_CLIENT_SECRET', default='')
 BSECURE_ENVIRONMENT   = env('BSECURE_ENVIRONMENT',   default='sandbox')  # 'sandbox' | 'production'
+
+# Sentry error tracking
+SENTRY_DSN = env('SENTRY_DSN', default='')
+if SENTRY_DSN:
+    import sentry_sdk
+    from sentry_sdk.integrations.django import DjangoIntegration
+    from sentry_sdk.integrations.celery import CeleryIntegration
+    from sentry_sdk.integrations.redis import RedisIntegration
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        integrations=[DjangoIntegration(), CeleryIntegration(), RedisIntegration()],
+        traces_sample_rate=0.1,
+        send_default_pii=False,
+        environment='production' if not DEBUG else 'development',
+    )
+
+# Structured JSON logging
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'json': {
+            '()': 'pythonjsonlogger.jsonlogger.JsonFormatter',
+            'format': '%(asctime)s %(name)s %(levelname)s %(message)s',
+        },
+        'simple': {
+            'format': '[%(levelname)s] %(name)s: %(message)s',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'json' if not DEBUG else 'simple',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
+    'loggers': {
+        'django': {'handlers': ['console'], 'level': 'WARNING', 'propagate': False},
+        'django.request': {'handlers': ['console'], 'level': 'ERROR', 'propagate': False},
+        'api.audit': {'handlers': ['console'], 'level': 'INFO', 'propagate': False},
+        'apps': {'handlers': ['console'], 'level': 'INFO', 'propagate': False},
+    },
+}

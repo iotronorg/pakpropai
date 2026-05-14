@@ -9,6 +9,7 @@ from rest_framework.views import APIView
 from .models import Verification, DocumentScan, FraudBlacklist
 from .serializers import VerificationSerializer, DocumentScanSerializer
 from .services import FraudCheckService, VerificationSignalService
+from .tasks import notify_verification_status_change
 from apps.core.throttles import FraudCheckThrottle
 
 
@@ -100,6 +101,8 @@ class VerificationReviewView(APIView):
         elif new_status == Verification.Status.DISPUTED:
             prop.legal_status = 'disputed'
         prop.save(update_fields=['legal_status'])
+
+        notify_verification_status_change.delay(str(verification.pk))
 
         return Response(VerificationSerializer(verification).data)
 
@@ -454,3 +457,42 @@ class FlaggedUsersView(APIView):
 
         result.sort(key=lambda u: ('low', 'medium', 'high').index(u['risk']), reverse=True)
         return Response({'count': len(result), 'results': result[:100]})
+
+
+class BulkRejectVerificationsView(APIView):
+    """
+    POST /verification/bulk-reject/
+    Body: {"verification_ids": ["uuid1", ...], "notes": "reason"}
+    Admin-only: reject multiple pending verifications in one call.
+    """
+    permission_classes = [IsAdmin]
+
+    def post(self, request):
+        ids   = request.data.get('verification_ids', [])
+        notes = request.data.get('notes', '')
+
+        if not ids:
+            return Response({'error': 'verification_ids (list) is required.'}, status=400)
+
+        qs = Verification.objects.filter(
+            id__in=ids,
+            status=Verification.Status.PENDING,
+        ).select_related('property')
+
+        count = 0
+        for v in qs:
+            v.status      = Verification.Status.FAILED
+            v.notes       = notes
+            v.reviewer    = request.user
+            v.verified_at = timezone.now()
+            v.save()
+
+            if v.property:
+                v.property.legal_status = 'unverified'
+                v.property.save(update_fields=['legal_status'])
+
+            notify_verification_status_change.delay(str(v.pk))
+            count += 1
+
+        return Response({'rejected': count})
+

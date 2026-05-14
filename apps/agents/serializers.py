@@ -19,6 +19,7 @@ class AgentSerializer(serializers.ModelSerializer):
             'company_name', 'designation', 'bio',
             'specializations', 'cities', 'areas', 'primary_city',
             'is_verified', 'is_active', 'is_featured',
+            'availability_status',
             'registration_status', 'rejection_reason',
             'total_leads', 'total_listings', 'closed_deals', 'rating',
             'user_phone', 'user_email',

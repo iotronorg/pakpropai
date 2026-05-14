@@ -3,6 +3,8 @@ from .views import (
     AgentMeView,
     AgentListView,
     AgentAdminDetailView,
+    AgentAvailabilityView,
+    AgentAvailableListView,
     AgentRegisterView,
     AgentApproveView,
     AgentRejectView,
@@ -11,12 +13,15 @@ from .views import (
 )
 
 urlpatterns = [
-    path('',                          AgentListView.as_view(),        name='agents-list'),
-    path('me/',                       AgentMeView.as_view(),           name='agents-me'),
-    path('register/',                 AgentRegisterView.as_view(),     name='agents-register'),
-    path('team/',                     TeamView.as_view(),              name='agents-team'),
-    path('team/<int:agent_id>/',      TeamMemberView.as_view(),        name='agents-team-member'),
-    path('<int:pk>/',                 AgentAdminDetailView.as_view(),  name='agents-admin-detail'),
-    path('<int:pk>/approve/',         AgentApproveView.as_view(),      name='agents-approve'),
-    path('<int:pk>/reject/',          AgentRejectView.as_view(),       name='agents-reject'),
+    path('',                          AgentListView.as_view(),          name='agents-list'),
+    path('me/',                       AgentMeView.as_view(),             name='agents-me'),
+    path('me/availability/',          AgentAvailabilityView.as_view(),   name='agents-me-availability'),
+    path('available/',                AgentAvailableListView.as_view(),  name='agents-available'),
+    path('register/',                 AgentRegisterView.as_view(),       name='agents-register'),
+    path('team/',                     TeamView.as_view(),                name='agents-team'),
+    path('team/<int:agent_id>/',      TeamMemberView.as_view(),          name='agents-team-member'),
+    path('<int:pk>/',                 AgentAdminDetailView.as_view(),    name='agents-admin-detail'),
+    path('<int:pk>/approve/',         AgentApproveView.as_view(),        name='agents-approve'),
+    path('<int:pk>/reject/',          AgentRejectView.as_view(),         name='agents-reject'),
+    path('<int:pk>/availability/',    AgentAvailabilityView.as_view(),   name='agents-availability'),
 ]

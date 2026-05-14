@@ -9,6 +9,11 @@ _cnic_validator = RegexValidator(
     message='CNIC must be in the format XXXXX-XXXXXXX-X',
 )
 
+_phone_validator = RegexValidator(
+    regex=r'^\+?[0-9]{10,15}$',
+    message='Phone must be 10–15 digits, optionally prefixed with +.',
+)
+
 
 class UserManager(BaseUserManager):
     use_in_migrations = True
@@ -34,16 +39,16 @@ class UserManager(BaseUserManager):
 class User(AbstractBaseUser, PermissionsMixin):
 
     class Role(models.TextChoices):
-        USER      = 'user',      'User'
+        CLIENT    = 'client',    'Client'
         AGENT     = 'agent',     'Agent'
         DEVELOPER = 'developer', 'Developer'
         ADMIN     = 'admin',     'Admin'
 
     id        = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    phone     = models.CharField(max_length=20, unique=True, db_index=True)
+    phone     = models.CharField(max_length=20, unique=True, db_index=True, validators=[_phone_validator])
     name      = models.CharField(max_length=200, blank=True, null=True)
     email     = models.EmailField(blank=True)
-    role      = models.CharField(max_length=20, choices=Role.choices, default=Role.USER)
+    role      = models.CharField(max_length=20, choices=Role.choices, default=Role.CLIENT)
     is_filer  = models.BooleanField(default=False)
     ntn       = models.CharField(max_length=20, blank=True, null=True)
     cnic      = models.CharField(max_length=15, blank=True, null=True, validators=[_cnic_validator])

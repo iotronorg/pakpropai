@@ -44,6 +44,7 @@ def search_properties(
     """
     try:
         from apps.properties.search import PropertySearchService
+        phone = _ctx_phone.get() or ''
         results = PropertySearchService.search(
             city=city,
             location=location,
@@ -52,15 +53,23 @@ def search_properties(
             property_type=property_type,
             furnished_status=furnished,
             construction_status=construction_status,
+            phone=phone,
         )
         if not results:
             return {
                 'count': 0,
-                'message': 'No properties found matching your criteria.',
+                'message': (
+                    'No properties in our database match your criteria right now. '
+                    'Live listings from Zameen and Graana are being fetched — '
+                    'you will receive them in a follow-up message shortly.'
+                ),
                 'properties': [],
+                'live_search_pending': True,
             }
+        db_only = all(r.source == 'pakprop' for r in results)
         return {
             'count': len(results),
+            'live_search_pending': db_only,  # signal AI to mention follow-up
             'properties': [
                 {
                     'id': r.source_id,
@@ -266,21 +275,44 @@ def run_fraud_check(description: str) -> dict:
         score = 0
 
         patterns = [
-            ('advance payment',     'Advance payment demanded before documents shown — HIGH RISK',      45),
-            ('token first',         'Token money demanded before any documents — Major red flag',        35),
-            ('overseas',            'Overseas seller — NEVER send money without verified local presence', 25),
-            ('urgent sale',         'Urgency pressure tactic — common manipulation technique',           15),
-            ('kachhi file',         'Kachhi (unallocated) file — verify allocation with authority',       55),
-            ('kachi file',          'Kachhi (unallocated) file — verify allocation with authority',       55),
-            ('file not allotted',   'File not yet allotted — speculative, high risk',                    50),
-            ('power of attorney',   'PoA involved — verify it is valid, registered, and not expired',    25),
-            ('court case',          'Court litigation mentioned — DO NOT buy until resolved',             65),
-            ('no fard',             'Seller unable to provide Fard — serious red flag',                   55),
-            ('no documents',        'Seller has no documents — extremely high risk',                      70),
-            ('below market',        'Price significantly below market — possible fraud or legal issue',   25),
-            ('double sale',         'Possible double sale scenario',                                      60),
-            ('no noc',              'No NOC from authority — registration cannot complete',               40),
-            ('society not approved','Non-approved society — no LDA/CDA NOC',                             50),
+            # English patterns
+            ('advance payment',     'Advance payment demanded before documents shown — HIGH RISK',       45),
+            ('token first',         'Token money demanded before any documents — Major red flag',         35),
+            ('overseas',            'Overseas seller — NEVER send money without verified local presence',  25),
+            ('urgent sale',         'Urgency pressure tactic — common manipulation technique',            15),
+            ('kachhi file',         'Kachhi (unallocated) file — verify allocation with authority',        55),
+            ('kachi file',          'Kachhi (unallocated) file — verify allocation with authority',        55),
+            ('file not allotted',   'File not yet allotted — speculative, high risk',                     50),
+            ('power of attorney',   'PoA involved — verify it is valid, registered, and not expired',     25),
+            ('court case',          'Court litigation mentioned — DO NOT buy until resolved',              65),
+            ('no fard',             'Seller unable to provide Fard — serious red flag',                    55),
+            ('no documents',        'Seller has no documents — extremely high risk',                       70),
+            ('below market',        'Price significantly below market — possible fraud or legal issue',    25),
+            ('double sale',         'Possible double sale scenario',                                       60),
+            ('no noc',              'No NOC from authority — registration cannot complete',                40),
+            ('society not approved','Non-approved society — no LDA/CDA NOC',                              50),
+            ('fake registry',       'Fake or forged registry document — verify at sub-registrar',         70),
+            ('transfer fee waived', 'Transfer fee waiver claim — verify with authority directly',         30),
+            ('deal expire',         'Artificial deadline — pressure tactic to rush payment',              20),
+            ('limited time',        'Artificial deadline — pressure tactic to rush payment',              20),
+            ('guaranteed return',   'Guaranteed return promise — no property investment is guaranteed',   35),
+            # Romanized Urdu patterns
+            ('pehle paise',         'Advance payment demanded before documents — HIGH RISK',              45),
+            ('agay payment',        'Advance payment demanded before documents — HIGH RISK',              45),
+            ('pehle token',         'Token money demanded before documents — Major red flag',             35),
+            ('baher se',            'Overseas seller — NEVER send money without in-person verification',  25),
+            ('bahir se',            'Overseas seller — NEVER send money without in-person verification',  25),
+            ('jaldi karo',          'Urgency pressure — do not rush any property decision',               20),
+            ('jaldi sale',          'Urgency pressure — do not rush any property decision',               20),
+            ('kachha file',         'Kachhi (unallocated) file — verify allocation at authority office',  55),
+            ('poa hai',             'PoA involved — verify it is valid, registered, and not expired',     25),
+            ('fard nahi',           'Seller cannot provide Fard — serious red flag',                      55),
+            ('documents nahi',      'No documents available — extremely high risk',                       70),
+            ('sasta hai',           'Price below market — verify reason before any payment',              20),
+            ('court mein hai',      'Property in court litigation — DO NOT proceed',                      65),
+            ('noc nahi',            'No NOC from authority — transfer cannot complete',                   40),
+            ('double bech',         'Possible double sale — get fresh Fard before any payment',           60),
+            ('already sold',        'Possible double sale — get fresh Fard before any payment',           60),
         ]
 
         for keyword, flag_msg, risk_pts in patterns:
@@ -585,8 +617,12 @@ def connect_to_agent(
         phone = _ctx_phone.get() or ''
         user  = _ctx_user.get()
 
-        # Build queryset — verified + active agents only
-        qs = Agent.objects.filter(is_active=True, is_verified=True)
+        # Build queryset — verified + active + available agents only
+        qs = Agent.objects.filter(
+            is_active=True,
+            is_verified=True,
+            availability_status=Agent.AvailabilityStatus.AVAILABLE,
+        )
 
         # City match — STRICT: if city was specified, only return agents for that city.
         # Never return an agent from a different city just because no local one exists.

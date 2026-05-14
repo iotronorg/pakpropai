@@ -5,6 +5,65 @@ from django.utils import timezone
 logger = logging.getLogger(__name__)
 
 
+@shared_task
+def notify_verification_status_change(verification_id: str):
+    """
+    Called after an admin reviews a verification (approve / reject / dispute).
+    Notifies the property owner and assigned agent of the outcome.
+    """
+    from .models import Verification
+    from apps.notifications.services import notify_user
+
+    try:
+        v = (
+            Verification.objects
+            .select_related('property__owner', 'property__assigned_agent__user')
+            .get(pk=verification_id)
+        )
+    except Verification.DoesNotExist:
+        logger.warning(f"notify_verification_status_change: verification {verification_id} not found")
+        return
+
+    prop = v.property
+    if not prop:
+        return
+
+    messages = {
+        'passed': (
+            'Property Verification Approved',
+            f'✅ Your property *"{prop.title}"* has been verified successfully.',
+        ),
+        'failed': (
+            'Property Verification Failed',
+            f'❌ Your property *"{prop.title}"* could not be verified. '
+            'Please review the feedback and re-submit.',
+        ),
+        'disputed': (
+            'Property Verification Disputed',
+            f'⚠️ Your property *"{prop.title}"* has been flagged as disputed. '
+            'Contact support for further details.',
+        ),
+    }
+    title, message = messages.get(
+        v.status,
+        ('Verification Update', f'Verification status for "{prop.title}" changed to {v.status}.'),
+    )
+
+    recipients = []
+    if prop.owner:
+        recipients.append(prop.owner)
+    if prop.assigned_agent and prop.assigned_agent.user and prop.assigned_agent.user != prop.owner:
+        recipients.append(prop.assigned_agent.user)
+
+    for user in recipients:
+        try:
+            notify_user(user, title=title, message=message, event_type='report_ready')
+        except Exception as exc:
+            logger.warning(
+                f"notify_verification_status_change: failed to notify user {user.pk}: {exc}"
+            )
+
+
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def run_verification_task(self, verification_id: str, image_bytes: bytes = None,
                           mime_type: str = 'image/jpeg'):

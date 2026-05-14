@@ -208,7 +208,7 @@ def _notify_buyer_lock_active(deal: EscrowDeal):
             "Contact your agent to proceed with the full transaction."
         )
         from apps.notifications.services import notify_user
-        notify_user(deal.buyer, title="Deal Lock Confirmed", message=msg)
+        notify_user(deal.buyer, title="Deal Lock Confirmed", message=msg, event_type='deal_updates')
     except Exception as exc:
         logger.warning(f"Deal lock notify failed: {exc}")
 

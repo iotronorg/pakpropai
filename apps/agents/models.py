@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.conf import settings
 
@@ -89,6 +90,19 @@ class Agent(models.Model):
     facebook_page       = models.URLField(blank=True,
                               help_text='Facebook page URL')
 
+    # ── Availability ─────────────────────────────────────────────────────────
+    class AvailabilityStatus(models.TextChoices):
+        AVAILABLE = 'available', 'Available'
+        BUSY      = 'busy',      'Busy'
+        OFFLINE   = 'offline',   'Offline'
+
+    availability_status = models.CharField(
+        max_length=20,
+        choices=AvailabilityStatus.choices,
+        default=AvailabilityStatus.AVAILABLE,
+        help_text='Real-time availability shown to leads and used in auto-assignment',
+    )
+
     # ── Registration & Approval ───────────────────────────────────────────────
     class RegistrationStatus(models.TextChoices):
         PENDING  = 'pending',  'Pending Approval'
@@ -169,6 +183,15 @@ class Agent(models.Model):
             'industrial':       'Industrial',
         }
         return ', '.join(labels.get(s, s) for s in self.specializations) if self.specializations else '—'
+
+    def clean(self):
+        if self.primary_city and self.cities and self.primary_city not in self.cities:
+            raise ValidationError({
+                'primary_city': (
+                    f"'{self.primary_city}' is not in the agent's cities list. "
+                    "Add it to cities first, or leave primary_city blank."
+                )
+            })
 
     def __str__(self):
         city_str = self.cities_str

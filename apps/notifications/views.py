@@ -33,11 +33,13 @@ class NotificationListView(APIView):
         if unread_only:
             qs = qs.filter(is_read=False)
 
-        limit = min(int(request.query_params.get('limit', 50)), 200)
-        items = qs[:limit]
+        limit  = min(int(request.query_params.get('limit', 50)), 200)
+        offset = max(int(request.query_params.get('offset', 0)), 0)
+        total  = qs.count()
+        items  = qs[offset: offset + limit]
 
         return Response({
-            'count':        qs.count(),
+            'count':        total,
             'unread_count': Notification.objects.filter(user=request.user, is_read=False).count(),
             'results':      [_serialize(n) for n in items],
         })

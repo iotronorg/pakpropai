@@ -12,8 +12,18 @@ class IsOwnerOrReadOnly(BasePermission):
 
 
 class IsAgentOrAdmin(BasePermission):
+    """Blocks role=user clients from write operations (agent/developer/admin only)."""
     def has_permission(self, request, view):
         return (
             request.user.is_authenticated
             and request.user.role in ('agent', 'admin', 'developer')
+        )
+
+
+class IsAdminOrDeveloper(BasePermission):
+    """Restricts to admin or developer org roles; blocks agent and client roles."""
+    def has_permission(self, request, view):
+        return (
+            request.user.is_authenticated
+            and request.user.role in ('admin', 'developer')
         )

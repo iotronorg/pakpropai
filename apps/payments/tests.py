@@ -18,7 +18,7 @@ User = get_user_model()
 _SAFEPAY_TEST_SECRET = 'test-safepay-secret'
 
 
-def _user(phone='+923001234567', role='user'):
+def _user(phone='+923001234567', role='client'):
     return User.objects.create_user(phone=phone, password='pw', role=role)
 
 

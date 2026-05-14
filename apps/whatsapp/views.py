@@ -83,6 +83,14 @@ class WhatsAppWebhookView(APIView):
         if not phone:
             return
 
+        # Send read receipt immediately — shows blue ticks to the user
+        # before we start processing (AI can take 3-8 seconds).
+        try:
+            from .client import WhatsAppClient
+            WhatsAppClient.mark_read(msg_id)
+        except Exception:
+            pass
+
         try:
             MessageRouter.route(message, phone)
         except Exception:

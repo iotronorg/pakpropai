@@ -23,16 +23,11 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'
 SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
 
-# ── CORS: restrict to production frontend only ────────────────────────────────
+# ── CORS + CSRF: restrict to production frontend only ─────────────────────────
 # Set FRONTEND_URL in .env — e.g. https://app.pakpropai.com
-CORS_ALLOWED_ORIGINS = [env('FRONTEND_URL')]
+CORS_ALLOWED_ORIGINS  = [env('FRONTEND_URL')]
 CORS_ALLOW_CREDENTIALS = True
+CSRF_TRUSTED_ORIGINS  = [env('FRONTEND_URL')]
 
-# ── Sentry error monitoring (optional — install sentry-sdk to enable) ─────────
-try:
-    import sentry_sdk
-    _dsn = env('SENTRY_DSN', default='')
-    if _dsn:
-        sentry_sdk.init(dsn=_dsn, traces_sample_rate=0.2)
-except ImportError:
-    pass
+# Sentry is initialized in base.py with Django/Celery/Redis integrations.
+# Set SENTRY_DSN in the environment to enable it.

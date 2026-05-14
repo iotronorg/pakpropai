@@ -2,6 +2,7 @@ import logging
 from datetime import timedelta
 from django.conf import settings
 from django.db.models import Q
+from django.middleware.csrf import get_token as get_csrf_token
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -210,3 +211,38 @@ class UserListView(APIView):
             return Response({'error': 'Cannot delete your own account.'}, status=status.HTTP_400_BAD_REQUEST)
         user.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class NotificationPreferencesView(APIView):
+    """GET/PATCH /auth/me/notification-preferences/ — per-user channel + event opt-outs."""
+    permission_classes = [IsAuthenticated]
+
+    def _get_prefs(self, user):
+        from apps.notifications.models import UserNotificationPreference
+        prefs, _ = UserNotificationPreference.objects.get_or_create(user=user)
+        return prefs
+
+    def get(self, request):
+        from apps.notifications.serializers import NotificationPreferenceSerializer
+        return Response(NotificationPreferenceSerializer(self._get_prefs(request.user)).data)
+
+    def patch(self, request):
+        from apps.notifications.serializers import NotificationPreferenceSerializer
+        prefs = self._get_prefs(request.user)
+        serializer = NotificationPreferenceSerializer(prefs, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+
+class CsrfTokenView(APIView):
+    """
+    GET /auth/csrf/
+    Seeds the csrftoken cookie for browser clients.  Must be called once on
+    app load before any state-mutating request.  No authentication required.
+    """
+    permission_classes = [AllowAny]
+    authentication_classes = []  # no auth so CSRF middleware can set the cookie freely
+
+    def get(self, request):
+        return Response({'csrfToken': get_csrf_token(request)})

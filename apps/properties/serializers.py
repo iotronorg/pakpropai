@@ -38,8 +38,9 @@ class PropertyListSerializer(serializers.ModelSerializer):
 
 
 class PropertyDetailSerializer(serializers.ModelSerializer):
-    owner_phone = serializers.CharField(source='owner.phone', read_only=True)
-    images      = PropertyImageSerializer(many=True, read_only=True)
+    owner_phone   = serializers.CharField(source='owner.phone', read_only=True)
+    images        = PropertyImageSerializer(many=True, read_only=True)
+    primary_image = serializers.SerializerMethodField()
 
     class Meta:
         model  = Property
@@ -47,10 +48,19 @@ class PropertyDetailSerializer(serializers.ModelSerializer):
                   'city', 'location', 'area_marla', 'price_pkr',
                   'property_type', 'furnished_status', 'construction_status',
                   'legal_status', 'ai_score', 'risk_level', 'assigned_agent',
-                  'raw_docs', 'ai_analysis', 'is_active', 'images',
+                  'installment_available', 'raw_docs', 'ai_analysis',
+                  'is_active', 'primary_image', 'images',
                   'created_at', 'updated_at')
         read_only_fields = ('id', 'owner', 'owner_phone', 'ai_score', 'risk_level',
-                            'ai_analysis', 'images', 'created_at', 'updated_at')
+                            'ai_analysis', 'primary_image', 'images', 'created_at', 'updated_at')
+
+    def get_primary_image(self, obj):
+        first = obj.images.first()
+        if not first:
+            return None
+        request = self.context.get('request')
+        url = first.image.url
+        return request.build_absolute_uri(url) if request else url
 
 
 class PropertyCreateSerializer(serializers.ModelSerializer):

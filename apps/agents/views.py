@@ -4,6 +4,7 @@ from rest_framework import generics, permissions, status
 from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from apps.core.permissions import IsAdminOrDeveloper
 from .models import Agent
 from .serializers import AgentSerializer, AgentRegistrationSerializer
 
@@ -36,10 +37,10 @@ class AgentListView(generics.ListCreateAPIView):
     """
     GET  /agents/           — admin: all agents; developer: own org agents.
     GET  /agents/?status=pending — pending applications queue.
-    POST /agents/           — admin only (direct create, bypasses registration flow).
+    POST /agents/           — admin: full approved create; developer: creates pending agent in own org.
     """
     serializer_class   = AgentAdminSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAdminOrDeveloper]
 
     def get_queryset(self):
         role = self.request.user.role
@@ -66,26 +67,58 @@ class AgentListView(generics.ListCreateAPIView):
         return Agent.objects.none()
 
     def perform_create(self, serializer):
-        if self.request.user.role != 'admin':
-            raise PermissionDenied("Admin access required.")
-        # Direct admin creation — mark as approved immediately.
-        serializer.save(
-            registration_status=Agent.RegistrationStatus.APPROVED,
-            is_active=True,
-            is_verified=True,
-        )
+        if self.request.user.role == 'admin':
+            # Admin direct-create: auto-approved.
+            serializer.save(
+                registration_status=Agent.RegistrationStatus.APPROVED,
+                is_active=True,
+                is_verified=True,
+            )
+        else:
+            # Developer creates an agent scoped to their own org, pending approval.
+            try:
+                org = self.request.user.agent_profile
+            except Agent.DoesNotExist:
+                raise PermissionDenied("No developer org linked to this account.")
+            serializer.save(
+                parent_organization=org,
+                registration_status=Agent.RegistrationStatus.PENDING,
+                is_active=False,
+                is_verified=False,
+            )
 
 
 class AgentAdminDetailView(generics.RetrieveUpdateDestroyAPIView):
-    """GET/PATCH/DELETE /agents/{id}/ — admin only."""
+    """
+    GET/PATCH/DELETE /agents/{id}/
+    Admin: full access to any agent.
+    Developer: GET/PATCH only for agents in their own org. DELETE is admin-only.
+    """
     serializer_class   = AgentAdminSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAdminOrDeveloper]
     queryset           = Agent.objects.select_related('user', 'parent_organization').all()
 
     def get_object(self):
-        if self.request.user.role != 'admin':
-            raise PermissionDenied("Admin access required.")
-        return super().get_object()
+        role = self.request.user.role
+        obj = super().get_object()
+        if role == 'admin':
+            return obj
+        # Developer: verify the agent belongs to their org.
+        try:
+            org = self.request.user.agent_profile
+        except Agent.DoesNotExist:
+            raise PermissionDenied("No developer org linked to this account.")
+        if obj.parent_organization_id != org.id:
+            raise PermissionDenied("You can only access agents in your own organisation.")
+        return obj
+
+    def destroy(self, request, *args, **kwargs):
+        if request.user.role != 'admin':
+            return Response(
+                {'detail': 'Only admins can delete agent records.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().destroy(request, *args, **kwargs)
 
 
 class AgentRegisterView(APIView):
@@ -271,6 +304,58 @@ class AgentRejectView(APIView):
             )
         except Exception as exc:
             logger.warning(f"Failed to notify agent {agent.id} on rejection: {exc}")
+
+
+class AgentAvailabilityView(APIView):
+    """
+    PATCH /agents/me/availability/  — agent sets own availability.
+    PATCH /agents/{pk}/availability/ — admin sets any agent's availability.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request, pk=None):
+        new_status = request.data.get('availability_status', '').strip()
+        if new_status not in Agent.AvailabilityStatus.values:
+            return Response(
+                {'detail': f"availability_status must be one of: {Agent.AvailabilityStatus.values}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if pk is None:
+            # Agent updating their own status
+            try:
+                agent = request.user.agent_profile
+            except Agent.DoesNotExist:
+                raise NotFound("No agent profile linked to this account.")
+        else:
+            # Admin updating any agent
+            if request.user.role != 'admin':
+                raise PermissionDenied("Admin access required.")
+            try:
+                agent = Agent.objects.get(pk=pk)
+            except Agent.DoesNotExist:
+                raise NotFound("Agent not found.")
+
+        agent.availability_status = new_status
+        agent.save(update_fields=['availability_status', 'updated_at'])
+        return Response({'availability_status': agent.availability_status})
+
+
+class AgentAvailableListView(generics.ListAPIView):
+    """GET /agents/available/?city=Lahore — active, available agents for a city."""
+    serializer_class   = AgentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = Agent.objects.filter(
+            is_active=True,
+            registration_status=Agent.RegistrationStatus.APPROVED,
+            availability_status=Agent.AvailabilityStatus.AVAILABLE,
+        ).select_related('user')
+        city = self.request.query_params.get('city', '').strip()
+        if city:
+            qs = qs.filter(cities__icontains=city)
+        return qs
 
 
 class TeamView(APIView):

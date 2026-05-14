@@ -1,4 +1,5 @@
 import uuid
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.conf import settings
 
@@ -79,6 +80,33 @@ class Property(models.Model):
             models.Index(fields=['legal_status']),
             models.Index(fields=['owner']),
         ]
+
+    # Allowed legal_status forward transitions.
+    _LEGAL_TRANSITIONS = {
+        LegalStatus.UNVERIFIED: {LegalStatus.PENDING, LegalStatus.DISPUTED},
+        LegalStatus.PENDING:    {LegalStatus.VERIFIED, LegalStatus.UNVERIFIED, LegalStatus.DISPUTED},
+        LegalStatus.VERIFIED:   {LegalStatus.DISPUTED},
+        LegalStatus.DISPUTED:   {LegalStatus.PENDING, LegalStatus.UNVERIFIED},
+    }
+
+    def clean(self):
+        if self.price_pkr is not None and self.price_pkr <= 0:
+            raise ValidationError({'price_pkr': 'Price must be a positive value.'})
+
+        if self.pk:
+            try:
+                old_status = Property.objects.values_list('legal_status', flat=True).get(pk=self.pk)
+                if self.legal_status != old_status:
+                    allowed = self._LEGAL_TRANSITIONS.get(old_status, set())
+                    if self.legal_status not in allowed:
+                        raise ValidationError({
+                            'legal_status': (
+                                f"Invalid transition from '{old_status}' to '{self.legal_status}'. "
+                                f"Allowed: {sorted(allowed) or 'none'}."
+                            )
+                        })
+            except Property.DoesNotExist:
+                pass
 
     def __str__(self):
         return f"{self.title} — {self.city}"

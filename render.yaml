@@ -1,0 +1,156 @@
+services:
+  # ── Django Web API ────────────────────────────────────────────────────────────
+  - type: web
+    name: pakpropai-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: config.settings.prod
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ALLOWED_HOSTS
+        value: pakpropai-api.onrender.com
+      - key: FRONTEND_URL
+        value: https://app.pakpropai.com
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pakpropai-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: pakpropai-redis
+          property: connectionString
+      - key: BASE_URL
+        value: https://pakpropai-api.onrender.com
+      # WhatsApp Cloud API
+      - key: WA_VERIFY_TOKEN
+        sync: false
+      - key: WA_APP_SECRET
+        sync: false
+      - key: WA_ACCESS_TOKEN
+        sync: false
+      - key: WA_PHONE_NUMBER_ID
+        sync: false
+      - key: WA_OTP_TEMPLATE_NAME
+        sync: false
+      # AI
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash-lite
+      - key: AI_BACKEND
+        value: gemini
+      # Cloudflare R2 media storage
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET_NAME
+        sync: false
+      - key: R2_PUBLIC_URL
+        sync: false
+      # Payment gateways
+      - key: SAFEPAY_MERCHANT_KEY
+        sync: false
+      - key: SAFEPAY_SECRET_KEY
+        sync: false
+      - key: SAFEPAY_ENVIRONMENT
+        value: production
+      - key: BSECURE_CLIENT_ID
+        sync: false
+      - key: BSECURE_CLIENT_SECRET
+        sync: false
+      - key: BSECURE_ENVIRONMENT
+        value: production
+      # Error monitoring
+      - key: SENTRY_DSN
+        sync: false
+    startCommand: >
+      sh -c "python manage.py migrate --noinput && gunicorn config.wsgi --workers 2 --timeout 60 --bind 0.0.0.0:$PORT"
+    healthCheckPath: /health/
+
+  # ── Celery Worker ─────────────────────────────────────────────────────────────
+  - type: worker
+    name: pakpropai-worker
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: config.settings.prod
+      - key: SECRET_KEY
+        fromService:
+          type: web
+          name: pakpropai-api
+          envVarKey: SECRET_KEY
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pakpropai-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: pakpropai-redis
+          property: connectionString
+      - key: BASE_URL
+        value: https://pakpropai-api.onrender.com
+      - key: WA_ACCESS_TOKEN
+        sync: false
+      - key: WA_PHONE_NUMBER_ID
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: AI_BACKEND
+        value: gemini
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET_NAME
+        sync: false
+      - key: SENTRY_DSN
+        sync: false
+    startCommand: celery -A config worker --loglevel=info --concurrency 2
+
+  # ── Celery Beat Scheduler ─────────────────────────────────────────────────────
+  - type: worker
+    name: pakpropai-beat
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: config.settings.prod
+      - key: SECRET_KEY
+        fromService:
+          type: web
+          name: pakpropai-api
+          envVarKey: SECRET_KEY
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pakpropai-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: pakpropai-redis
+          property: connectionString
+      - key: SENTRY_DSN
+        sync: false
+    startCommand: celery -A config beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+
+databases:
+  - name: pakpropai-db
+    databaseName: pakpropai
+    user: pakprop
+    plan: free
+
+  - name: pakpropai-redis
+    plan: free

@@ -351,7 +351,7 @@ Must support:
 
 ### RBAC — 4 User Roles
 
-**1. Client (role=`user`)**
+**1. Client (role=`client`)**
 - Interacts exclusively via WhatsApp (primary); future: mobile app, web portal, phone AI, social DMs
 - No web dashboard access — NEVER expose internal admin/CRM UI to clients
 - Gets auto-created as CRM Lead on first WhatsApp message
@@ -493,7 +493,7 @@ If it violates constraints → DO NOT provide it.
 
 ### 17.1 Who is the Client?
 
-Role value: `role = "user"`
+Role value: `role = "client"`
 
 Represents:
 - Property Buyers

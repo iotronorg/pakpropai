@@ -1,9 +1,11 @@
 import logging
+import time
 
 from django.core.cache import cache
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
+audit_logger = logging.getLogger('api.audit')
 
 _LAST_ACTIVE_TTL = 300  # seconds — throttle DB writes to once per 5 min per user
 
@@ -89,3 +91,38 @@ class TenantIsolationMiddleware:
                 "Link an Agent record via admin to restore data access.",
                 user.id, role,
             )
+
+
+class RequestAuditMiddleware:
+    """
+    Logs every API request as a structured audit entry: method, path, user,
+    HTTP status, and wall-clock duration. Uses a dedicated 'api.audit' logger
+    so the output can be routed to a separate log file or external sink.
+    Only fires for /api/ paths to avoid polluting with static/admin noise.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        if not request.path.startswith('/api/'):
+            return self.get_response(request)
+
+        t0 = time.monotonic()
+        response = self.get_response(request)
+        duration_ms = int((time.monotonic() - t0) * 1000)
+
+        user = getattr(request, 'user', None)
+        uid  = str(user.pk) if user and user.is_authenticated else 'anon'
+        role = getattr(user, 'role', '-') if user and user.is_authenticated else '-'
+
+        audit_logger.info(
+            '%s %s user=%s role=%s status=%d %dms',
+            request.method,
+            request.path,
+            uid,
+            role,
+            response.status_code,
+            duration_ms,
+        )
+        return response

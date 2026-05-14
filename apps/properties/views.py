@@ -1,11 +1,13 @@
-from django.db.models import Q
+from django.db.models import Avg, Count, Q
+from django.db.models.functions import TruncMonth, TruncWeek
 from rest_framework import filters, status, viewsets
+from rest_framework.views import APIView
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 
-from apps.core.permissions import IsOwnerOrReadOnly
+from apps.core.permissions import IsOwnerOrReadOnly, IsAgentOrAdmin
 from .models import Property, PropertyImage
 from .serializers import (PropertyCreateSerializer, PropertyDetailSerializer,
                           PropertyImageSerializer, PropertyListSerializer)
@@ -19,6 +21,13 @@ class PropertyViewSet(viewsets.ModelViewSet):
     queryset = Property.objects.filter(is_active=True)
     permission_classes = [IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+
+    def get_permissions(self):
+        if self.action == 'create':
+            # Only agents, developers, and admins may list properties.
+            # Clients (role=user) are WhatsApp-only and must not submit via API.
+            return [IsAgentOrAdmin()]
+        return super().get_permissions()
     search_fields   = ['title', 'city', 'location', 'description']
     ordering_fields = ['ai_score', 'price_pkr', 'created_at']
     ordering        = ['-created_at']
@@ -63,13 +72,17 @@ class PropertyViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def request_verification(self, request, pk=None):
         prop = self.get_object()
+        if prop.owner != request.user and request.user.role != 'admin':
+            return Response(
+                {'detail': 'Only the property owner can request verification.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         from apps.verification.models import Verification
         v = Verification.objects.create(
             property=prop,
             requested_by=request.user,
             status=Verification.Status.PENDING,
         )
-        # Phase 7 will run OCR async
         return Response(
             {'verification_id': str(v.id), 'status': v.status},
             status=status.HTTP_201_CREATED,
@@ -160,3 +173,57 @@ class PropertyViewSet(viewsets.ModelViewSet):
         img.image.delete(save=False)
         img.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class PropertyCompareView(APIView):
+    """
+    GET /properties/compare/?ids=uuid1,uuid2,uuid3
+    Returns full detail for up to 4 properties side-by-side.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        ids_raw = request.query_params.get('ids', '')
+        ids = [i.strip() for i in ids_raw.split(',') if i.strip()]
+        if not ids:
+            return Response({'error': "Provide 'ids' as comma-separated UUIDs."}, status=400)
+        if len(ids) > 4:
+            return Response({'error': 'Maximum 4 properties can be compared at once.'}, status=400)
+        props = Property.objects.filter(id__in=ids, is_active=True)
+        return Response({
+            'count': props.count(),
+            'results': PropertyDetailSerializer(props, many=True, context={'request': request}).data,
+        })
+
+
+class PropertyMarketTrendsView(APIView):
+    """
+    GET /properties/market-trends/?city=Lahore&period=monthly|weekly
+    Returns average price and listing count per city per time period.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        city   = request.query_params.get('city', '').strip()
+        period = request.query_params.get('period', 'monthly')
+
+        qs = Property.objects.filter(is_active=True, price_pkr__isnull=False)
+        if city:
+            qs = qs.filter(city__icontains=city)
+
+        trunc_fn = TruncMonth if period == 'monthly' else TruncWeek
+
+        data = list(
+            qs
+            .annotate(period=trunc_fn('created_at'))
+            .values('period', 'city', 'property_type')
+            .annotate(avg_price_pkr=Avg('price_pkr'), count=Count('id'))
+            .order_by('city', 'period')
+        )
+
+        # Serialize datetime fields to ISO strings
+        for row in data:
+            if row.get('period'):
+                row['period'] = row['period'].date().isoformat()
+
+        return Response({'results': data})

@@ -373,12 +373,35 @@ class PakPropAgent:
         return '\n'.join(lines)
 
     def transcribe_audio(self, audio_bytes: bytes, mime_type: str) -> str:
-        """Transcribe a voice message. Returns empty string if unsupported."""
+        """
+        Transcribe a voice message.
+        Primary: uses the configured backend (Gemini supports audio; Ollama does not).
+        Fallback: if the primary backend can't transcribe, tries Gemini directly
+        (works even when AI_BACKEND=local, as long as GEMINI_API_KEY is set).
+        """
         try:
-            return self._get_backend().transcribe_audio(audio_bytes, mime_type)
+            result = self._get_backend().transcribe_audio(audio_bytes, mime_type)
+            if result:
+                return result
         except Exception as exc:
-            logger.error(f"Audio transcription failed: {exc}")
-            return ''
+            logger.error(f"Primary backend audio transcription failed: {exc}")
+
+        # Primary backend returned '' (Ollama) or failed — try Gemini as fallback
+        try:
+            from apps.config.services import SystemConfigService
+            from django.conf import settings as _s
+            gemini_key = SystemConfigService.get('gemini_api_key') or _s.GEMINI_API_KEY
+            if gemini_key:
+                from apps.ai.backends.gemini import GeminiBackend
+                fallback = GeminiBackend()
+                result = fallback.transcribe_audio(audio_bytes, mime_type)
+                if result:
+                    logger.info("Audio transcribed via Gemini fallback")
+                    return result
+        except Exception as exc:
+            logger.error(f"Gemini fallback transcription failed: {exc}")
+
+        return ''
 
     def clear_history(self, phone: str):
         cache.delete(HISTORY_KEY.format(phone=phone))
@@ -536,12 +559,9 @@ class PakPropAgent:
                 break
 
         # If not in message, try last few history turns
+        # History format: [{'role': 'user'|'model', 'text': '...'}, ...]
         if not city and history:
-            recent = ' '.join(
-                m.get('parts', [{}])[0].get('text', '') if isinstance(m.get('parts'), list)
-                else str(m.get('content', ''))
-                for m in history[-6:]
-            ).lower()
+            recent = ' '.join(m.get('text', '') for m in history[-6:]).lower()
             for key, name in city_map.items():
                 if key in recent:
                     city = name

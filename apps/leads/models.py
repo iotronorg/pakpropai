@@ -181,3 +181,26 @@ class ConversationMessage(models.Model):
 
     def __str__(self):
         return f"{self.direction} [{self.channel}] — lead {self.lead_id}"
+
+
+class LeadScoreHistory(models.Model):
+    """Immutable log of every intent-score change on a lead."""
+
+    lead       = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name='score_history')
+    old_score  = models.SmallIntegerField()
+    new_score  = models.SmallIntegerField()
+    changed_by = models.ForeignKey(
+                     settings.AUTH_USER_MODEL,
+                     on_delete=models.SET_NULL,
+                     null=True, blank=True,
+                     related_name='lead_score_changes',
+                 )
+    reason     = models.CharField(max_length=200, blank=True, help_text='e.g. "AI rescored", "manual override"')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'lead_score_history'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Lead {self.lead_id}: {self.old_score} → {self.new_score}"

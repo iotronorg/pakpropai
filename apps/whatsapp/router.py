@@ -85,7 +85,7 @@ class MessageRouter:
 
         # Non-client roles (agent, developer, admin) use the web dashboard.
         # If they message the bot, redirect them and stop processing.
-        if user.role != 'user':
+        if user.role != 'client':
             cls._send_and_log(
                 phone,
                 (
@@ -114,19 +114,22 @@ class MessageRouter:
             if not SystemConfigService.get_features().get('feature_voice_messages', True):
                 cls._send_and_log(
                     phone,
-                    "Voice messages are not supported at the moment. Please type your message.",
+                    "Voice messages are not supported at the moment. Please type your message.\n"
+                    "Voice messages kay liye support abhi available nahi — please type karein.",
                     session_db,
                 )
                 return
             text = cls._transcribe_voice(message_data, phone)
             if not text:
-                cls._send_and_log(
-                    phone,
-                    "I received your voice message but couldn't transcribe it. "
-                    "Please type your message or try again.",
-                    session_db,
+                # Transcription failed (unsupported backend or download error).
+                # Route a generic prompt to the AI so the user still gets a useful reply
+                # rather than a dead-end error message.
+                text = (
+                    "The user sent a voice message but it could not be transcribed. "
+                    "Apologize briefly, explain that voice messages need a Gemini API key to work "
+                    "when using the local AI backend, and ask them to type their question instead. "
+                    "Keep it short and bilingual (English + Urdu)."
                 )
-                return
             display_body = f"[voice] {text}"
 
         elif msg_type == 'image':
@@ -266,15 +269,23 @@ class MessageRouter:
         media_id   = audio_info.get('id')
         mime_type  = audio_info.get('mime_type', 'audio/ogg')
         if not media_id:
+            logger.warning(f"Audio message from {phone} has no media_id — skipping download")
             return ''
         try:
+            print(f"\033[94m[AUDIO] phone={phone} downloading media_id={media_id}\033[0m")
             audio_bytes = WhatsAppClient.download_media(media_id)
+            print(f"\033[94m[AUDIO] downloaded {len(audio_bytes)} bytes, mime={mime_type}\033[0m")
             from apps.ai.agent import get_agent
             transcript = get_agent().transcribe_audio(audio_bytes, mime_type)
-            logger.info(f"Voice transcribed phone={phone}: {transcript[:80]}")
+            if transcript:
+                print(f"\033[94m[AUDIO] transcribed: {transcript[:80]!r}\033[0m")
+            else:
+                print(f"\033[94m[AUDIO] transcription returned empty (no Gemini key in local mode?)\033[0m")
+            logger.info(f"Voice transcribed phone={phone}: {transcript[:80] if transcript else '<empty>'}")
             return transcript
         except Exception as exc:
-            logger.error(f"Voice transcription failed phone={phone}: {exc}")
+            logger.error(f"Voice transcription failed phone={phone}: {exc}", exc_info=True)
+            print(f"\033[91m[AUDIO ERROR] phone={phone}: {exc}\033[0m")
             return ''
 
     # ─── Utilities ────────────────────────────────────────────────────────────
@@ -358,14 +369,34 @@ class MessageRouter:
     def _send_and_log(cls, phone: str, body: str, session_db):
         try:
             resp  = WhatsAppClient.send_text(phone, body, skip_window_check=True)
-            wa_id = resp.get('messages', [{}])[0].get('id', '')
+            wa_id = resp.get('messages', [{}])[0].get('id', '') or f"out-{timezone.now().timestamp()}"
             WhatsAppMessage.objects.create(
                 session       = session_db,
-                wa_message_id = wa_id or f"out-{timezone.now().timestamp()}",
+                wa_message_id = wa_id,
                 direction     = 'outbound',
                 msg_type      = 'text',
                 body          = body[:2000],
                 raw_payload   = resp,
             )
+            # Mirror outbound replies to CRM so agents see full two-way conversations
+            cls._persist_crm_outbound(session_db.user, body, wa_id)
         except Exception as exc:
             logger.error(f"Failed to send reply to {phone}: {exc}")
+
+    @classmethod
+    def _persist_crm_outbound(cls, user, body: str, wa_message_id: str):
+        try:
+            from apps.leads.models import Lead, ConversationMessage
+            lead = Lead.objects.filter(user=user).order_by('-created_at').first()
+            if lead and body:
+                ConversationMessage.objects.get_or_create(
+                    wa_message_id=wa_message_id,
+                    defaults={
+                        'lead':      lead,
+                        'direction': ConversationMessage.Direction.OUTBOUND,
+                        'channel':   ConversationMessage.Channel.WHATSAPP,
+                        'body':      body[:2000],
+                    },
+                )
+        except Exception:
+            pass

@@ -194,6 +194,203 @@ class LeadViewSet(viewsets.ModelViewSet):
         return Response(ConversationMessageSerializer(msg).data,
                         status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=['post'], url_path='summarize')
+    def summarize(self, request, pk=None):
+        """
+        POST /leads/{id}/summarize/
+        Returns an AI-written summary of the lead's conversation history.
+        """
+        lead = self.get_object()
+        msgs = list(
+            lead.messages.order_by('-created_at')[:30]
+        )[::-1]  # last 30 messages, oldest first
+
+        if not msgs:
+            return Response({'summary': 'No conversation history yet.'})
+
+        transcript = '\n'.join(
+            f"{'Client' if m.direction == 'inbound' else 'Agent'}: {m.body}"
+            for m in msgs
+        )
+        lead_info = (
+            f"Lead phone: {lead.user.phone}\n"
+            f"Status: {lead.status}\n"
+            f"Budget: {lead.budget_min or '?'} – {lead.budget_max or '?'} PKR\n"
+            f"City interest: {lead.location_interest or 'unknown'}\n"
+        )
+        prompt = (
+            "You are a CRM assistant for a Pakistani real estate platform.\n"
+            f"Lead info:\n{lead_info}\n"
+            f"Conversation (last {len(msgs)} messages):\n{transcript}\n\n"
+            "Write a concise 3–5 sentence summary covering:\n"
+            "1. What the client is looking for\n"
+            "2. Key discussion points and preferences expressed\n"
+            "3. Current status and suggested next step for the agent\n"
+            "Reply in English only. Be direct and factual."
+        )
+
+        try:
+            from apps.ai.client import GeminiClient
+            from django.conf import settings
+            if getattr(settings, 'AI_BACKEND', 'gemini') == 'local':
+                from openai import OpenAI
+                client = OpenAI(
+                    base_url=getattr(settings, 'OLLAMA_BASE_URL', 'http://localhost:11434') + '/v1',
+                    api_key='ollama',
+                )
+                resp = client.chat.completions.create(
+                    model=getattr(settings, 'LOCAL_MODEL', 'qwen2.5:7b'),
+                    messages=[{'role': 'user', 'content': prompt}],
+                    max_tokens=400,
+                    temperature=0.3,
+                )
+                summary = resp.choices[0].message.content.strip()
+            else:
+                summary = GeminiClient.generate(
+                    prompt,
+                    interaction_type='lead_summarize',
+                    max_output_tokens=400,
+                    cache_ttl=300,
+                    use_cache=False,
+                )
+        except Exception as exc:
+            logger.error(f"Summarize failed for lead {lead.id}: {exc}")
+            return Response({'detail': 'AI summarization unavailable.'}, status=503)
+
+        return Response({'summary': summary, 'message_count': len(msgs)})
+
+    @action(detail=True, methods=['post'], url_path='suggest-replies')
+    def suggest_replies(self, request, pk=None):
+        """
+        POST /leads/{id}/suggest-replies/
+        Returns 3 context-aware reply suggestions for the agent.
+        """
+        lead = self.get_object()
+        msgs = list(lead.messages.order_by('-created_at')[:10])[::-1]
+
+        if not msgs:
+            return Response({'suggestions': []})
+
+        last_inbound = next(
+            (m.body for m in reversed(msgs) if m.direction == 'inbound'), None
+        )
+        if not last_inbound:
+            return Response({'suggestions': []})
+
+        recent = '\n'.join(
+            f"{'Client' if m.direction == 'inbound' else 'Agent'}: {m.body}"
+            for m in msgs[-6:]
+        )
+        prompt = (
+            "You are a real estate agent assistant for a Pakistani platform.\n"
+            f"Lead status: {lead.status} | City: {lead.location_interest or 'unknown'} "
+            f"| Budget: {lead.budget_max or '?'} PKR\n\n"
+            f"Recent conversation:\n{recent}\n\n"
+            f"Last client message: {last_inbound}\n\n"
+            "Generate exactly 3 short, professional WhatsApp reply suggestions for the agent. "
+            "Each should be 1–2 sentences, natural Pakistani real estate style (mix of Urdu/English is fine). "
+            "Format as JSON array of strings: [\"reply1\", \"reply2\", \"reply3\"]. "
+            "No explanation, just the JSON array."
+        )
+
+        try:
+            import json
+            from apps.ai.client import GeminiClient
+            from django.conf import settings
+            if getattr(settings, 'AI_BACKEND', 'gemini') == 'local':
+                from openai import OpenAI
+                client = OpenAI(
+                    base_url=getattr(settings, 'OLLAMA_BASE_URL', 'http://localhost:11434') + '/v1',
+                    api_key='ollama',
+                )
+                resp = client.chat.completions.create(
+                    model=getattr(settings, 'LOCAL_MODEL', 'qwen2.5:7b'),
+                    messages=[{'role': 'user', 'content': prompt}],
+                    max_tokens=300,
+                    temperature=0.6,
+                )
+                raw = resp.choices[0].message.content.strip()
+            else:
+                raw = GeminiClient.generate(
+                    prompt,
+                    interaction_type='suggest_replies',
+                    max_output_tokens=300,
+                    temperature=0.6,
+                    use_cache=False,
+                )
+
+            # parse JSON array from response
+            import re as _re
+            arr_match = _re.search(r'\[.*?\]', raw, _re.DOTALL)
+            suggestions = json.loads(arr_match.group(0)) if arr_match else []
+            if not isinstance(suggestions, list):
+                suggestions = []
+            suggestions = [str(s) for s in suggestions[:3]]
+        except Exception as exc:
+            logger.error(f"suggest-replies failed for lead {lead.id}: {exc}")
+            suggestions = []
+
+        return Response({'suggestions': suggestions})
+
+
+class MergeLeadsView(APIView):
+    """
+    POST /leads/merge/
+    Merge a duplicate lead into a primary lead (admin only).
+    Transfers all messages + appointments from secondary → primary, then deletes secondary.
+    Body: { "primary_id": "<uuid>", "secondary_id": "<uuid>" }
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if request.user.role != 'admin':
+            return Response({'detail': 'Admin access required.'}, status=403)
+
+        primary_id   = request.data.get('primary_id')
+        secondary_id = request.data.get('secondary_id')
+
+        if not primary_id or not secondary_id:
+            return Response({'detail': 'primary_id and secondary_id are required.'}, status=400)
+        if str(primary_id) == str(secondary_id):
+            return Response({'detail': 'primary_id and secondary_id must differ.'}, status=400)
+
+        try:
+            primary   = Lead.objects.select_related('user').get(pk=primary_id)
+            secondary = Lead.objects.select_related('user').get(pk=secondary_id)
+        except Lead.DoesNotExist:
+            return Response({'detail': 'One or both leads not found.'}, status=404)
+
+        # transfer messages
+        moved_msgs = ConversationMessage.objects.filter(lead=secondary).update(lead=primary)
+
+        # transfer appointments (avoid duplicating same-time-slot)
+        from .models import Appointment
+        Appointment.objects.filter(lead=secondary).update(lead=primary)
+
+        # merge notes
+        if secondary.notes:
+            merged_notes = f"{primary.notes}\n\n[Merged from {secondary.user.phone}]:\n{secondary.notes}".strip()
+            primary.notes = merged_notes
+
+        # keep higher intent score
+        if (secondary.intent_score or 0) > (primary.intent_score or 0):
+            primary.intent_score = secondary.intent_score
+
+        # keep assigned agent if primary has none
+        if not primary.assigned_agent and secondary.assigned_agent:
+            primary.assigned_agent = secondary.assigned_agent
+
+        primary.save(update_fields=['notes', 'intent_score', 'assigned_agent'])
+
+        secondary_phone = secondary.user.phone
+        secondary.delete()
+
+        return Response({
+            'detail': f'Lead {secondary_phone} merged into {primary.user.phone}.',
+            'primary_id': str(primary.id),
+            'messages_transferred': moved_msgs,
+        })
+
 
 class AppointmentViewSet(viewsets.ModelViewSet):
     serializer_class   = AppointmentSerializer
@@ -222,6 +419,11 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             qs = qs.filter(status=status_f)
         if lead_id := params.get('lead'):
             qs = qs.filter(lead_id=lead_id)
+        if params.get('upcoming') in ('true', '1'):
+            qs = qs.filter(
+                scheduled_at__gte=timezone.now(),
+                status__in=[Appointment.Status.SCHEDULED, Appointment.Status.CONFIRMED],
+            ).order_by('scheduled_at')
         return qs
 
     def perform_create(self, serializer):
@@ -252,18 +454,21 @@ class AppointmentViewSet(viewsets.ModelViewSet):
                     appt.lead.user,
                     title="Appointment Confirmed",
                     message=f"✅ Your appointment for {prop_title} on {scheduled} has been confirmed.",
+                    event_type='appointment_reminders',
                 )
             elif new_status == 'cancelled':
                 notify_user(
                     appt.lead.user,
                     title="Appointment Cancelled",
                     message=f"❌ Your appointment for {prop_title} on {scheduled} has been cancelled.",
+                    event_type='appointment_reminders',
                 )
             elif new_status == 'rescheduled':
                 notify_user(
                     appt.lead.user,
                     title="Appointment Rescheduled",
                     message=f"🔄 Your appointment for {prop_title} has been rescheduled to {scheduled}.",
+                    event_type='appointment_reminders',
                 )
         except Exception:
             pass
@@ -305,3 +510,49 @@ class AppointmentViewSet(viewsets.ModelViewSet):
                                 allowed_from={Appointment.Status.CONFIRMED,
                                               Appointment.Status.SCHEDULED},
                                 new_status=Appointment.Status.COMPLETED)
+
+
+class BulkAssignLeadsView(APIView):
+    """
+    POST /leads/bulk-assign/
+    Body: {"lead_ids": ["uuid1", ...], "agent_id": 123}
+    Assigns multiple leads to one agent in a single call. Admin + developer only.
+    """
+    permission_classes = [IsDashboardUser]
+
+    def post(self, request):
+        if request.user.role not in ('admin', 'developer'):
+            return Response({'error': 'Admin or developer access required.'},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        lead_ids = request.data.get('lead_ids', [])
+        agent_id = request.data.get('agent_id')
+
+        if not lead_ids or not agent_id:
+            return Response({'error': 'lead_ids (list) and agent_id are required.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        from apps.agents.models import Agent
+        try:
+            agent = Agent.objects.get(id=agent_id, is_active=True)
+        except Agent.DoesNotExist:
+            return Response({'error': 'Agent not found or inactive.'},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        qs = Lead.objects.filter(id__in=lead_ids)
+
+        # Developers can only reassign leads within their org
+        if request.user.role == 'developer':
+            try:
+                org = request.user.agent_profile
+                from django.db.models import Q as Qfilter
+                qs = qs.filter(
+                    Qfilter(assigned_agent__parent_organization=org) |
+                    Qfilter(assigned_agent__isnull=True)
+                )
+            except Exception:
+                return Response({'error': 'Developer org not found.'},
+                                status=status.HTTP_403_FORBIDDEN)
+
+        count = qs.update(assigned_agent=agent)
+        return Response({'assigned': count, 'agent_id': agent_id})

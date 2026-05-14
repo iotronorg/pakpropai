@@ -120,6 +120,23 @@ class WhatsAppClient:
         return r.json()
 
     @classmethod
+    def mark_read(cls, message_id: str) -> None:
+        """Send a read receipt for an inbound message (shows blue ticks to the sender)."""
+        try:
+            requests.post(
+                cls._phone_url(),
+                headers=cls._headers(),
+                json={
+                    'messaging_product': 'whatsapp',
+                    'status': 'read',
+                    'message_id': message_id,
+                },
+                timeout=5,
+            )
+        except Exception:
+            pass  # Non-critical; never block message processing
+
+    @classmethod
     def download_media(cls, media_id: str) -> bytes:
         token = _wa_token()
         # Step 1: get the media URL

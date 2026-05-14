@@ -15,11 +15,15 @@ class GeminiBackend(AIBackend):
 
     def __init__(self):
         self._client = None
+        self._api_key = None
 
     def _client_instance(self):
-        if self._client is None:
+        from apps.config.services import SystemConfigService
+        key = SystemConfigService.get('gemini_api_key') or settings.GEMINI_API_KEY
+        if self._client is None or key != self._api_key:
             from google import genai
-            self._client = genai.Client(api_key=settings.GEMINI_API_KEY)
+            self._client = genai.Client(api_key=key)
+            self._api_key = key
         return self._client
 
     # ── AIBackend interface ───────────────────────────────────────────────────

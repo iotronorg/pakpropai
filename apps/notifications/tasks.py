@@ -20,7 +20,7 @@ def retry_failed_notifications():
     qs = Notification.objects.filter(
         status=Notification.Status.FAILED,
         created_at__gte=cutoff,
-    ).exclude(error__icontains='24')
+    ).exclude(error__icontains='24').exclude(error__icontains='preferences')
 
     count = 0
     for n in qs:

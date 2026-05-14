@@ -1,12 +1,77 @@
 import io
 import logging
 import os
-from datetime import date
+from datetime import date, timedelta
 
 from celery import shared_task
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
+
+
+@shared_task
+def generate_monthly_reports():
+    """
+    Runs on the 1st of each month. Computes aggregate stats for the previous
+    calendar month (leads, properties, deals, payments) and sends a summary
+    notification to all admin users.
+    """
+    from django.contrib.auth import get_user_model
+    from apps.leads.models import Lead
+    from apps.properties.models import Property
+    from apps.escrow.models import EscrowDeal
+    from apps.payments.models import Payment
+    from apps.notifications.services import notify_user
+
+    today = date.today()
+    first_of_this_month = today.replace(day=1)
+    last_month_end      = first_of_this_month - timedelta(days=1)
+    last_month_start    = last_month_end.replace(day=1)
+
+    start_dt = timezone.make_aware(
+        timezone.datetime(last_month_start.year, last_month_start.month, 1)
+    )
+    end_dt = timezone.make_aware(
+        timezone.datetime(first_of_this_month.year, first_of_this_month.month, 1)
+    )
+    month_label = last_month_start.strftime('%B %Y')
+
+    lead_count      = Lead.objects.filter(created_at__gte=start_dt, created_at__lt=end_dt).count()
+    property_count  = Property.objects.filter(created_at__gte=start_dt, created_at__lt=end_dt).count()
+    deal_count      = EscrowDeal.objects.filter(created_at__gte=start_dt, created_at__lt=end_dt).count()
+    revenue_pkr     = sum(
+        Payment.objects.filter(
+            created_at__gte=start_dt,
+            created_at__lt=end_dt,
+            status='paid',
+        ).values_list('amount_pkr', flat=True)
+    )
+
+    summary = (
+        f"📊 *Monthly Report — {month_label}*\n\n"
+        f"• New Leads: {lead_count}\n"
+        f"• New Properties: {property_count}\n"
+        f"• Deal Locks: {deal_count}\n"
+        f"• Revenue: PKR {revenue_pkr:,}\n\n"
+        "Review the analytics dashboard for full breakdowns."
+    )
+
+    User = get_user_model()
+    admins = User.objects.filter(role='admin', is_active=True)
+    notified = 0
+    for admin in admins:
+        try:
+            notify_user(admin, title=f'Monthly Report — {month_label}', message=summary)
+            notified += 1
+        except Exception as exc:
+            logger.warning(f"generate_monthly_reports: failed to notify admin {admin.pk}: {exc}")
+
+    logger.info(
+        f"generate_monthly_reports: {month_label} — leads={lead_count}, "
+        f"properties={property_count}, deals={deal_count}, notified {notified} admins"
+    )
+    return {'month': month_label, 'leads': lead_count, 'properties': property_count,
+            'deals': deal_count, 'notified': notified}
 
 
 @shared_task
@@ -370,6 +435,7 @@ def _notify_user(report):
                 f"Download your report from the link below:\n"
                 f"{report.file_url}"
             ),
+            event_type='report_ready',
         )
     except Exception as exc:
         logger.warning(f"Failed to notify user {report.user.phone} for report {report.id}: {exc}")

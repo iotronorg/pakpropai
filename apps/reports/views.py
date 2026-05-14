@@ -1,8 +1,8 @@
 import datetime
 import logging
 
-from django.db.models import Count, Avg
-from django.db.models.functions import TruncWeek, TruncMonth
+from django.db.models import Count, Avg, Sum
+from django.db.models.functions import TruncWeek, TruncMonth, TruncDay
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -165,6 +165,55 @@ class IsAdmin(IsAuthenticated):
         return super().has_permission(request, view) and request.user.role == 'admin'
 
 
+class IsAgent(IsAuthenticated):
+    def has_permission(self, request, view):
+        return super().has_permission(request, view) and request.user.role == 'agent'
+
+
+class AgentPersonalReportView(APIView):
+    """GET /reports/my-stats/ — personal performance report for the logged-in agent."""
+    permission_classes = [IsAgent]
+
+    def get(self, request):
+        from apps.leads.models import Lead
+        from apps.properties.models import Property
+
+        try:
+            agent = request.user.agent_profile
+        except Exception:
+            return Response({'detail': 'No agent profile found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        leads = Lead.objects.filter(assigned_agent=agent)
+        props = Property.objects.filter(owner=request.user, is_active=True)
+
+        status_counts = dict(
+            leads.values_list('status').annotate(c=Count('id')).values_list('status', 'c')
+        )
+        source_counts = dict(
+            leads.values_list('source').annotate(c=Count('id')).values_list('source', 'c')
+        )
+        avg_score = leads.aggregate(avg=Avg('score'))['avg'] or 0
+
+        result = {
+            'total_leads':   leads.count(),
+            'closed_leads':  leads.filter(status='closed').count(),
+            'hot_leads':     leads.filter(score__gte=70).count(),
+            'avg_score':     round(avg_score, 1),
+            'by_status':     status_counts,
+            'by_source':     source_counts,
+            'total_listings': props.count(),
+            'closed_deals':  agent.closed_deals,
+            'rating':        float(agent.rating),
+            'is_verified':   agent.is_verified,
+        }
+
+        period = request.query_params.get('period')
+        if period in ('weekly', 'monthly'):
+            result['trend'] = _get_trend(leads, 'created_at', period)
+
+        return Response(result)
+
+
 class LeadReportView(APIView):
     """GET /reports/leads/ — lead funnel and conversion analytics."""
     permission_classes = [IsAdminOrDeveloper]
@@ -207,14 +256,21 @@ class LeadReportView(APIView):
 
 
 class AgentReportView(APIView):
-    """GET /reports/agents/ — agent performance summary. Admin only."""
-    permission_classes = [IsAdmin]
+    """GET /reports/agents/ — agent performance summary. Admin + developer."""
+    permission_classes = [IsAdminOrDeveloper]
 
     def get(self, request):
         from apps.agents.models import Agent
         from apps.leads.models import Lead
 
         agents = Agent.objects.filter(is_active=True).select_related('user')
+        if request.user.role == 'developer':
+            try:
+                org = request.user.agent_profile
+                agents = agents.filter(parent_organization=org)
+            except Exception:
+                agents = Agent.objects.none()
+
         data = []
         for agent in agents:
             lead_count   = Lead.objects.filter(assigned_agent=agent).count()
@@ -266,4 +322,127 @@ class PropertyReportView(APIView):
         period = request.query_params.get('period')
         if period in ('weekly', 'monthly'):
             result['trend'] = _get_trend(qs, 'created_at', period)
+        return Response(result)
+
+
+class RevenueReportView(APIView):
+    """GET /reports/revenue/ — deal + payment revenue analytics. Admin only."""
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        from apps.escrow.models import EscrowDeal
+        from apps.payments.models import Payment
+
+        deals    = EscrowDeal.objects.all()
+        payments = Payment.objects.all()
+
+        total_token_locked = deals.filter(
+            status__in=['locked', 'released']
+        ).aggregate(s=Sum('token_amount'))['s'] or 0
+
+        avg_token = deals.filter(
+            status__in=['locked', 'released']
+        ).aggregate(a=Avg('token_amount'))['a'] or 0
+
+        by_gateway = dict(
+            deals.values_list('payment_gateway')
+                 .annotate(c=Count('id'))
+                 .values_list('payment_gateway', 'c')
+        )
+        by_channel = dict(
+            deals.values_list('initiated_via')
+                 .annotate(c=Count('id'))
+                 .values_list('initiated_via', 'c')
+        )
+
+        completed_payments  = payments.filter(status='completed')
+        total_payments_pkr  = completed_payments.aggregate(s=Sum('amount_pkr'))['s'] or 0
+        payments_by_gateway = dict(
+            completed_payments.values_list('gateway')
+                              .annotate(c=Count('id'))
+                              .values_list('gateway', 'c')
+        )
+
+        result = {
+            'deals': {
+                'total':           deals.count(),
+                'locked':          deals.filter(status='locked').count(),
+                'released':        deals.filter(status='released').count(),
+                'expired':         deals.filter(status='expired').count(),
+                'cancelled':       deals.filter(status='cancelled').count(),
+                'total_token_pkr': total_token_locked,
+                'avg_token_pkr':   int(avg_token),
+                'by_gateway':      by_gateway,
+                'by_channel':      by_channel,
+            },
+            'payments': {
+                'total_completed_pkr': total_payments_pkr,
+                'by_gateway':          payments_by_gateway,
+            },
+        }
+
+        period = request.query_params.get('period')
+        if period in ('weekly', 'monthly'):
+            result['deals']['trend']    = _get_trend(deals, 'lock_started_at', period)
+            result['payments']['trend'] = _get_trend(completed_payments, 'created_at', period)
+
+        return Response(result)
+
+
+class BotReportView(APIView):
+    """GET /reports/bot/ — WhatsApp bot activity analytics. Admin only."""
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        from apps.whatsapp.models import WhatsAppMessage, WhatsAppSession
+
+        now  = timezone.now()
+        msgs = WhatsAppMessage.objects.all()
+
+        cutoff_30d = now - datetime.timedelta(days=30)
+        cutoff_7d  = now - datetime.timedelta(days=7)
+
+        active_30d = (
+            msgs.filter(created_at__gte=cutoff_30d, direction='inbound')
+                .values('session__phone').distinct().count()
+        )
+        active_7d = (
+            msgs.filter(created_at__gte=cutoff_7d, direction='inbound')
+                .values('session__phone').distinct().count()
+        )
+
+        cutoff_14d = now - datetime.timedelta(days=14)
+        daily_rows = (
+            msgs.filter(created_at__gte=cutoff_14d)
+                .annotate(day=TruncDay('created_at'))
+                .values('day')
+                .annotate(count=Count('id'))
+                .order_by('day')
+        )
+        daily_trend = [
+            {'period': r['day'].strftime('%Y-%m-%d'), 'count': r['count']}
+            for r in daily_rows
+        ]
+
+        by_type = dict(
+            msgs.values_list('msg_type')
+                .annotate(c=Count('id'))
+                .values_list('msg_type', 'c')
+        )
+
+        result = {
+            'total_messages':   msgs.count(),
+            'inbound':          msgs.filter(direction='inbound').count(),
+            'outbound':         msgs.filter(direction='outbound').count(),
+            'total_sessions':   WhatsAppSession.objects.count(),
+            'active_users_7d':  active_7d,
+            'active_users_30d': active_30d,
+            'by_message_type':  by_type,
+            'daily_trend':      daily_trend,
+        }
+
+        period = request.query_params.get('period')
+        if period in ('weekly', 'monthly'):
+            result['trend'] = _get_trend(msgs, 'created_at', period)
+
         return Response(result)
