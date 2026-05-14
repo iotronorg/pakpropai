@@ -10,7 +10,7 @@ from .models import Verification, DocumentScan, FraudBlacklist
 from .serializers import VerificationSerializer, DocumentScanSerializer
 from .services import FraudCheckService, VerificationSignalService
 from .tasks import notify_verification_status_change
-from apps.core.throttles import FraudCheckThrottle
+from apps.core.throttles import FraudCheckThrottle, BulkOperationThrottle
 
 
 class IsAdmin(IsAuthenticated):
@@ -466,6 +466,7 @@ class BulkRejectVerificationsView(APIView):
     Admin-only: reject multiple pending verifications in one call.
     """
     permission_classes = [IsAdmin]
+    throttle_classes = [BulkOperationThrottle]
 
     def post(self, request):
         ids   = request.data.get('verification_ids', [])

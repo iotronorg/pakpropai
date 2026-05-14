@@ -137,12 +137,16 @@ REST_FRAMEWORK = {
         'rest_framework.throttling.UserRateThrottle',
     ),
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '30/min',
-        'user': '120/min',
-        'otp_send': '3/hour',
-        'otp_daily': '10/day',
-        'ai_query': '10/min',
-        'fraud_check': '20/min',
+        'anon':            '30/min',
+        'user':            '120/min',
+        'otp_send':        '3/hour',
+        'otp_daily':       '10/day',
+        'ai_query':        '10/min',
+        'fraud_check':     '20/min',
+        'property_search': '30/min',
+        'report_generate': '5/hour',
+        'bulk_operation':  '10/min',
+        'score_property':  '15/min',
     },
 }
 

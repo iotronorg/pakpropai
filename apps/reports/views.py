@@ -9,6 +9,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.throttles import ReportGenerateThrottle
 from .models import Report
 
 
@@ -48,6 +49,7 @@ class IsAdminOrDeveloper(IsAuthenticated):
 class ReportGenerateView(APIView):
     """POST /reports/generate/ — create a report and queue async generation."""
     permission_classes = [IsAuthenticated]
+    throttle_classes = [ReportGenerateThrottle]
 
     def post(self, request):
         report_type = request.data.get('report_type', '')

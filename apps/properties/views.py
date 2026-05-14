@@ -8,6 +8,7 @@ from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnl
 from rest_framework.response import Response
 
 from apps.core.permissions import IsOwnerOrReadOnly, IsAgentOrAdmin
+from apps.core.throttles import PropertySearchThrottle, ScorePropertyThrottle
 from .models import Property, PropertyImage
 from .serializers import (PropertyCreateSerializer, PropertyDetailSerializer,
                           PropertyImageSerializer, PropertyListSerializer)
@@ -21,6 +22,7 @@ class PropertyViewSet(viewsets.ModelViewSet):
     queryset = Property.objects.filter(is_active=True)
     permission_classes = [IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    throttle_classes = [PropertySearchThrottle]
 
     def get_permissions(self):
         if self.action == 'create':
@@ -89,7 +91,7 @@ class PropertyViewSet(viewsets.ModelViewSet):
         )
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated],
-            url_path='rescore')
+            url_path='rescore', throttle_classes=[ScorePropertyThrottle])
     def rescore(self, request, pk=None):
         if request.user.role != 'admin':
             return Response({'error': 'Admin only.'}, status=status.HTTP_403_FORBIDDEN)
@@ -99,7 +101,7 @@ class PropertyViewSet(viewsets.ModelViewSet):
         return Response({'queued': True, 'property_id': str(prop.id)})
 
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated],
-            url_path='rescore-all')
+            url_path='rescore-all', throttle_classes=[ScorePropertyThrottle])
     def rescore_all(self, request):
         if request.user.role != 'admin':
             return Response({'error': 'Admin only.'}, status=status.HTTP_403_FORBIDDEN)

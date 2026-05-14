@@ -28,3 +28,38 @@ class AiQueryThrottle(UserRateThrottle):
 
 class FraudCheckThrottle(UserRateThrottle):
     scope = 'fraud_check'
+
+
+# ── Role-aware throttles (admins bypass, agents/developers are rate-limited) ──
+
+class RoleAwareUserThrottle(UserRateThrottle):
+    """
+    Base throttle that exempts admins entirely.
+    Admins operate the platform and must not be locked out by their own tooling.
+    All other authenticated roles are subject to the configured rate.
+    """
+    def get_cache_key(self, request, view):
+        user = request.user
+        if user and user.is_authenticated and getattr(user, 'role', '') == 'admin':
+            return None  # returning None disables throttling for this request
+        return super().get_cache_key(request, view)
+
+
+class PropertySearchThrottle(RoleAwareUserThrottle):
+    """30 searches/min — prevents hammering DB + scraper trigger spam."""
+    scope = 'property_search'
+
+
+class ReportGenerateThrottle(RoleAwareUserThrottle):
+    """5 reports/hour — each report runs AI + Celery + PDF generation."""
+    scope = 'report_generate'
+
+
+class BulkOperationThrottle(RoleAwareUserThrottle):
+    """10 bulk ops/min — bulk assign/reject touch many rows at once."""
+    scope = 'bulk_operation'
+
+
+class ScorePropertyThrottle(RoleAwareUserThrottle):
+    """15 rescores/min — each rescore queues an AI Celery task."""
+    scope = 'score_property'

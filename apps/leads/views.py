@@ -6,6 +6,7 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from apps.core.throttles import BulkOperationThrottle
 
 from .models import Lead, Appointment, ConversationMessage
 from .serializers import (AppointmentSerializer, ConversationMessageSerializer,
@@ -519,6 +520,7 @@ class BulkAssignLeadsView(APIView):
     Assigns multiple leads to one agent in a single call. Admin + developer only.
     """
     permission_classes = [IsDashboardUser]
+    throttle_classes = [BulkOperationThrottle]
 
     def post(self, request):
         if request.user.role not in ('admin', 'developer'):
