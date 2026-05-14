@@ -89,10 +89,27 @@ class Agent(models.Model):
     facebook_page       = models.URLField(blank=True,
                               help_text='Facebook page URL')
 
+    # ── Registration & Approval ───────────────────────────────────────────────
+    class RegistrationStatus(models.TextChoices):
+        PENDING  = 'pending',  'Pending Approval'
+        APPROVED = 'approved', 'Approved'
+        REJECTED = 'rejected', 'Rejected'
+
+    registration_status = models.CharField(
+        max_length=20,
+        choices=RegistrationStatus.choices,
+        default=RegistrationStatus.PENDING,
+        help_text='Approval state — pending until admin/developer reviews the application',
+    )
+    rejection_reason = models.TextField(
+        blank=True,
+        help_text='Reason shown to the agent when their application is rejected',
+    )
+
     # ── Status & Verification ─────────────────────────────────────────────────
     is_verified  = models.BooleanField(default=False,
                        help_text='Admin has verified identity and credentials')
-    is_active    = models.BooleanField(default=True,
+    is_active    = models.BooleanField(default=False,
                        help_text='Uncheck to temporarily disable this agent from receiving leads')
     is_featured  = models.BooleanField(default=False,
                        help_text='Featured agents appear first in all matches')
