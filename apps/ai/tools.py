@@ -575,12 +575,29 @@ def list_property(
         except Exception:
             pass
 
+        # Enter LISTING_PHOTOS state so the next WhatsApp image goes to this property
+        phone = _ctx_phone.get()
+        if phone:
+            try:
+                from apps.whatsapp.sessions import SessionManager
+                SessionManager.update(phone, state='LISTING_PHOTOS', context={
+                    'property_id': str(prop.id),
+                    'photo_count': 0,
+                })
+            except Exception:
+                pass
+
         return {
-            'success': True,
-            'listing_id': str(prop.id)[:8].upper(),
-            'title': title,
+            'success':        True,
+            'listing_id':     str(prop.id)[:8].upper(),
+            'title':          title,
             'price_formatted': f"PKR {price_pkr:,}",
-            'message': 'Property listed successfully. AI scoring is running in the background. Your listing is now visible to buyers.',
+            'message': (
+                'Property listed successfully. AI scoring is running in the background. '
+                'Your listing is now visible to buyers.\n\n'
+                'You can now send up to 5 photos of your property — just send them now. '
+                'Type *done* when finished or to skip photos.'
+            ),
         }
     except Exception as exc:
         logger.error(f"list_property tool failed: {exc}")

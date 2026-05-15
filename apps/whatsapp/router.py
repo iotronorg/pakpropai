@@ -139,7 +139,12 @@ class MessageRouter:
                 message_data.get('image', {}).get('mime_type', 'image/jpeg'),
             )
             if image_bytes:
-                reply = cls._handle_image(phone, image_bytes, mime, caption, user)
+                from .sessions import SessionManager as _SM
+                _sess = _SM.get(phone)
+                if _sess.get('state') == 'LISTING_PHOTOS':
+                    reply = cls._handle_listing_photo(phone, image_bytes, mime, user, _sess)
+                else:
+                    reply = cls._handle_image(phone, image_bytes, mime, caption, user)
                 cls._send_and_log(phone, reply, session_db)
                 cls._log_inbound(message_data, session_db, caption or '[image]', msg_type)
                 return
@@ -187,6 +192,39 @@ class MessageRouter:
             cls._send_and_log(phone, cls._greeting(), session_db)
             return
 
+        # ── LISTING_PHOTOS: intercept text (done/skip) ────────────────────
+        from .sessions import SessionManager as _SM
+        _sess = _SM.get(phone)
+        if _sess.get('state') == 'LISTING_PHOTOS':
+            _done_words = {'done', 'skip', 'finish', 'khatam', 'bas', 'ok',
+                           'okay', 'no', 'cancel', 'quit', 'end', 'stop'}
+            if text_lower in _done_words or text_lower.startswith('done'):
+                _photo_count = _sess.get('context', {}).get('photo_count', 0)
+                _SM.update(phone, state='IDLE', context={})
+                if _photo_count:
+                    _msg = (
+                        f"Done! {_photo_count} photo{'s' if _photo_count > 1 else ''} added "
+                        f"to your listing.\n\nYour property is live and visible to buyers. "
+                        "Type *menu* for more options."
+                    )
+                else:
+                    _msg = (
+                        "Listing complete with no photos.\n\n"
+                        "You can always add photos later from the web portal. "
+                        "Type *menu* for more options."
+                    )
+                cls._send_and_log(phone, _msg, session_db)
+                return
+            else:
+                _remaining = cls._MAX_WA_PHOTOS - _sess.get('context', {}).get('photo_count', 0)
+                cls._send_and_log(
+                    phone,
+                    f"Send a photo to add it to your listing ({_remaining} slot{'s' if _remaining > 1 else ''} left), "
+                    "or type *done* to finish.",
+                    session_db,
+                )
+                return
+
         # ── Per-user AI rate limit (10 requests/min/phone) ────────────────
         if not cls._check_rate_limit(phone):
             cls._send_and_log(
@@ -211,6 +249,63 @@ class MessageRouter:
             )
 
         cls._send_and_log(phone, reply, session_db)
+
+    # ─── Listing photo upload ────────────────────────────────────────────────
+
+    _MAX_WA_PHOTOS = 5
+
+    @classmethod
+    def _handle_listing_photo(cls, phone: str, image_bytes: bytes, mime: str, user, session: dict) -> str:
+        from .sessions import SessionManager
+        ctx         = session.get('context', {})
+        prop_id     = ctx.get('property_id')
+        photo_count = ctx.get('photo_count', 0)
+
+        if not prop_id:
+            SessionManager.update(phone, state='IDLE', context={})
+            return (
+                "Something went wrong finding your listing. "
+                "Your property is saved — add photos any time from the web portal."
+            )
+
+        try:
+            import uuid
+            from django.core.files.base import ContentFile
+            from apps.properties.models import Property, PropertyImage
+
+            prop = Property.objects.get(id=prop_id, owner=user)
+            ext  = 'jpg' if 'jpeg' in mime else mime.split('/')[-1]
+
+            pi = PropertyImage(property=prop, uploaded_by=user, order=photo_count)
+            pi.image.save(f'{uuid.uuid4().hex}.{ext}', ContentFile(image_bytes), save=True)
+
+            photo_count += 1
+            remaining = cls._MAX_WA_PHOTOS - photo_count
+
+            if photo_count >= cls._MAX_WA_PHOTOS:
+                SessionManager.update(phone, state='IDLE', context={})
+                return (
+                    f"Photo {photo_count}/{cls._MAX_WA_PHOTOS} added. "
+                    f"Maximum reached — your listing is complete with {photo_count} photos. "
+                    "Buyers can view them online.\n\nType *menu* for more options."
+                )
+
+            SessionManager.update(phone, state='LISTING_PHOTOS', context={
+                'property_id': prop_id,
+                'photo_count': photo_count,
+            })
+            return (
+                f"Photo {photo_count}/{cls._MAX_WA_PHOTOS} added.\n\n"
+                f"Send another photo or type *done* to finish. "
+                f"({remaining} slot{'s' if remaining > 1 else ''} remaining)"
+            )
+
+        except Property.DoesNotExist:
+            SessionManager.update(phone, state='IDLE', context={})
+            return "Couldn't find your listing. Type *menu* to start over."
+        except Exception as exc:
+            logger.error(f"WA photo upload failed phone={phone}: {exc}")
+            return "Couldn't save that photo. Please try again or type *done* to finish."
 
     # ─── Image handling ───────────────────────────────────────────────────────
 

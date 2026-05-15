@@ -44,16 +44,12 @@ services:
         value: gemini-2.5-flash-lite
       - key: AI_BACKEND
         value: gemini
-      # Cloudflare R2 media storage
-      - key: R2_ACCOUNT_ID
+      # Cloudinary media storage
+      - key: CLOUDINARY_CLOUD_NAME
         sync: false
-      - key: R2_ACCESS_KEY_ID
+      - key: CLOUDINARY_API_KEY
         sync: false
-      - key: R2_SECRET_ACCESS_KEY
-        sync: false
-      - key: R2_BUCKET_NAME
-        sync: false
-      - key: R2_PUBLIC_URL
+      - key: CLOUDINARY_API_SECRET
         sync: false
       # Payment gateways
       - key: SAFEPAY_MERCHANT_KEY
@@ -109,13 +105,11 @@ services:
         sync: false
       - key: AI_BACKEND
         value: gemini
-      - key: R2_ACCOUNT_ID
+      - key: CLOUDINARY_CLOUD_NAME
         sync: false
-      - key: R2_ACCESS_KEY_ID
+      - key: CLOUDINARY_API_KEY
         sync: false
-      - key: R2_SECRET_ACCESS_KEY
-        sync: false
-      - key: R2_BUCKET_NAME
+      - key: CLOUDINARY_API_SECRET
         sync: false
       - key: SENTRY_DSN
         sync: false

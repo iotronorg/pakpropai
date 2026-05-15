@@ -30,7 +30,7 @@ class PropertyViewSet(viewsets.ModelViewSet):
             # Clients (role=user) are WhatsApp-only and must not submit via API.
             return [IsAgentOrAdmin()]
         return super().get_permissions()
-    search_fields   = ['title', 'city', 'location', 'description']
+    search_fields   = ['ref_no', 'title', 'city', 'location', 'description']
     ordering_fields = ['ai_score', 'price_pkr', 'created_at']
     ordering        = ['-created_at']
 
@@ -43,6 +43,8 @@ class PropertyViewSet(viewsets.ModelViewSet):
         qs = super().get_queryset()
         params = self.request.query_params
 
+        if (ref_no := params.get('ref_no')):
+            qs = qs.filter(ref_no__iexact=ref_no)
         if (city := params.get('city')):
             qs = qs.filter(city__iexact=city)
         if (ptype := params.get('type')):

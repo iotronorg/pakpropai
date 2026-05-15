@@ -26,6 +26,8 @@ THIRD_PARTY_APPS = [
     'rest_framework_simplejwt.token_blacklist',
     'django_celery_results',
     'django_celery_beat',
+    'cloudinary',
+    'cloudinary_storage',
 ]
 
 LOCAL_APPS = [
@@ -243,27 +245,18 @@ OLLAMA_BASE_URL    = env('OLLAMA_BASE_URL',    default='http://localhost:11434')
 MEDIA_URL  = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-# Cloudflare R2 storage (S3-compatible)
-# Set these in .env to switch from local disk to R2 automatically.
-R2_ACCOUNT_ID        = env('R2_ACCOUNT_ID',        default='')
-R2_ACCESS_KEY_ID     = env('R2_ACCESS_KEY_ID',     default='')
-R2_SECRET_ACCESS_KEY = env('R2_SECRET_ACCESS_KEY', default='')
-R2_BUCKET_NAME       = env('R2_BUCKET_NAME',       default='')
-R2_PUBLIC_URL        = env('R2_PUBLIC_URL',        default='')  # https://<bucket>.r2.dev
-
-if R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY and R2_BUCKET_NAME:
+# Cloudinary media storage
+# Get credentials from: cloudinary.com → Dashboard → API Keys
+CLOUDINARY_STORAGE = {
+    'CLOUD_NAME': env('CLOUDINARY_CLOUD_NAME', default=''),
+    'API_KEY':    env('CLOUDINARY_API_KEY',    default=''),
+    'API_SECRET': env('CLOUDINARY_API_SECRET', default=''),
+}
+if CLOUDINARY_STORAGE['CLOUD_NAME']:
     STORAGES = {
-        'default': {'BACKEND': 'storages.backends.s3boto3.S3Boto3Storage'},
+        'default':     {'BACKEND': 'cloudinary_storage.storage.MediaCloudinaryStorage'},
         'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage'},
     }
-    AWS_S3_ENDPOINT_URL      = f'https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com'
-    AWS_ACCESS_KEY_ID        = R2_ACCESS_KEY_ID
-    AWS_SECRET_ACCESS_KEY    = R2_SECRET_ACCESS_KEY
-    AWS_STORAGE_BUCKET_NAME  = R2_BUCKET_NAME
-    AWS_DEFAULT_ACL          = None
-    AWS_S3_OBJECT_PARAMETERS = {'CacheControl': 'max-age=86400'}
-    if R2_PUBLIC_URL:
-        AWS_S3_CUSTOM_DOMAIN = R2_PUBLIC_URL
 
 # Base URL for generating absolute links (PDF download, etc.)
 BASE_URL = env('BASE_URL', default='http://127.0.0.1:8000')

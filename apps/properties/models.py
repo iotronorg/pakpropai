@@ -1,7 +1,31 @@
 import uuid
 from django.core.exceptions import ValidationError
-from django.db import models
+from django.db import models, transaction
 from django.conf import settings
+from django.utils import timezone
+
+
+_CITY_CODE_MAP = {
+    'lahore': 'LHR', 'karachi': 'KHI', 'islamabad': 'ISB',
+    'rawalpindi': 'RWP', 'faisalabad': 'FSD', 'multan': 'MUL',
+    'peshawar': 'PEW', 'quetta': 'QTA', 'gujranwala': 'GUJ',
+    'sialkot': 'SKT', 'hyderabad': 'HYD', 'abbottabad': 'ABB',
+    'bahawalpur': 'BWP', 'sargodha': 'SGD', 'sukkur': 'SUK',
+    'larkana': 'LRK', 'mardan': 'MRD', 'sheikhupura': 'SHP',
+    'rahim yar khan': 'RYK', 'gujrat': 'GRT', 'sahiwal': 'SWL',
+    'dera ghazi khan': 'DGK', 'wah cantt': 'WAH', 'chiniot': 'CHN',
+}
+
+
+class PropertyRefCounter(models.Model):
+    city_code = models.CharField(max_length=10)
+    year      = models.PositiveSmallIntegerField()
+    last_seq  = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        app_label       = 'properties'
+        db_table        = 'property_ref_counters'
+        unique_together = ('city_code', 'year')
 
 
 def _property_image_path(instance, filename):
@@ -39,6 +63,8 @@ class Property(models.Model):
         UNDER_CONSTRUCTION = 'under_construction', 'Under Construction'
 
     id            = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    ref_no        = models.CharField(max_length=30, unique=True, blank=True, db_index=True,
+                        help_text='Auto-generated reference number, e.g. PP-LHR-2026-000000001')
     owner         = models.ForeignKey(
                         settings.AUTH_USER_MODEL,
                         on_delete=models.SET_NULL,
@@ -108,8 +134,25 @@ class Property(models.Model):
             except Property.DoesNotExist:
                 pass
 
+    def _build_ref_no(self):
+        city_key  = self.city.strip().lower()
+        city_code = _CITY_CODE_MAP.get(city_key, self.city.strip()[:3].upper())
+        year      = timezone.now().year
+        with transaction.atomic():
+            counter, _ = PropertyRefCounter.objects.select_for_update().get_or_create(
+                city_code=city_code, year=year, defaults={'last_seq': 0}
+            )
+            counter.last_seq += 1
+            counter.save(update_fields=['last_seq'])
+        return f"PP-{city_code}-{year}-{str(counter.last_seq).zfill(9)}"
+
+    def save(self, *args, **kwargs):
+        if not self.ref_no:
+            self.ref_no = self._build_ref_no()
+        super().save(*args, **kwargs)
+
     def __str__(self):
-        return f"{self.title} — {self.city}"
+        return f"[{self.ref_no}] {self.title} — {self.city}"
 
 
 class PropertyImage(models.Model):

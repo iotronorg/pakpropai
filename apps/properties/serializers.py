@@ -24,7 +24,7 @@ class PropertyListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model  = Property
-        fields = ('id', 'title', 'city', 'location', 'area_marla', 'price_pkr',
+        fields = ('id', 'ref_no', 'title', 'city', 'location', 'area_marla', 'price_pkr',
                   'property_type', 'construction_status', 'furnished_status',
                   'legal_status', 'ai_score', 'risk_level', 'primary_image', 'created_at')
 
@@ -44,14 +44,14 @@ class PropertyDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model  = Property
-        fields = ('id', 'owner', 'owner_phone', 'title', 'description',
+        fields = ('id', 'ref_no', 'owner', 'owner_phone', 'title', 'description',
                   'city', 'location', 'area_marla', 'price_pkr',
                   'property_type', 'furnished_status', 'construction_status',
                   'legal_status', 'ai_score', 'risk_level', 'assigned_agent',
                   'installment_available', 'raw_docs', 'ai_analysis',
                   'is_active', 'primary_image', 'images',
                   'created_at', 'updated_at')
-        read_only_fields = ('id', 'owner', 'owner_phone', 'ai_score', 'risk_level',
+        read_only_fields = ('id', 'ref_no', 'owner', 'owner_phone', 'ai_score', 'risk_level',
                             'ai_analysis', 'primary_image', 'images', 'created_at', 'updated_at')
 
     def get_primary_image(self, obj):

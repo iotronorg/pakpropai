@@ -401,18 +401,16 @@ def _content_to_story(content: dict, H2, BODY) -> list:
 # ─── File storage ─────────────────────────────────────────────────────────────
 
 def _save_pdf(report, pdf_bytes: bytes) -> str:
-    """Save PDF bytes and return a URL path (relative or absolute)."""
-    from django.conf import settings
-    from django.core.files.base import ContentFile
-    from django.core.files.storage import default_storage
-
-    filename = f"reports/{report.id}.pdf"
-    if default_storage.exists(filename):
-        default_storage.delete(filename)
-    default_storage.save(filename, ContentFile(pdf_bytes))
-
-    base_url = getattr(settings, 'BASE_URL', 'http://127.0.0.1:8000')
-    return f"{base_url}/media/{filename}"
+    """Upload PDF bytes to Cloudinary and return the CDN URL."""
+    import cloudinary.uploader
+    result = cloudinary.uploader.upload(
+        pdf_bytes,
+        resource_type='raw',
+        public_id=f'reports/{report.id}',
+        format='pdf',
+        overwrite=True,
+    )
+    return result['secure_url']
 
 
 # ─── Notification ─────────────────────────────────────────────────────────────

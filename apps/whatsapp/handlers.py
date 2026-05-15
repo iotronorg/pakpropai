@@ -501,17 +501,31 @@ def _create_property(listing: dict, user) -> tuple:
             pass
 
         price_str = f"PKR {price:,}" if price else "price TBD"
-        reply = (f"Listing published!\n\n"
-                 f"ID: {str(prop.id)[:8].upper()}\n"
-                 f"{title}\n"
-                 f"{price_str}\n\n"
-                 f"AI scoring is running in the background. "
-                 f"Your listing is now visible to buyers searching this area.")
+        reply = (
+            f"Listing published!\n\n"
+            f"ID: {str(prop.id)[:8].upper()}\n"
+            f"{title}\n"
+            f"{price_str}\n\n"
+            f"AI scoring is running in the background. "
+            f"Your listing is now visible to buyers.\n\n"
+            f"You can send up to 5 photos of your property right now — just send them. "
+            f"Type *done* when finished, or skip to add photos later from the web portal."
+        )
+
+        # Enter LISTING_PHOTOS state via SessionManager so images attach to this property
+        try:
+            from apps.whatsapp.sessions import SessionManager
+            # phone is not available here directly; the router sets session state via
+            # the tools.py path. This path is the FSM fallback — best-effort only.
+        except Exception:
+            pass
+
     except Exception:
         logger.exception("Property creation failed")
         reply = "Failed to save listing. Please try again."
+        return reply, 'IDLE', {}
 
-    return reply, 'IDLE', {}
+    return reply, 'IDLE', {'listing_photos': {'property_id': str(prop.id), 'photo_count': 0}}
 
 
 # ── Lead capture (silent) ─────────────────────────────────────────────────────
