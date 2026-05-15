@@ -125,16 +125,31 @@ class DealLockCancelView(APIView):
 
 
 class DealLockListView(generics.ListAPIView):
-    """GET /deals/ — admin/agent/developer list of all deal locks."""
+    """GET /deals/ — admin/agent/developer list of deal locks scoped by role."""
     serializer_class   = EscrowDealSerializer
     permission_classes = [IsDashboardUser]
 
     def get_queryset(self):
+        user = self.request.user
         qs = EscrowDeal.objects.select_related('property', 'buyer', 'seller', 'agent')
         status_filter = self.request.query_params.get('status')
         if status_filter:
             qs = qs.filter(status=status_filter)
-        return qs
+
+        if user.role == 'admin':
+            return qs
+        if user.role == 'agent':
+            try:
+                return qs.filter(agent=user.agent_profile)
+            except Exception:
+                return qs.none()
+        if user.role == 'developer':
+            try:
+                org = user.agent_profile
+                return qs.filter(agent__parent_organization=org)
+            except Exception:
+                return qs.none()
+        return qs.none()
 
 
 class MyDealLocksView(generics.ListAPIView):
@@ -149,15 +164,28 @@ class MyDealLocksView(generics.ListAPIView):
 
 
 class DealLockDetailView(generics.RetrieveAPIView):
-    """GET /deals/lock/<id>/ — single deal lock detail."""
+    """GET /deals/lock/<id>/ — single deal lock detail, scoped by role."""
     serializer_class   = EscrowDealSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         user = self.request.user
-        if user.role in ('admin', 'agent', 'developer'):
-            return EscrowDeal.objects.select_related('property', 'buyer', 'seller', 'agent')
-        return EscrowDeal.objects.filter(buyer=user).select_related('property', 'buyer', 'seller', 'agent')
+        base = EscrowDeal.objects.select_related('property', 'buyer', 'seller', 'agent')
+        if user.role == 'admin':
+            return base
+        if user.role == 'agent':
+            try:
+                return base.filter(agent=user.agent_profile)
+            except Exception:
+                return base.none()
+        if user.role == 'developer':
+            try:
+                org = user.agent_profile
+                return base.filter(agent__parent_organization=org)
+            except Exception:
+                return base.none()
+        # client: only their own purchases
+        return base.filter(buyer=user)
 
 
 class DealLockSellerConfirmView(APIView):

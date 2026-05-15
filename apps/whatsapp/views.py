@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import json
 import logging
+import time
 from django.conf import settings
 from django.core.cache import cache
 from django.http import HttpResponse
@@ -66,8 +67,23 @@ class WhatsAppWebhookView(APIView):
         ).hexdigest()
         return hmac.compare_digest(expected, signature)
 
+    # Max messages processed per phone number per minute. Excess are dropped
+    # silently (Meta still gets 200 so it won't retry).
+    _RATE_LIMIT_PER_MIN: int = getattr(settings, 'WA_RATE_LIMIT_PER_MINUTE', 15)
+
     @staticmethod
-    def _process_with_idempotency(message: dict):
+    def _is_phone_rate_limited(phone: str, limit: int) -> bool:
+        minute = int(time.time() // 60)
+        key = f"wa:rate:{phone}:{minute}"
+        cache.add(key, 0, 70)   # initialise to 0 with 70 s TTL if key is new
+        try:
+            count = cache.incr(key)
+        except ValueError:
+            count = 1
+        return count > limit
+
+    @classmethod
+    def _process_with_idempotency(cls, message: dict):
         msg_id = message.get('id')
         if not msg_id:
             return
@@ -81,6 +97,10 @@ class WhatsAppWebhookView(APIView):
 
         phone = message.get('from')
         if not phone:
+            return
+
+        if cls._is_phone_rate_limited(phone, cls._RATE_LIMIT_PER_MIN):
+            logger.warning("WA rate limit exceeded for phone %s — dropping message %s", phone, msg_id)
             return
 
         # Send read receipt immediately — shows blue ticks to the user

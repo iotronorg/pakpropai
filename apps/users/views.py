@@ -63,12 +63,17 @@ class SendOTPView(APIView):
         except PermissionError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_429_TOO_MANY_REQUESTS)
 
-        # Always log so dev/staging can verify without WhatsApp credentials.
-        logger.warning(f"OTP for {phone}: {otp.code}")
+        if settings.DEBUG:
+            logger.warning("OTP for %s: %s", phone, otp.code)
 
         # Fire async delivery — non-blocking, retries up to 3× on failure.
-        from apps.notifications.tasks import send_otp_async
-        send_otp_async.delay(phone, otp.code)
+        # Delivery errors (WhatsApp sandbox limits, network) must never crash this endpoint.
+        # The OTP is already issued; the user can still receive it via the logged code in dev.
+        try:
+            from apps.notifications.tasks import send_otp_async
+            send_otp_async.delay(phone, otp.code)
+        except Exception:
+            logger.warning("OTP WhatsApp delivery failed for %s — OTP was issued but not sent.", phone)
 
         return Response(
             {'message': 'OTP sent to your WhatsApp.', 'phone': phone},

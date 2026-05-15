@@ -84,12 +84,17 @@ class WhatsAppClient:
     @classmethod
     def send_otp(cls, phone: str, code: str) -> dict:
         """
-        Send an OTP via template (required for first-contact users outside the 24-h window).
-        Falls back to free-text when wa_otp_template_name is not configured (dev only).
+        Send an OTP via a pre-approved Meta template when one is configured.
+        Falls back to free-form text (skip_window_check=True) when no template
+        name is set — works in dev/sandbox where the user hasn't messaged first.
+        Register a template in Meta Business Manager to use this in production.
         """
         from apps.config.services import SystemConfigService
         template_name = SystemConfigService.get('wa_otp_template_name')
-        if template_name:
+        # Only use template if it's explicitly configured (non-empty, non-default).
+        # The default 'otp_verification' is a placeholder — skip it until registered.
+        default_placeholder = 'otp_verification'
+        if template_name and template_name != default_placeholder:
             components = [
                 {
                     'type': 'body',
@@ -97,9 +102,10 @@ class WhatsAppClient:
                 }
             ]
             return cls.send_template(phone, template_name, components=components)
-        # Dev fallback — only works if the user has messaged the bot in the last 24 h
+        # Free-text fallback: OTPs bypass the 24h window check because auth must
+        # always be reachable regardless of prior conversation history.
         body = f"Your PakProp AI verification code is: *{code}*\n\nExpires in 5 minutes. Do not share."
-        return cls.send_text(phone, body)
+        return cls.send_text(phone, body, skip_window_check=True)
 
     @classmethod
     def send_template(cls, phone: str, template_name: str, language: str = 'en_US',

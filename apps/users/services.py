@@ -1,4 +1,4 @@
-import random
+import secrets
 import string
 from datetime import timedelta
 from django.utils import timezone
@@ -9,12 +9,11 @@ class OTPService:
 
     OTP_LENGTH      = 6
     OTP_LIFETIME    = timedelta(minutes=5)
-    # MAX_PER_HOUR    = 5    # rate limit per phone
-    MAX_PER_HOUR    = 100    # rate limit per phone
+    MAX_PER_HOUR    = 10
 
     @classmethod
     def generate_code(cls) -> str:
-        return ''.join(random.choices(string.digits, k=cls.OTP_LENGTH))
+        return ''.join(secrets.choice(string.digits) for _ in range(cls.OTP_LENGTH))
 
     @classmethod
     def issue(cls, phone: str) -> OTPCode:
