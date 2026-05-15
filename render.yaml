@@ -70,7 +70,7 @@ services:
       # Error monitoring
       - key: SENTRY_DSN
         sync: false
-    startCommand: >
+    dockerCommand: >-
       sh -c "python manage.py migrate --noinput && gunicorn config.wsgi --workers 2 --timeout 60 --bind 0.0.0.0:$PORT"
     healthCheckPath: /health/
 
@@ -117,7 +117,7 @@ services:
         sync: false
       - key: SENTRY_DSN
         sync: false
-    startCommand: celery -A config worker --loglevel=info --concurrency 2
+    dockerCommand: celery -A config worker --loglevel=info --concurrency 2
 
   # ── Celery Beat Scheduler ─────────────────────────────────────────────────────
   - type: worker
@@ -144,7 +144,7 @@ services:
           property: connectionString
       - key: SENTRY_DSN
         sync: false
-    startCommand: celery -A config beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    dockerCommand: celery -A config beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
 
 databases:
   - name: pakpropai-db
