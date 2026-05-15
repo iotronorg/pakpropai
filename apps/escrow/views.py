@@ -195,6 +195,42 @@ class DealLockSellerConfirmView(APIView):
         return Response({'detail': 'Seller confirmation recorded.', 'id': str(deal.id)})
 
 
+class DealLockReleaseView(APIView):
+    """PATCH /deals/lock/<id>/release/ — admin marks deal successfully completed."""
+    permission_classes = [IsAdmin]
+
+    def patch(self, request, pk):
+        deal = get_object_or_404(EscrowDeal, pk=pk)
+        if deal.status != EscrowDeal.Status.LOCKED:
+            return Response(
+                {'detail': f"Cannot release a deal in '{deal.status}' status. Only locked deals can be released."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        deal.status = EscrowDeal.Status.RELEASED
+        if request.data.get('admin_notes'):
+            deal.admin_notes = request.data['admin_notes']
+        deal.save(update_fields=['status', 'admin_notes', 'updated_at'])
+        return Response({'detail': 'Deal marked as released.', 'id': str(deal.id), 'status': deal.status})
+
+
+class DealLockDisputeView(APIView):
+    """PATCH /deals/lock/<id>/dispute/ — admin flags a deal as disputed."""
+    permission_classes = [IsAdmin]
+
+    def patch(self, request, pk):
+        deal = get_object_or_404(EscrowDeal, pk=pk)
+        if deal.status not in (EscrowDeal.Status.LOCKED, EscrowDeal.Status.INITIATED):
+            return Response(
+                {'detail': f"Cannot dispute a deal in '{deal.status}' status."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        deal.status = EscrowDeal.Status.DISPUTED
+        if request.data.get('admin_notes'):
+            deal.admin_notes = request.data['admin_notes']
+        deal.save(update_fields=['status', 'admin_notes', 'updated_at'])
+        return Response({'detail': 'Deal flagged as disputed.', 'id': str(deal.id), 'status': deal.status})
+
+
 def _notify_buyer_lock_active(deal: EscrowDeal):
     try:
         hrs = deal.hours_remaining()

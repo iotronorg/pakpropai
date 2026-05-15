@@ -930,6 +930,30 @@ All remaining pre-launch code gaps from the 2026-05-09 audit are now closed.
 
 ---
 
+## Phase 14 — Frontend Gap Closure: Backend Additions (2026-05-15)
+
+### Escrow Deal Lifecycle Completion
+
+| Item | Status | File(s) |
+|------|--------|---------|
+| `DealLockReleaseView` — `PATCH /deals/lock/<id>/release/` — admin marks deal released | ✅ Done | `apps/escrow/views.py` |
+| `DealLockDisputeView` — `PATCH /deals/lock/<id>/dispute/` — admin flags deal as disputed | ✅ Done | `apps/escrow/views.py` |
+| Both views require `IsAdmin` permission; accept optional `admin_notes` in request body | ✅ Done | `apps/escrow/views.py` |
+| URL patterns registered: `lock/<uuid:pk>/release/` and `lock/<uuid:pk>/dispute/` | ✅ Done | `apps/escrow/urls.py` |
+| `EscrowDeal.Status.RELEASED` and `EscrowDeal.Status.DISPUTED` were already in the model enum — views close the gap | ✅ Done | — |
+
+### Lead Serializer — Missing Fields Exposed
+
+| Item | Status | File(s) |
+|------|--------|---------|
+| `source` field added to `LeadSerializer.fields` and `read_only_fields` | ✅ Done | `apps/leads/serializers.py` |
+| `intent_signals` field added to `LeadSerializer.fields` and `read_only_fields` | ✅ Done | `apps/leads/serializers.py` |
+| Both fields were in the `Lead` model but not exposed via REST API — now available in all lead list/detail responses | ✅ Done | — |
+
+**Phase 14 completion: 100%** ✅
+
+---
+
 ## Recommended Next Steps (as of 2026-05-14 — Phase 13 complete)
 
 **All pre-launch code is done. Remaining work is external/operational:**

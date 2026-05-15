@@ -409,22 +409,7 @@ Always:
   - Parallel tasks
   - Exploration
 
-### Task Management
 
-- **ALWAYS read `tasks/progress.md` at the start of every session** before doing any work
-- **ALSO read `../tasks/system_audit_2026_05_08.md`** — original 2026-05-08 audit; Phases 1–3 are now complete ✅
-- **ALSO read `../audit-reports/`** — the authoritative 2026-05-09 audit folder (5 files). Start with:
-  - `PAKPROP_CRITICAL_PRODUCTION_BLOCKERS.md` — 10 launch blockers with exact fixes
-  - `PAKPROP_IMPLEMENTATION_PRIORITY_PLAN.md` — phased build plan Phase 1–4
-  - `PAKPROP_MISSING_FEATURES_CHECKLIST.md` — complete [ ]/[x] feature checklist
-  - Use these to know exactly what to build next. `tasks/progress.md` tracks what's done.
-- Use it to understand what is built, what is remaining, and what phase we are in
-- After completing any non-trivial work, update `tasks/progress.md`:
-  - Mark completed items ✅
-  - Add any new architecture decisions to the log
-  - Add any new known gaps or tech debt
-  - Update "Recommended Next Steps" to reflect current reality
-- Write in-session plans to `tasks/todo.md` if needed for complex multi-step tasks
 
 ### Verification Before Done
 

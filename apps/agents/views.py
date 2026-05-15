@@ -1,4 +1,5 @@
 import logging
+from django.db import transaction
 from django.utils import timezone
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import NotFound, PermissionDenied
@@ -68,12 +69,23 @@ class AgentListView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         if self.request.user.role == 'admin':
-            # Admin direct-create: auto-approved.
-            serializer.save(
-                registration_status=Agent.RegistrationStatus.APPROVED,
-                is_active=True,
-                is_verified=True,
-            )
+            from apps.users.models import User
+            phone = serializer.validated_data.get('phone', '')
+            name  = serializer.validated_data.get('name', '')
+            with transaction.atomic():
+                user, created = User.objects.get_or_create(
+                    phone=phone,
+                    defaults={'name': name, 'role': User.Role.AGENT},
+                )
+                if not created and user.role != User.Role.AGENT:
+                    user.role = User.Role.AGENT
+                    user.save(update_fields=['role'])
+                serializer.save(
+                    user=user,
+                    registration_status=Agent.RegistrationStatus.APPROVED,
+                    is_active=True,
+                    is_verified=True,
+                )
         else:
             # Developer creates an agent scoped to their own org, pending approval.
             try:
