@@ -43,6 +43,7 @@ class VerificationQueueView(APIView):
         return user.role in ('admin', 'agent', 'developer')
 
     def get(self, request):
+        role = request.user.role
         if not self._is_dashboard(request.user):
             return Response({'error': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
 
@@ -50,10 +51,23 @@ class VerificationQueueView(APIView):
             Verification.objects
             .select_related('property', 'requested_by', 'reviewer')
             .prefetch_related('document_scans')
-            .all()
         )
 
-        # filter by status if requested
+        # Scope by role: agents see only their own property verifications;
+        # developers see only their org's; admins see all.
+        if role == 'agent':
+            try:
+                qs = qs.filter(property__assigned_agent=request.user.agent_profile)
+            except Exception:
+                qs = qs.none()
+        elif role == 'developer':
+            try:
+                org = request.user.agent_profile
+                qs = qs.filter(property__assigned_agent__parent_organization=org)
+            except Exception:
+                qs = qs.none()
+        # admin: no additional filter
+
         s = request.query_params.get('status')
         if s:
             qs = qs.filter(status=s)

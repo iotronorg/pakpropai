@@ -56,24 +56,46 @@ BENCHMARKS = {
 def _get_benchmark(city: str, location: str) -> dict:
     """
     Return the best-matching benchmark entry for (city, location).
-    Falls back: exact city key → location substring match → city 'default' → global 'default'.
+    Queries the DB (admin-configurable) first; falls back to hardcoded defaults.
+    DB lookup order: city+location match → city default → global default → hardcoded.
     """
     city_key = city.lower().strip()
     loc_key = location.lower().strip()
 
-    city_data = BENCHMARKS.get(city_key, BENCHMARKS['default'])
+    try:
+        from apps.audit.models import AuditBenchmark
+        rows = list(
+            AuditBenchmark.objects.filter(
+                city__in=[city_key, 'default'],
+                is_active=True,
+            )
+        )
+        if rows:
+            city_rows = [r for r in rows if r.city == city_key]
+            # Prefer city-specific location match
+            for r in city_rows:
+                if r.location_key != 'default' and r.location_key in loc_key:
+                    return r.to_dict()
+            # City-level default
+            for r in city_rows:
+                if r.location_key == 'default':
+                    return r.to_dict()
+            # Global default from DB
+            for r in rows:
+                if r.city == 'default' and r.location_key == 'default':
+                    return r.to_dict()
+    except Exception:
+        pass
 
-    # Try to find a benchmark whose key appears inside the location string
+    # ── Hardcoded fallback (used when DB is empty or unavailable) ──────────────
+    city_data = BENCHMARKS.get(city_key, BENCHMARKS['default'])
     for bench_key, bench_val in city_data.items():
         if bench_key == 'default':
             continue
         if bench_key in loc_key:
             return bench_val
-
-    # Fall back to city default
     if 'default' in city_data:
         return city_data['default']
-
     return BENCHMARKS['default']['default']
 
 

@@ -1,6 +1,49 @@
 from django.db import models
 
 
+class AuditBenchmark(models.Model):
+    """
+    Admin-configurable benchmarks used by AuditEngine to score properties.
+    Pre-populated with Pakistani real-estate defaults; admin can update any row.
+    city + location_key uniquely identify each benchmark (use 'default' for fallbacks).
+    """
+    city         = models.CharField(max_length=100, help_text="e.g. lahore, islamabad, karachi, default")
+    location_key = models.CharField(max_length=100, help_text="e.g. dha, bahria, gulberg, default")
+    ppm_min      = models.BigIntegerField(help_text="Min price per marla (PKR)")
+    ppm_max      = models.BigIntegerField(help_text="Max price per marla (PKR)")
+    yield_pct    = models.FloatField(help_text="Expected rental yield %")
+    appr_pct     = models.FloatField(help_text="Expected annual appreciation %")
+    liq_months   = models.IntegerField(help_text="Avg months to sell")
+    approved     = models.BooleanField(
+        null=True, blank=True,
+        help_text="Is the area LDA/CDA/RDA approved? Leave blank if unknown.",
+    )
+    is_active    = models.BooleanField(default=True)
+    updated_at   = models.DateTimeField(auto_now=True)
+    updated_by   = models.ForeignKey(
+        'users.User', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='benchmark_updates',
+    )
+
+    class Meta:
+        unique_together = ('city', 'location_key')
+        ordering = ['city', 'location_key']
+        verbose_name = 'Audit Benchmark'
+        verbose_name_plural = 'Audit Benchmarks'
+
+    def __str__(self):
+        return f"{self.city} / {self.location_key}"
+
+    def to_dict(self):
+        return {
+            'ppm': (self.ppm_min, self.ppm_max),
+            'yield_pct': self.yield_pct,
+            'appr_pct': self.appr_pct,
+            'liq_months': self.liq_months,
+            'approved': self.approved,
+        }
+
+
 class PropertyAudit(models.Model):
 
     class InvestmentGrade(models.TextChoices):

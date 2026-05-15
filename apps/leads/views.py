@@ -82,7 +82,7 @@ class IsDashboardUser(permissions.BasePermission):
 class LeadViewSet(viewsets.ModelViewSet):
     serializer_class   = LeadSerializer
     permission_classes = [IsDashboardUser]
-    http_method_names  = ['get', 'patch', 'head', 'options']
+    http_method_names  = ['get', 'post', 'patch', 'head', 'options']
 
     def get_queryset(self):
         qs = Lead.objects.select_related('user', 'assigned_agent')
