@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Lead, Appointment, ConversationMessage
+from .models import Lead, LeadActivity, LeadScoreHistory, Appointment, ConversationMessage
 
 
 class LeadSerializer(serializers.ModelSerializer):
@@ -55,3 +55,20 @@ class AppointmentSerializer(serializers.ModelSerializer):
         )
         read_only_fields = ('id', 'lead_phone', 'lead_name', 'agent_name', 'property_title',
                             'reminder_sent_at', 'created_by', 'created_at', 'updated_at')
+
+
+class LeadActivitySerializer(serializers.ModelSerializer):
+    actor_phone = serializers.CharField(source='actor.phone', read_only=True, allow_null=True)
+    actor_name  = serializers.CharField(source='actor.name',  read_only=True, allow_null=True)
+
+    class Meta:
+        model  = LeadActivity
+        fields = ('id', 'action', 'notes', 'meta', 'actor_phone', 'actor_name', 'created_at')
+
+
+class LeadScoreHistorySerializer(serializers.ModelSerializer):
+    changed_by_phone = serializers.CharField(source='changed_by.phone', read_only=True, allow_null=True)
+
+    class Meta:
+        model  = LeadScoreHistory
+        fields = ('id', 'old_score', 'new_score', 'reason', 'changed_by_phone', 'created_at')

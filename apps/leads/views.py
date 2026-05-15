@@ -8,9 +8,9 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from apps.core.throttles import BulkOperationThrottle
 
-from .models import Lead, Appointment, ConversationMessage
+from .models import Lead, LeadActivity, LeadScoreHistory, Appointment, ConversationMessage
 from .serializers import (AppointmentSerializer, ConversationMessageSerializer,
-                          LeadSerializer)
+                          LeadSerializer, LeadActivitySerializer, LeadScoreHistorySerializer)
 
 logger = logging.getLogger(__name__)
 
@@ -332,6 +332,20 @@ class LeadViewSet(viewsets.ModelViewSet):
             suggestions = []
 
         return Response({'suggestions': suggestions})
+
+    @action(detail=True, methods=['get'], url_path='activities')
+    def activities(self, request, pk=None):
+        """GET /leads/{id}/activities/ — chronological activity log for this lead."""
+        lead = self.get_object()
+        qs = LeadActivity.objects.filter(lead=lead).select_related('actor').order_by('-created_at')
+        return Response(LeadActivitySerializer(qs, many=True).data)
+
+    @action(detail=True, methods=['get'], url_path='score-history')
+    def score_history(self, request, pk=None):
+        """GET /leads/{id}/score-history/ — intent score change log for this lead."""
+        lead = self.get_object()
+        qs = LeadScoreHistory.objects.filter(lead=lead).select_related('changed_by').order_by('-created_at')
+        return Response(LeadScoreHistorySerializer(qs, many=True).data)
 
 
 class MergeLeadsView(APIView):
