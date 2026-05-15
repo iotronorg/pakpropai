@@ -57,7 +57,7 @@ services:
       - key: SAFEPAY_SECRET_KEY
         sync: false
       - key: SAFEPAY_ENVIRONMENT
-        value: production
+        value: sandbox
       - key: BSECURE_CLIENT_ID
         sync: false
       - key: BSECURE_CLIENT_SECRET
