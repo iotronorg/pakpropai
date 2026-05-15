@@ -146,11 +146,14 @@ services:
         sync: false
     dockerCommand: celery -A config beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
 
+  # ── Redis ─────────────────────────────────────────────────────────────────────
+  - type: redis
+    name: pakpropai-redis
+    plan: free
+    ipAllowList: []
+
 databases:
   - name: pakpropai-db
     databaseName: pakpropai
     user: pakprop
-    plan: free
-
-  - name: pakpropai-redis
     plan: free
