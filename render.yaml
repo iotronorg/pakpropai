@@ -3,6 +3,7 @@ services:
   - type: web
     name: pakpropai-api
     runtime: docker
+    plan: free
     dockerfilePath: ./Dockerfile
     dockerContext: .
     envVars:
@@ -78,6 +79,7 @@ services:
   - type: worker
     name: pakpropai-worker
     runtime: docker
+    plan: free
     dockerfilePath: ./Dockerfile
     dockerContext: .
     envVars:
@@ -123,6 +125,7 @@ services:
   - type: worker
     name: pakpropai-beat
     runtime: docker
+    plan: free
     dockerfilePath: ./Dockerfile
     dockerContext: .
     envVars:
