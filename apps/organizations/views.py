@@ -1,4 +1,8 @@
+import datetime
 import logging
+
+from django.db.models import Avg, Count, Q
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -218,3 +222,158 @@ class OrgConfigView(APIView):
             )
         OrgConfigService.reset(org, key)
         return Response({'detail': f"'{key}' reset to platform default."})
+
+
+class OrgDashboardView(APIView):
+    """
+    GET /api/v1/organizations/me/dashboard/
+    Overview stats for the org admin's dashboard.
+    Scoped strictly to the calling user's organization.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role not in ('admin', 'developer'):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            org = request.user.owned_organization
+        except Organization.DoesNotExist:
+            return Response({'detail': 'No organization linked.'}, status=status.HTTP_404_NOT_FOUND)
+
+        from apps.leads.models import Lead
+        from apps.agents.models import Agent
+        from apps.properties.models import Property
+
+        leads      = Lead.objects.filter(organization=org)
+        agents     = Agent.objects.filter(organization=org, is_active=True)
+        properties = Property.objects.filter(organization=org, is_active=True)
+
+        now      = timezone.now()
+        week_ago = now - datetime.timedelta(days=7)
+
+        total_leads     = leads.count()
+        hot_leads       = leads.filter(score__gte=70).count()
+        new_this_week   = leads.filter(created_at__gte=week_ago).count()
+        routing_queue   = leads.filter(routing_state='org_queue').count()
+        active_agents   = agents.count()
+        pending_agents  = Agent.objects.filter(organization=org, registration_status='pending').count()
+        total_inventory = properties.count()
+        verified_props  = properties.filter(legal_status='verified').count()
+        avg_ai_score    = properties.aggregate(avg=Avg('ai_score'))['avg'] or 0
+
+        by_status = dict(
+            leads.values_list('status').annotate(c=Count('id')).values_list('status', 'c')
+        )
+        by_intent = dict(
+            leads.values_list('intent').annotate(c=Count('id')).values_list('intent', 'c')
+        )
+        by_prop_type = dict(
+            properties.values_list('property_type').annotate(c=Count('id')).values_list('property_type', 'c')
+        )
+
+        return Response({
+            'leads': {
+                'total':          total_leads,
+                'hot':            hot_leads,
+                'new_this_week':  new_this_week,
+                'routing_queue':  routing_queue,
+                'by_status':      by_status,
+                'by_intent':      by_intent,
+            },
+            'agents': {
+                'active':  active_agents,
+                'pending': pending_agents,
+            },
+            'inventory': {
+                'total':         total_inventory,
+                'verified':      verified_props,
+                'avg_ai_score':  round(avg_ai_score, 1),
+                'by_type':       by_prop_type,
+            },
+        })
+
+
+class OrgAIStatsView(APIView):
+    """
+    GET /api/v1/organizations/me/ai-stats/
+    AI performance metrics for the org: routing queue depth, hot lead identification,
+    chat success rate, and a snapshot of recent AI-handled conversations.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role not in ('admin', 'developer'):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            org = request.user.owned_organization
+        except Organization.DoesNotExist:
+            return Response({'detail': 'No organization linked.'}, status=status.HTTP_404_NOT_FOUND)
+
+        from apps.leads.models import Lead, ConversationMessage
+
+        now      = timezone.now()
+        week_ago = now - datetime.timedelta(days=7)
+
+        leads = Lead.objects.filter(organization=org)
+
+        total_leads     = leads.count()
+        hot_leads       = leads.filter(score__gte=70).count()
+        routing_queue   = leads.filter(routing_state='org_queue').count()
+        agent_assigned  = leads.filter(routing_state='agent_assigned').count()
+        qualified_leads = leads.filter(status='qualified').count()
+
+        # Leads that have at least one inbound WhatsApp message
+        leads_with_convos = leads.filter(
+            messages__direction='inbound'
+        ).distinct().count()
+
+        # Chat success rate: qualified or hot leads with conversations / all leads with conversations
+        converted_with_convos = leads.filter(
+            Q(status='qualified') | Q(score__gte=70),
+            messages__direction='inbound',
+        ).distinct().count()
+
+        chat_success_rate = (
+            round(converted_with_convos / leads_with_convos * 100, 1)
+            if leads_with_convos > 0 else 0.0
+        )
+
+        new_this_week = leads.filter(created_at__gte=week_ago).count()
+
+        # Recent conversation snapshot: last 15 inbound messages across org leads
+        recent_messages = (
+            ConversationMessage.objects
+            .filter(lead__organization=org, direction='inbound')
+            .select_related('lead__user')
+            .order_by('-created_at')[:15]
+        )
+
+        conversations = [
+            {
+                'lead_id':    str(m.lead_id),
+                'lead_phone': m.lead.user.phone,
+                'lead_name':  getattr(m.lead.user, 'name', None),
+                'lead_score': m.lead.score,
+                'lead_status': m.lead.status,
+                'message_preview': m.body[:120],
+                'channel':    m.channel,
+                'created_at': m.created_at.isoformat(),
+            }
+            for m in recent_messages
+        ]
+
+        return Response({
+            'summary': {
+                'total_leads':        total_leads,
+                'hot_leads':          hot_leads,
+                'routing_queue':      routing_queue,
+                'agent_assigned':     agent_assigned,
+                'qualified_leads':    qualified_leads,
+                'new_this_week':      new_this_week,
+                'leads_with_convos':  leads_with_convos,
+                'chat_success_rate':  chat_success_rate,
+            },
+            'recent_conversations': conversations,
+        })
