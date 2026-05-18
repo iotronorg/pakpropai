@@ -7,6 +7,7 @@ on a miss the request returns DB-only results immediately and a Celery task runs
 scrapers in the background, caches results, then sends a WhatsApp follow-up.
 """
 import logging
+from dataclasses import dataclass
 from .models import Property
 from .scrapers.base import PropertyResult, BaseScraper
 
@@ -16,7 +17,138 @@ PAGE_SIZE = 3  # listings per WhatsApp page
 _SCRAPER_CACHE_TTL = 1800  # 30 minutes
 
 
+@dataclass
+class SearchParams:
+    """
+    Normalized search parameters accepted from the AI layer or any caller.
+    All fields are optional — supply only what is known.
+    """
+    city: str = ''
+    location: str = ''
+    property_type: str = ''
+    purpose: str = ''                # 'sale' | 'rent' | '' — reserved for future filter
+    min_price: int = 0
+    max_price: int = 0
+    area_marla: float = 0.0          # target size; DB query uses ±20 % tolerance band
+    furnished_status: str = ''
+    construction_status: str = ''
+    installments: bool = False       # True → only installment-available listings
+    legal_status: str = ''           # '' | 'verified' | 'pending' | ...
+    organization_id: str = ''        # restrict results to one org's inventory
+    page: int = 0
+    page_size: int = PAGE_SIZE
+    phone: str = ''                  # forwarded to background scrape task
+
+    @classmethod
+    def from_dict(cls, params: dict) -> 'SearchParams':
+        """Build from the AI layer's normalized tool-call argument dict."""
+        return cls(
+            city=str(params.get('city', '')),
+            location=str(params.get('location', '')),
+            property_type=str(params.get('property_type', '')),
+            purpose=str(params.get('purpose', '')),
+            min_price=int(params.get('min_price', 0) or 0),
+            max_price=int(
+                params.get('max_price_pkr', 0) or params.get('max_price', 0) or 0
+            ),
+            area_marla=float(params.get('area_marla', 0) or 0),
+            furnished_status=str(
+                params.get('furnished', '') or params.get('furnished_status', '')
+            ),
+            construction_status=str(params.get('construction_status', '')),
+            installments=bool(params.get('installments', False)),
+            legal_status=str(params.get('legal_status', '')),
+            organization_id=str(params.get('organization_id', '')),
+            page=int(params.get('page', 0) or 0),
+            page_size=int(params.get('page_size', PAGE_SIZE) or PAGE_SIZE),
+            phone=str(params.get('phone', '')),
+        )
+
+
 class PropertySearchService:
+
+    @classmethod
+    def execute(cls, params: SearchParams) -> dict:
+        """
+        Primary entry point for the AI layer.
+        Accepts a SearchParams object and returns a structured payload
+        ready for the WhatsApp formatter or API layer.
+        """
+        db_results = cls._from_db(
+            city=params.city,
+            location=params.location,
+            area_marla=params.area_marla or None,
+            min_price=params.min_price or None,
+            max_price=params.max_price or None,
+            property_type=params.property_type,
+            furnished_status=params.furnished_status,
+            construction_status=params.construction_status,
+            installments=params.installments or None,
+            legal_status=params.legal_status,
+            organization_id=params.organization_id,
+        )
+        scraped_results = cls._from_scrapers(
+            city=params.city,
+            location=params.location,
+            area_marla=params.area_marla or None,
+            max_price=params.max_price or None,
+            property_type=params.property_type,
+            phone=params.phone,
+        )
+
+        all_results = cls._dedup(db_results + scraped_results)
+        if all_results:
+            cls._apply_ai_verdicts(all_results[:5])
+
+        total = len(all_results)
+        offset = params.page * params.page_size
+        page_slice = all_results[offset: offset + params.page_size]
+
+        return {
+            'query': {
+                'city': params.city,
+                'location': params.location,
+                'property_type': params.property_type,
+                'max_price': params.max_price,
+                'area_marla': params.area_marla,
+                'furnished_status': params.furnished_status,
+            },
+            'pagination': {
+                'page': params.page,
+                'page_size': params.page_size,
+                'total': total,
+                'has_next': (offset + params.page_size) < total,
+            },
+            'results': [cls._result_to_dict(r) for r in page_slice],
+            'live_search_pending': total == 0 or all(r.source == 'pakprop' for r in all_results),
+            'whatsapp_message': (
+                cls.format_page(all_results, offset, total)
+                if all_results
+                else (
+                    'No properties found right now. Live results from Zameen/Graana are '
+                    'being fetched — you will receive them in a follow-up message shortly.'
+                )
+            ),
+        }
+
+    @classmethod
+    def _result_to_dict(cls, r: PropertyResult) -> dict:
+        return {
+            'source': r.source,
+            'source_id': r.source_id,
+            'title': r.title,
+            'city': r.city,
+            'location': r.location,
+            'area_marla': r.area_marla,
+            'price': r.price_pkr,
+            'price_formatted': f"PKR {r.price_pkr:,}" if r.price_pkr else 'Price not listed',
+            'property_type': r.property_type,
+            'furnished_status': r.furnished_status,
+            'construction_status': r.construction_status,
+            'url': r.url or '',
+            'ai_score': r.ai_score,
+            'ai_verdict': getattr(r, 'ai_verdict', ''),
+        }
 
     @classmethod
     def search(cls, city='', location='', area_marla=None, max_price=None,
@@ -27,10 +159,15 @@ class PropertySearchService:
         `phone` is forwarded to the background task so a follow-up WA message
         can be sent when live scraper results arrive.
         """
-        db_results      = cls._from_db(city, location, area_marla, max_price,
-                                       property_type, furnished_status, construction_status)
-        scraped_results = cls._from_scrapers(city, location, area_marla, max_price,
-                                             property_type, phone=phone)
+        db_results = cls._from_db(
+            city=city, location=location, area_marla=area_marla,
+            max_price=max_price, property_type=property_type,
+            furnished_status=furnished_status, construction_status=construction_status,
+        )
+        scraped_results = cls._from_scrapers(
+            city=city, location=location, area_marla=area_marla,
+            max_price=max_price, property_type=property_type, phone=phone,
+        )
 
         all_results = cls._dedup(db_results + scraped_results)
         if not all_results:
@@ -50,39 +187,62 @@ class PropertySearchService:
     # ── Sources ───────────────────────────────────────────────────────────────
 
     @classmethod
-    def _from_db(cls, city, location, area_marla, max_price, property_type,
-                 furnished_status='', construction_status='') -> list[PropertyResult]:
-        qs = Property.objects.filter(is_active=True)
+    def _from_db(
+        cls, city='', location='', area_marla=None, max_price=None,
+        property_type='', furnished_status='', construction_status='',
+        min_price=None, installments=None, legal_status='', organization_id='',
+    ) -> list[PropertyResult]:
+        qs = (
+            Property.objects
+            .filter(is_active=True)
+            .select_related('organization', 'listed_by_agent')
+            .only(
+                'id', 'title', 'city', 'location', 'area_marla', 'price_pkr',
+                'property_type', 'furnished_status', 'construction_status',
+                'ai_score', 'installment_available', 'legal_status',
+            )
+        )
+
         if city:
             qs = qs.filter(city__icontains=city)
         if location:
             qs = qs.filter(location__icontains=location)
+        if min_price:
+            qs = qs.filter(price_pkr__gte=min_price)
         if max_price:
             qs = qs.filter(price_pkr__lte=max_price)
         if area_marla:
-            qs = qs.filter(area_marla__gte=area_marla * 0.8,
-                           area_marla__lte=area_marla * 1.2)
+            qs = qs.filter(
+                area_marla__gte=area_marla * 0.8,
+                area_marla__lte=area_marla * 1.2,
+            )
         if property_type:
             qs = qs.filter(property_type__icontains=property_type)
         if furnished_status:
             qs = qs.filter(furnished_status=furnished_status)
         if construction_status:
             qs = qs.filter(construction_status=construction_status)
+        if installments:
+            qs = qs.filter(installment_available=True)
+        if legal_status:
+            qs = qs.filter(legal_status=legal_status)
+        if organization_id:
+            qs = qs.filter(organization_id=organization_id)
 
         return [
             PropertyResult(
-                source               = 'pakprop',
-                source_id            = str(p.id),
-                title                = p.title,
-                city                 = p.city,
-                location             = p.location,
-                area_marla           = float(p.area_marla) if p.area_marla else None,
-                price_pkr            = p.price_pkr,
-                property_type        = p.property_type,
-                furnished_status     = p.furnished_status,
-                construction_status  = p.construction_status,
-                url                  = '',
-                ai_score             = p.ai_score,
+                source              = 'pakprop',
+                source_id           = str(p.id),
+                title               = p.title,
+                city                = p.city,
+                location            = p.location,
+                area_marla          = float(p.area_marla) if p.area_marla else None,
+                price_pkr           = p.price_pkr,
+                property_type       = p.property_type,
+                furnished_status    = p.furnished_status,
+                construction_status = p.construction_status,
+                url                 = '',
+                ai_score            = p.ai_score,
             )
             for p in qs.order_by('-ai_score', '-created_at')[:10]
         ]
