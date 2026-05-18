@@ -39,7 +39,7 @@ class AgentAdminSerializer(AgentSerializer):
         read_only_fields = (
             'id', 'total_leads', 'total_listings',
             'closed_deals', 'user_phone', 'user_email',
-            'parent_organization_name', 'joined_at', 'updated_at',
+            'joined_at', 'updated_at',
         )
 
 

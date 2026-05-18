@@ -101,8 +101,8 @@ class MessageRouter:
         # Every WhatsApp client interaction auto-registers the user as a lead.
         # This is a fire-and-forget upsert — never blocks message processing.
         try:
-            from apps.whatsapp.handlers import _upsert_lead
-            _upsert_lead(user)
+            from apps.leads.utils import upsert_lead
+            upsert_lead(user, '')
         except Exception:
             pass
 
@@ -239,7 +239,7 @@ class MessageRouter:
             from apps.ai.agent import get_agent
             agent   = get_agent()
             backend = agent._get_backend().label
-            print(f"\033[93m[MSG] phone={phone} backend={backend} msg={text[:60]!r}\033[0m")
+            logger.debug(f"[MSG] phone={phone} backend={backend} msg={text[:60]!r}")
             reply   = agent.chat(phone, text, user)
         except Exception:
             logger.exception(f"Agent crashed for phone={phone}")
@@ -367,20 +367,19 @@ class MessageRouter:
             logger.warning(f"Audio message from {phone} has no media_id — skipping download")
             return ''
         try:
-            print(f"\033[94m[AUDIO] phone={phone} downloading media_id={media_id}\033[0m")
+            logger.debug(f"[AUDIO] phone={phone} downloading media_id={media_id}")
             audio_bytes = WhatsAppClient.download_media(media_id)
-            print(f"\033[94m[AUDIO] downloaded {len(audio_bytes)} bytes, mime={mime_type}\033[0m")
+            logger.debug(f"[AUDIO] downloaded {len(audio_bytes)} bytes, mime={mime_type}")
             from apps.ai.agent import get_agent
             transcript = get_agent().transcribe_audio(audio_bytes, mime_type)
             if transcript:
-                print(f"\033[94m[AUDIO] transcribed: {transcript[:80]!r}\033[0m")
+                logger.debug(f"[AUDIO] transcribed: {transcript[:80]!r}")
             else:
-                print(f"\033[94m[AUDIO] transcription returned empty (no Gemini key in local mode?)\033[0m")
+                logger.debug("[AUDIO] transcription returned empty (no Gemini key in local mode?)")
             logger.info(f"Voice transcribed phone={phone}: {transcript[:80] if transcript else '<empty>'}")
             return transcript
         except Exception as exc:
             logger.error(f"Voice transcription failed phone={phone}: {exc}", exc_info=True)
-            print(f"\033[91m[AUDIO ERROR] phone={phone}: {exc}\033[0m")
             return ''
 
     # ─── Utilities ────────────────────────────────────────────────────────────

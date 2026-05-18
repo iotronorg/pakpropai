@@ -68,7 +68,7 @@ def notify_verification_status_change(verification_id: str):
 def run_verification_task(self, verification_id: str, image_bytes: bytes = None,
                           mime_type: str = 'image/jpeg'):
     from .models import Verification
-    from services.ai_orchestrator import AIOrchestrator
+    from apps.ai.scoring import ocr_document as _ai_ocr_document
     import json
 
     try:
@@ -84,7 +84,7 @@ def run_verification_task(self, verification_id: str, image_bytes: bytes = None,
         return
 
     try:
-        raw = AIOrchestrator.ocr_document(image_bytes, mime_type=mime_type)
+        raw = _ai_ocr_document(image_bytes, mime_type=mime_type)
         try:
             ocr_data = json.loads(raw)
         except Exception:

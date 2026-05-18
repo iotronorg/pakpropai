@@ -2,7 +2,7 @@ import logging
 from django.core.cache import cache
 from django.utils import timezone
 
-from services.ai_orchestrator import AIOrchestrator
+from apps.ai.scoring import fraud_check as _ai_fraud_check
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +77,7 @@ class FraudCheckService:
 
         # 2. AI-powered analysis
         try:
-            ai_result = AIOrchestrator.fraud_check(query, user=user)
+            ai_result = _ai_fraud_check(query)
         except Exception as exc:
             logger.error(f"Fraud AI failed: {exc}")
             return {

@@ -35,6 +35,10 @@ def suggest_agents_for_lead(lead, limit: int = 3) -> list:
     try:
         candidates = Agent.objects.filter(is_active=True).prefetch_related()
 
+        # Org boundary: only match agents from the same org as the lead
+        if getattr(lead, 'organization_id', None):
+            candidates = candidates.filter(organization_id=lead.organization_id)
+
         # City filter: agent.cities JSON array contains lead.city_interest
         city = (lead.city_interest or '').strip().lower()
         if city:

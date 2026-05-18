@@ -66,7 +66,7 @@ def _send_scraped_followup(phone: str, results: list):
 def score_property_task(self, property_id: str):
     from .models import Property
     from .scoring import PropertyScoringEngine
-    from services.ai_orchestrator import AIOrchestrator
+    from apps.ai.scoring import score_property as _ai_score_property
 
     try:
         prop = Property.objects.prefetch_related(
@@ -81,7 +81,7 @@ def score_property_task(self, property_id: str):
     baseline = PropertyScoringEngine.deterministic_score(signals)
 
     try:
-        result = AIOrchestrator.score_property(prop)
+        result = _ai_score_property(prop)
         score  = int(result.get('score') or baseline)
         risk   = result.get('risk') or PropertyScoringEngine.risk_from_score(score)
     except Exception as exc:

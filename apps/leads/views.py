@@ -5,73 +5,12 @@ from django.utils import timezone
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.views import APIView
-from apps.core.throttles import BulkOperationThrottle
 
 from .models import Lead, LeadActivity, LeadScoreHistory, Appointment, ConversationMessage
 from .serializers import (AppointmentSerializer, ConversationMessageSerializer,
                           LeadSerializer, LeadActivitySerializer, LeadScoreHistorySerializer)
 
 logger = logging.getLogger(__name__)
-
-
-def _normalize_phone(phone: str) -> str:
-    """Strip non-digits, then normalise Pakistan numbers to 03XXXXXXXXX form."""
-    digits = re.sub(r'\D', '', phone)
-    if digits.startswith('923') and len(digits) == 12:
-        return '0' + digits[2:]
-    if digits.startswith('92') and len(digits) == 11:
-        return '0' + digits[2:]
-    return digits
-
-
-class DuplicateLeadView(APIView):
-    """
-    GET /leads/duplicates/
-    Admin-only: find lead pairs whose phone numbers normalize to the same value.
-    These may represent the same real person entered via different flows.
-    """
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get(self, request):
-        if request.user.role != 'admin':
-            return Response({'detail': 'Admin access required.'}, status=status.HTTP_403_FORBIDDEN)
-
-        leads = (
-            Lead.objects
-            .select_related('user', 'assigned_agent')
-            .only('id', 'user__phone', 'user__name', 'status', 'intent', 'created_at')
-            .order_by('created_at')
-        )
-
-        seen: dict = {}
-        duplicates = []
-        for lead in leads:
-            norm = _normalize_phone(lead.user.phone)
-            if norm in seen:
-                duplicates.append({
-                    'normalized_phone': norm,
-                    'leads': [
-                        {
-                            'id':    str(seen[norm].id),
-                            'phone': seen[norm].user.phone,
-                            'status': seen[norm].status,
-                            'intent': seen[norm].intent,
-                            'created_at': seen[norm].created_at.isoformat(),
-                        },
-                        {
-                            'id':    str(lead.id),
-                            'phone': lead.user.phone,
-                            'status': lead.status,
-                            'intent': lead.intent,
-                            'created_at': lead.created_at.isoformat(),
-                        },
-                    ],
-                })
-            else:
-                seen[norm] = lead
-
-        return Response({'count': len(duplicates), 'results': duplicates})
 
 
 class IsDashboardUser(permissions.BasePermission):
@@ -213,7 +152,7 @@ class LeadViewSet(viewsets.ModelViewSet):
             f"Lead phone: {lead.user.phone}\n"
             f"Status: {lead.status}\n"
             f"Budget: {lead.budget_min or '?'} – {lead.budget_max or '?'} PKR\n"
-            f"City interest: {lead.location_interest or 'unknown'}\n"
+            f"City interest: {lead.city_interest or 'unknown'}\n"
         )
         prompt = (
             "You are a CRM assistant for a Pakistani real estate platform.\n"
@@ -227,29 +166,8 @@ class LeadViewSet(viewsets.ModelViewSet):
         )
 
         try:
-            from apps.ai.client import GeminiClient
-            from django.conf import settings
-            if getattr(settings, 'AI_BACKEND', 'gemini') == 'local':
-                from openai import OpenAI
-                client = OpenAI(
-                    base_url=getattr(settings, 'OLLAMA_BASE_URL', 'http://localhost:11434') + '/v1',
-                    api_key='ollama',
-                )
-                resp = client.chat.completions.create(
-                    model=getattr(settings, 'LOCAL_MODEL', 'qwen2.5:7b'),
-                    messages=[{'role': 'user', 'content': prompt}],
-                    max_tokens=400,
-                    temperature=0.3,
-                )
-                summary = resp.choices[0].message.content.strip()
-            else:
-                summary = GeminiClient.generate(
-                    prompt,
-                    interaction_type='lead_summarize',
-                    max_output_tokens=400,
-                    cache_ttl=300,
-                    use_cache=False,
-                )
+            from apps.ai.backends import generate
+            summary = generate(prompt, max_tokens=400, temperature=0.3)
         except Exception as exc:
             logger.error(f"Summarize failed for lead {lead.id}: {exc}")
             return Response({'detail': 'AI summarization unavailable.'}, status=503)
@@ -280,7 +198,7 @@ class LeadViewSet(viewsets.ModelViewSet):
         )
         prompt = (
             "You are a real estate agent assistant for a Pakistani platform.\n"
-            f"Lead status: {lead.status} | City: {lead.location_interest or 'unknown'} "
+            f"Lead status: {lead.status} | City: {lead.city_interest or 'unknown'} "
             f"| Budget: {lead.budget_max or '?'} PKR\n\n"
             f"Recent conversation:\n{recent}\n\n"
             f"Last client message: {last_inbound}\n\n"
@@ -292,33 +210,9 @@ class LeadViewSet(viewsets.ModelViewSet):
 
         try:
             import json
-            from apps.ai.client import GeminiClient
-            from django.conf import settings
-            if getattr(settings, 'AI_BACKEND', 'gemini') == 'local':
-                from openai import OpenAI
-                client = OpenAI(
-                    base_url=getattr(settings, 'OLLAMA_BASE_URL', 'http://localhost:11434') + '/v1',
-                    api_key='ollama',
-                )
-                resp = client.chat.completions.create(
-                    model=getattr(settings, 'LOCAL_MODEL', 'qwen2.5:7b'),
-                    messages=[{'role': 'user', 'content': prompt}],
-                    max_tokens=300,
-                    temperature=0.6,
-                )
-                raw = resp.choices[0].message.content.strip()
-            else:
-                raw = GeminiClient.generate(
-                    prompt,
-                    interaction_type='suggest_replies',
-                    max_output_tokens=300,
-                    temperature=0.6,
-                    use_cache=False,
-                )
-
-            # parse JSON array from response
-            import re as _re
-            arr_match = _re.search(r'\[.*?\]', raw, _re.DOTALL)
+            from apps.ai.backends import generate
+            raw = generate(prompt, max_tokens=300, temperature=0.6)
+            arr_match = re.search(r'\[.*?\]', raw, re.DOTALL)
             suggestions = json.loads(arr_match.group(0)) if arr_match else []
             if not isinstance(suggestions, list):
                 suggestions = []
@@ -342,65 +236,6 @@ class LeadViewSet(viewsets.ModelViewSet):
         lead = self.get_object()
         qs = LeadScoreHistory.objects.filter(lead=lead).select_related('changed_by').order_by('-created_at')
         return Response(LeadScoreHistorySerializer(qs, many=True).data)
-
-
-class MergeLeadsView(APIView):
-    """
-    POST /leads/merge/
-    Merge a duplicate lead into a primary lead (admin only).
-    Transfers all messages + appointments from secondary → primary, then deletes secondary.
-    Body: { "primary_id": "<uuid>", "secondary_id": "<uuid>" }
-    """
-    permission_classes = [permissions.IsAuthenticated]
-
-    def post(self, request):
-        if request.user.role != 'admin':
-            return Response({'detail': 'Admin access required.'}, status=403)
-
-        primary_id   = request.data.get('primary_id')
-        secondary_id = request.data.get('secondary_id')
-
-        if not primary_id or not secondary_id:
-            return Response({'detail': 'primary_id and secondary_id are required.'}, status=400)
-        if str(primary_id) == str(secondary_id):
-            return Response({'detail': 'primary_id and secondary_id must differ.'}, status=400)
-
-        try:
-            primary   = Lead.objects.select_related('user').get(pk=primary_id)
-            secondary = Lead.objects.select_related('user').get(pk=secondary_id)
-        except Lead.DoesNotExist:
-            return Response({'detail': 'One or both leads not found.'}, status=404)
-
-        # transfer messages
-        moved_msgs = ConversationMessage.objects.filter(lead=secondary).update(lead=primary)
-
-        # transfer appointments (avoid duplicating same-time-slot)
-        from .models import Appointment
-        Appointment.objects.filter(lead=secondary).update(lead=primary)
-
-        # merge notes
-        if secondary.notes:
-            merged_notes = f"{primary.notes}\n\n[Merged from {secondary.user.phone}]:\n{secondary.notes}".strip()
-            primary.notes = merged_notes
-
-        # keep higher intent score
-        if (secondary.intent_score or 0) > (primary.intent_score or 0):
-            primary.intent_score = secondary.intent_score
-
-        # keep assigned agent if primary has none
-        if not primary.assigned_agent and secondary.assigned_agent:
-            primary.assigned_agent = secondary.assigned_agent
-
-        primary.save(update_fields=['notes', 'intent_score', 'assigned_agent'])
-
-        secondary_phone = secondary.user.phone
-        secondary.delete()
-
-        return Response({
-            'detail': f'Lead {secondary_phone} merged into {primary.user.phone}.',
-            'primary_id': str(primary.id),
-            'messages_transferred': moved_msgs,
-        })
 
 
 class AppointmentViewSet(viewsets.ModelViewSet):
@@ -523,48 +358,3 @@ class AppointmentViewSet(viewsets.ModelViewSet):
                                 new_status=Appointment.Status.COMPLETED)
 
 
-class BulkAssignLeadsView(APIView):
-    """
-    POST /leads/bulk-assign/
-    Body: {"lead_ids": ["uuid1", ...], "agent_id": 123}
-    Assigns multiple leads to one agent in a single call. Admin + developer only.
-    """
-    permission_classes = [IsDashboardUser]
-    throttle_classes = [BulkOperationThrottle]
-
-    def post(self, request):
-        if request.user.role not in ('admin', 'developer'):
-            return Response({'error': 'Admin or developer access required.'},
-                            status=status.HTTP_403_FORBIDDEN)
-
-        lead_ids = request.data.get('lead_ids', [])
-        agent_id = request.data.get('agent_id')
-
-        if not lead_ids or not agent_id:
-            return Response({'error': 'lead_ids (list) and agent_id are required.'},
-                            status=status.HTTP_400_BAD_REQUEST)
-
-        from apps.agents.models import Agent
-        try:
-            agent = Agent.objects.get(id=agent_id, is_active=True)
-        except Agent.DoesNotExist:
-            return Response({'error': 'Agent not found or inactive.'},
-                            status=status.HTTP_404_NOT_FOUND)
-
-        qs = Lead.objects.filter(id__in=lead_ids)
-
-        # Developers can only reassign leads within their org
-        if request.user.role == 'developer':
-            try:
-                org = request.user.owned_organization
-                from django.db.models import Q as Qfilter
-                qs = qs.filter(
-                    Qfilter(organization=org) |
-                    Qfilter(organization__isnull=True, assigned_agent__isnull=True)
-                )
-            except Exception:
-                return Response({'error': 'Developer org not found.'},
-                                status=status.HTTP_403_FORBIDDEN)
-
-        count = qs.update(assigned_agent=agent)
-        return Response({'assigned': count, 'agent_id': agent_id})

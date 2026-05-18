@@ -7,7 +7,7 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 from .models import Organization, OrganizationConfig
 from .serializers import OrganizationListSerializer, OrganizationDetailSerializer
-from .permissions import IsAdminUser, IsAdminOrOrgAdmin
+from apps.core.permissions import IsAdminUser, IsAdminOrOrgAdmin
 from .services import OrgConfigService
 
 logger = logging.getLogger(__name__)
@@ -166,13 +166,13 @@ class OrgConfigView(APIView):
     def _get_org(self, user):
         if user.role not in ('admin', 'developer'):
             return None, Response(status=status.HTTP_403_FORBIDDEN)
-        try:
-            return user.owned_organization, None
-        except Organization.DoesNotExist:
+        org = getattr(user, 'owned_organization', None)
+        if org is None:
             return None, Response(
                 {'detail': 'No organization linked to your account.'},
                 status=status.HTTP_404_NOT_FOUND,
             )
+        return org, None
 
     def get(self, request):
         org, err = self._get_org(request.user)

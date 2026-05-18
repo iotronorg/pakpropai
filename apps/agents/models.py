@@ -44,16 +44,6 @@ class Agent(models.Model):
         default=EmploymentType.FREELANCE,
         help_text='Internal = employed by the organization; Freelance = independent contractor'
     )
-    # DEPRECATED: use agent.organization (FK to Organization model) instead.
-    # Kept in DB for backward compatibility during migration period; will be removed in v2.
-    parent_organization = models.ForeignKey(
-        'self',
-        on_delete=models.SET_NULL,
-        null=True, blank=True,
-        related_name='team_members',
-        help_text='[DEPRECATED] Use agent.organization instead.'
-    )
-
     # ── Identity ──────────────────────────────────────────────────────────────
     name            = models.CharField(max_length=200)
     agent_type      = models.CharField(

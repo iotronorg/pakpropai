@@ -12,11 +12,6 @@ class AgentSerializer(serializers.ModelSerializer):
     organization_name = serializers.CharField(
         source='organization.name', read_only=True, allow_null=True, default=None
     )
-    # DEPRECATED field kept for backward compat — consumers should use organization/organization_name
-    parent_organization_name = serializers.CharField(
-        source='parent_organization.name', read_only=True, allow_null=True, default=None
-    )
-
     class Meta:
         model = Agent
         fields = (
@@ -29,14 +24,13 @@ class AgentSerializer(serializers.ModelSerializer):
             'total_leads', 'total_listings', 'closed_deals', 'rating',
             'user_phone', 'user_email',
             'organization', 'organization_name',
-            'parent_organization', 'parent_organization_name',
             'profile_photo',
             'joined_at', 'updated_at',
         )
         read_only_fields = (
             'id', 'is_verified', 'total_leads', 'total_listings',
             'closed_deals', 'rating', 'user_phone', 'user_email',
-            'organization_name', 'parent_organization_name',
+            'organization_name',
             'joined_at', 'updated_at',
             'registration_status', 'rejection_reason',
         )

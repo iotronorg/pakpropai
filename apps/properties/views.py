@@ -51,6 +51,15 @@ class PropertyViewSet(viewsets.ModelViewSet):
             except Exception:
                 return qs.none()
 
+        # Agents see only their org's inventory (freelance agents see all active)
+        if user.is_authenticated and user.role == 'agent':
+            try:
+                org = user.agent_profile.organization
+                if org:
+                    qs = qs.filter(organization=org)
+            except Exception:
+                return qs.none()
+
         params = self.request.query_params
         if (ref_no := params.get('ref_no')):
             qs = qs.filter(ref_no__iexact=ref_no)

@@ -16,3 +16,13 @@ def get_backend() -> AIBackend:
         return OllamaBackend()
     from .gemini import GeminiBackend
     return GeminiBackend()
+
+
+def generate(prompt: str, max_tokens: int = 400, temperature: float = 0.3) -> str:
+    """One-shot text generation through the active backend. No tools, no history."""
+    return get_backend().chat(
+        message=prompt,
+        history=[],
+        tools=[],
+        system_prompt='',
+    )

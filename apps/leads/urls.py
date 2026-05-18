@@ -1,6 +1,7 @@
 from django.urls import path
 from rest_framework.routers import DefaultRouter
-from .views import LeadViewSet, AppointmentViewSet, DuplicateLeadView, BulkAssignLeadsView, MergeLeadsView
+from .views import LeadViewSet, AppointmentViewSet
+from .admin_views import DuplicateLeadView, BulkAssignLeadsView, MergeLeadsView
 
 router = DefaultRouter()
 router.register('', LeadViewSet, basename='leads')

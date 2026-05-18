@@ -1,6 +1,12 @@
 from rest_framework.permissions import BasePermission, SAFE_METHODS
 
 
+class IsAdminUser(BasePermission):
+    """Platform-level admin only."""
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and request.user.role == 'admin'
+
+
 class IsOwnerOrReadOnly(BasePermission):
     def has_object_permission(self, request, view, obj):
         if request.method in SAFE_METHODS:
@@ -27,6 +33,13 @@ class IsAdminOrOrgAdmin(BasePermission):
             and request.user.role in ('admin', 'developer')
         )
 
+    def has_object_permission(self, request, view, obj):
+        if not request.user.is_authenticated:
+            return False
+        if request.user.role == 'admin':
+            return True
+        return getattr(obj, 'admin_user_id', None) == request.user.id
+
 
 class IsOrgAdmin(BasePermission):
     """User is the admin of an organization (role=developer with owned_organization)."""
@@ -34,6 +47,9 @@ class IsOrgAdmin(BasePermission):
         if not request.user.is_authenticated or request.user.role != 'developer':
             return False
         return hasattr(request.user, 'owned_organization')
+
+    def has_object_permission(self, request, view, obj):
+        return request.user.is_authenticated and getattr(obj, 'admin_user_id', None) == request.user.id
 
 
 class IsOrgMember(BasePermission):
