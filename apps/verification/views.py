@@ -62,8 +62,8 @@ class VerificationQueueView(APIView):
                 qs = qs.none()
         elif role == 'developer':
             try:
-                org = request.user.agent_profile
-                qs = qs.filter(property__assigned_agent__parent_organization=org)
+                org = request.user.owned_organization
+                qs = qs.filter(property__assigned_agent__organization=org)
             except Exception:
                 qs = qs.none()
         # admin: no additional filter

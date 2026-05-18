@@ -32,6 +32,13 @@ class Lead(models.Model):
                          on_delete=models.CASCADE,
                          related_name='leads'
                      )
+    organization   = models.ForeignKey(
+                         'organizations.Organization',
+                         on_delete=models.SET_NULL,
+                         null=True, blank=True,
+                         related_name='leads',
+                         help_text='Organization this lead is scoped to (null = platform-wide lead)'
+                     )
     assigned_agent = models.ForeignKey(
                          'agents.Agent',
                          on_delete=models.SET_NULL,

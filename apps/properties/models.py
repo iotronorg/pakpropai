@@ -5,7 +5,8 @@ from django.conf import settings
 from django.utils import timezone
 
 
-_CITY_CODE_MAP = {
+# Default map — override with CITY_CODE_MAP in Django settings for other markets.
+_DEFAULT_CITY_CODE_MAP = {
     'lahore': 'LHR', 'karachi': 'KHI', 'islamabad': 'ISB',
     'rawalpindi': 'RWP', 'faisalabad': 'FSD', 'multan': 'MUL',
     'peshawar': 'PEW', 'quetta': 'QTA', 'gujranwala': 'GUJ',
@@ -15,6 +16,10 @@ _CITY_CODE_MAP = {
     'rahim yar khan': 'RYK', 'gujrat': 'GRT', 'sahiwal': 'SWL',
     'dera ghazi khan': 'DGK', 'wah cantt': 'WAH', 'chiniot': 'CHN',
 }
+
+
+def _get_city_code_map() -> dict:
+    return getattr(settings, 'CITY_CODE_MAP', _DEFAULT_CITY_CODE_MAP)
 
 
 class PropertyRefCounter(models.Model):
@@ -64,12 +69,19 @@ class Property(models.Model):
 
     id            = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     ref_no        = models.CharField(max_length=30, unique=True, blank=True, db_index=True,
-                        help_text='Auto-generated reference number, e.g. PP-LHR-2026-000000001')
+                        help_text='Auto-generated reference number, e.g. RT-LHR-2026-000000001')
     owner         = models.ForeignKey(
                         settings.AUTH_USER_MODEL,
                         on_delete=models.SET_NULL,
                         null=True, blank=True,
                         related_name='properties'
+                    )
+    organization  = models.ForeignKey(
+                        'organizations.Organization',
+                        on_delete=models.SET_NULL,
+                        null=True, blank=True,
+                        related_name='properties',
+                        help_text='Organization that owns this listing (null = individual/freelance listing)'
                     )
     title         = models.CharField(max_length=500)
     description   = models.TextField(blank=True)
@@ -88,6 +100,10 @@ class Property(models.Model):
                          related_name='assigned_properties',
                          help_text='Agent responsible for selling this property'
                      )
+    country       = models.CharField(max_length=2, default='PK',
+                        help_text='ISO 3166-1 alpha-2 country code — used for tax/legal rules')
+    currency      = models.CharField(max_length=3, default='PKR',
+                        help_text='ISO 4217 currency code for price_pkr field, e.g. PKR, AED, USD')
     installment_available = models.BooleanField(default=False)
     ai_score      = models.SmallIntegerField(null=True, blank=True)
     risk_level    = models.CharField(max_length=20, choices=RiskLevel.choices, null=True, blank=True)
@@ -136,7 +152,7 @@ class Property(models.Model):
 
     def _build_ref_no(self):
         city_key  = self.city.strip().lower()
-        city_code = _CITY_CODE_MAP.get(city_key, self.city.strip()[:3].upper())
+        city_code = _get_city_code_map().get(city_key, self.city.strip()[:3].upper())
         year      = timezone.now().year
         with transaction.atomic():
             counter, _ = PropertyRefCounter.objects.select_for_update().get_or_create(
@@ -144,7 +160,7 @@ class Property(models.Model):
             )
             counter.last_seq += 1
             counter.save(update_fields=['last_seq'])
-        return f"PP-{city_code}-{year}-{str(counter.last_seq).zfill(9)}"
+        return f"RT-{city_code}-{year}-{str(counter.last_seq).zfill(9)}"
 
     def save(self, *args, **kwargs):
         if not self.ref_no:

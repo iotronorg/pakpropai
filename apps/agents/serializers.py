@@ -3,11 +3,16 @@ from django.db import transaction
 from rest_framework import serializers
 from .models import Agent
 from apps.core.validators import validate_photo
+from apps.organizations.models import Organization
 
 
 class AgentSerializer(serializers.ModelSerializer):
     user_phone = serializers.CharField(source='user.phone', read_only=True, allow_null=True)
     user_email = serializers.CharField(source='user.email', read_only=True, allow_null=True)
+    organization_name = serializers.CharField(
+        source='organization.name', read_only=True, allow_null=True, default=None
+    )
+    # DEPRECATED field kept for backward compat — consumers should use organization/organization_name
     parent_organization_name = serializers.CharField(
         source='parent_organization.name', read_only=True, allow_null=True, default=None
     )
@@ -15,7 +20,7 @@ class AgentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Agent
         fields = (
-            'id', 'name', 'agent_type', 'phone', 'whatsapp_number', 'email',
+            'id', 'name', 'agent_type', 'employment_type', 'phone', 'whatsapp_number', 'email',
             'company_name', 'designation', 'bio',
             'specializations', 'cities', 'areas', 'primary_city',
             'is_verified', 'is_active', 'is_featured',
@@ -23,6 +28,7 @@ class AgentSerializer(serializers.ModelSerializer):
             'registration_status', 'rejection_reason',
             'total_leads', 'total_listings', 'closed_deals', 'rating',
             'user_phone', 'user_email',
+            'organization', 'organization_name',
             'parent_organization', 'parent_organization_name',
             'profile_photo',
             'joined_at', 'updated_at',
@@ -30,7 +36,8 @@ class AgentSerializer(serializers.ModelSerializer):
         read_only_fields = (
             'id', 'is_verified', 'total_leads', 'total_listings',
             'closed_deals', 'rating', 'user_phone', 'user_email',
-            'parent_organization_name', 'joined_at', 'updated_at',
+            'organization_name', 'parent_organization_name',
+            'joined_at', 'updated_at',
             'registration_status', 'rejection_reason',
         )
 
@@ -61,9 +68,9 @@ class AgentRegistrationSerializer(serializers.Serializer):
     areas            = serializers.ListField(child=serializers.CharField(), required=False, default=list)
     specializations  = serializers.ListField(child=serializers.CharField(), required=False, default=list)
 
-    # Developer employee path — FK to an Agent whose type is developer/agency
-    parent_organization = serializers.PrimaryKeyRelatedField(
-        queryset=Agent.objects.filter(agent_type__in=['developer', 'agency']),
+    # Optional: link to an Organization at registration time
+    organization = serializers.PrimaryKeyRelatedField(
+        queryset=Organization.objects.filter(is_active=True),
         required=False,
         allow_null=True,
         default=None,
@@ -93,11 +100,15 @@ class AgentRegistrationSerializer(serializers.Serializer):
             is_active=False,   # locked until approved
         )
 
+        org = validated_data.get('organization')
         agent = Agent.objects.create(
             user=user,
             name=name,
             phone=phone,
             agent_type=validated_data['agent_type'],
+            employment_type=(
+                Agent.EmploymentType.INTERNAL if org else Agent.EmploymentType.FREELANCE
+            ),
             email=validated_data.get('email', ''),
             whatsapp_number=validated_data.get('whatsapp_number', ''),
             company_name=validated_data.get('company_name', ''),
@@ -109,7 +120,7 @@ class AgentRegistrationSerializer(serializers.Serializer):
             cities=validated_data.get('cities', []),
             areas=validated_data.get('areas', []),
             specializations=validated_data.get('specializations', []),
-            parent_organization=validated_data.get('parent_organization'),
+            organization=org,
             registration_status=Agent.RegistrationStatus.PENDING,
             is_verified=False,
             is_active=False,

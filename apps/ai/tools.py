@@ -1,5 +1,5 @@
 """
-Tool functions available to the PakProp AI agent.
+Tool functions available to the RealTron AI agent.
 All functions must: have type hints, a clear docstring, return JSON-serializable dicts.
 The google.genai SDK auto-generates tool schemas from signatures + docstrings.
 """
@@ -99,18 +99,26 @@ def calculate_7e_tax(
     filer_status: str,
     properties_count: int = 1,
     is_self_occupied: bool = False,
+    country: str = 'PK',
 ) -> dict:
     """
-    Calculate Section 7E Capital Value Tax and other applicable property taxes in Pakistan.
+    Calculate property tax for a given country. Currently supports Pakistan (Section 7E CVT).
     Call this when user asks about annual property tax, Section 7E, FBR tax on property,
     filer vs non-filer rates, or how much tax they owe on their property.
 
     Args:
-        fmv_pkr: Fair Market Value of the property in Pakistani Rupees (e.g. 30000000 for PKR 3 crore)
+        fmv_pkr: Fair Market Value of the property in the local currency (e.g. 30000000 for PKR 3 crore)
         filer_status: Must be 'filer' or 'non_filer'. Ask user if unknown.
         properties_count: Total number of properties the person owns (default 1)
         is_self_occupied: True if this is the person's primary/only home they live in
+        country: ISO 3166-1 alpha-2 country code (default 'PK'). Other markets not yet supported.
     """
+    if country != 'PK':
+        return {
+            'supported': False,
+            'country': country,
+            'message': f"Property tax calculation for '{country}' is not yet available. Currently only Pakistan (PK) is supported.",
+        }
     try:
         THRESHOLD = 25_000_000
 
@@ -173,18 +181,26 @@ def check_loan_eligibility(
     tenure_years: int = 20,
     existing_emi_pkr: int = 0,
     scheme: str = 'conventional',
+    country: str = 'PK',
 ) -> dict:
     """
-    Check home loan eligibility under Pakistan bank rules or Apna Ghar subsidized scheme.
+    Check home loan / mortgage eligibility. Currently supports Pakistan bank rules and Apna Ghar scheme.
     Call this when user asks about loan, mortgage, home financing, Apna Ghar scheme, or EMI.
 
     Args:
-        monthly_income_pkr: Net monthly take-home income in PKR
-        loan_amount_pkr: Required loan amount in PKR
+        monthly_income_pkr: Net monthly take-home income in local currency
+        loan_amount_pkr: Required loan amount in local currency
         tenure_years: Repayment period in years (5 to 25)
-        existing_emi_pkr: Existing monthly EMI/loan obligations in PKR (default 0)
-        scheme: 'apna_ghar' for subsidized government scheme, 'conventional' for market rate banks
+        existing_emi_pkr: Existing monthly EMI/loan obligations (default 0)
+        scheme: 'apna_ghar' for Pakistan subsidized scheme, 'conventional' for market rate banks
+        country: ISO 3166-1 alpha-2 country code (default 'PK'). Other markets not yet supported.
     """
+    if country != 'PK':
+        return {
+            'supported': False,
+            'country': country,
+            'message': f"Loan eligibility calculation for '{country}' is not yet available. Currently only Pakistan (PK) is supported.",
+        }
     try:
         tenure_years = max(5, min(25, tenure_years))
 
@@ -523,7 +539,7 @@ def list_property(
     description: str = '',
 ) -> dict:
     """
-    Publish a new property listing on PakProp AI for buyers to discover.
+    Publish a new property listing on RealTron AI for buyers to discover.
     ONLY call this tool when you have collected ALL required information:
     city, location, area size (in marla), asking price (in PKR), and property type.
     If any required field is missing, ask the user for it first before calling this tool.
@@ -695,7 +711,7 @@ def connect_to_agent(
             no_agent_msg = (
                 f"We don't have a verified agent registered for {city_str} yet.\n\n"
                 "Your request has been noted. Our team will connect you with an "
-                "authorized PakProp AI agent for your area shortly — we'll reach out "
+                "authorized RealTron AI agent for your area shortly — we'll reach out "
                 "to you on this WhatsApp number."
             )
             # INSTRUCTION FOR MODEL: return this message verbatim — do not add any agent details
@@ -777,10 +793,10 @@ def connect_to_agent(
 
         lines += [
             "",
-            "✅ *Verified by PakProp AI*",
+            "✅ *Verified by RealTron AI*",
             "",
             "_Feel free to contact them directly on WhatsApp. "
-            "Mention PakProp AI when you reach out._",
+            "Mention RealTron AI when you reach out._",
         ]
 
         if agent.bio:
@@ -935,7 +951,7 @@ def initiate_deal_lock(
         _PAYMENT_INSTRUCTIONS = {
             'jazzcash':  f"Send *PKR {token_amount_pkr:,}* to JazzCash *03001234567*. Use your WhatsApp number as reference.",
             'easypaisa': f"Send *PKR {token_amount_pkr:,}* to EasyPaisa *03001234567*. Use your WhatsApp number as reference.",
-            'bank':      f"Transfer *PKR {token_amount_pkr:,}* to Account *1234567890* (HBL — PakProp AI). Reference: your WhatsApp number.",
+            'bank':      f"Transfer *PKR {token_amount_pkr:,}* to Account *1234567890* (HBL — RealTron AI). Reference: your WhatsApp number.",
             'manual':    "Our team will contact you with payment details within 1 hour.",
         }
         payment_msg = _PAYMENT_INSTRUCTIONS.get(payment_method, _PAYMENT_INSTRUCTIONS['manual'])

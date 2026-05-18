@@ -25,7 +25,7 @@ def notify_verification_status_change(sender, instance, created, **kwargs):
             msg = (
                 f"✅ *Verification Approved*\n\n"
                 f"Your property *{title}* has been verified and approved.\n\n"
-                "It is now marked as *Verified* on PakProp AI. "
+                "It is now marked as *Verified* on RealTron AI. "
                 "Buyers can see the verified badge on your listing."
             )
         elif instance.status == 'failed':

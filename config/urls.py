@@ -25,8 +25,9 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('apps.core.urls')),
     path('api/v1/', include([
-        path('config/',       include('apps.config.urls')),
-        path('auth/',         include('apps.users.urls')),
+        path('config/',        include('apps.config.urls')),
+        path('auth/',          include('apps.users.urls')),
+        path('organizations/', include('apps.organizations.urls')),
         path('leads/',        include('apps.leads.urls')),
         path('agents/',       include('apps.agents.urls')),
         path('deals/',        include('apps.escrow.urls')),

@@ -1,6 +1,6 @@
 """
 WhatsApp message router.
-Receives parsed webhook payloads, routes to PakPropAgent, sends replies.
+Receives parsed webhook payloads, routes to RealTronAgent, sends replies.
 
 The FSM/keyword logic is replaced entirely by the AI agent — it handles
 all conversation flows, tool use, and context natively.
@@ -90,7 +90,7 @@ class MessageRouter:
                 phone,
                 (
                     "👋 Hi! Your account has dashboard access.\n\n"
-                    "Please use the *PakProp AI web dashboard* to manage your "
+                    "Please use the *RealTron AI dashboard* to manage your "
                     "listings, leads, and settings.\n\n"
                     "This WhatsApp number is for property buyers and clients only."
                 ),
@@ -402,8 +402,8 @@ class MessageRouter:
         }
         lines = '\n'.join(v for k, v in LINES.items() if features.get(k, True))
         return (
-            "Salam! Welcome to *PakProp AI* 🏠\n\n"
-            "Pakistan's real estate intelligence assistant. I can help with:\n\n"
+            "Salam! Welcome to *RealTron AI* 🏠\n\n"
+            "Your AI-powered real estate assistant. I can help with:\n\n"
             f"{lines}\n\n"
             "What would you like to do? Just ask in English or Urdu."
         )

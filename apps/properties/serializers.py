@@ -25,6 +25,7 @@ class PropertyListSerializer(serializers.ModelSerializer):
     class Meta:
         model  = Property
         fields = ('id', 'ref_no', 'title', 'city', 'location', 'area_marla', 'price_pkr',
+                  'country', 'currency',
                   'property_type', 'construction_status', 'furnished_status',
                   'legal_status', 'ai_score', 'risk_level', 'primary_image', 'created_at')
 
@@ -46,6 +47,7 @@ class PropertyDetailSerializer(serializers.ModelSerializer):
         model  = Property
         fields = ('id', 'ref_no', 'owner', 'owner_phone', 'title', 'description',
                   'city', 'location', 'area_marla', 'price_pkr',
+                  'country', 'currency',
                   'property_type', 'furnished_status', 'construction_status',
                   'legal_status', 'ai_score', 'risk_level', 'assigned_agent',
                   'installment_available', 'raw_docs', 'ai_analysis',
@@ -71,7 +73,8 @@ class PropertyCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model  = Property
         fields = ('title', 'description', 'city', 'location', 'area_marla',
-                  'price_pkr', 'property_type', 'furnished_status',
+                  'price_pkr', 'country', 'currency',
+                  'property_type', 'furnished_status',
                   'construction_status', 'legal_status', 'assigned_agent', 'owner')
 
     def validate_price_pkr(self, v):

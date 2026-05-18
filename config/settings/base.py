@@ -34,6 +34,7 @@ LOCAL_APPS = [
     'apps.core',
     'apps.config',
     'apps.users',
+    'apps.organizations',
     'apps.properties',
     'apps.ai',
     'apps.payments',

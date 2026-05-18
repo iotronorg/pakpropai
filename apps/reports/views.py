@@ -45,6 +45,9 @@ class IsAdminOrDeveloper(IsAuthenticated):
         return (super().has_permission(request, view)
                 and request.user.role in ('admin', 'developer'))
 
+    # NOTE: This local class is kept for historical reasons.
+    # New code should import IsAdminOrOrgAdmin from apps.core.permissions.
+
 
 class ReportGenerateView(APIView):
     """POST /reports/generate/ — create a report and queue async generation."""
@@ -226,8 +229,8 @@ class LeadReportView(APIView):
         qs = Lead.objects.all()
         if request.user.role == 'developer':
             try:
-                org = request.user.agent_profile
-                qs = qs.filter(assigned_agent__parent_organization=org)
+                org = request.user.owned_organization
+                qs = qs.filter(organization=org)
             except Exception:
                 qs = qs.none()
 
@@ -268,8 +271,8 @@ class AgentReportView(APIView):
         agents = Agent.objects.filter(is_active=True).select_related('user')
         if request.user.role == 'developer':
             try:
-                org = request.user.agent_profile
-                agents = agents.filter(parent_organization=org)
+                org = request.user.owned_organization
+                agents = agents.filter(organization=org)
             except Exception:
                 agents = Agent.objects.none()
 
@@ -304,7 +307,11 @@ class PropertyReportView(APIView):
 
         qs = Property.objects.filter(is_active=True)
         if request.user.role == 'developer':
-            qs = qs.filter(owner=request.user)
+            try:
+                org = request.user.owned_organization
+                qs = qs.filter(organization=org)
+            except Exception:
+                qs = qs.none()
 
         by_type   = dict(qs.values_list('property_type').annotate(c=Count('id')).values_list('property_type', 'c'))
         by_legal  = dict(qs.values_list('legal_status').annotate(c=Count('id')).values_list('legal_status', 'c'))

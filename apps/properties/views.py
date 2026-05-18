@@ -41,8 +41,17 @@ class PropertyViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        params = self.request.query_params
+        user = self.request.user
 
+        # Developers see only their org's inventory
+        if user.is_authenticated and user.role == 'developer':
+            try:
+                org = user.owned_organization
+                qs = qs.filter(organization=org)
+            except Exception:
+                return qs.none()
+
+        params = self.request.query_params
         if (ref_no := params.get('ref_no')):
             qs = qs.filter(ref_no__iexact=ref_no)
         if (city := params.get('city')):
@@ -60,12 +69,17 @@ class PropertyViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        if self.request.user.role == 'admin':
-            # Admin explicitly selects owner; may be None for anonymous listings
+        user = self.request.user
+        if user.role == 'admin':
             extra = {}
+        elif user.role == 'developer':
+            try:
+                org = user.owned_organization
+            except Exception:
+                org = None
+            extra = {'owner': user, 'organization': org}
         else:
-            # Non-admin always owns their own listing
-            extra = {'owner': self.request.user}
+            extra = {'owner': user}
         prop = serializer.save(**extra)
         try:
             from apps.properties.tasks import score_property_task

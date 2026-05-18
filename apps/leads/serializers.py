@@ -20,6 +20,7 @@ class LeadSerializer(serializers.ModelSerializer):
             'id', 'phone', 'name', 'intent', 'intent_score',
             'location_interest', 'budget_min', 'budget_max',
             'status', 'notes', 'source', 'intent_signals',
+            'organization',
             'assigned_agent_id', 'assigned_agent_name',
             'created_at',
         )
@@ -27,6 +28,7 @@ class LeadSerializer(serializers.ModelSerializer):
             'id', 'phone', 'name', 'intent', 'intent_score',
             'location_interest', 'budget_min', 'budget_max',
             'source', 'intent_signals',
+            'organization',
             'assigned_agent_id', 'assigned_agent_name', 'created_at',
         )
 

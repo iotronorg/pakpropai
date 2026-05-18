@@ -6,10 +6,19 @@ from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from apps.core.permissions import IsAdminOrDeveloper
+from apps.organizations.models import Organization
 from .models import Agent
 from .serializers import AgentSerializer, AgentRegistrationSerializer
 
 logger = logging.getLogger(__name__)
+
+
+def _get_developer_org(user) -> Organization:
+    """Return the Organization owned by this developer user, or raise NotFound."""
+    try:
+        return user.owned_organization
+    except Organization.DoesNotExist:
+        raise NotFound("No organization linked to this account.")
 
 
 class AgentMeView(generics.RetrieveUpdateAPIView):
@@ -45,7 +54,7 @@ class AgentListView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         role = self.request.user.role
-        base = Agent.objects.select_related('user', 'parent_organization')
+        base = Agent.objects.select_related('user', 'organization')
 
         reg_status = self.request.query_params.get('status')
 
@@ -56,11 +65,8 @@ class AgentListView(generics.ListCreateAPIView):
             return qs
 
         if role == 'developer':
-            try:
-                org = self.request.user.agent_profile
-            except Agent.DoesNotExist:
-                return Agent.objects.none()
-            qs = base.filter(parent_organization=org)
+            org = _get_developer_org(self.request.user)
+            qs = base.filter(organization=org)
             if reg_status:
                 qs = qs.filter(registration_status=reg_status)
             return qs
@@ -88,12 +94,10 @@ class AgentListView(generics.ListCreateAPIView):
                 )
         else:
             # Developer creates an agent scoped to their own org, pending approval.
-            try:
-                org = self.request.user.agent_profile
-            except Agent.DoesNotExist:
-                raise PermissionDenied("No developer org linked to this account.")
+            org = _get_developer_org(self.request.user)
             serializer.save(
-                parent_organization=org,
+                organization=org,
+                employment_type=Agent.EmploymentType.INTERNAL,
                 registration_status=Agent.RegistrationStatus.PENDING,
                 is_active=False,
                 is_verified=False,
@@ -108,7 +112,7 @@ class AgentAdminDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
     serializer_class   = AgentAdminSerializer
     permission_classes = [IsAdminOrDeveloper]
-    queryset           = Agent.objects.select_related('user', 'parent_organization').all()
+    queryset           = Agent.objects.select_related('user', 'organization').all()
 
     def get_object(self):
         role = self.request.user.role
@@ -116,11 +120,8 @@ class AgentAdminDetailView(generics.RetrieveUpdateDestroyAPIView):
         if role == 'admin':
             return obj
         # Developer: verify the agent belongs to their org.
-        try:
-            org = self.request.user.agent_profile
-        except Agent.DoesNotExist:
-            raise PermissionDenied("No developer org linked to this account.")
-        if obj.parent_organization_id != org.id:
+        org = _get_developer_org(self.request.user)
+        if obj.organization_id != org.id:
             raise PermissionDenied("You can only access agents in your own organisation.")
         return obj
 
@@ -155,10 +156,9 @@ class AgentRegisterView(APIView):
             from apps.notifications.services import notify_user
             from apps.users.models import User
 
-            if agent.parent_organization and agent.parent_organization.user:
-                dev_user = agent.parent_organization.user
+            if agent.organization and agent.organization.admin_user:
                 notify_user(
-                    dev_user,
+                    agent.organization.admin_user,
                     title='New Agent Application',
                     message=(
                         f"{agent.name} ({agent.phone}) has applied to join your team "
@@ -169,8 +169,8 @@ class AgentRegisterView(APIView):
 
             admins = User.objects.filter(role=User.Role.ADMIN, is_active=True)
             org_label = (
-                f"under {agent.parent_organization.name}"
-                if agent.parent_organization
+                f"under {agent.organization.name}"
+                if agent.organization
                 else "as an independent agent"
             )
             for admin in admins:
@@ -216,7 +216,7 @@ class AgentApproveView(APIView):
 
     def _get_approvable_agent(self, request, pk):
         try:
-            agent = Agent.objects.select_related('user', 'parent_organization').get(pk=pk)
+            agent = Agent.objects.select_related('user', 'organization').get(pk=pk)
         except Agent.DoesNotExist:
             raise NotFound("Agent not found.")
 
@@ -225,11 +225,8 @@ class AgentApproveView(APIView):
             return agent
 
         if role == 'developer':
-            try:
-                org = request.user.agent_profile
-            except Agent.DoesNotExist:
-                raise PermissionDenied("No organization profile linked to your account.")
-            if agent.parent_organization_id != org.id:
+            org = _get_developer_org(request.user)
+            if agent.organization_id != org.id:
                 raise PermissionDenied("You can only approve agents who applied to your organization.")
             return agent
 
@@ -244,7 +241,7 @@ class AgentApproveView(APIView):
                     title='Application Approved',
                     message=(
                         "Your agent registration has been approved! "
-                        "You can now log in to the PakProp AI dashboard."
+                        "You can now log in to the RealTron AI dashboard."
                     ),
                 )
         except Exception as exc:
@@ -283,7 +280,7 @@ class AgentRejectView(APIView):
 
     def _get_rejectable_agent(self, request, pk):
         try:
-            agent = Agent.objects.select_related('user', 'parent_organization').get(pk=pk)
+            agent = Agent.objects.select_related('user', 'organization').get(pk=pk)
         except Agent.DoesNotExist:
             raise NotFound("Agent not found.")
 
@@ -292,11 +289,8 @@ class AgentRejectView(APIView):
             return agent
 
         if role == 'developer':
-            try:
-                org = request.user.agent_profile
-            except Agent.DoesNotExist:
-                raise PermissionDenied("No organization profile linked to your account.")
-            if agent.parent_organization_id != org.id:
+            org = _get_developer_org(request.user)
+            if agent.organization_id != org.id:
                 raise PermissionDenied("You can only reject agents who applied to your organization.")
             return agent
 
@@ -372,29 +366,25 @@ class AgentAvailableListView(generics.ListAPIView):
 
 class TeamView(APIView):
     """
-    GET  /agents/team/              — developer sees their approved team members.
-    POST /agents/team/              — developer adds an existing approved agent.
+    GET  /agents/team/  — developer sees their approved team members.
+    POST /agents/team/  — developer adds an existing agent to their org.
     """
     permission_classes = [permissions.IsAuthenticated]
 
-    def _get_org(self, request):
+    def get(self, request):
         if request.user.role not in ('admin', 'developer'):
             raise PermissionDenied("Developer or admin access required.")
-        try:
-            return request.user.agent_profile
-        except Agent.DoesNotExist:
-            raise NotFound("No organization profile linked to this account.")
-
-    def get(self, request):
-        org = self._get_org(request)
+        org = _get_developer_org(request.user)
         members = Agent.objects.filter(
-            parent_organization=org,
+            organization=org,
             registration_status=Agent.RegistrationStatus.APPROVED,
         ).select_related('user')
         return Response(AgentSerializer(members, many=True).data)
 
     def post(self, request):
-        org = self._get_org(request)
+        if request.user.role not in ('admin', 'developer'):
+            raise PermissionDenied("Developer or admin access required.")
+        org = _get_developer_org(request.user)
         agent_id = request.data.get('agent_id')
         if not agent_id:
             return Response({'detail': 'agent_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -403,14 +393,9 @@ class TeamView(APIView):
         except Agent.DoesNotExist:
             return Response({'detail': 'Agent not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        if agent.id == org.id:
-            return Response(
-                {'detail': 'Cannot add the organization itself as a member.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        agent.parent_organization = org
-        agent.save(update_fields=['parent_organization', 'updated_at'])
+        agent.organization    = org
+        agent.employment_type = Agent.EmploymentType.INTERNAL
+        agent.save(update_fields=['organization', 'employment_type', 'updated_at'])
         return Response(AgentSerializer(agent).data, status=status.HTTP_200_OK)
 
 
@@ -421,16 +406,14 @@ class TeamMemberView(APIView):
     def delete(self, request, agent_id):
         if request.user.role not in ('admin', 'developer'):
             raise PermissionDenied("Developer or admin access required.")
-        try:
-            org = request.user.agent_profile
-        except Agent.DoesNotExist:
-            raise NotFound("No organization profile linked to this account.")
+        org = _get_developer_org(request.user)
 
         try:
-            agent = Agent.objects.get(id=agent_id, parent_organization=org)
+            agent = Agent.objects.get(id=agent_id, organization=org)
         except Agent.DoesNotExist:
             return Response({'detail': 'Agent not found in your team.'}, status=status.HTTP_404_NOT_FOUND)
 
-        agent.parent_organization = None
-        agent.save(update_fields=['parent_organization', 'updated_at'])
+        agent.organization    = None
+        agent.employment_type = Agent.EmploymentType.FREELANCE
+        agent.save(update_fields=['organization', 'employment_type', 'updated_at'])
         return Response(status=status.HTTP_204_NO_CONTENT)

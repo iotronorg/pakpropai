@@ -98,13 +98,9 @@ class LeadViewSet(viewsets.ModelViewSet):
                 return qs.none()
 
         if role == 'developer':
-            # Developers see leads assigned to any agent inside their org.
-            # Org members are Agent records whose parent_organization == this user's agent profile.
             try:
-                org = self.request.user.agent_profile
-                return qs.filter(
-                    assigned_agent__parent_organization=org
-                )
+                org = self.request.user.owned_organization
+                return qs.filter(organization=org)
             except Exception:
                 return qs.none()
 
@@ -423,8 +419,8 @@ class AppointmentViewSet(viewsets.ModelViewSet):
                 return qs.none()
         elif role == 'developer':
             try:
-                org = self.request.user.agent_profile
-                qs = qs.filter(agent__parent_organization=org)
+                org = self.request.user.owned_organization
+                qs = qs.filter(agent__organization=org)
             except Exception:
                 return qs.none()
         # admin sees all
@@ -560,11 +556,11 @@ class BulkAssignLeadsView(APIView):
         # Developers can only reassign leads within their org
         if request.user.role == 'developer':
             try:
-                org = request.user.agent_profile
+                org = request.user.owned_organization
                 from django.db.models import Q as Qfilter
                 qs = qs.filter(
-                    Qfilter(assigned_agent__parent_organization=org) |
-                    Qfilter(assigned_agent__isnull=True)
+                    Qfilter(organization=org) |
+                    Qfilter(organization__isnull=True, assigned_agent__isnull=True)
                 )
             except Exception:
                 return Response({'error': 'Developer org not found.'},

@@ -1,18 +1,17 @@
+import re
 import uuid
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
+from django.core.exceptions import ValidationError
 from django.core.validators import RegexValidator
 from django.db import models
 from django.utils import timezone
-
-_cnic_validator = RegexValidator(
-    regex=r'^\d{5}-\d{7}-\d$',
-    message='CNIC must be in the format XXXXX-XXXXXXX-X',
-)
 
 _phone_validator = RegexValidator(
     regex=r'^\+?[0-9]{10,15}$',
     message='Phone must be 10–15 digits, optionally prefixed with +.',
 )
+
+_PK_CNIC_RE = re.compile(r'^\d{5}-\d{7}-\d$')
 
 
 class UserManager(BaseUserManager):
@@ -51,7 +50,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     role      = models.CharField(max_length=20, choices=Role.choices, default=Role.CLIENT)
     is_filer  = models.BooleanField(default=False)
     ntn       = models.CharField(max_length=20, blank=True, null=True)
-    cnic      = models.CharField(max_length=15, blank=True, null=True, validators=[_cnic_validator])
+    cnic      = models.CharField(max_length=30, blank=True, null=True,
+                    help_text='National ID number (format varies by country)')
     is_active = models.BooleanField(default=True)
     is_staff  = models.BooleanField(default=False)
     last_active = models.DateTimeField(null=True, blank=True)
@@ -64,6 +64,15 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     class Meta:
         db_table = 'users'
+
+    def clean(self):
+        # Validate CNIC only for Pakistani phone numbers (prefix +92 or 03).
+        # For other markets, any national ID format is accepted.
+        if self.cnic and (
+            str(self.phone).startswith('+92') or str(self.phone).startswith('03')
+        ):
+            if not _PK_CNIC_RE.match(self.cnic):
+                raise ValidationError({'cnic': 'Pakistan CNIC must be in the format XXXXX-XXXXXXX-X'})
 
     def __str__(self):
         return f"{self.phone} ({self.role})"

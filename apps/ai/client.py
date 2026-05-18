@@ -1,7 +1,7 @@
 """
 Low-level Gemini client using the new google.genai SDK.
 Used by AIOrchestrator for non-conversational tasks (OCR, property scoring, voice transcription).
-Conversational chat goes through apps.ai.agent.PakPropAgent instead.
+Conversational chat goes through apps.ai.agent.RealTronAgent instead.
 """
 import hashlib
 import json

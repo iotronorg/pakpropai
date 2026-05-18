@@ -1,4 +1,3 @@
-# apps/core/permissions.py
 from rest_framework.permissions import BasePermission, SAFE_METHODS
 
 
@@ -20,10 +19,40 @@ class IsAgentOrAdmin(BasePermission):
         )
 
 
-class IsAdminOrDeveloper(BasePermission):
-    """Restricts to admin or developer org roles; blocks agent and client roles."""
+class IsAdminOrOrgAdmin(BasePermission):
+    """Platform admin or organization admin (role=developer)."""
     def has_permission(self, request, view):
         return (
             request.user.is_authenticated
             and request.user.role in ('admin', 'developer')
         )
+
+
+class IsOrgAdmin(BasePermission):
+    """User is the admin of an organization (role=developer with owned_organization)."""
+    def has_permission(self, request, view):
+        if not request.user.is_authenticated or request.user.role != 'developer':
+            return False
+        return hasattr(request.user, 'owned_organization')
+
+
+class IsOrgMember(BasePermission):
+    """
+    User belongs to an organization — either as its admin (developer) or
+    as an agent whose agent_profile.organization is set.
+    """
+    def has_permission(self, request, view):
+        if not request.user.is_authenticated:
+            return False
+        if request.user.role == 'developer':
+            return hasattr(request.user, 'owned_organization')
+        if request.user.role == 'agent':
+            try:
+                return request.user.agent_profile.organization_id is not None
+            except Exception:
+                return False
+        return False
+
+
+# Backward-compat alias — prefer IsAdminOrOrgAdmin in new code.
+IsAdminOrDeveloper = IsAdminOrOrgAdmin

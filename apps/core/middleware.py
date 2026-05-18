@@ -46,12 +46,12 @@ class TenantIsolationMiddleware:
 
     Sets:
       request.agent_profile  — the user's Agent record (or None)
-      request.tenant_org     — the org this user belongs to / controls:
-                               • developer → their own agent profile (they ARE the org)
-                               • agent     → their parent_organization (None if independent)
+      request.organization   — the Organization this user controls or belongs to:
+                               • developer → user.owned_organization
+                               • agent     → agent_profile.organization (None if freelance)
 
     Non-blocking: never raises. Misconfigurations are logged as warnings so admins
-    can detect users with role=agent|developer but no linked Agent record.
+    can detect users with role=agent|developer but no linked record.
     """
 
     def __init__(self, get_response):
@@ -64,7 +64,7 @@ class TenantIsolationMiddleware:
     @staticmethod
     def _attach_tenant(request):
         request.agent_profile = None
-        request.tenant_org = None
+        request.organization  = None
 
         user = getattr(request, 'user', None)
         if user is None or not user.is_authenticated:
@@ -74,22 +74,26 @@ class TenantIsolationMiddleware:
         if role not in ('agent', 'developer'):
             return
 
+        if role == 'developer':
+            try:
+                request.organization = user.owned_organization
+            except Exception:
+                logger.warning(
+                    "TenantIsolationMiddleware: user %s has role=developer but no owned_organization.",
+                    user.id,
+                )
+            return
+
+        # role == 'agent'
         try:
-            profile = user.agent_profile          # OneToOne reverse accessor
+            profile = user.agent_profile
             request.agent_profile = profile
-
-            if role == 'developer':
-                request.tenant_org = profile      # developer record IS the org
-            else:
-                # Independent agents have no parent_org; that is valid.
-                request.tenant_org = profile.parent_organization
-
+            request.organization  = profile.organization   # None if freelance — valid
         except Exception:
-            # User has role=agent|developer but no Agent record linked — misconfiguration.
             logger.warning(
-                "TenantIsolationMiddleware: user %s has role=%s but no agent_profile. "
+                "TenantIsolationMiddleware: user %s has role=agent but no agent_profile. "
                 "Link an Agent record via admin to restore data access.",
-                user.id, role,
+                user.id,
             )
 
 

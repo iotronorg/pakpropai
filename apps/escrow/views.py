@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 _PAYMENT_INSTRUCTIONS = {
     'jazzcash':  "Send PKR {amount:,} to JazzCash *03001234567*. Use your WhatsApp number as reference.",
     'easypaisa': "Send PKR {amount:,} to EasyPaisa *03001234567*. Use your WhatsApp number as reference.",
-    'bank':      "Transfer PKR {amount:,} to Account *1234567890* (HBL — PakProp AI). Reference: your WhatsApp number.",
+    'bank':      "Transfer PKR {amount:,} to Account *1234567890* (HBL — RealTron AI). Reference: your WhatsApp number.",
     'manual':    "Our team will contact you with payment details within 1 hour.",
     'safepay':   "A Safepay payment link will be sent to you shortly.",
 }
@@ -145,8 +145,8 @@ class DealLockListView(generics.ListAPIView):
                 return qs.none()
         if user.role == 'developer':
             try:
-                org = user.agent_profile
-                return qs.filter(agent__parent_organization=org)
+                org = user.owned_organization
+                return qs.filter(agent__organization=org)
             except Exception:
                 return qs.none()
         return qs.none()
@@ -180,8 +180,8 @@ class DealLockDetailView(generics.RetrieveAPIView):
                 return base.none()
         if user.role == 'developer':
             try:
-                org = user.agent_profile
-                return base.filter(agent__parent_organization=org)
+                org = user.owned_organization
+                return base.filter(agent__organization=org)
             except Exception:
                 return base.none()
         # client: only their own purchases

@@ -104,7 +104,7 @@ class WhatsAppClient:
             return cls.send_template(phone, template_name, components=components)
         # Free-text fallback: OTPs bypass the 24h window check because auth must
         # always be reachable regardless of prior conversation history.
-        body = f"Your PakProp AI verification code is: *{code}*\n\nExpires in 5 minutes. Do not share."
+        body = f"Your RealTron AI verification code is: *{code}*\n\nExpires in 5 minutes. Do not share."
         return cls.send_text(phone, body, skip_window_check=True)
 
     @classmethod

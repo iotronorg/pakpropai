@@ -154,8 +154,8 @@ class NotificationListView(APIView):
         if role == 'agent':
             try:
                 agent_lead_phones = (
-                    request.user.agent_profile.leads
-                    .values_list('phone', flat=True)
+                    request.user.agent_profile.assigned_leads
+                    .values_list('user__phone', flat=True)
                 )
                 qs = qs.filter(phone__in=agent_lead_phones)
             except Exception:
@@ -163,10 +163,10 @@ class NotificationListView(APIView):
         elif role == 'developer':
             try:
                 from apps.leads.models import Lead
-                org = request.user.agent_profile
+                org = request.user.owned_organization
                 org_lead_phones = Lead.objects.filter(
-                    assigned_agent__parent_organization=org
-                ).values_list('phone', flat=True)
+                    organization=org
+                ).values_list('user__phone', flat=True)
                 qs = qs.filter(phone__in=org_lead_phones)
             except Exception:
                 qs = qs.none()
@@ -226,7 +226,8 @@ class NotificationDetailView(APIView):
         if role == 'agent':
             try:
                 agent_lead_phones = list(
-                    request.user.agent_profile.leads.values_list('phone', flat=True)
+                    request.user.agent_profile.assigned_leads
+                    .values_list('user__phone', flat=True)
                 )
                 if session.phone not in agent_lead_phones:
                     return Response({'detail': 'Not authorized.'}, status=403)
@@ -235,11 +236,10 @@ class NotificationDetailView(APIView):
         elif role == 'developer':
             try:
                 from apps.leads.models import Lead
-                org = request.user.agent_profile
+                org = request.user.owned_organization
                 org_phones = list(
-                    Lead.objects.filter(
-                        assigned_agent__parent_organization=org
-                    ).values_list('phone', flat=True)
+                    Lead.objects.filter(organization=org)
+                    .values_list('user__phone', flat=True)
                 )
                 if session.phone not in org_phones:
                     return Response({'detail': 'Not authorized.'}, status=403)

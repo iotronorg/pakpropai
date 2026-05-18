@@ -1,10 +1,10 @@
 """
-PakProp AI Agent — the core intelligence of the product.
+RealTron AI Agent — the core intelligence of the platform.
 
 Architecture:
 - Backend-agnostic: uses AIBackend abstraction (Gemini or Ollama)
 - Conversation history persisted in Redis (24h TTL, last 20 turns)
-- Knowledge of Pakistani real estate law embedded in system prompt
+- Real estate domain knowledge embedded in system prompt
 - Switch backend via AI_BACKEND env var: 'gemini' | 'local'
 """
 import logging
@@ -22,7 +22,7 @@ HISTORY_TTL = 86400       # 24 hours
 MAX_TURNS   = 20          # keep last 20 user+model turns (40 entries)
 
 
-class PakPropAgent:
+class RealTronAgent:
 
     def __init__(self):
         self._backend = None
@@ -30,7 +30,7 @@ class PakPropAgent:
     def _get_backend(self):
         if self._backend is None:
             self._backend = get_backend()
-            logger.info(f"PakPropAgent using backend: {self._backend.label}")
+            logger.info(f"RealTronAgent using backend: {self._backend.label}")
         return self._backend
 
     # ─── Public interface ─────────────────────────────────────────────────────
@@ -476,7 +476,7 @@ class PakPropAgent:
             )
             return (
                 "Wa Alaikum Assalam! 🙏\n\n"
-                "Main *PakProp AI* hoon — Pakistan ka real estate intelligence assistant.\n\n"
+                "Main *RealTron AI* hoon — aapka AI-powered real estate assistant.\n\n"
                 "Main aapki in chezon mein madad kar sakta hoon:\n\n"
                 f"{lines}\n\n"
                 "Aap kya dhundh rahe hain? 🏠"
@@ -488,7 +488,7 @@ class PakPropAgent:
             if features.get(k, True)
         )
         return (
-            "Hello! 👋 Welcome to *PakProp AI* — Pakistan's real estate intelligence assistant.\n\n"
+            "Hello! 👋 Welcome to *RealTron AI* — your AI-powered real estate assistant.\n\n"
             "Here's what I can help you with:\n\n"
             f"{lines}\n\n"
             "What are you looking for today? 🏠"
@@ -635,8 +635,8 @@ class PakPropAgent:
 _agent_instance = None
 
 
-def get_agent() -> PakPropAgent:
+def get_agent() -> RealTronAgent:
     global _agent_instance
     if _agent_instance is None:
-        _agent_instance = PakPropAgent()
+        _agent_instance = RealTronAgent()
     return _agent_instance

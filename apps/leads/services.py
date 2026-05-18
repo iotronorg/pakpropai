@@ -86,7 +86,9 @@ def assign_agent_to_lead(lead, agent, actor=None) -> None:
 
     old_agent = lead.assigned_agent
     lead.assigned_agent = agent
-    lead.save(update_fields=['assigned_agent'])
+    if agent.organization_id and not lead.organization_id:
+        lead.organization_id = agent.organization_id
+    lead.save(update_fields=['assigned_agent', 'organization'])
 
     LeadActivity.objects.create(
         lead=lead,

@@ -10,6 +10,10 @@ class Agent(models.Model):
         DEVELOPER  = 'developer',  'Real Estate Developer'
         AGENCY     = 'agency',     'Agency / Organization'
 
+    class EmploymentType(models.TextChoices):
+        INTERNAL  = 'internal',  'Internal (Employee)'
+        FREELANCE = 'freelance', 'Freelance (Independent)'
+
     class Specialization(models.TextChoices):
         RESIDENTIAL_BUY  = 'residential_buy',  'Residential — Buy/Sell'
         RESIDENTIAL_RENT = 'residential_rent', 'Residential — Rent/Lease'
@@ -27,12 +31,27 @@ class Agent(models.Model):
         related_name='agent_profile',
         help_text='Dashboard login account for this agent'
     )
+    organization = models.ForeignKey(
+        'organizations.Organization',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='agents',
+        help_text='Organization this agent belongs to (null = independent freelance agent)'
+    )
+    employment_type = models.CharField(
+        max_length=20,
+        choices=EmploymentType.choices,
+        default=EmploymentType.FREELANCE,
+        help_text='Internal = employed by the organization; Freelance = independent contractor'
+    )
+    # DEPRECATED: use agent.organization (FK to Organization model) instead.
+    # Kept in DB for backward compatibility during migration period; will be removed in v2.
     parent_organization = models.ForeignKey(
         'self',
         on_delete=models.SET_NULL,
         null=True, blank=True,
         related_name='team_members',
-        help_text='Developer or agency this agent belongs to (null = independent)'
+        help_text='[DEPRECATED] Use agent.organization instead.'
     )
 
     # ── Identity ──────────────────────────────────────────────────────────────
