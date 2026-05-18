@@ -5,10 +5,13 @@ from .models import AuditBenchmark, PropertyAudit
 @admin.register(AuditBenchmark)
 class AuditBenchmarkAdmin(admin.ModelAdmin):
     list_display = (
+        'country',
         'city',
         'location_key',
-        'ppm_min',
-        'ppm_max',
+        'price_per_unit_min',
+        'price_per_unit_max',
+        'size_unit',
+        'currency',
         'yield_pct',
         'appr_pct',
         'liq_months',
@@ -16,14 +19,17 @@ class AuditBenchmarkAdmin(admin.ModelAdmin):
         'is_active',
         'updated_at',
     )
-    list_filter = ('city', 'is_active', 'approved')
-    search_fields = ('city', 'location_key')
-    list_editable = ('ppm_min', 'ppm_max', 'yield_pct', 'appr_pct', 'liq_months', 'approved', 'is_active')
+    list_filter   = ('country', 'city', 'size_unit', 'currency', 'is_active', 'approved')
+    search_fields = ('country', 'city', 'location_key')
+    list_editable = (
+        'price_per_unit_min', 'price_per_unit_max',
+        'yield_pct', 'appr_pct', 'liq_months', 'approved', 'is_active',
+    )
     readonly_fields = ('updated_at', 'updated_by')
-    ordering = ('city', 'location_key')
+    ordering = ('country', 'city', 'location_key')
     fieldsets = (
-        ('Location', {'fields': ('city', 'location_key', 'approved', 'is_active')}),
-        ('Price Benchmarks (PKR / Marla)', {'fields': ('ppm_min', 'ppm_max')}),
+        ('Market', {'fields': ('country', 'city', 'location_key', 'approved', 'is_active')}),
+        ('Price Benchmarks', {'fields': ('price_per_unit_min', 'price_per_unit_max', 'size_unit', 'currency')}),
         ('Market Metrics', {'fields': ('yield_pct', 'appr_pct', 'liq_months')}),
         ('Audit Trail', {'fields': ('updated_at', 'updated_by'), 'classes': ('collapse',)}),
     )

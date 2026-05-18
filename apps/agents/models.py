@@ -1,3 +1,4 @@
+import uuid
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.conf import settings
@@ -165,6 +166,17 @@ class Agent(models.Model):
         ordering  = ['-is_featured', '-is_verified', '-rating', 'name']
         verbose_name        = 'Agent'
         verbose_name_plural = 'Agents'
+        constraints = [
+            # Internal agents must always belong to an organization.
+            # Freelance agents may have organization=NULL (independent).
+            models.CheckConstraint(
+                check=(
+                    models.Q(employment_type='freelance') |
+                    (models.Q(employment_type='internal') & models.Q(organization__isnull=False))
+                ),
+                name='internal_agent_requires_organization',
+            ),
+        ]
 
     @property
     def contact_whatsapp(self) -> str:
@@ -205,3 +217,62 @@ class Agent(models.Model):
     def __str__(self):
         city_str = self.cities_str
         return f"{self.name} ({self.get_agent_type_display()}) — {city_str}"
+
+
+class AgentOrgMembership(models.Model):
+    """
+    Junction table for freelance agents collaborating with multiple organizations.
+
+    Internal agents have a direct FK on Agent.organization.
+    Freelance agents may appear in this table for any org they work with,
+    enabling commission tracking, inventory visibility grants, and lead routing
+    across organizational boundaries without changing the agent's primary profile.
+    """
+
+    class Role(models.TextChoices):
+        PRIMARY      = 'primary',      'Primary (exclusive partner)'
+        COLLABORATOR = 'collaborator', 'Collaborator (non-exclusive)'
+
+    class Status(models.TextChoices):
+        ACTIVE    = 'active',    'Active'
+        SUSPENDED = 'suspended', 'Suspended'
+        ENDED     = 'ended',     'Ended'
+
+    id           = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    agent        = models.ForeignKey(
+                       Agent,
+                       on_delete=models.CASCADE,
+                       related_name='org_memberships',
+                   )
+    organization = models.ForeignKey(
+                       'organizations.Organization',
+                       on_delete=models.CASCADE,
+                       related_name='freelance_memberships',
+                   )
+    role           = models.CharField(max_length=20, choices=Role.choices, default=Role.COLLABORATOR)
+    status         = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
+    commission_pct = models.DecimalField(
+                         max_digits=5, decimal_places=2, null=True, blank=True,
+                         help_text='Commission percentage agreed with this org (overrides agent default)',
+                     )
+    can_access_inventory  = models.BooleanField(default=True,
+                                help_text='Allow agent to view org inventory in the dashboard')
+    can_receive_leads     = models.BooleanField(default=True,
+                                help_text='Allow org lead routing to this agent')
+    notes      = models.TextField(blank=True, help_text='Internal notes on the collaboration agreement')
+    started_at = models.DateField(null=True, blank=True)
+    ended_at   = models.DateField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table        = 'agent_org_memberships'
+        unique_together = ('agent', 'organization')
+        ordering        = ['-created_at']
+        indexes         = [
+            models.Index(fields=['organization', 'status']),
+            models.Index(fields=['agent', 'status']),
+        ]
+
+    def __str__(self):
+        return f"{self.agent.name} ↔ {self.organization.name} [{self.get_role_display()}]"

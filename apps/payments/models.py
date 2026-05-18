@@ -35,8 +35,14 @@ class Payment(models.Model):
                       null=True, blank=True,
                       related_name='payments'
                   )
-    amount_pkr    = models.BigIntegerField()
-    purpose       = models.CharField(max_length=30, choices=Purpose.choices)
+    amount   = models.BigIntegerField(
+                   help_text='Amount in the currency specified by the currency field',
+               )
+    currency = models.CharField(
+                   max_length=3, default='PKR',
+                   help_text='ISO 4217 currency code for amount, e.g. PKR, AED, USD',
+               )
+    purpose  = models.CharField(max_length=30, choices=Purpose.choices)
     gateway       = models.CharField(max_length=20, choices=Gateway.choices, default=Gateway.MANUAL)
     status        = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
     reference     = models.CharField(max_length=200, blank=True, help_text='Gateway transaction ID or bank ref')
@@ -56,4 +62,4 @@ class Payment(models.Model):
         ]
 
     def __str__(self):
-        return f"PKR {self.amount_pkr:,} — {self.purpose} [{self.gateway}] ({self.status})"
+        return f"{self.currency} {self.amount:,} — {self.purpose} [{self.gateway}] ({self.status})"

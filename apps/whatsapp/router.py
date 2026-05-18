@@ -248,15 +248,16 @@ class MessageRouter:
             )
             return
 
-        # ── Route through AI agent ─────────────────────────────────────────
+        # ── Route through AI Service Manager ──────────────────────────────────
+        # Adds guardrails, intent pre-classification, dynamic context injection,
+        # and direct tool routing for deterministic intents (scam check, tax calc).
         try:
-            from apps.ai.agent import get_agent
-            agent   = get_agent()
-            backend = agent._get_backend().label
-            logger.debug(f"[MSG] phone={phone} backend={backend} msg={text[:60]!r}")
-            reply   = agent.chat(phone, text, user, organization=org)
+            from apps.ai.service import get_service_manager
+            svc   = get_service_manager()
+            logger.debug("[MSG] phone=%s msg=%r", phone, text[:60])
+            reply = svc.process(phone, text, user, organization=org)
         except Exception:
-            logger.exception(f"Agent crashed for phone={phone}")
+            logger.exception(f"ServiceManager crashed for phone={phone}")
             reply = (
                 "Something went wrong on my end. Please try again in a moment.\n"
                 "Type *menu* to restart."
@@ -424,6 +425,14 @@ class MessageRouter:
     @classmethod
     def _log_inbound(cls, message_data: dict, session_db, body: str, msg_type: str):
         wa_message_id = message_data.get('id', '')
+
+        # Extract the WhatsApp media object ID for non-text messages so it can be
+        # used later for deferred/lazy download without re-parsing raw_payload.
+        _media_map = {'audio': 'audio', 'image': 'image', 'document': 'document'}
+        media_id = ''
+        if msg_type in _media_map:
+            media_id = message_data.get(_media_map[msg_type], {}).get('id', '')
+
         try:
             WhatsAppMessage.objects.update_or_create(
                 wa_message_id=wa_message_id,
@@ -432,6 +441,7 @@ class MessageRouter:
                     'direction':   'inbound',
                     'msg_type':    msg_type,
                     'body':        body[:2000],
+                    'media_id':    media_id,
                     'raw_payload': message_data,
                 },
             )

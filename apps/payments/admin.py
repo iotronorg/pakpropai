@@ -12,7 +12,7 @@ class PaymentAdmin(admin.ModelAdmin):
     ordering       = ('-created_at',)
 
     def amount_fmt(self, obj):
-        return f"PKR {obj.amount_pkr:,}"
+        return f"{obj.currency} {obj.amount:,}"
     amount_fmt.short_description = 'Amount'
 
     def status_badge(self, obj):

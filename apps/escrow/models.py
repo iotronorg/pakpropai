@@ -52,8 +52,12 @@ class EscrowDeal(models.Model):
                    related_name='deal_locks',
                    help_text='Agent who facilitated this deal lock'
                )
-    token_amount    = models.BigIntegerField(help_text='Token amount in PKR (25,000–100,000)')
-    status          = models.CharField(max_length=20, choices=Status.choices, default=Status.INITIATED)
+    token_amount = models.BigIntegerField(help_text='Token amount in the currency specified by currency field')
+    currency     = models.CharField(
+                       max_length=3, default='PKR',
+                       help_text='ISO 4217 currency code for token_amount, e.g. PKR, AED, USD',
+                   )
+    status       = models.CharField(max_length=20, choices=Status.choices, default=Status.INITIATED)
     payment_gateway = models.CharField(max_length=20, choices=Gateway.choices, default=Gateway.MANUAL, blank=True)
     payment_ref     = models.CharField(max_length=200, blank=True, help_text='Gateway transaction ID or bank ref')
     initiated_via   = models.CharField(max_length=20, choices=Channel.choices, default=Channel.WHATSAPP)

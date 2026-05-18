@@ -52,8 +52,14 @@ class RealTronAgent:
         ]
         return [fn for flag, fn in mapping if features.get(flag, True)]
 
-    def chat(self, phone: str, message: str, user=None, organization=None) -> str:
-        """Process a WhatsApp text message. Returns the agent's reply."""
+    def chat(self, phone: str, message: str, user=None, organization=None,
+             extra_context: str = '') -> str:
+        """
+        Process a WhatsApp text message. Returns the agent's reply.
+
+        extra_context — optional string appended to the system prompt.
+        Populated by AIServiceManager with dynamic org/lead/market context.
+        """
         backend = self._get_backend()
 
         # Gemini requires an API key; local (Ollama) does not
@@ -87,12 +93,16 @@ class RealTronAgent:
 
         from apps.ai.knowledge import SYSTEM_PROMPT
 
+        system_prompt = SYSTEM_PROMPT
+        if extra_context:
+            system_prompt = f"{SYSTEM_PROMPT}\n\n{extra_context}"
+
         history = self._load_history(phone)
         start   = time.time()
         tools   = self._get_tools(tool_module)
 
         try:
-            reply = backend.chat(message, history, tools, SYSTEM_PROMPT)
+            reply = backend.chat(message, history, tools, system_prompt)
         except Exception as exc:
             logger.error(f"Backend chat failed phone={phone}: {exc}", exc_info=True)
             reply = self._error_reply()

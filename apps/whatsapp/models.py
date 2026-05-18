@@ -50,6 +50,9 @@ class WhatsAppMessage(models.Model):
     direction     = models.CharField(max_length=10, choices=Direction.choices)
     msg_type      = models.CharField(max_length=20, choices=MsgType.choices, default=MsgType.TEXT)
     body          = models.TextField(blank=True)
+    # WhatsApp media object ID — populated for audio, image, and document messages.
+    # Use this ID with WhatsAppClient.download_media() for deferred/lazy media processing.
+    media_id      = models.CharField(max_length=100, blank=True, db_index=True)
     media_url     = models.URLField(blank=True)
     raw_payload   = models.JSONField(default=dict)
     created_at    = models.DateTimeField(auto_now_add=True)

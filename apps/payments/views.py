@@ -164,7 +164,8 @@ class PaymentListView(APIView):
             {
                 'id':           str(p.id),
                 'user':         p.user.phone,
-                'amount_pkr':   p.amount_pkr,
+                'amount':       p.amount,
+                'currency':     p.currency,
                 'purpose':      p.purpose,
                 'gateway':      p.gateway,
                 'status':       p.status,

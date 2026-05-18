@@ -26,6 +26,12 @@ class Lead(models.Model):
         QUALIFIED = 'qualified', 'Qualified'
         COLD      = 'cold',      'Cold'
 
+    class RoutingState(models.TextChoices):
+        AI_QUEUE       = 'ai_queue',       'AI Routing Queue (unscoped)'
+        ORG_QUEUE      = 'org_queue',      'Organization Queue (org-scoped, unassigned)'
+        AGENT_ASSIGNED = 'agent_assigned', 'Agent Assigned'
+        CLOSED         = 'closed',         'Closed / Converted'
+
     id             = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user           = models.ForeignKey(
                          settings.AUTH_USER_MODEL,
@@ -37,31 +43,60 @@ class Lead(models.Model):
                          on_delete=models.SET_NULL,
                          null=True, blank=True,
                          related_name='leads',
-                         help_text='Organization this lead is scoped to (null = platform-wide lead)'
+                         help_text='Organization this lead is scoped to (null = platform-wide / AI queue)',
                      )
     assigned_agent = models.ForeignKey(
                          'agents.Agent',
                          on_delete=models.SET_NULL,
                          null=True, blank=True,
                          related_name='assigned_leads',
-                         help_text='Agent responsible for following up this lead'
+                         help_text='Agent responsible for following up this lead',
                      )
+
+    # ── AI routing state machine ────────────────────────────────────────────────
+    routing_state  = models.CharField(
+                         max_length=20,
+                         choices=RoutingState.choices,
+                         default=RoutingState.AI_QUEUE,
+                         db_index=True,
+                         help_text=(
+                             'AI_QUEUE → unscoped; ORG_QUEUE → org-scoped but no agent yet; '
+                             'AGENT_ASSIGNED → assigned; CLOSED → converted/disqualified'
+                         ),
+                     )
+    priority       = models.SmallIntegerField(
+                         default=0,
+                         help_text='Higher = more urgent. AI sets this; agents/admins can override.',
+                     )
+
     intent         = models.CharField(max_length=20, choices=Intent.choices, null=True, blank=True)
     score          = models.SmallIntegerField(default=0)
     intent_signals = models.JSONField(default=dict, blank=True)
     city_interest  = models.CharField(max_length=100, blank=True)
-    budget_min     = models.BigIntegerField(null=True, blank=True)
-    budget_max     = models.BigIntegerField(null=True, blank=True)
+
+    # ── Budget — stored with ISO 4217 currency code ─────────────────────────────
+    budget_min      = models.BigIntegerField(null=True, blank=True)
+    budget_max      = models.BigIntegerField(null=True, blank=True)
+    budget_currency = models.CharField(
+                          max_length=3, default='PKR',
+                          help_text='ISO 4217 currency code for budget_min/max, e.g. PKR, AED, USD',
+                      )
+
     source              = models.CharField(max_length=20, choices=Source.choices, default=Source.WHATSAPP)
     status              = models.CharField(max_length=20, choices=Status.choices, default=Status.NEW)
     notes               = models.TextField(blank=True)
     last_contacted_at   = models.DateTimeField(null=True, blank=True)
     last_scored_at      = models.DateTimeField(auto_now=True)
-    created_at     = models.DateTimeField(auto_now_add=True)
+    created_at          = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = 'leads'
         ordering = ['-score', '-created_at']
+        indexes  = [
+            models.Index(fields=['routing_state']),
+            models.Index(fields=['organization', 'routing_state']),
+            models.Index(fields=['priority']),
+        ]
 
     def clean(self):
         if self.budget_min is not None and self.budget_max is not None:

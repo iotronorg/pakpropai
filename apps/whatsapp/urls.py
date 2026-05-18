@@ -3,9 +3,9 @@ from .views import WhatsAppWebhookView, NotificationListView, NotificationDetail
 
 urlpatterns = [
     path('webhook/', WhatsAppWebhookView.as_view(), name='wa-webhook'),
-]
-
-notification_urlpatterns = [
-    path('',        NotificationListView.as_view(),           name='notification-list'),
-    path('<uuid:pk>/', NotificationDetailView.as_view(),      name='notification-detail'),
+    # Session + message history for dashboard (agent / developer / admin)
+    # GET /api/v1/whatsapp/history/            — paginated session list
+    # GET /api/v1/whatsapp/history/<uuid>/     — full message thread
+    path('history/',           NotificationListView.as_view(),   name='wa-history-list'),
+    path('history/<uuid:pk>/', NotificationDetailView.as_view(), name='wa-history-detail'),
 ]

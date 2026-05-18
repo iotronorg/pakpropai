@@ -11,7 +11,6 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import WhatsAppSession, WhatsAppMessage
-from .router import MessageRouter
 
 logger = logging.getLogger(__name__)
 
@@ -86,36 +85,24 @@ class WhatsAppWebhookView(APIView):
     @classmethod
     def _process_with_idempotency(cls, message: dict, phone_number_id: str = ''):
         msg_id = message.get('id')
-        if not msg_id:
+        phone  = message.get('from')
+        if not msg_id or not phone:
             return
 
-        # 48-hour idempotency: if we've seen this message ID, skip
-        idem_key = f"wa:processed:{msg_id}"
-        if cache.get(idem_key):
-            logger.info(f"Skipping duplicate WA message {msg_id}")
-            return
-        cache.set(idem_key, True, 60 * 60 * 48)
-
-        phone = message.get('from')
-        if not phone:
-            return
-
+        # Gateway-level rate limit: drop obvious floods before queuing a task
         if cls._is_phone_rate_limited(phone, cls._RATE_LIMIT_PER_MIN):
-            logger.warning("WA rate limit exceeded for phone %s — dropping message %s", phone, msg_id)
+            logger.warning("WA gateway rate limit for phone %s — dropped msg %s", phone, msg_id)
             return
 
-        # Send read receipt immediately — shows blue ticks to the user
-        # before we start processing (AI can take 3-8 seconds).
-        try:
-            from .client import WhatsAppClient
-            WhatsAppClient.mark_read(msg_id)
-        except Exception:
-            pass
+        # Atomic 48h idempotency guard: cache.add returns False if key already exists.
+        # Set before dispatch so Meta retries (arriving before task runs) are dropped.
+        idem_key = f"wa:processed:{msg_id}"
+        if not cache.add(idem_key, True, 60 * 60 * 48):
+            logger.info("Duplicate WA message %s — skipping", msg_id)
+            return
 
-        try:
-            MessageRouter.route(message, phone, phone_number_id)
-        except Exception:
-            logger.exception(f"Router crashed on message {msg_id}")
+        from .tasks import process_incoming_whatsapp_task
+        process_incoming_whatsapp_task.delay(message, phone_number_id)
 
 
 # ── Notifications / WhatsApp history (admin/agent/developer) ─────────────────

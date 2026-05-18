@@ -63,32 +63,86 @@ class Property(models.Model):
         SEMI_FURNISHED  = 'semi_furnished',  'Semi-Furnished'
 
     class ConstructionStatus(models.TextChoices):
-        BUILDER_NEW      = 'builder',        'Builder / New'
-        READY            = 'ready',          'Ready'
-        UNDER_CONSTRUCTION = 'under_construction', 'Under Construction'
+        BUILDER_NEW        = 'builder',             'Builder / New'
+        READY              = 'ready',               'Ready'
+        UNDER_CONSTRUCTION = 'under_construction',  'Under Construction'
+
+    class AreaUnit(models.TextChoices):
+        MARLA  = 'marla',  'Marla'
+        KANAL  = 'kanal',  'Kanal'
+        SQFT   = 'sqft',   'Square Feet'
+        SQM    = 'sqm',    'Square Metre'
+        ACRE   = 'acre',   'Acre'
+        GUNTHA = 'guntha', 'Guntha'
+        CENT   = 'cent',   'Cent'
+
+    class ListingOwnerType(models.TextChoices):
+        ORGANIZATION    = 'organization',    'Organization'
+        FREELANCE_AGENT = 'freelance_agent', 'Freelance Agent'
+        CLIENT          = 'client',          'Client / Individual'
+        PLATFORM        = 'platform',        'Platform (Demo/Internal)'
 
     id            = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     ref_no        = models.CharField(max_length=30, unique=True, blank=True, db_index=True,
                         help_text='Auto-generated reference number, e.g. RT-LHR-2026-000000001')
+
+    # ── Ownership (traceable to org, freelance agent, or individual) ───────────
+    listing_owner_type = models.CharField(
+        max_length=20,
+        choices=ListingOwnerType.choices,
+        default=ListingOwnerType.ORGANIZATION,
+        db_index=True,
+        help_text='Discriminator: who owns this listing — enforced by DB constraint',
+    )
     owner         = models.ForeignKey(
                         settings.AUTH_USER_MODEL,
                         on_delete=models.SET_NULL,
                         null=True, blank=True,
-                        related_name='properties'
+                        related_name='properties',
+                        help_text='Set when listing_owner_type=client',
                     )
     organization  = models.ForeignKey(
                         'organizations.Organization',
                         on_delete=models.SET_NULL,
                         null=True, blank=True,
                         related_name='properties',
-                        help_text='Organization that owns this listing (null = individual/freelance listing)'
+                        help_text='Set when listing_owner_type=organization',
                     )
+    listed_by_agent = models.ForeignKey(
+                        'agents.Agent',
+                        on_delete=models.SET_NULL,
+                        null=True, blank=True,
+                        related_name='freelance_listings',
+                        help_text='Set when listing_owner_type=freelance_agent',
+                    )
+
     title         = models.CharField(max_length=500)
     description   = models.TextField(blank=True)
     city          = models.CharField(max_length=100)
     location      = models.CharField(max_length=300)
-    area_marla    = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    price_pkr     = models.BigIntegerField(null=True, blank=True)
+
+    # ── Size — unit-agnostic ───────────────────────────────────────────────────
+    area_marla    = models.DecimalField(
+                        max_digits=10, decimal_places=2, null=True, blank=True,
+                        help_text='Numeric size in the unit specified by area_unit',
+                    )
+    area_unit     = models.CharField(
+                        max_length=10,
+                        choices=AreaUnit.choices,
+                        default=AreaUnit.MARLA,
+                        help_text='Unit for area_marla — marla, kanal, sqft, sqm, acre, etc.',
+                    )
+
+    # ── Price — currency stored alongside (ISO 4217) ───────────────────────────
+    price_pkr     = models.BigIntegerField(
+                        null=True, blank=True,
+                        help_text='Price in the currency specified by the currency field',
+                    )
+    currency      = models.CharField(
+                        max_length=3, default='PKR',
+                        help_text='ISO 4217 currency code, e.g. PKR, AED, USD, GBP',
+                    )
+
     property_type        = models.CharField(max_length=30, choices=PropertyType.choices, default=PropertyType.RESIDENTIAL)
     furnished_status     = models.CharField(max_length=20, choices=FurnishedStatus.choices, null=True, blank=True)
     construction_status  = models.CharField(max_length=25, choices=ConstructionStatus.choices, null=True, blank=True)
@@ -98,17 +152,15 @@ class Property(models.Model):
                          on_delete=models.SET_NULL,
                          null=True, blank=True,
                          related_name='assigned_properties',
-                         help_text='Agent responsible for selling this property'
+                         help_text='Agent responsible for selling/renting this property',
                      )
     country       = models.CharField(max_length=2, default='PK',
                         help_text='ISO 3166-1 alpha-2 country code — used for tax/legal rules')
-    currency      = models.CharField(max_length=3, default='PKR',
-                        help_text='ISO 4217 currency code for price_pkr field, e.g. PKR, AED, USD')
     installment_available = models.BooleanField(default=False)
     ai_score      = models.SmallIntegerField(null=True, blank=True)
     risk_level    = models.CharField(max_length=20, choices=RiskLevel.choices, null=True, blank=True)
-    raw_docs      = models.JSONField(default=dict, blank=True)   # Cloudflare R2 keys
-    ai_analysis   = models.JSONField(default=dict, blank=True)   # Gemini response cache
+    raw_docs      = models.JSONField(default=dict, blank=True)
+    ai_analysis   = models.JSONField(default=dict, blank=True)
     is_active     = models.BooleanField(default=True)
     created_at    = models.DateTimeField(auto_now_add=True)
     updated_at    = models.DateTimeField(auto_now=True)
@@ -120,7 +172,22 @@ class Property(models.Model):
             models.Index(fields=['city']),
             models.Index(fields=['ai_score']),
             models.Index(fields=['legal_status']),
+            models.Index(fields=['listing_owner_type']),
+            models.Index(fields=['organization', 'is_active']),
             models.Index(fields=['owner']),
+        ]
+        constraints = [
+            # DB-enforced ownership consistency: each listing_owner_type must
+            # have exactly its designated FK populated.
+            models.CheckConstraint(
+                check=(
+                    models.Q(listing_owner_type='organization',    organization__isnull=False) |
+                    models.Q(listing_owner_type='freelance_agent', listed_by_agent__isnull=False) |
+                    models.Q(listing_owner_type='client',          owner__isnull=False) |
+                    models.Q(listing_owner_type='platform')
+                ),
+                name='property_ownership_consistency',
+            ),
         ]
 
     # Allowed legal_status forward transitions.
