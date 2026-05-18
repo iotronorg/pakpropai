@@ -52,7 +52,7 @@ class RealTronAgent:
         ]
         return [fn for flag, fn in mapping if features.get(flag, True)]
 
-    def chat(self, phone: str, message: str, user=None) -> str:
+    def chat(self, phone: str, message: str, user=None, organization=None) -> str:
         """Process a WhatsApp text message. Returns the agent's reply."""
         backend = self._get_backend()
 
@@ -68,7 +68,7 @@ class RealTronAgent:
 
         from apps.ai import tools as tool_module
 
-        tool_module.set_context(user, phone)
+        tool_module.set_context(user, phone, org=organization)
 
         # Greetings get an instant structured reply — no model call needed
         if self._is_greeting(message):
@@ -102,7 +102,7 @@ class RealTronAgent:
         return reply
 
     def chat_with_image(self, phone: str, image_bytes: bytes, mime_type: str,
-                        caption: str = '', user=None) -> str:
+                        caption: str = '', user=None, organization=None) -> str:
         """Process an image/document message through the agent."""
         backend = self._get_backend()
 
@@ -114,7 +114,7 @@ class RealTronAgent:
         from apps.ai import tools as tool_module
         from apps.ai.knowledge import SYSTEM_PROMPT
 
-        tool_module.set_context(user, phone)
+        tool_module.set_context(user, phone, org=organization)
 
         context = caption or "User sent a property-related image."
         prompt = (

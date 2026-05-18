@@ -62,7 +62,21 @@ logger = logging.getLogger(__name__)
 class MessageRouter:
 
     @classmethod
-    def route(cls, message_data: dict, phone: str):
+    def _resolve_org(cls, phone_number_id: str):
+        """Return the active Organization that owns this WA phone_number_id, or None."""
+        if not phone_number_id:
+            return None
+        try:
+            from apps.organizations.models import Organization
+            return Organization.objects.filter(
+                wa_phone_number_id=phone_number_id, is_active=True
+            ).first()
+        except Exception:
+            return None
+
+    @classmethod
+    def route(cls, message_data: dict, phone: str, phone_number_id: str = ''):
+        org  = cls._resolve_org(phone_number_id)
         user, _ = User.objects.get_or_create(
             phone=f"+{phone}", defaults={'is_active': True}
         )
@@ -102,7 +116,7 @@ class MessageRouter:
         # This is a fire-and-forget upsert — never blocks message processing.
         try:
             from apps.leads.utils import upsert_lead
-            upsert_lead(user, '')
+            upsert_lead(user, '', organization=org)
         except Exception:
             pass
 
@@ -144,7 +158,7 @@ class MessageRouter:
                 if _sess.get('state') == 'LISTING_PHOTOS':
                     reply = cls._handle_listing_photo(phone, image_bytes, mime, user, _sess)
                 else:
-                    reply = cls._handle_image(phone, image_bytes, mime, caption, user)
+                    reply = cls._handle_image(phone, image_bytes, mime, caption, user, org)
                 cls._send_and_log(phone, reply, session_db)
                 cls._log_inbound(message_data, session_db, caption or '[image]', msg_type)
                 return
@@ -158,7 +172,7 @@ class MessageRouter:
                 message_data.get('document', {}).get('mime_type', 'application/pdf'),
             )
             if doc_bytes and mime.startswith('image/'):
-                reply = cls._handle_image(phone, doc_bytes, mime, caption, user)
+                reply = cls._handle_image(phone, doc_bytes, mime, caption, user, org)
                 cls._send_and_log(phone, reply, session_db)
                 cls._log_inbound(message_data, session_db, caption or '[document]', msg_type)
                 return
@@ -240,7 +254,7 @@ class MessageRouter:
             agent   = get_agent()
             backend = agent._get_backend().label
             logger.debug(f"[MSG] phone={phone} backend={backend} msg={text[:60]!r}")
-            reply   = agent.chat(phone, text, user)
+            reply   = agent.chat(phone, text, user, organization=org)
         except Exception:
             logger.exception(f"Agent crashed for phone={phone}")
             reply = (
@@ -322,7 +336,7 @@ class MessageRouter:
 
     @classmethod
     def _handle_image(cls, phone: str, image_bytes: bytes, mime: str,
-                      caption: str, user) -> str:
+                      caption: str, user, org=None) -> str:
         try:
             from apps.ai.agent import get_agent
             from apps.config.services import SystemConfigService
@@ -334,7 +348,7 @@ class MessageRouter:
                         "Please contact support for assistance."
                     )
                 return agent.verify_document_image(phone, image_bytes, mime, caption, user)
-            return agent.chat_with_image(phone, image_bytes, mime, caption, user)
+            return agent.chat_with_image(phone, image_bytes, mime, caption, user, organization=org)
         except Exception as exc:
             logger.error(f"Image analysis failed: {exc}")
             return (

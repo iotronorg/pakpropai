@@ -38,7 +38,11 @@ class Organization(models.Model):
                  )
 
     # Contact
-    phone   = models.CharField(max_length=20, blank=True)
+    phone              = models.CharField(max_length=20, blank=True)
+    wa_phone_number_id = models.CharField(
+        max_length=50, blank=True, db_index=True,
+        help_text="WhatsApp Cloud API phone_number_id for this org's dedicated WA number",
+    )
     email   = models.EmailField(blank=True)
     website = models.URLField(blank=True)
     logo    = models.ImageField(upload_to=_logo_upload_path, blank=True, null=True)

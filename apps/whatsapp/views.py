@@ -47,8 +47,9 @@ class WhatsAppWebhookView(APIView):
         for entry in payload.get('entry', []):
             for change in entry.get('changes', []):
                 value = change.get('value', {})
+                phone_number_id = value.get('metadata', {}).get('phone_number_id', '')
                 for message in value.get('messages', []) or []:
-                    self._process_with_idempotency(message)
+                    self._process_with_idempotency(message, phone_number_id)
 
         # Always 200 — Meta will retry otherwise
         return Response({'status': 'ok'})
@@ -83,7 +84,7 @@ class WhatsAppWebhookView(APIView):
         return count > limit
 
     @classmethod
-    def _process_with_idempotency(cls, message: dict):
+    def _process_with_idempotency(cls, message: dict, phone_number_id: str = ''):
         msg_id = message.get('id')
         if not msg_id:
             return
@@ -112,7 +113,7 @@ class WhatsAppWebhookView(APIView):
             pass
 
         try:
-            MessageRouter.route(message, phone)
+            MessageRouter.route(message, phone, phone_number_id)
         except Exception:
             logger.exception(f"Router crashed on message {msg_id}")
 

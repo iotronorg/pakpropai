@@ -21,29 +21,32 @@ def parse_pkr(text: str):
 
 
 def upsert_lead(user, intent: str, city_interest: str = '',
-                budget_min: int = None, budget_max: int = None):
+                budget_min: int = None, budget_max: int = None,
+                organization=None):
     """Create or update the CRM lead record for a WhatsApp user."""
     from apps.leads.models import Lead
     try:
-        lead, created = Lead.objects.get_or_create(
-            user=user,
-            defaults={
-                'intent':        intent,
-                'city_interest': city_interest,
-                'budget_min':    budget_min,
-                'budget_max':    budget_max,
-                'score':         10,
-            }
-        )
+        defaults = {
+            'intent':        intent,
+            'city_interest': city_interest,
+            'budget_min':    budget_min,
+            'budget_max':    budget_max,
+            'score':         10,
+        }
+        if organization is not None:
+            defaults['organization'] = organization
+        lead, created = Lead.objects.get_or_create(user=user, defaults=defaults)
         if not created:
+            update_fields = ['intent', 'city_interest', 'budget_min',
+                             'budget_max', 'score', 'last_scored_at']
             if intent:        lead.intent        = intent
             if city_interest: lead.city_interest  = city_interest
             if budget_min:    lead.budget_min     = budget_min
             if budget_max:    lead.budget_max     = budget_max
+            if organization is not None and not lead.organization_id:
+                lead.organization = organization
+                update_fields.append('organization')
             lead.score = min(lead.score + 5, 100)
-            lead.save(update_fields=[
-                'intent', 'city_interest', 'budget_min',
-                'budget_max', 'score', 'last_scored_at',
-            ])
+            lead.save(update_fields=update_fields)
     except Exception:
         logger.exception("Lead upsert failed")
