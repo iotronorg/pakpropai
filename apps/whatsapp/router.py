@@ -239,16 +239,9 @@ class MessageRouter:
                 )
                 return
 
-        # ── Per-user AI rate limit (10 requests/min/phone) ────────────────
-        if not cls._check_rate_limit(phone):
-            cls._send_and_log(
-                phone,
-                "You're sending messages too fast. Please wait a moment and try again.",
-                session_db,
-            )
-            return
-
         # ── Route through AI Service Manager ──────────────────────────────────
+        # Note: gateway-level rate limiting (15/min) is handled in WhatsAppWebhookView
+        # before messages are queued. No second rate-limit layer needed here.
         # Adds guardrails, intent pre-classification, dynamic context injection,
         # and direct tool routing for deterministic intents (scam check, tax calc).
         try:
@@ -467,21 +460,6 @@ class MessageRouter:
                 )
         except Exception:
             pass
-
-    @classmethod
-    def _check_rate_limit(cls, phone: str, limit: int = 10, window: int = 60) -> bool:
-        """Fixed-window rate limit: returns False if phone exceeds `limit` msgs in `window` seconds."""
-        from django.core.cache import cache
-        key = f"wa:rate:{phone}"
-        # cache.add sets key=0 with TTL only if absent — preserves existing TTL on subsequent calls
-        cache.add(key, 0, timeout=window)
-        try:
-            count = cache.incr(key)
-        except ValueError:
-            # Race: key expired between add and incr
-            cache.set(key, 1, timeout=window)
-            return True
-        return count <= limit
 
     @classmethod
     def _send_and_log(cls, phone: str, body: str, session_db):

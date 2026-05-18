@@ -108,4 +108,4 @@ class EscrowDeal(models.Model):
         return None
 
     def __str__(self):
-        return f"Deal Lock [{self.status}] — {self.property.title} (PKR {self.token_amount:,})"
+        return f"Deal Lock [{self.status}] — {self.property.title} ({self.currency} {self.token_amount:,})"

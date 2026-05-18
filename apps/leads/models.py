@@ -96,6 +96,8 @@ class Lead(models.Model):
             models.Index(fields=['routing_state']),
             models.Index(fields=['organization', 'routing_state']),
             models.Index(fields=['priority']),
+            models.Index(fields=['user']),
+            models.Index(fields=['user', '-created_at']),
         ]
 
     def clean(self):

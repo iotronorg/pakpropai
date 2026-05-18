@@ -17,7 +17,7 @@ _COOKIE_SAMESITE  = 'Lax'
 _COOKIE_SECURE    = not settings.DEBUG  # True in production
 
 
-def _set_auth_cookies(response, access_token: str, refresh_token: str):
+def _set_auth_cookies(response, access_token: str, refresh_token: str, role: str = ''):
     """Attach httpOnly auth cookies to a DRF Response."""
     response.set_cookie(
         'access_token', access_token,
@@ -35,12 +35,24 @@ def _set_auth_cookies(response, access_token: str, refresh_token: str):
         secure=_COOKIE_SECURE,
         path='/',
     )
+    # user_role is set server-side (httponly=True) so XSS cannot spoof role-based routing.
+    # Next.js middleware reads this cookie for dashboard routing decisions.
+    if role:
+        response.set_cookie(
+            'user_role', role,
+            max_age=_REFRESH_LIFETIME,
+            httponly=True,
+            samesite=_COOKIE_SAMESITE,
+            secure=_COOKIE_SECURE,
+            path='/',
+        )
 
 
 def _clear_auth_cookies(response):
     """Delete auth cookies from the client."""
     response.delete_cookie('access_token',  path='/', samesite=_COOKIE_SAMESITE)
     response.delete_cookie('refresh_token', path='/', samesite=_COOKIE_SAMESITE)
+    response.delete_cookie('user_role',     path='/', samesite=_COOKIE_SAMESITE)
 
 from .models import User
 from .serializers import SendOTPSerializer, VerifyOTPSerializer, UserSerializer, UserListSerializer, UserCreateSerializer
@@ -104,7 +116,7 @@ class VerifyOTPView(APIView):
 
         refresh = RefreshToken.for_user(user)
         response = Response({'user': UserSerializer(user).data})
-        _set_auth_cookies(response, str(refresh.access_token), str(refresh))
+        _set_auth_cookies(response, str(refresh.access_token), str(refresh), role=user.role)
         return response
 
 

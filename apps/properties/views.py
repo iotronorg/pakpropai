@@ -78,6 +78,7 @@ class PropertyViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
+        from .models import Property as _P
         user = self.request.user
         if user.role == 'admin':
             extra = {}
@@ -86,9 +87,36 @@ class PropertyViewSet(viewsets.ModelViewSet):
                 org = user.owned_organization
             except Exception:
                 org = None
-            extra = {'owner': user, 'organization': org}
+            extra = {
+                'owner': user,
+                'organization': org,
+                'listing_owner_type': _P.ListingOwnerType.ORGANIZATION if org else _P.ListingOwnerType.CLIENT,
+            }
+        elif user.role == 'agent':
+            try:
+                agent_profile = user.agent_profile
+                org = agent_profile.organization
+            except Exception:
+                agent_profile = None
+                org = None
+            if org:
+                extra = {
+                    'organization': org,
+                    'listed_by_agent': agent_profile,
+                    'listing_owner_type': _P.ListingOwnerType.ORGANIZATION,
+                }
+            elif agent_profile:
+                extra = {
+                    'listed_by_agent': agent_profile,
+                    'listing_owner_type': _P.ListingOwnerType.FREELANCE_AGENT,
+                }
+            else:
+                extra = {
+                    'owner': user,
+                    'listing_owner_type': _P.ListingOwnerType.CLIENT,
+                }
         else:
-            extra = {'owner': user}
+            extra = {'owner': user, 'listing_owner_type': _P.ListingOwnerType.CLIENT}
         prop = serializer.save(**extra)
         try:
             from apps.properties.tasks import score_property_task
@@ -99,9 +127,20 @@ class PropertyViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def request_verification(self, request, pk=None):
         prop = self.get_object()
-        if prop.owner != request.user and request.user.role != 'admin':
+        is_owner = (prop.owner == request.user)
+        is_org_admin = (
+            request.user.role == 'developer'
+            and prop.organization is not None
+            and getattr(request.user, 'owned_organization', None) == prop.organization
+        )
+        is_agent_of_prop = (
+            request.user.role == 'agent'
+            and prop.listed_by_agent is not None
+            and getattr(request.user, 'agent_profile', None) == prop.listed_by_agent
+        )
+        if not is_owner and not is_org_admin and not is_agent_of_prop and request.user.role != 'admin':
             return Response(
-                {'detail': 'Only the property owner can request verification.'},
+                {'detail': 'Not authorized to request verification for this property.'},
                 status=status.HTTP_403_FORBIDDEN,
             )
         from apps.verification.models import Verification
@@ -136,7 +175,19 @@ class PropertyViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def mine(self, request):
-        qs = self.get_queryset().filter(owner=request.user)
+        from django.db.models import Q as _Q
+        user = request.user
+        base = self.get_queryset()
+        if user.role == 'agent':
+            try:
+                profile = user.agent_profile
+                qs = base.filter(
+                    _Q(owner=user) | _Q(listed_by_agent=profile)
+                )
+            except Exception:
+                qs = base.filter(owner=user)
+        else:
+            qs = base.filter(owner=user)
         serializer = PropertyListSerializer(qs, many=True, context={'request': request})
         return Response(serializer.data)
 
