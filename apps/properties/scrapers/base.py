@@ -19,7 +19,7 @@ class PropertyResult:
     city:                 str
     location:             str
     area_marla:           Optional[float] = None
-    price_pkr:            Optional[int]   = None
+    price:            Optional[int]   = None
     property_type:        str             = 'residential'
     furnished_status:     Optional[str]   = None   # furnished / unfurnished / semi_furnished
     construction_status:  Optional[str]   = None   # builder / ready / under_construction
@@ -37,7 +37,7 @@ class PropertyResult:
 
     def format_wa(self, index: int = None) -> str:
         prefix = f"{index}. " if index is not None else "• "
-        price  = f"PKR {self.price_pkr:,}" if self.price_pkr else "Price TBD"
+        price  = f"PKR {self.price:,}" if self.price else "Price TBD"
         area   = f"{self.area_marla}M" if self.area_marla else ""
         score  = f" | Score {self.ai_score}/100" if self.ai_score else ""
         badge  = " [verified]" if self.source == 'pakprop' else f" [{self.source}]"

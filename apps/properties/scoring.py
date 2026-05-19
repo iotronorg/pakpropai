@@ -64,14 +64,14 @@ def _location_tier(city: str, location: str) -> str:
     return 'tier_3'
 
 
-def _price_signal(price_pkr, area_marla, tier: str, property_type: str) -> str:
+def _price_signal(price, area_marla, tier: str, property_type: str) -> str:
     """Returns 'fair', 'underpriced', 'overpriced', or 'unknown'."""
-    if not price_pkr or not area_marla or float(area_marla) <= 0:
+    if not price or not area_marla or float(area_marla) <= 0:
         return 'unknown'
     if property_type == 'commercial':
         return 'unknown'  # no commercial benchmark
 
-    actual_ppm = int(price_pkr) / float(area_marla)
+    actual_ppm = int(price) / float(area_marla)
     benchmark  = PRICE_BENCHMARKS_PKR_PER_MARLA[tier]
 
     ratio = actual_ppm / benchmark
@@ -86,7 +86,7 @@ def _completeness(prop) -> int:
     """Returns 0–100 based on how many key fields are filled."""
     fields = [
         prop.title, prop.description, prop.city, prop.location,
-        prop.area_marla, prop.price_pkr, prop.property_type,
+        prop.area_marla, prop.price, prop.property_type,
         prop.construction_status, prop.furnished_status,
     ]
     filled = sum(1 for f in fields if f not in (None, '', 0))
@@ -103,7 +103,7 @@ class PropertyScoringEngine:
         - Used directly to compute a deterministic score
         """
         tier          = _location_tier(prop.city or '', prop.location or '')
-        price_signal  = _price_signal(prop.price_pkr, prop.area_marla, tier, prop.property_type)
+        price_signal  = _price_signal(prop.price, prop.area_marla, tier, prop.property_type)
         completeness  = _completeness(prop)
 
         # Count linked passing verifications

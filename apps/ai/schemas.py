@@ -70,7 +70,7 @@ class PropertySearchFilter(BaseModel):
             'location':             self.location,
             'property_type':        self.property_type,
             'area_marla':           self.area_marla or 0.0,
-            'max_price_pkr':        self.price_max_pkr or 0,
+            'max_price':        self.price_max_pkr or 0,
             'furnished':            self.furnished or '',
         }
 
@@ -87,7 +87,7 @@ class ScamCheckInput(BaseModel):
     description:          str
     url:                  Optional[str] = None
     agent_name:           Optional[str] = None
-    claimed_price_pkr:    Optional[int] = None
+    claimed_price:    Optional[int] = None
     advance_payment_demanded: bool = False
     documents_available:  bool = True
     urgency_signals:      list[str] = []

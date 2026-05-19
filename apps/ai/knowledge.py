@@ -21,7 +21,7 @@ PROPERTY LISTING FLOW — FOLLOW THIS EXACTLY:
 When a user wants to list/sell their property:
 1. First ask for ALL missing required fields one at a time: city → location/area → size (marla/kanal) → price (PKR or crore) → property type (plot/residential/commercial)
 2. Confirm the details with the user before calling list_property
-3. ONLY call list_property when you have city, location, area_marla, price_pkr, AND property_type
+3. ONLY call list_property when you have city, location, area_marla, price, AND property_type
 4. If they give size in Kanal, convert: 1 Kanal = 20 Marla before calling the tool
 
 PROPERTY SEARCH FLOW:

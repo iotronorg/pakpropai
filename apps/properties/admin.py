@@ -37,7 +37,7 @@ rescore_deterministic.short_description = "Re-score selected (deterministic, ins
 
 @admin.register(Property)
 class PropertyAdmin(admin.ModelAdmin):
-    list_display   = ('ref_no', 'title', 'city', 'property_type', 'price_pkr', 'ai_score', 'risk_level', 'legal_status', 'owner', 'created_at')
+    list_display   = ('ref_no', 'title', 'city', 'property_type', 'price', 'ai_score', 'risk_level', 'legal_status', 'owner', 'created_at')
     list_filter    = ('city', 'property_type', 'legal_status', 'risk_level', 'construction_status')
     search_fields  = ('ref_no', 'title', 'city', 'location', 'owner__phone')
     readonly_fields = ('id', 'ref_no', 'created_at', 'updated_at', 'ai_analysis')

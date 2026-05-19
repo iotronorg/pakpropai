@@ -139,12 +139,12 @@ class DynamicContextBuilder:
                     Property.objects
                     .filter(organization=org, is_active=True)
                     .order_by('-created_at')
-                    .values('title', 'city', 'location', 'price_pkr', 'property_type')[:5]
+                    .values('title', 'city', 'location', 'price', 'property_type')[:5]
                 )
                 if sample:
                     lines.append('Inventory sample (live):')
                     for p in sample:
-                        price = f"PKR {p['price_pkr']:,}" if p['price_pkr'] else 'POA'
+                        price = f"PKR {p['price']:,}" if p['price'] else 'POA'
                         lines.append(
                             f"  • {p['title']} — {p['location']}, {p['city']} · {price}"
                         )

@@ -42,8 +42,31 @@ def mark_stale_leads():
         lead.save(update_fields=['status'])
         count += 1
 
+        # Re-engage the client via WhatsApp to invite them back
+        _send_client_reengagement(lead)
+
     logger.info(f"mark_stale_leads: marked {count} leads COLD (cutoff: {cutoff.date()})")
     return count
+
+
+def _send_client_reengagement(lead) -> None:
+    """Send a personalised WhatsApp nudge to a client whose lead just went cold."""
+    try:
+        user = lead.user
+        if not user or not user.phone:
+            return
+        from apps.whatsapp.client import WhatsAppClient
+        city   = lead.city_interest or 'your area of interest'
+        intent = lead.get_intent_display() if lead.intent else 'a property'
+        msg = (
+            f"👋 *We miss you!*\n\n"
+            f"We noticed you were exploring *{intent}* options in *{city}*.\n\n"
+            f"New properties matching your criteria have been listed. "
+            f"Just reply here and our AI assistant will pick up right where you left off! 🏠"
+        )
+        WhatsAppClient.send_text(user.phone.lstrip('+'), msg)
+    except Exception as exc:
+        logger.warning(f"Client re-engagement WA failed for lead {lead.id}: {exc}")
 
 
 @shared_task

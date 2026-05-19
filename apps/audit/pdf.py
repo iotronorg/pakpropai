@@ -456,7 +456,7 @@ def _page3_market(audit: dict, s: dict) -> list:
         for c in comps[:5]:
             comp_data.append([
                 c.get('title', 'N/A')[:50],
-                _pkr(c.get('price_pkr', 0)),
+                _pkr(c.get('price', 0)),
                 f"{c.get('area_marla', 'N/A')} Marla",
                 c.get('source', 'N/A'),
             ])

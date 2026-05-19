@@ -413,7 +413,7 @@ class AIServiceManager:
 
         # ── 2. Intent pre-classification (deterministic, no LLM) ──────────────
         agent   = self._get_agent()
-        history = agent._load_history(phone)
+        history = agent._load_history(phone, org=organization)
         intent  = IntentClassifier.classify(message, history)
 
         logger.debug(
@@ -425,7 +425,7 @@ class AIServiceManager:
         if intent.confidence >= _DIRECT_ROUTE_CONFIDENCE:
             direct_reply = self._try_direct_route(intent, phone, user, organization)
             if direct_reply:
-                agent._save_history(phone, history, message, direct_reply)
+                agent._save_history(phone, organization, history, message, direct_reply)
                 self._log_interaction(user, intent, message, direct_reply,
                                       int((time.time() - start) * 1000), direct=True)
                 return direct_reply
@@ -475,10 +475,16 @@ class AIServiceManager:
         set_context(user, phone, org=organization)
 
         if intent.intent == 'scam_check' and intent.scam_input:
+            # Scam/fraud patterns are universal — direct-route regardless of country.
             return self._direct_scam_check(intent.scam_input, intent.language)
 
         if intent.intent == 'tax_advice' and intent.tax_input:
-            return self._direct_tax_advice(intent.tax_input, intent.language)
+            # Pakistan-specific tax engine (Section 7E, CGT, WHT).
+            # Only direct-route for PK-context orgs; route others through LLM for general advice.
+            org_country = getattr(organization, 'country', 'PK') if organization else 'PK'
+            if org_country == 'PK':
+                return self._direct_tax_advice(intent.tax_input, intent.language)
+            return None     # non-PK org → LLM handles with general tax knowledge
 
         return None     # property_search and others go through LLM for natural formatting
 

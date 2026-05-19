@@ -24,7 +24,7 @@ class PropertyListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model  = Property
-        fields = ('id', 'ref_no', 'title', 'city', 'location', 'area_marla', 'price_pkr',
+        fields = ('id', 'ref_no', 'title', 'city', 'location', 'area_marla', 'price',
                   'country', 'currency',
                   'property_type', 'construction_status', 'furnished_status',
                   'legal_status', 'ai_score', 'risk_level', 'primary_image', 'created_at')
@@ -46,7 +46,7 @@ class PropertyDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model  = Property
         fields = ('id', 'ref_no', 'owner', 'owner_phone', 'title', 'description',
-                  'city', 'location', 'area_marla', 'price_pkr',
+                  'city', 'location', 'area_marla', 'price',
                   'country', 'currency',
                   'property_type', 'furnished_status', 'construction_status',
                   'legal_status', 'ai_score', 'risk_level', 'assigned_agent',
@@ -73,11 +73,19 @@ class PropertyCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model  = Property
         fields = ('title', 'description', 'city', 'location', 'area_marla',
-                  'price_pkr', 'country', 'currency',
+                  'price', 'country', 'currency',
                   'property_type', 'furnished_status',
                   'construction_status', 'legal_status', 'assigned_agent', 'owner')
 
-    def validate_price_pkr(self, v):
+    def validate_owner(self, value):
+        request = self.context.get('request')
+        if request and getattr(request.user, 'role', None) != 'admin':
+            raise serializers.ValidationError(
+                'Ownership is assigned server-side and cannot be set directly.'
+            )
+        return value
+
+    def validate_price(self, v):
         if v is not None and v <= 0:
             raise serializers.ValidationError('Price must be positive.')
         return v

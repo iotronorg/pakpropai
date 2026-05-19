@@ -13,7 +13,7 @@ Property details:
 - Location: {location}
 - Type: {property_type}
 - Area: {area_marla} marla
-- Price: PKR {price_pkr}
+- Price: PKR {price}
 - Legal status: {legal_status}
 - Construction status: {construction_status}
 - Furnished: {furnished_status}
@@ -55,7 +55,7 @@ def score_property(property_obj) -> dict:
         location=property_obj.location,
         property_type=property_obj.property_type,
         area_marla=property_obj.area_marla or 0,
-        price_pkr=property_obj.price_pkr or 0,
+        price=property_obj.price or 0,
         legal_status=property_obj.legal_status,
         construction_status=signals['construction_status'],
         furnished_status=signals['furnished_status'],
@@ -149,7 +149,7 @@ def batch_verdicts(results: list) -> dict:
     from .client import GeminiClient
     lines = []
     for i, r in enumerate(results[:5], 1):
-        price = f"PKR {r.price_pkr:,}" if r.price_pkr else "price unknown"
+        price = f"PKR {r.price:,}" if r.price else "price unknown"
         area  = f"{r.area_marla}M" if r.area_marla else ""
         lines.append(f"{i}. [{r.source_id}] {r.title} | {r.city}, {r.location} | {area} | {price}")
     raw = GeminiClient.generate(

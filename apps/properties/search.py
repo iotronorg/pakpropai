@@ -49,7 +49,7 @@ class SearchParams:
             purpose=str(params.get('purpose', '')),
             min_price=int(params.get('min_price', 0) or 0),
             max_price=int(
-                params.get('max_price_pkr', 0) or params.get('max_price', 0) or 0
+                params.get('max_price', 0) or params.get('max_price', 0) or 0
             ),
             area_marla=float(params.get('area_marla', 0) or 0),
             furnished_status=str(
@@ -140,8 +140,8 @@ class PropertySearchService:
             'city': r.city,
             'location': r.location,
             'area_marla': r.area_marla,
-            'price': r.price_pkr,
-            'price_formatted': f"PKR {r.price_pkr:,}" if r.price_pkr else 'Price not listed',
+            'price': r.price,
+            'price_formatted': f"PKR {r.price:,}" if r.price else 'Price not listed',
             'property_type': r.property_type,
             'furnished_status': r.furnished_status,
             'construction_status': r.construction_status,
@@ -197,7 +197,7 @@ class PropertySearchService:
             .filter(is_active=True)
             .select_related('organization', 'listed_by_agent')
             .only(
-                'id', 'title', 'city', 'location', 'area_marla', 'price_pkr',
+                'id', 'title', 'city', 'location', 'area_marla', 'price',
                 'property_type', 'furnished_status', 'construction_status',
                 'ai_score', 'installment_available', 'legal_status',
             )
@@ -208,9 +208,9 @@ class PropertySearchService:
         if location:
             qs = qs.filter(location__icontains=location)
         if min_price:
-            qs = qs.filter(price_pkr__gte=min_price)
+            qs = qs.filter(price__gte=min_price)
         if max_price:
-            qs = qs.filter(price_pkr__lte=max_price)
+            qs = qs.filter(price__lte=max_price)
         if area_marla:
             qs = qs.filter(
                 area_marla__gte=area_marla * 0.8,
@@ -237,7 +237,7 @@ class PropertySearchService:
                 city                = p.city,
                 location            = p.location,
                 area_marla          = float(p.area_marla) if p.area_marla else None,
-                price_pkr           = p.price_pkr,
+                price           = p.price,
                 property_type       = p.property_type,
                 furnished_status    = p.furnished_status,
                 construction_status = p.construction_status,
@@ -312,8 +312,8 @@ class PropertySearchService:
                 return False
 
         # Price: within 25% — scrapers round differently (1.08 crore vs 1.05 crore)
-        if a.price_pkr and b.price_pkr:
-            ratio = a.price_pkr / b.price_pkr
+        if a.price and b.price:
+            ratio = a.price / b.price
             if not (0.75 <= ratio <= 1.25):
                 return False
 

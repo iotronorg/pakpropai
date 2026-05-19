@@ -174,7 +174,7 @@ def list_property(
     city: str,
     location: str,
     area_marla: float,
-    price_pkr: int,
+    price: int,
     property_type: str,
     furnished: str = '',
     construction_status: str = '',
@@ -190,7 +190,7 @@ def list_property(
         city: City where property is located (e.g., 'Lahore', 'Karachi')
         location: Specific area/society (e.g., 'DHA Phase 6', 'Gulberg 3', 'Bahria Town Block D')
         area_marla: Size in Marla. Convert Kanal to Marla (1 Kanal = 20 Marla).
-        price_pkr: Asking price in Pakistani Rupees (e.g., 15000000 for PKR 1.5 crore)
+        price: Asking price in Pakistani Rupees (e.g., 15000000 for PKR 1.5 crore)
         property_type: One of 'plot', 'residential', 'commercial'
         furnished: One of 'furnished', 'semi_furnished', 'unfurnished', or empty string
         construction_status: One of 'builder', 'ready', 'under_construction', or empty string
@@ -210,7 +210,7 @@ def list_property(
             city=city,
             location=location,
             area_marla=area_marla if area_marla else None,
-            price_pkr=price_pkr,
+            price=price,
             property_type=property_type,
             furnished_status=furnished or None,
             construction_status=construction_status or None,
@@ -249,7 +249,7 @@ def list_property(
             'success':        True,
             'listing_id':     str(prop.id)[:8].upper(),
             'title':          title,
-            'price_formatted': f"PKR {price_pkr:,}",
+            'price_formatted': f"PKR {price:,}",
             'message': (
                 'Property listed successfully. AI scoring is running in the background. '
                 'Your listing is now visible to buyers.\n\n'

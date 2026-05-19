@@ -59,7 +59,7 @@ class GraanaScraper(BaseScraper):
         if location:
             results = [r for r in results if self.location_matches(r.location, location)]
         if max_price:
-            results = [r for r in results if not r.price_pkr or r.price_pkr <= max_price]
+            results = [r for r in results if not r.price or r.price <= max_price]
         if area_marla:
             results = [r for r in results
                        if not r.area_marla or abs(r.area_marla - area_marla) / area_marla < 0.4]
@@ -136,7 +136,7 @@ class GraanaScraper(BaseScraper):
             city          = city,
             location      = location,
             area_marla    = area,
-            price_pkr     = price,
+            price     = price,
             property_type = prop_type,
             url           = url,
         )

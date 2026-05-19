@@ -1,5 +1,10 @@
+import logging
 from django.db.models.signals import pre_save
 from django.dispatch import receiver
+
+logger = logging.getLogger(__name__)
+
+HOT_THRESHOLD = 70  # score at which a lead is considered "hot"
 
 
 @receiver(pre_save, sender='leads.Lead')
@@ -45,3 +50,29 @@ def write_score_history(sender, instance, created, **kwargs):
         changed_by=getattr(instance, '_score_actor', None),
     )
     instance._score_changed_from = None
+
+    # Hot lead: score just crossed HOT_THRESHOLD — alert assigned agent immediately
+    if old < HOT_THRESHOLD <= instance.score and instance.assigned_agent_id:
+        _fire_hot_lead_alert(instance)
+
+
+def _fire_hot_lead_alert(lead) -> None:
+    """Send an instant WhatsApp alert to the assigned agent when a lead goes hot."""
+    try:
+        agent = lead.assigned_agent
+        if not agent or not agent.user or not agent.user.phone:
+            return
+        from apps.whatsapp.client import WhatsAppClient
+        city   = lead.city_interest or 'Not specified'
+        intent = lead.get_intent_display() if lead.intent else 'Not specified'
+        msg = (
+            f"🔥 *Hot Lead Alert!*\n\n"
+            f"Lead *{lead.user.phone}* just scored *{lead.score}/100* — they're ready to convert.\n\n"
+            f"📍 City: {city}\n"
+            f"🎯 Intent: {intent}\n\n"
+            "Follow up NOW before the moment passes! ⚡"
+        )
+        WhatsAppClient.send_text(agent.user.phone.lstrip('+'), msg)
+        logger.info(f"Hot lead alert sent for lead={lead.id} score={lead.score} agent={agent.id}")
+    except Exception as exc:
+        logger.warning(f"Hot lead WA alert failed for lead {lead.id}: {exc}")

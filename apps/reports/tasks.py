@@ -140,7 +140,7 @@ def _content_tax_advisory(report) -> dict:
     user  = report.user
     meta  = report.content.get('input', {})  # caller may pre-populate input params
 
-    property_value = meta.get('property_value') or (prop.price_pkr if prop else 0) or 0
+    property_value = meta.get('property_value') or (prop.price if prop else 0) or 0
     ownership_type = meta.get('ownership_type', 'filer')
     holding_years  = meta.get('holding_years', 1)
 
@@ -196,7 +196,7 @@ def _content_tax_advisory(report) -> dict:
 def _content_loan_eligibility(report) -> dict:
     meta           = report.content.get('input', {})
     monthly_income = meta.get('monthly_income', 0)
-    property_value = meta.get('property_value') or (report.property.price_pkr if report.property else 0) or 0
+    property_value = meta.get('property_value') or (report.property.price if report.property else 0) or 0
     existing_emis  = meta.get('existing_emis', 0)
 
     # Apna Ghar / standard bank rules
@@ -332,7 +332,7 @@ def _build_pdf(report, content: dict) -> bytes:
                 ('City',     report.property.city),
                 ('Location', report.property.location),
                 ('Type',     report.property.property_type),
-                ('Price',    f"PKR {report.property.price_pkr:,}" if report.property.price_pkr else '—'),
+                ('Price',    f"PKR {report.property.price:,}" if report.property.price else '—'),
             ]),
             Spacer(1, 0.2 * inch),
         ]

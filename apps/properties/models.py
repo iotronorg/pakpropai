@@ -134,7 +134,7 @@ class Property(models.Model):
                     )
 
     # ── Price — currency stored alongside (ISO 4217) ───────────────────────────
-    price_pkr     = models.BigIntegerField(
+    price         = models.BigIntegerField(
                         null=True, blank=True,
                         help_text='Price in the currency specified by the currency field',
                     )
@@ -199,8 +199,8 @@ class Property(models.Model):
     }
 
     def clean(self):
-        if self.price_pkr is not None and self.price_pkr <= 0:
-            raise ValidationError({'price_pkr': 'Price must be a positive value.'})
+        if self.price is not None and self.price <= 0:
+            raise ValidationError({'price': 'Price must be a positive value.'})
 
         if self.pk:
             try:

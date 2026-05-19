@@ -18,9 +18,17 @@ from apps.verification.ai import detect_doc_type, ocr_prompt, parse_ocr_response
 
 logger = logging.getLogger(__name__)
 
-HISTORY_KEY = 'ai:conv:{phone}'
 HISTORY_TTL = 86400       # 24 hours
 MAX_TURNS   = 20          # keep last 20 user+model turns (40 entries)
+
+
+def _history_key(phone: str, org=None) -> str:
+    """
+    Scopes conversation history to org+phone so different organizations
+    sharing the same phone number don't bleed context into each other.
+    """
+    scope = str(org.id) if org is not None else 'global'
+    return f"ai:conv:{scope}:{phone}"
 
 
 class RealTronAgent:
@@ -29,7 +37,9 @@ class RealTronAgent:
         self._backend = None
 
     def _get_backend(self):
-        if self._backend is None:
+        configured = getattr(settings, 'AI_BACKEND', 'gemini').lower()
+        cached_type = 'gemini' if (self._backend and 'gemini' in self._backend.label) else 'local'
+        if self._backend is None or cached_type != configured:
             self._backend = get_backend()
             logger.info(f"RealTronAgent using backend: {self._backend.label}")
         return self._backend
@@ -79,16 +89,16 @@ class RealTronAgent:
         # Greetings get an instant structured reply — no model call needed
         if self._is_greeting(message):
             reply = self._greeting_reply(message)
-            history = self._load_history(phone)
-            self._save_history(phone, history, message, reply)
+            history = self._load_history(phone, organization)
+            self._save_history(phone, organization, history, message, reply)
             return reply
 
         # Agent requests are handled directly in Python — local models hallucinate
         # agent details when this is left to the model, so we bypass it entirely.
         if self._is_agent_request(message):
-            history = self._load_history(phone)
+            history = self._load_history(phone, organization)
             reply = self._handle_agent_request(message, history, tool_module)
-            self._save_history(phone, history, message, reply)
+            self._save_history(phone, organization, history, message, reply)
             return reply
 
         from apps.ai.knowledge import SYSTEM_PROMPT
@@ -97,7 +107,7 @@ class RealTronAgent:
         if extra_context:
             system_prompt = f"{SYSTEM_PROMPT}\n\n{extra_context}"
 
-        history = self._load_history(phone)
+        history = self._load_history(phone, organization)
         start   = time.time()
         tools   = self._get_tools(tool_module)
 
@@ -107,7 +117,7 @@ class RealTronAgent:
             logger.error(f"Backend chat failed phone={phone}: {exc}", exc_info=True)
             reply = self._error_reply()
 
-        self._save_history(phone, history, message, reply)
+        self._save_history(phone, organization, history, message, reply)
         self._log(user, message, reply, int((time.time() - start) * 1000))
         return reply
 
@@ -142,8 +152,8 @@ class RealTronAgent:
             logger.error(f"Image analysis failed: {exc}")
             reply = "Unable to analyze the image right now. Please describe what you need help with."
 
-        history = self._load_history(phone)
-        self._save_history(phone, history, f"[image: {caption or 'no caption'}]", reply)
+        history = self._load_history(phone, organization)
+        self._save_history(phone, organization, history, f"[image: {caption or 'no caption'}]", reply)
         return reply
 
     def verify_document_image(self, phone: str, image_bytes: bytes, mime_type: str,
@@ -198,8 +208,8 @@ class RealTronAgent:
         except Exception as exc:
             logger.error(f"DocumentScan save failed: {exc}")
 
-        history = self._load_history(phone)
-        self._save_history(phone, history, f"[document: {caption or doc_type}]", summary)
+        history = self._load_history(phone, org=None)
+        self._save_history(phone, None, history, f"[document: {caption or doc_type}]", summary)
         return summary
 
     def transcribe_audio(self, audio_bytes: bytes, mime_type: str) -> str:
@@ -233,23 +243,23 @@ class RealTronAgent:
 
         return ''
 
-    def clear_history(self, phone: str):
-        cache.delete(HISTORY_KEY.format(phone=phone))
+    def clear_history(self, phone: str, org=None):
+        cache.delete(_history_key(phone, org))
 
     # ─── History management ───────────────────────────────────────────────────
 
-    def _load_history(self, phone: str) -> list:
-        data = cache.get(HISTORY_KEY.format(phone=phone))
+    def _load_history(self, phone: str, org=None) -> list:
+        data = cache.get(_history_key(phone, org))
         return data if isinstance(data, list) else []
 
-    def _save_history(self, phone: str, old_history: list, user_msg: str, model_reply: str):
+    def _save_history(self, phone: str, org, old_history: list, user_msg: str, model_reply: str):
         updated = old_history + [
             {'role': 'user',  'text': user_msg[:2000]},
             {'role': 'model', 'text': model_reply[:2000]},
         ]
         if len(updated) > MAX_TURNS * 2:
             updated = updated[-(MAX_TURNS * 2):]
-        cache.set(HISTORY_KEY.format(phone=phone), updated, HISTORY_TTL)
+        cache.set(_history_key(phone, org), updated, HISTORY_TTL)
 
     # ─── Greeting detection ───────────────────────────────────────────────────
 

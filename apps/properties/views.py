@@ -31,7 +31,7 @@ class PropertyViewSet(viewsets.ModelViewSet):
             return [IsAgentOrAdmin()]
         return super().get_permissions()
     search_fields   = ['ref_no', 'title', 'city', 'location', 'description']
-    ordering_fields = ['ai_score', 'price_pkr', 'created_at']
+    ordering_fields = ['ai_score', 'price', 'created_at']
     ordering        = ['-created_at']
 
     def get_serializer_class(self):
@@ -70,9 +70,9 @@ class PropertyViewSet(viewsets.ModelViewSet):
         if (legal := params.get('legal_status')):
             qs = qs.filter(legal_status=legal)
         if (min_price := params.get('min_price')):
-            qs = qs.filter(price_pkr__gte=int(min_price))
+            qs = qs.filter(price__gte=int(min_price))
         if (max_price := params.get('max_price')):
-            qs = qs.filter(price_pkr__lte=int(max_price))
+            qs = qs.filter(price__lte=int(max_price))
         if (min_score := params.get('min_score')):
             qs = qs.filter(ai_score__gte=int(min_score))
         return qs
@@ -285,7 +285,7 @@ class PropertyMarketTrendsView(APIView):
         city   = request.query_params.get('city', '').strip()
         period = request.query_params.get('period', 'monthly')
 
-        qs = Property.objects.filter(is_active=True, price_pkr__isnull=False)
+        qs = Property.objects.filter(is_active=True, price__isnull=False)
         if city:
             qs = qs.filter(city__icontains=city)
 
@@ -295,7 +295,7 @@ class PropertyMarketTrendsView(APIView):
             qs
             .annotate(period=trunc_fn('created_at'))
             .values('period', 'city', 'property_type')
-            .annotate(avg_price_pkr=Avg('price_pkr'), count=Count('id'))
+            .annotate(avg_price=Avg('price'), count=Count('id'))
             .order_by('city', 'period')
         )
 

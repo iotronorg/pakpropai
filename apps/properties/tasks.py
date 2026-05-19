@@ -1,7 +1,18 @@
 import logging
+from datetime import timedelta
 from celery import shared_task
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
+
+# Re-use leads with status in these states for listing match alerts
+_ALERT_STATUSES = ('new', 'warm', 'qualified')
+# Intents that have no interest in buying/renting new listings
+_SKIP_INTENTS = ('sell', 'tax')
+# Max number of leads to notify per new property (prevents spam on popular cities)
+_MAX_ALERT_RECIPIENTS = 50
+# A property is "new" if it was created within this window (task may queue briefly)
+_NEW_PROPERTY_WINDOW = timedelta(minutes=10)
 
 
 @shared_task
@@ -101,6 +112,71 @@ def score_property_task(self, property_id: str):
     prop.ai_analysis = {**result, 'signals': signals}
     prop.save(update_fields=['ai_score', 'risk_level', 'ai_analysis'])
     logger.info(f"Scored {property_id}: {score}/100 [{risk}] source={result.get('source','ai')}")
+
+    # Only alert on fresh listings — nightly rescores must not re-notify
+    if timezone.now() - prop.created_at < _NEW_PROPERTY_WINDOW:
+        _notify_matching_leads(prop)
+
+
+def _notify_matching_leads(prop) -> int:
+    """
+    Send a WhatsApp listing alert to active leads whose city and budget match
+    this newly listed property. Capped at _MAX_ALERT_RECIPIENTS to prevent spam.
+    """
+    try:
+        from django.db.models import Q
+        from apps.leads.models import Lead
+        from apps.whatsapp.client import WhatsAppClient
+
+        city_lower = (prop.city or '').strip().lower()
+        if not city_lower:
+            return 0
+
+        candidates = (
+            Lead.objects
+            .filter(
+                city_interest__icontains=city_lower,
+                city_interest__gt='',
+                status__in=_ALERT_STATUSES,
+            )
+            .exclude(intent__in=_SKIP_INTENTS)
+            .select_related('user')
+        )
+
+        # Budget gate: only notify if lead's max budget covers this price (same currency)
+        if prop.price:
+            candidates = candidates.filter(
+                Q(budget_max__isnull=True) |
+                Q(budget_max__gte=prop.price, budget_currency=prop.currency)
+            )
+
+        sent = 0
+        for lead in candidates[:_MAX_ALERT_RECIPIENTS]:
+            if not lead.user or not lead.user.phone:
+                continue
+            try:
+                area_str  = f"{prop.area_marla} {prop.area_unit}" if prop.area_marla else ''
+                price_str = f"{prop.currency} {prop.price:,}" if prop.price else 'Price on request'
+                area_line = f"📐 {area_str}\n" if area_str else ''
+                msg = (
+                    f"🏠 *New Listing in {prop.city}!*\n\n"
+                    f"A property matching your search just went live:\n\n"
+                    f"📋 *{prop.title}*\n"
+                    f"📍 {prop.location}\n"
+                    f"{area_line}"
+                    f"💰 {price_str}\n\n"
+                    "Reply here to get full details or book a visit! 🔑"
+                )
+                WhatsAppClient.send_text(lead.user.phone.lstrip('+'), msg)
+                sent += 1
+            except Exception as exc:
+                logger.warning(f"Listing alert WA failed lead={lead.id}: {exc}")
+
+        logger.info(f"Sent {sent} listing alert(s) for property {prop.id} ({prop.city})")
+        return sent
+    except Exception as exc:
+        logger.error(f"_notify_matching_leads failed for property {prop.id}: {exc}")
+        return 0
 
 
 def _signals_to_factors(signals: dict) -> list:

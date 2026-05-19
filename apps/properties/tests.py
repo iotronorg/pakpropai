@@ -13,7 +13,7 @@ class SearchParamsFromDictTest(TestCase):
     def test_maps_ai_tool_kwargs(self):
         p = SearchParams.from_dict({
             'city': 'Lahore', 'property_type': 'residential',
-            'area_marla': 5.0, 'max_price_pkr': 10_000_000,
+            'area_marla': 5.0, 'max_price': 10_000_000,
             'location': 'DHA Phase 6', 'furnished': 'furnished',
             'construction_status': 'ready',
         })
@@ -28,7 +28,7 @@ class SearchParamsFromDictTest(TestCase):
         self.assertEqual(p.max_price, 5_000_000)
 
     def test_zero_values_stay_zero(self):
-        p = SearchParams.from_dict({'city': 'Karachi', 'max_price_pkr': 0})
+        p = SearchParams.from_dict({'city': 'Karachi', 'max_price': 0})
         self.assertEqual(p.max_price, 0)
         self.assertAlmostEqual(p.area_marla, 0.0)
 
@@ -69,11 +69,11 @@ class PropertySearchServiceExecuteTest(TestCase):
     def test_is_duplicate_different_cities_not_dupes(self):
         from apps.properties.scrapers.base import PropertyResult
         a = PropertyResult(source='x', source_id='1', title='A', city='Lahore',
-                           location='DHA', area_marla=5, price_pkr=10_000_000,
+                           location='DHA', area_marla=5, price=10_000_000,
                            property_type='residential', url='', ai_score=None,
                            furnished_status=None, construction_status=None)
         b = PropertyResult(source='y', source_id='2', title='B', city='Karachi',
-                           location='DHA', area_marla=5, price_pkr=10_000_000,
+                           location='DHA', area_marla=5, price=10_000_000,
                            property_type='residential', url='', ai_score=None,
                            furnished_status=None, construction_status=None)
         self.assertFalse(PropertySearchService._is_duplicate(a, b))
@@ -82,12 +82,12 @@ class PropertySearchServiceExecuteTest(TestCase):
         from apps.properties.scrapers.base import PropertyResult
         a = PropertyResult(source='pakprop', source_id='1', title='House',
                            city='Lahore', location='dha phase 6', area_marla=5,
-                           price_pkr=10_000_000, property_type='residential',
+                           price=10_000_000, property_type='residential',
                            url='', ai_score=80, furnished_status=None,
                            construction_status=None)
         b = PropertyResult(source='zameen', source_id='ext-99', title='House',
                            city='Lahore', location='dha phase 6', area_marla=5.1,
-                           price_pkr=10_200_000, property_type='residential',
+                           price=10_200_000, property_type='residential',
                            url='https://zameen.com/x', ai_score=None,
                            furnished_status=None, construction_status=None)
         self.assertTrue(PropertySearchService._is_duplicate(a, b))
@@ -96,12 +96,12 @@ class PropertySearchServiceExecuteTest(TestCase):
         from apps.properties.scrapers.base import PropertyResult
         pak = PropertyResult(source='pakprop', source_id='1', title='H',
                              city='Lahore', location='gulberg', area_marla=5,
-                             price_pkr=8_000_000, property_type='residential',
+                             price=8_000_000, property_type='residential',
                              url='', ai_score=70, furnished_status=None,
                              construction_status=None)
         ext = PropertyResult(source='zameen', source_id='ext', title='H',
                              city='Lahore', location='gulberg', area_marla=5,
-                             price_pkr=8_100_000, property_type='residential',
+                             price=8_100_000, property_type='residential',
                              url='https://zameen.com/h', ai_score=None,
                              furnished_status=None, construction_status=None)
         kept = PropertySearchService._dedup([pak, ext])

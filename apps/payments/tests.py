@@ -35,7 +35,7 @@ def _property(owner, agent=None):
         city='Lahore',
         location='DHA Phase 5',
         property_type='residential',
-        price_pkr=5_000_000,
+        price=5_000_000,
         area_marla=5,
         assigned_agent=agent,
     )

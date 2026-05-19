@@ -202,7 +202,7 @@ class MessageRouter:
         text_lower = text.lower().strip()
         if text_lower in ('reset', '/start', 'menu', 'main menu'):
             from apps.ai.agent import get_agent
-            get_agent().clear_history(phone)
+            get_agent().clear_history(phone, org=org)
             cls._send_and_log(phone, cls._greeting(), session_db)
             return
 
