@@ -196,6 +196,23 @@ class AgentApproveView(APIView):
         if agent.registration_status == Agent.RegistrationStatus.APPROVED:
             return Response({'detail': 'Agent is already approved.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        # TRIAL plan gate — max 2 active agents per org
+        if (
+            request.user.role == 'developer'
+            and agent.organization is not None
+            and agent.organization.plan == 'trial'
+        ):
+            active_count = Agent.objects.filter(
+                organization=agent.organization,
+                registration_status=Agent.RegistrationStatus.APPROVED,
+                is_active=True,
+            ).count()
+            if active_count >= 2:
+                return Response(
+                    {'detail': 'Trial plan limit reached (2 agents). Upgrade your plan to add more team members.'},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
         agent.registration_status = Agent.RegistrationStatus.APPROVED
         agent.is_verified = True
         agent.is_active   = True
@@ -392,6 +409,19 @@ class TeamView(APIView):
             agent = Agent.objects.get(id=agent_id)
         except Agent.DoesNotExist:
             return Response({'detail': 'Agent not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        # TRIAL plan gate — max 2 active agents per org
+        if org.plan == 'trial':
+            active_count = Agent.objects.filter(
+                organization=org,
+                registration_status=Agent.RegistrationStatus.APPROVED,
+                is_active=True,
+            ).count()
+            if active_count >= 2:
+                return Response(
+                    {'detail': 'Trial plan limit reached (2 agents). Upgrade your plan to add more team members.'},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
 
         agent.organization    = org
         agent.employment_type = Agent.EmploymentType.INTERNAL

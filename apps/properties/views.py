@@ -79,7 +79,19 @@ class PropertyViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         from .models import Property as _P
+        from apps.organizations.models import Organization
         user = self.request.user
+
+        # TRIAL plan gate — max 10 active properties per org
+        def _check_trial_limit(org):
+            if org and org.plan == Organization.Plan.TRIAL:
+                count = _P.objects.filter(organization=org).count()
+                if count >= 10:
+                    from rest_framework.exceptions import PermissionDenied
+                    raise PermissionDenied(
+                        "Trial plan limit reached (10 properties). Upgrade to add more listings."
+                    )
+
         if user.role == 'admin':
             extra = {}
         elif user.role == 'developer':
@@ -87,6 +99,7 @@ class PropertyViewSet(viewsets.ModelViewSet):
                 org = user.owned_organization
             except Exception:
                 org = None
+            _check_trial_limit(org)
             extra = {
                 'owner': user,
                 'organization': org,
@@ -100,6 +113,7 @@ class PropertyViewSet(viewsets.ModelViewSet):
                 agent_profile = None
                 org = None
             if org:
+                _check_trial_limit(org)
                 extra = {
                     'organization': org,
                     'listed_by_agent': agent_profile,

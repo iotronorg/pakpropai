@@ -46,6 +46,7 @@ LOCAL_APPS = [
     'apps.reports',
     'apps.audit',
     'apps.agents',
+    'apps.campaigns',
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -212,6 +213,10 @@ CELERY_BEAT_SCHEDULE = {
     'monthly-report-generation': {
         'task':     'apps.reports.tasks.generate_monthly_reports',
         'schedule': crontab(hour=6, minute=0, day_of_month=1),  # 1st of each month at 06:00 PKT
+    },
+    'dispatch-scheduled-campaigns': {
+        'task':     'apps.campaigns.tasks.dispatch_scheduled_campaigns',
+        'schedule': 300,  # every 5 minutes
     },
 }
 

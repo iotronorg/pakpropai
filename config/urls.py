@@ -38,6 +38,7 @@ urlpatterns = [
         path('audit/',         include('apps.audit.urls')),
         path('reports/',       include('apps.reports.urls')),
         path('notifications/', include('apps.notifications.urls')),
+        path('campaigns/',    include('apps.campaigns.urls')),
         *core_api_urlpatterns,
     ])),
 ]

@@ -10,13 +10,27 @@ from .serializers import EscrowDealSerializer, InitiateDealLockSerializer, Confi
 
 logger = logging.getLogger(__name__)
 
-_PAYMENT_INSTRUCTIONS = {
-    'jazzcash':  "Send PKR {amount:,} to JazzCash *03001234567*. Use your WhatsApp number as reference.",
-    'easypaisa': "Send PKR {amount:,} to EasyPaisa *03001234567*. Use your WhatsApp number as reference.",
-    'bank':      "Transfer PKR {amount:,} to Account *1234567890* (HBL — RealTron AI). Reference: your WhatsApp number.",
-    'manual':    "Our team will contact you with payment details within 1 hour.",
-    'safepay':   "A Safepay payment link will be sent to you shortly.",
-}
+def _get_payment_instructions(gateway: str, amount: int, currency: str) -> str:
+    from apps.config.services import SystemConfigService
+    if gateway == 'jazzcash':
+        number = SystemConfigService.get('jazzcash_number')
+        if number:
+            return f"Send {currency} {amount:,} to JazzCash *{number}*. Use your WhatsApp number as reference."
+        return "Our team will contact you with JazzCash payment details within 1 hour."
+    if gateway == 'easypaisa':
+        number = SystemConfigService.get('easypaisa_number')
+        if number:
+            return f"Send {currency} {amount:,} to EasyPaisa *{number}*. Use your WhatsApp number as reference."
+        return "Our team will contact you with EasyPaisa payment details within 1 hour."
+    if gateway == 'bank':
+        account = SystemConfigService.get('bank_account_number')
+        name    = SystemConfigService.get('bank_account_name') or 'RealTron AI'
+        if account:
+            return f"Transfer {currency} {amount:,} to Account *{account}* ({name}). Reference: your WhatsApp number."
+        return "Our team will contact you with bank transfer details within 1 hour."
+    if gateway == 'safepay':
+        return "A Safepay payment link will be sent to you shortly."
+    return "Our team will contact you with payment details within 1 hour."
 
 
 class IsDashboardUser(permissions.BasePermission):
@@ -54,8 +68,7 @@ class DealLockInitiateView(APIView):
 
         _notify_seller_lock_initiated(deal, seller_token)
 
-        instructions = _PAYMENT_INSTRUCTIONS.get(gateway, _PAYMENT_INSTRUCTIONS['manual'])
-        payment_message = instructions.format(amount=amount)
+        payment_message = _get_payment_instructions(gateway, amount, deal.currency)
 
         return Response({
             'id':              str(deal.id),
@@ -197,7 +210,14 @@ class DealLockSellerConfirmView(APIView):
 
         # Allow: the seller themselves, the assigned agent, or admin
         is_admin  = request.user.role == 'admin'
-        is_seller = deal.property.owner_id == request.user.pk
+        is_seller = (
+            deal.property.owner_id == request.user.pk
+            or (
+                request.user.role == 'developer'
+                and deal.property.organization is not None
+                and getattr(request.user, 'owned_organization', None) == deal.property.organization
+            )
+        )
         is_agent  = (deal.agent and hasattr(request.user, 'agent_profile')
                      and deal.agent == request.user.agent_profile)
 
@@ -265,7 +285,7 @@ def _notify_buyer_lock_active(deal: EscrowDeal):
         msg = (
             f"✅ *Deal Lock Confirmed!*\n\n"
             f"🏠 *Property:* {deal.property.title}\n"
-            f"💰 *Token Amount:* PKR {deal.token_amount:,}\n"
+            f"💰 *Token Amount:* {deal.currency} {deal.token_amount:,}\n"
             f"⏳ *Exclusivity:* {hrs:.0f} hours remaining\n"
             f"📅 *Expires:* {deal.lock_expires_at.strftime('%d %b %Y, %I:%M %p')}\n\n"
             "This property is now exclusively reserved for you. "
@@ -289,7 +309,7 @@ def _notify_seller_lock_initiated(deal: EscrowDeal, token: str):
             f"🔒 *Deal Lock Request*\n\n"
             f"A buyer has requested a 48-hour deal lock on your property:\n"
             f"🏠 *{deal.property.title}*\n"
-            f"💰 *Token Amount:* PKR {deal.token_amount:,}\n\n"
+            f"💰 *Token Amount:* {deal.currency} {deal.token_amount:,}\n\n"
             f"Your confirmation code: *{token}*\n\n"
             "Please contact your agent or reply with your code to confirm. "
             "If you did not authorize this, contact support immediately."

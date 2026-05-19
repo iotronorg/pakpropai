@@ -490,6 +490,8 @@ class AIServiceManager:
 
     @staticmethod
     def _direct_scam_check(scam_input, language: str) -> str:
+        if language and not language.startswith('en'):
+            return None  # let LLM respond in user's language
         from apps.ai._tools_fraud import run_fraud_check
         result = run_fraud_check(**scam_input.to_tool_kwargs())
         if result.get('error'):
@@ -524,6 +526,8 @@ class AIServiceManager:
 
     @staticmethod
     def _direct_tax_advice(tax_input, language: str) -> str:
+        if language and not language.startswith('en'):
+            return None  # let LLM respond in user's language
         from apps.ai._tools_financial import calculate_7e_tax
         result = calculate_7e_tax(**tax_input.to_tool_kwargs())
         if result.get('error'):
