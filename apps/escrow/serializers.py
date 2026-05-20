@@ -43,19 +43,8 @@ class InitiateDealLockSerializer(serializers.Serializer):
 
     def validate_property_id(self, value):
         from apps.properties.models import Property
-        try:
-            prop = Property.objects.get(id=value, is_active=True)
-        except Property.DoesNotExist:
+        if not Property.objects.filter(id=value, is_active=True).exists():
             raise serializers.ValidationError("Property not found or inactive.")
-        # Only one active lock per property at a time
-        if EscrowDeal.objects.filter(
-            property=prop,
-            status__in=[EscrowDeal.Status.INITIATED, EscrowDeal.Status.LOCKED]
-        ).exists():
-            raise serializers.ValidationError(
-                "This property already has an active deal lock. Try again after it expires."
-            )
-        self.context['property'] = prop
         return value
 
 

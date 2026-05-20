@@ -1,10 +1,13 @@
 import logging
 import secrets
+from django.db import transaction, IntegrityError
 from rest_framework import generics, permissions, status
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
 
+from apps.properties.models import Property
 from .models import EscrowDeal
 from .serializers import EscrowDealSerializer, InitiateDealLockSerializer, ConfirmPaymentSerializer
 
@@ -51,23 +54,40 @@ class DealLockInitiateView(APIView):
         ser = InitiateDealLockSerializer(data=request.data, context={'request': request})
         ser.is_valid(raise_exception=True)
 
-        prop    = ser.context['property']
-        amount  = ser.validated_data['token_amount']
-        gateway = ser.validated_data['payment_gateway']
+        property_id = ser.validated_data['property_id']
+        amount      = ser.validated_data['token_amount']
+        gateway     = ser.validated_data['payment_gateway']
 
-        seller_token = secrets.token_hex(4).upper()  # 8-char hex token
-        deal = EscrowDeal.objects.create(
-            property                  = prop,
-            buyer                     = request.user,
-            token_amount              = amount,
-            payment_gateway           = gateway,
-            initiated_via             = EscrowDeal.Channel.DASHBOARD,
-            status                    = EscrowDeal.Status.INITIATED,
-            seller_confirmation_token = seller_token,
-        )
+        try:
+            with transaction.atomic():
+                prop = Property.objects.select_for_update().get(
+                    id=property_id, is_active=True
+                )
+                if EscrowDeal.objects.filter(
+                    property=prop,
+                    status__in=[EscrowDeal.Status.INITIATED, EscrowDeal.Status.LOCKED],
+                ).exists():
+                    raise DRFValidationError(
+                        'This property already has an active deal lock. '
+                        'Try again after it expires.'
+                    )
+                seller_token = secrets.token_hex(4).upper()
+                deal = EscrowDeal.objects.create(
+                    property                  = prop,
+                    buyer                     = request.user,
+                    token_amount              = amount,
+                    payment_gateway           = gateway,
+                    initiated_via             = EscrowDeal.Channel.DASHBOARD,
+                    status                    = EscrowDeal.Status.INITIATED,
+                    seller_confirmation_token = seller_token,
+                )
+        except IntegrityError:
+            raise DRFValidationError(
+                'This property already has an active deal lock. '
+                'Try again after it expires.'
+            )
 
         _notify_seller_lock_initiated(deal, seller_token)
-
         payment_message = _get_payment_instructions(gateway, amount, deal.currency)
 
         return Response({
@@ -79,7 +99,8 @@ class DealLockInitiateView(APIView):
             'message': (
                 f"Deal lock requested for *{prop.title}*.\n\n"
                 f"{payment_message}\n\n"
-                "Once your payment is confirmed by our team, a 48-hour exclusivity window will begin."
+                "Once your payment is confirmed by our team, "
+                "a 48-hour exclusivity window will begin."
             ),
         }, status=status.HTTP_201_CREATED)
 
