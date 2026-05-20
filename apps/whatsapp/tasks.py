@@ -84,6 +84,28 @@ def process_incoming_whatsapp_task(message: dict, phone_number_id: str = ''):
             )
             return
 
+    # ── WhatsApp AI token guard ────────────────────────────────────────────────
+    try:
+        from apps.organizations.models import Organization
+        from apps.billing.ledger import UsageLedger
+
+        org = Organization.objects.filter(wa_phone_number_id=phone_number_id).first()
+        if org is not None:
+            plan = getattr(org, 'plan', 'trial')
+            if not UsageLedger.within_limit(str(org.id), plan, 'wa_tokens'):
+                logger.warning(
+                    'WA token limit exhausted org=%s plan=%s count=%d — sending canned reply',
+                    org.id, plan, UsageLedger.get_wa_token_count(str(org.id)),
+                )
+                from apps.whatsapp.client import WhatsAppClient
+                WhatsAppClient.send_text(
+                    phone,
+                    'Our AI assistant is at capacity. One of our agents will follow up with you shortly.',
+                )
+                return
+    except Exception:
+        logger.exception('WA token guard failed phone=%s — proceeding', phone)
+
     # ── Text (and media fallbacks with no media_id) → direct routing ─────────
     try:
         from apps.whatsapp.router import MessageRouter

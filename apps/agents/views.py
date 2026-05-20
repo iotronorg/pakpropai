@@ -5,6 +5,8 @@ from rest_framework import generics, permissions, status
 from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from apps.billing.ledger import UsageLedger
+from apps.billing.permissions import WithinAgentSeatLimit
 from apps.core.permissions import IsAdminOrDeveloper
 from apps.organizations.models import Organization
 from .models import Agent
@@ -50,7 +52,7 @@ class AgentListView(generics.ListCreateAPIView):
     POST /agents/           — admin: full approved create; developer: creates pending agent in own org.
     """
     serializer_class   = AgentAdminSerializer
-    permission_classes = [IsAdminOrDeveloper]
+    permission_classes = [IsAdminOrDeveloper, WithinAgentSeatLimit]
 
     def get_queryset(self):
         role = self.request.user.role
@@ -102,6 +104,7 @@ class AgentListView(generics.ListCreateAPIView):
                 is_active=False,
                 is_verified=False,
             )
+            UsageLedger.increment_agents(str(org.id))
 
 
 class AgentAdminDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -196,22 +199,15 @@ class AgentApproveView(APIView):
         if agent.registration_status == Agent.RegistrationStatus.APPROVED:
             return Response({'detail': 'Agent is already approved.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # TRIAL plan gate — max 2 active agents per org
         if (
             request.user.role == 'developer'
             and agent.organization is not None
-            and agent.organization.plan == 'trial'
         ):
-            active_count = Agent.objects.filter(
-                organization=agent.organization,
-                registration_status=Agent.RegistrationStatus.APPROVED,
-                is_active=True,
-            ).count()
-            if active_count >= 2:
-                return Response(
-                    {'detail': 'Trial plan limit reached (2 agents). Upgrade your plan to add more team members.'},
-                    status=status.HTTP_403_FORBIDDEN,
-                )
+            org  = agent.organization
+            plan = getattr(org, 'plan', 'trial')
+            if not UsageLedger.within_limit(str(org.id), plan, 'agents'):
+                from apps.billing.permissions import PlanLimitExceeded
+                raise PlanLimitExceeded('Agent seat limit reached. Upgrade your plan.')
 
         agent.registration_status = Agent.RegistrationStatus.APPROVED
         agent.is_verified = True
@@ -223,6 +219,9 @@ class AgentApproveView(APIView):
             'registration_status', 'is_verified', 'is_active',
             'verified_at', 'verified_by', 'rejection_reason', 'updated_at',
         ])
+
+        if agent.organization:
+            UsageLedger.increment_agents(str(agent.organization_id))
 
         if agent.user:
             agent.user.is_active = True
@@ -410,22 +409,15 @@ class TeamView(APIView):
         except Agent.DoesNotExist:
             return Response({'detail': 'Agent not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        # TRIAL plan gate — max 2 active agents per org
-        if org.plan == 'trial':
-            active_count = Agent.objects.filter(
-                organization=org,
-                registration_status=Agent.RegistrationStatus.APPROVED,
-                is_active=True,
-            ).count()
-            if active_count >= 2:
-                return Response(
-                    {'detail': 'Trial plan limit reached (2 agents). Upgrade your plan to add more team members.'},
-                    status=status.HTTP_403_FORBIDDEN,
-                )
+        plan = getattr(org, 'plan', 'trial')
+        if not UsageLedger.within_limit(str(org.id), plan, 'agents'):
+            from apps.billing.permissions import PlanLimitExceeded
+            raise PlanLimitExceeded('Agent seat limit reached. Upgrade your plan.')
 
         agent.organization    = org
         agent.employment_type = Agent.EmploymentType.INTERNAL
         agent.save(update_fields=['organization', 'employment_type', 'updated_at'])
+        UsageLedger.increment_agents(str(org.id))
         return Response(AgentSerializer(agent).data, status=status.HTTP_200_OK)
 
 
@@ -446,4 +438,5 @@ class TeamMemberView(APIView):
         agent.organization    = None
         agent.employment_type = Agent.EmploymentType.FREELANCE
         agent.save(update_fields=['organization', 'employment_type', 'updated_at'])
+        UsageLedger.decrement_agents(str(org.id))
         return Response(status=status.HTTP_204_NO_CONTENT)

@@ -428,6 +428,7 @@ class AIServiceManager:
                 agent._save_history(phone, organization, history, message, direct_reply)
                 self._log_interaction(user, intent, message, direct_reply,
                                       int((time.time() - start) * 1000), direct=True)
+                self._record_wa_token(organization)
                 return direct_reply
 
         # ── 4. Full LLM call with dynamic context injection ────────────────────
@@ -456,6 +457,7 @@ class AIServiceManager:
 
         self._log_interaction(user, intent, message, reply,
                               int((time.time() - start) * 1000), direct=False)
+        self._record_wa_token(organization)
         return reply
 
     # ── Direct routing (no LLM) ────────────────────────────────────────────────
@@ -564,6 +566,18 @@ class AIServiceManager:
 
         lines += ['', '_Consult a registered CA or tax lawyer for final advice._']
         return '\n'.join(lines)
+
+    # ── Usage recording ────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _record_wa_token(organization) -> None:
+        if organization is None:
+            return
+        try:
+            from apps.billing.ledger import UsageLedger
+            UsageLedger.increment_wa_tokens(str(organization.id))
+        except Exception:
+            pass  # never block AI reply on billing failure
 
     # ── Logging ────────────────────────────────────────────────────────────────
 

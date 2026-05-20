@@ -56,6 +56,15 @@ class Migration(migrations.Migration):
                 max_length=10,
             ),
         ),
+        migrations.RunPython(
+            code=lambda apps, schema_editor: apps.get_model('properties', 'Property').objects.filter(
+                organization__isnull=True, owner__isnull=False
+            ).update(listing_owner_type='client') or
+            apps.get_model('properties', 'Property').objects.filter(
+                organization__isnull=True, owner__isnull=True
+            ).update(listing_owner_type='platform'),
+            reverse_code=migrations.RunPython.noop,
+        ),
         migrations.AddIndex(
             model_name='property',
             index=models.Index(fields=['listing_owner_type'], name='prop_owner_type_idx'),
