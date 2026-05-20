@@ -18,10 +18,13 @@ _DOC_KEYWORDS = {
 }
 
 
-def detect_doc_type(caption: str) -> str:
+def detect_doc_type(caption: str, org_country: str = 'PK') -> str:
     cap = caption.lower()
     for keyword, doc_type in _DOC_KEYWORDS.items():
         if keyword in cap:
+            # CNIC is a Pakistan-specific identity document; treat as generic for other markets
+            if doc_type == 'cnic' and org_country != 'PK':
+                return 'other'
             return doc_type
     return 'other'
 

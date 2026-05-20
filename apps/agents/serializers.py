@@ -72,8 +72,8 @@ class AgentRegistrationSerializer(serializers.Serializer):
 
     def validate_phone(self, value):
         from apps.users.models import User
-        if not re.match(r'^\+92\d{10}$', value):
-            raise serializers.ValidationError("Phone must be in +92XXXXXXXXXX format.")
+        if not re.match(r'^\+\d{7,15}$', value):
+            raise serializers.ValidationError("Phone must be in E.164 format (e.g. +12025550123).")
         if User.objects.filter(phone=value).exists():
             raise serializers.ValidationError("An account with this phone number already exists.")
         if Agent.objects.filter(phone=value).exists():

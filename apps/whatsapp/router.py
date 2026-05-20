@@ -341,7 +341,7 @@ class MessageRouter:
                         "Document verification is not currently available.\n"
                         "Please contact support for assistance."
                     )
-                return agent.verify_document_image(phone, image_bytes, mime, caption, user)
+                return agent.verify_document_image(phone, image_bytes, mime, caption, user, organization=org)
             return agent.chat_with_image(phone, image_bytes, mime, caption, user, organization=org)
         except Exception as exc:
             logger.error(f"Image analysis failed: {exc}")

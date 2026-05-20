@@ -157,13 +157,14 @@ class RealTronAgent:
         return reply
 
     def verify_document_image(self, phone: str, image_bytes: bytes, mime_type: str,
-                               caption: str = '', user=None) -> str:
+                               caption: str = '', user=None, organization=None) -> str:
         """
         Specialized document OCR flow.
         Detects document type, extracts fields, flags issues, saves to DocumentScan.
         """
         backend = self._get_backend()
-        doc_type = detect_doc_type(caption)
+        org_country = getattr(organization, 'country', 'PK') or 'PK'
+        doc_type = detect_doc_type(caption, org_country=org_country)
         prompt   = ocr_prompt(doc_type, caption)
 
         try:
