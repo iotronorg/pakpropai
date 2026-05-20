@@ -1,0 +1,50 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Stage 1 — dependency builder (mirrors Dockerfile.web builder stage)
+# ─────────────────────────────────────────────────────────────────────────────
+FROM python:3.12-slim AS builder
+
+WORKDIR /build
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        gcc g++ libpq-dev libffi-dev libxml2-dev libxslt-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements/base.txt requirements/prod.txt ./
+RUN pip install --upgrade pip --no-cache-dir \
+    && pip install --no-cache-dir --prefix=/install -r prod.txt
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Stage 2 — Celery worker runtime
+# Same minimal base as the web image; runs celery worker / beat instead of
+# gunicorn. Shares build cache with Dockerfile.web for fast parallel builds.
+# ─────────────────────────────────────────────────────────────────────────────
+FROM python:3.12-slim AS worker
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONFAULTHANDLER=1 \
+    DJANGO_SETTINGS_MODULE=config.settings.prod \
+    CELERY_LOGLEVEL=info \
+    CELERY_CONCURRENCY=4
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libpq5 \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd -r realtron \
+    && useradd -r -g realtron -d /app -s /sbin/nologin realtron
+
+COPY --from=builder /install /usr/local
+
+WORKDIR /app
+COPY --chown=realtron:realtron . .
+
+RUN chmod +x docker/entrypoint.worker.sh
+
+USER realtron
+
+ENTRYPOINT ["docker/entrypoint.worker.sh"]
+# Default: run the async task worker.
+# Override CMD in docker-compose to run beat scheduler instead:
+#   command: ["beat"]
+CMD ["worker"]

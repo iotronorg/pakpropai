@@ -1,0 +1,124 @@
+services:
+
+  # ── Database ───────────────────────────────────────────────────────────────
+  # In a managed-cloud deployment, replace this with an external DATABASE_URL
+  # env var pointing at RDS / Cloud SQL and remove this service entirely.
+  db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-realtron}
+      POSTGRES_USER: ${POSTGRES_USER:-realtron}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-realtron}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis ──────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Migration init job ─────────────────────────────────────────────────────
+  # Runs migrations once at deploy time then exits. The web/worker containers
+  # wait for this to succeed before starting.
+  migrate:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.web
+    image: realtron-web:${IMAGE_TAG:-latest}
+    command: ["python", "manage.py", "migrate", "--noinput"]
+    env_file: ../.env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.prod
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: on-failure
+
+  # ── Django web (gunicorn) ──────────────────────────────────────────────────
+  web:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.web
+    image: realtron-web:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file: ../.env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.prod
+      GUNICORN_WORKERS: "4"
+      GUNICORN_THREADS: "2"
+    ports:
+      - "${WEB_PORT:-8000}:8000"
+    volumes:
+      - media_files:/app/media
+      - static_files:/app/staticfiles
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/')"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+
+  # ── Celery async worker ────────────────────────────────────────────────────
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.worker
+    image: realtron-worker:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    command: ["worker"]
+    env_file: ../.env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.prod
+      CELERY_CONCURRENCY: "4"
+    volumes:
+      - media_files:/app/media
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  # ── Celery beat scheduler ──────────────────────────────────────────────────
+  beat:
+    image: realtron-worker:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    command: ["beat"]
+    env_file: ../.env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.prod
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  postgres_data:
+  redis_data:
+  media_files:
+  static_files:

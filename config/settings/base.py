@@ -63,6 +63,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'apps.core.middleware.LastActiveMiddleware',
     'apps.core.middleware.TenantIsolationMiddleware',
+    'apps.core.middleware.TraceContextMiddleware',
     'apps.core.middleware.RequestAuditMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -300,23 +301,35 @@ if SENTRY_DSN:
         environment='production' if not DEBUG else 'development',
     )
 
-# Structured JSON logging
+# Structured JSON logging — organization_id and lead_id are injected into every
+# record by TraceContextFilter so all stdout lines are tenant-correlated.
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
+    'filters': {
+        'trace_context': {
+            '()': 'apps.core.log_filters.TraceContextFilter',
+        },
+    },
     'formatters': {
+        # Production: compact JSON consumed by log aggregators (Datadog, Loki, etc.)
         'json': {
             '()': 'pythonjsonlogger.jsonlogger.JsonFormatter',
-            'format': '%(asctime)s %(name)s %(levelname)s %(message)s',
+            'format': (
+                '%(asctime)s %(name)s %(levelname)s '
+                '%(organization_id)s %(lead_id)s %(message)s'
+            ),
         },
+        # Development: human-readable with trace fields visible
         'simple': {
-            'format': '[%(levelname)s] %(name)s: %(message)s',
+            'format': '[%(levelname)s] %(name)s org=%(organization_id)s lead=%(lead_id)s: %(message)s',
         },
     },
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
             'formatter': 'json' if not DEBUG else 'simple',
+            'filters': ['trace_context'],
         },
     },
     'root': {
@@ -324,9 +337,9 @@ LOGGING = {
         'level': 'INFO',
     },
     'loggers': {
-        'django': {'handlers': ['console'], 'level': 'WARNING', 'propagate': False},
-        'django.request': {'handlers': ['console'], 'level': 'ERROR', 'propagate': False},
-        'api.audit': {'handlers': ['console'], 'level': 'INFO', 'propagate': False},
-        'apps': {'handlers': ['console'], 'level': 'INFO', 'propagate': False},
+        'django':         {'handlers': ['console'], 'level': 'WARNING', 'propagate': False},
+        'django.request': {'handlers': ['console'], 'level': 'ERROR',   'propagate': False},
+        'api.audit':      {'handlers': ['console'], 'level': 'INFO',    'propagate': False},
+        'apps':           {'handlers': ['console'], 'level': 'INFO',    'propagate': False},
     },
 }

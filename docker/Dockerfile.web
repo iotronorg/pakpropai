@@ -1,0 +1,53 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Stage 1 — dependency builder
+# Installs all Python packages into an isolated prefix so the runtime image
+# ships without gcc, libpq-dev, or any build toolchain.
+# ─────────────────────────────────────────────────────────────────────────────
+FROM python:3.12-slim AS builder
+
+WORKDIR /build
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        gcc g++ libpq-dev libffi-dev libxml2-dev libxslt-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements/base.txt requirements/prod.txt ./
+RUN pip install --upgrade pip --no-cache-dir \
+    && pip install --no-cache-dir --prefix=/install -r prod.txt
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Stage 2 — production runtime
+# Minimal Debian slim + runtime libs only, non-root service account.
+# ─────────────────────────────────────────────────────────────────────────────
+FROM python:3.12-slim AS web
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONFAULTHANDLER=1 \
+    DJANGO_SETTINGS_MODULE=config.settings.prod \
+    PORT=8000
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libpq5 \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd -r realtron \
+    && useradd -r -g realtron -d /app -s /sbin/nologin realtron
+
+# Python packages from builder — zero build headers in the final layer
+COPY --from=builder /install /usr/local
+
+WORKDIR /app
+COPY --chown=realtron:realtron . .
+
+RUN chmod +x docker/entrypoint.web.sh
+
+USER realtron
+
+EXPOSE $PORT
+
+# Load balancer / compose health probe hits /health/ (no auth required)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/')" || exit 1
+
+ENTRYPOINT ["docker/entrypoint.web.sh"]

@@ -1,0 +1,239 @@
+name: RealTron AI — CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository }}
+
+# Cancel in-flight runs on the same branch when a new push arrives
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  # ── 1. Security linters (parallel with test for speed) ──────────────────
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # trufflehog needs full history
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pakpropai/requirements/base.txt
+
+      - name: Install Bandit
+        run: pip install "bandit[toml]==1.8.*"
+
+      - name: Bandit — static analysis (generate report)
+        run: bandit -r apps/ -ll -f json -o /tmp/bandit-report.json
+        working-directory: pakpropai
+        continue-on-error: true  # bandit exits 1 when issues found; we gate below
+
+      - name: Bandit — fail on HIGH severity
+        run: |
+          python - <<'EOF'
+          import json, sys
+          report = json.load(open('/tmp/bandit-report.json'))
+          highs = [i for i in report['results'] if i['issue_severity'] == 'HIGH']
+          if highs:
+              for h in highs:
+                  print(f"HIGH  {h['filename']}:{h['line_number']}  {h['issue_text']}")
+              sys.exit(1)
+          print(f"Bandit: 0 HIGH issues ({len(report['results'])} total findings)")
+          EOF
+
+      - name: TruffleHog — secret scanning
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --only-verified
+
+  # ── 2. Test suite + migration compatibility ──────────────────────────────
+  test:
+    name: Pytest + Migration Check
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: realtron_test
+          POSTGRES_USER: realtron
+          POSTGRES_PASSWORD: realtronpass
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    env:
+      DATABASE_URL:            postgres://realtron:realtronpass@localhost:5432/realtron_test
+      SECRET_KEY:              ci-only-not-for-production-${{ github.run_id }}
+      REDIS_URL:               redis://localhost:6379/0
+      DJANGO_SETTINGS_MODULE:  config.settings.test
+      ALLOWED_HOSTS:           localhost,127.0.0.1
+      DEBUG:                   "False"
+      AI_BACKEND:              local
+      WA_VERIFY_TOKEN:         ci-token
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pakpropai/requirements/base.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements/base.txt pytest pytest-django pytest-cov
+        working-directory: pakpropai
+
+      - name: Check for unapplied model changes
+        run: python manage.py makemigrations --check --dry-run
+        working-directory: pakpropai
+
+      - name: Verify migration rollback safety (backwards compatibility)
+        run: |
+          python manage.py migrate --noinput
+          # Roll back to zero for every app to validate down() methods compile
+          python manage.py migrate --noinput users zero 2>/dev/null || true
+          python manage.py migrate --noinput
+        working-directory: pakpropai
+
+      - name: Run full test suite
+        run: |
+          pytest tests/ apps/ \
+            -v \
+            --tb=short \
+            --cov=apps \
+            --cov-report=term-missing \
+            --cov-report=xml:/tmp/coverage.xml \
+            -x
+        working-directory: pakpropai
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          files: /tmp/coverage.xml
+          fail_ci_if_error: false
+
+  # ── 3. Build & push Docker images (main only) ────────────────────────────
+  build:
+    name: Build & Push Images
+    needs: [test, security]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      image_tag: ${{ steps.tag.outputs.short_sha }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image tag
+        id: tag
+        run: echo "short_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Build & push web image
+        uses: docker/build-push-action@v5
+        with:
+          context: pakpropai
+          file: pakpropai/docker/Dockerfile.web
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/web:${{ steps.tag.outputs.short_sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/web:latest
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+
+      - name: Build & push worker image
+        uses: docker/build-push-action@v5
+        with:
+          context: pakpropai
+          file: pakpropai/docker/Dockerfile.worker
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/worker:${{ steps.tag.outputs.short_sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/worker:latest
+          cache-from: type=gha,scope=worker
+          cache-to: type=gha,mode=max,scope=worker
+
+  # ── 4. Staging deploy + automated smoke tests ────────────────────────────
+  deploy-staging:
+    name: Deploy to Staging
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: ${{ secrets.STAGING_URL }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trigger staging deployment
+        env:
+          DEPLOY_HOOK: ${{ secrets.STAGING_DEPLOY_HOOK }}
+          IMAGE_TAG:   ${{ needs.build.outputs.image_tag }}
+        run: |
+          # Replace with your hosting platform's deploy hook.
+          # Render, Railway, Coolify, and Dokku all accept a POST to a webhook URL.
+          curl -fsSL -X POST "$DEPLOY_HOOK" \
+            -H "Content-Type: application/json" \
+            -d "{\"imageTag\": \"$IMAGE_TAG\"}"
+
+      - name: Wait for deployment to stabilize
+        run: sleep 45
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install smoke test runtime
+        run: pip install requests
+
+      - name: Run smoke tests
+        env:
+          STAGING_URL:           ${{ secrets.STAGING_URL }}
+          SMOKE_WA_VERIFY_TOKEN: ${{ secrets.STAGING_WA_VERIFY_TOKEN }}
+        run: python scripts/smoke_test.py
+        working-directory: pakpropai

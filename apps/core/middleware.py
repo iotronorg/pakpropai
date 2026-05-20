@@ -97,6 +97,34 @@ class TenantIsolationMiddleware:
             )
 
 
+class TraceContextMiddleware:
+    """
+    Populates per-request organization_id and lead_id context vars so that every
+    log line emitted during this request automatically carries those identifiers.
+
+    Must be placed AFTER TenantIsolationMiddleware (which resolves
+    request.organization) and BEFORE RequestAuditMiddleware (so audit log lines
+    are already tagged).
+
+    Views that identify a lead should call:
+        from apps.core.context import set_trace_context
+        set_trace_context(lead_id=str(lead.pk))
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        from apps.core.context import set_trace_context, clear_trace_context
+
+        org = getattr(request, 'organization', None)
+        set_trace_context(organization_id=str(org.pk) if org else '')
+        try:
+            return self.get_response(request)
+        finally:
+            clear_trace_context()
+
+
 class RequestAuditMiddleware:
     """
     Logs every API request as a structured audit entry: method, path, user,
