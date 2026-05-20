@@ -8,70 +8,83 @@ from apps.whatsapp.client import WA_API_URL
 logger = logging.getLogger(__name__)
 
 
+# ── Primary webhook dispatcher ─────────────────────────────────────────────────
+
 @shared_task(ignore_result=True)
 def process_incoming_whatsapp_task(message: dict, phone_number_id: str = ''):
     """
     Async Celery worker for a single inbound WhatsApp message.
 
     The webhook view returns 200 OK immediately after dispatching this task.
-    All message processing — mark-read, routing, AI, media handling — happens
-    here so the webhook never blocks.
+    Media messages (audio / image / document) are handed off to dedicated
+    workers with separate resource profiles; text goes straight to the router.
 
     Retries are intentionally disabled: the idempotency key is set in the view
-    before dispatch, so a Celery retry would silently drop the message. If
-    processing fails, the error is logged and the message is permanently consumed.
+    before dispatch, so a retry would silently drop the message.
     """
-    msg_id = message.get('id', '')
-    phone  = message.get('from', '')
+    msg_id   = message.get('id', '')
+    phone    = message.get('from', '')
+    msg_type = message.get('type', 'text')
 
     if not msg_id or not phone:
-        logger.warning("process_incoming_whatsapp_task: missing id or from — %r", message)
+        logger.warning(
+            "process_incoming_whatsapp_task: missing id or from — %r", message
+        )
         return
 
-    # Show blue ticks immediately before the AI thinks (3-15 s).
+    # Show blue ticks immediately (3-15 s before AI reply).
     try:
         from apps.whatsapp.client import WhatsAppClient
         WhatsAppClient.mark_read(msg_id)
     except Exception:
         pass  # Non-critical — never block message processing
 
-    msg_type = message.get('type', 'text')
-
-    # ── Stub routing table for media types ────────────────────────────────────
-    # Each branch logs receipt and delegates to the MessageRouter.
-    # Future: replace stubs with dedicated Celery tasks (transcribe_audio_task,
-    # process_document_task, process_image_task) that can run in separate queues
-    # with different resource profiles (GPU workers for STT/OCR, etc.).
+    # ── Dispatch to dedicated media workers ───────────────────────────────────
     if msg_type == 'audio':
-        audio_id = message.get('audio', {}).get('id', '')
-        mime     = message.get('audio', {}).get('mime_type', 'audio/ogg')
-        logger.info(
-            "WA inbound audio phone=%s msg_id=%s media_id=%s mime=%s — routing to STT",
-            phone, msg_id, audio_id, mime,
-        )
-        # TODO: dispatch to dedicated transcription worker once Whisper/STT is integrated.
-        # For now: fall through to MessageRouter which handles transcription synchronously.
+        audio   = message.get('audio', {})
+        media_id = audio.get('id', '')
+        mime     = audio.get('mime_type', 'audio/ogg')
+        if media_id:
+            logger.info(
+                "WA inbound audio phone=%s msg_id=%s media_id=%s — dispatching STT worker",
+                phone, msg_id, media_id,
+            )
+            transcribe_audio_task.delay(media_id, mime, phone, phone_number_id, message)
+            return
+        # No media_id — fall through to router (edge case: forward/status message)
 
     elif msg_type == 'image':
-        image_id = message.get('image', {}).get('id', '')
-        mime     = message.get('image', {}).get('mime_type', 'image/jpeg')
-        logger.info(
-            "WA inbound image phone=%s msg_id=%s media_id=%s mime=%s — routing to Vision/OCR",
-            phone, msg_id, image_id, mime,
-        )
-        # TODO: dispatch to dedicated OCR/Vision worker once computer vision pipeline is integrated.
+        image    = message.get('image', {})
+        media_id = image.get('id', '')
+        mime     = image.get('mime_type', 'image/jpeg')
+        caption  = image.get('caption', '')
+        if media_id:
+            logger.info(
+                "WA inbound image phone=%s msg_id=%s media_id=%s — dispatching Vision worker",
+                phone, msg_id, media_id,
+            )
+            process_image_task.delay(
+                media_id, mime, phone, phone_number_id, caption, message
+            )
+            return
 
     elif msg_type == 'document':
-        doc_id   = message.get('document', {}).get('id', '')
-        mime     = message.get('document', {}).get('mime_type', 'application/pdf')
-        filename = message.get('document', {}).get('filename', '')
-        logger.info(
-            "WA inbound document phone=%s msg_id=%s media_id=%s mime=%s filename=%s — routing to OCR",
-            phone, msg_id, doc_id, mime, filename,
-        )
-        # TODO: dispatch to dedicated document OCR worker (Tesseract/Vision) for async processing.
+        doc      = message.get('document', {})
+        media_id = doc.get('id', '')
+        mime     = doc.get('mime_type', 'application/pdf')
+        filename = doc.get('filename', '')
+        caption  = doc.get('caption', '')
+        if media_id:
+            logger.info(
+                "WA inbound document phone=%s msg_id=%s media_id=%s filename=%s — dispatching OCR worker",
+                phone, msg_id, media_id, filename,
+            )
+            process_document_task.delay(
+                media_id, mime, phone, phone_number_id, filename, caption, message
+            )
+            return
 
-    # ── Route through MessageRouter (handles all types) ───────────────────────
+    # ── Text (and media fallbacks with no media_id) → direct routing ─────────
     try:
         from apps.whatsapp.router import MessageRouter
         MessageRouter.route(message, phone, phone_number_id)
@@ -81,6 +94,166 @@ def process_incoming_whatsapp_task(message: dict, phone_number_id: str = ''):
             phone, msg_id, msg_type,
         )
 
+
+# ── Dedicated media workers ────────────────────────────────────────────────────
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=30, ignore_result=True)
+def transcribe_audio_task(
+    self,
+    media_id: str,
+    mime_type: str,
+    phone: str,
+    phone_number_id: str,
+    message_data: dict,
+):
+    """
+    STT pipeline for inbound voice notes.
+
+    1. Download binary via WhatsAppMediaDownloader (with S3 archival)
+    2. Transcribe via STTService (OpenAI Whisper → Gemini fallback)
+    3. Inject transcript into message_data so MessageRouter skips re-download
+    4. Route through MessageRouter → AI → reply
+    """
+    from apps.whatsapp.media_services import (
+        WhatsAppMediaDownloader,
+        MediaRateLimitError,
+        MediaError,
+    )
+    from apps.whatsapp.stt_services import STTService
+
+    # ── 1. Download ───────────────────────────────────────────────────────────
+    try:
+        result = WhatsAppMediaDownloader.download(media_id, mime_type)
+    except MediaRateLimitError as exc:
+        logger.warning(
+            "Audio download rate-limited media_id=%s — scheduling retry %d/%d",
+            media_id, self.request.retries + 1, self.max_retries,
+        )
+        raise self.retry(exc=exc)
+    except MediaError as exc:
+        logger.error(
+            "Audio download failed media_id=%s phone=%s: %s — routing with empty transcript",
+            media_id, phone, exc,
+        )
+        # Route anyway so the user gets a graceful error reply.
+        message_data.setdefault('audio', {})['_transcript'] = ''
+        _safe_route(message_data, phone, phone_number_id)
+        return
+
+    # ── 2. Transcribe ─────────────────────────────────────────────────────────
+    transcript = STTService.transcribe(result.data, result.mime_type)
+    logger.info(
+        "Audio transcribed phone=%s provider=%s lang=%s len=%d",
+        phone, transcript.provider, transcript.language, len(transcript.text),
+    )
+
+    # ── 3. Inject pre-fetched data into message_data ──────────────────────────
+    # MessageRouter._transcribe_voice checks for '_transcript' first, skipping re-download.
+    audio_meta = message_data.setdefault('audio', {})
+    audio_meta['_transcript'] = transcript.text
+    if result.cdn_url:
+        audio_meta['_cdn_url'] = result.cdn_url
+
+    # ── 4. Route ──────────────────────────────────────────────────────────────
+    _safe_route(message_data, phone, phone_number_id)
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=30, ignore_result=True)
+def process_image_task(
+    self,
+    media_id: str,
+    mime_type: str,
+    phone: str,
+    phone_number_id: str,
+    caption: str,
+    message_data: dict,
+):
+    """
+    Vision/OCR pipeline for inbound images.
+
+    Downloads the image (archiving to S3 when configured), then routes through
+    MessageRouter which handles vision analysis via the existing agent.
+    """
+    from apps.whatsapp.media_services import (
+        WhatsAppMediaDownloader,
+        MediaRateLimitError,
+        MediaError,
+    )
+
+    try:
+        result = WhatsAppMediaDownloader.download(media_id, mime_type)
+        if result.cdn_url:
+            message_data.setdefault('image', {})['_cdn_url'] = result.cdn_url
+    except MediaRateLimitError as exc:
+        logger.warning(
+            "Image download rate-limited media_id=%s — retry %d/%d",
+            media_id, self.request.retries + 1, self.max_retries,
+        )
+        raise self.retry(exc=exc)
+    except MediaError as exc:
+        logger.error(
+            "Image download failed media_id=%s phone=%s: %s — routing without S3 URL",
+            media_id, phone, exc,
+        )
+
+    _safe_route(message_data, phone, phone_number_id)
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=30, ignore_result=True)
+def process_document_task(
+    self,
+    media_id: str,
+    mime_type: str,
+    phone: str,
+    phone_number_id: str,
+    filename: str,
+    caption: str,
+    message_data: dict,
+):
+    """
+    OCR pipeline for inbound documents (PDF / image-as-document).
+
+    Archives to S3 when configured, then routes through MessageRouter for
+    vision-LLM extraction and DocumentScan persistence.
+    """
+    from apps.whatsapp.media_services import (
+        WhatsAppMediaDownloader,
+        MediaRateLimitError,
+        MediaError,
+    )
+
+    try:
+        result = WhatsAppMediaDownloader.download(media_id, mime_type)
+        if result.cdn_url:
+            message_data.setdefault('document', {})['_cdn_url'] = result.cdn_url
+    except MediaRateLimitError as exc:
+        logger.warning(
+            "Document download rate-limited media_id=%s — retry %d/%d",
+            media_id, self.request.retries + 1, self.max_retries,
+        )
+        raise self.retry(exc=exc)
+    except MediaError as exc:
+        logger.error(
+            "Document download failed media_id=%s phone=%s: %s",
+            media_id, phone, exc,
+        )
+
+    _safe_route(message_data, phone, phone_number_id)
+
+
+def _safe_route(message_data: dict, phone: str, phone_number_id: str) -> None:
+    """Call MessageRouter.route, logging any crash without re-raising."""
+    try:
+        from apps.whatsapp.router import MessageRouter
+        MessageRouter.route(message_data, phone, phone_number_id)
+    except Exception:
+        logger.exception(
+            "MessageRouter crashed in media worker phone=%s type=%s",
+            phone, message_data.get('type', '?'),
+        )
+
+
+# ── Scheduled health checks ────────────────────────────────────────────────────
 
 @shared_task
 def check_whatsapp_token_health():
@@ -124,14 +297,14 @@ def check_whatsapp_token_health():
             return 'invalid_token'
 
         r.raise_for_status()
-        logger.info(f"check_whatsapp_token_health: OK (phone_id={phone_id})")
+        logger.info("check_whatsapp_token_health: OK (phone_id=%s)", phone_id)
         return 'ok'
 
     except requests.exceptions.Timeout:
         logger.error("check_whatsapp_token_health: request timed out")
         return 'timeout'
     except requests.exceptions.RequestException as exc:
-        logger.error(f"check_whatsapp_token_health: request failed: {exc}")
+        logger.error("check_whatsapp_token_health: request failed: %s", exc)
         return 'error'
 
 
@@ -144,6 +317,6 @@ def _alert_admins(title: str, message: str):
             try:
                 notify_user(admin, title=title, message=message)
             except Exception as exc:
-                logger.warning(f"_alert_admins: could not notify admin {admin.pk}: {exc}")
+                logger.warning("_alert_admins: could not notify admin %s: %s", admin.pk, exc)
     except Exception as exc:
-        logger.error(f"_alert_admins: {exc}")
+        logger.error("_alert_admins: %s", exc)

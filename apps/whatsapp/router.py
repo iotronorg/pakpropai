@@ -369,8 +369,14 @@ class MessageRouter:
     @classmethod
     def _transcribe_voice(cls, message_data: dict, phone: str) -> str:
         audio_info = message_data.get('audio', {})
-        media_id   = audio_info.get('id')
-        mime_type  = audio_info.get('mime_type', 'audio/ogg')
+
+        # Fast-path: dedicated transcribe_audio_task already ran STT — skip re-download.
+        if (pre := audio_info.get('_transcript')) is not None:
+            logger.debug("[AUDIO] phone=%s using pre-fetched transcript len=%d", phone, len(pre))
+            return pre
+
+        media_id  = audio_info.get('id')
+        mime_type = audio_info.get('mime_type', 'audio/ogg')
         if not media_id:
             logger.warning(f"Audio message from {phone} has no media_id — skipping download")
             return ''
@@ -422,9 +428,12 @@ class MessageRouter:
         # Extract the WhatsApp media object ID for non-text messages so it can be
         # used later for deferred/lazy download without re-parsing raw_payload.
         _media_map = {'audio': 'audio', 'image': 'image', 'document': 'document'}
-        media_id = ''
+        media_id  = ''
+        media_url = ''
         if msg_type in _media_map:
-            media_id = message_data.get(_media_map[msg_type], {}).get('id', '')
+            _media_obj = message_data.get(_media_map[msg_type], {})
+            media_id   = _media_obj.get('id', '')
+            media_url  = _media_obj.get('_cdn_url', '')  # populated by dedicated media workers
 
         try:
             WhatsAppMessage.objects.update_or_create(
@@ -435,6 +444,7 @@ class MessageRouter:
                     'msg_type':    msg_type,
                     'body':        body[:2000],
                     'media_id':    media_id,
+                    'media_url':   media_url,
                     'raw_payload': message_data,
                 },
             )

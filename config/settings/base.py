@@ -237,6 +237,9 @@ WA_PHONE_NUMBER_ID = env('WA_PHONE_NUMBER_ID', default='')
 # Body example: "Your PakProp AI code is {{1}}. Expires in 5 minutes."
 WA_OTP_TEMPLATE_NAME = env('WA_OTP_TEMPLATE_NAME', default='')
 
+# OpenAI (Whisper STT primary provider)
+OPENAI_API_KEY = env('OPENAI_API_KEY', default='')
+
 # Gemini
 GEMINI_API_KEY = env('GEMINI_API_KEY', default='')
 GEMINI_MODEL   = env('GEMINI_MODEL',   default='gemini-2.5-flash-lite')

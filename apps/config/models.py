@@ -21,6 +21,7 @@ class SystemConfig(models.Model):
         'wa_verify_token':       'WA_VERIFY_TOKEN',
         'wa_otp_template_name':  'WA_OTP_TEMPLATE_NAME',
         'gemini_api_key':        'GEMINI_API_KEY',
+        'openai_api_key':        'OPENAI_API_KEY',
         'gemini_model':          'GEMINI_MODEL',
         'ai_backend':            'AI_BACKEND',
         'base_url':              'BASE_URL',
