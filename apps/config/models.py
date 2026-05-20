@@ -7,6 +7,7 @@ class SystemConfig(models.Model):
         'wa_access_token', 'wa_app_secret', 'gemini_api_key',
         'safepay_merchant_key', 'safepay_secret_key',
         'bsecure_client_id', 'bsecure_client_secret',
+        'stripe_secret_key', 'stripe_webhook_secret',
     }
 
     REQUIRED_KEYS = {
@@ -31,6 +32,12 @@ class SystemConfig(models.Model):
         'bsecure_client_id':     'BSECURE_CLIENT_ID',
         'bsecure_client_secret': 'BSECURE_CLIENT_SECRET',
         'bsecure_environment':   'BSECURE_ENVIRONMENT',
+        'billing_gateway':       'BILLING_GATEWAY',
+        'stripe_secret_key':     'STRIPE_SECRET_KEY',
+        'stripe_webhook_secret': 'STRIPE_WEBHOOK_SECRET',
+        'stripe_price_basic':    'STRIPE_PRICE_BASIC',
+        'stripe_price_professional': 'STRIPE_PRICE_PROFESSIONAL',
+        'stripe_price_enterprise':   'STRIPE_PRICE_ENTERPRISE',
     }
 
     DEFAULTS = {
@@ -54,6 +61,15 @@ class SystemConfig(models.Model):
         'bsecure_client_id':          '',
         'bsecure_client_secret':      '',
         'bsecure_environment':        'sandbox',
+        'billing_gateway':            'manual',
+        'stripe_secret_key':          '',
+        'stripe_webhook_secret':      '',
+        'stripe_price_basic':         '',
+        'stripe_price_professional':  '',
+        'stripe_price_enterprise':    '',
+        'billing_price_basic_pkr':        '13000',
+        'billing_price_professional_pkr': '40000',
+        'billing_price_enterprise_pkr':   '120000',
         'feature_property_search':    'true',
         'feature_property_listing':   'true',
         'feature_tax_advice':         'true',

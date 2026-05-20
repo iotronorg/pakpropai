@@ -130,3 +130,60 @@ class OrganizationConfig(models.Model):
 
     def __str__(self):
         return f"{self.organization.name} / {self.key} = {self.value}"
+
+
+class OrgPaymentSettings(models.Model):
+    """
+    Per-org deal-lock payment gateway configuration.
+    Overrides the platform-level SystemConfig for client→org transactions.
+    """
+
+    class Gateway(models.TextChoices):
+        SAFEPAY   = 'safepay',   'Safepay'
+        BSECURE   = 'bsecure',   'bSecure'
+        MANUAL    = 'manual',    'Manual (bank transfer / JazzCash / EasyPaisa)'
+
+    SENSITIVE_FIELDS = {
+        'safepay_secret_key', 'bsecure_client_secret',
+    }
+
+    organization = models.OneToOneField(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name='payment_settings',
+    )
+    gateway = models.CharField(
+        max_length=20, choices=Gateway.choices, default=Gateway.MANUAL
+    )
+
+    # Safepay merchant credentials
+    safepay_merchant_key = models.CharField(max_length=200, blank=True)
+    safepay_secret_key   = models.CharField(max_length=200, blank=True)
+    safepay_environment  = models.CharField(
+        max_length=20,
+        choices=[('sandbox', 'Sandbox'), ('production', 'Production')],
+        default='sandbox',
+    )
+
+    # bSecure credentials
+    bsecure_client_id     = models.CharField(max_length=200, blank=True)
+    bsecure_client_secret = models.CharField(max_length=200, blank=True)
+    bsecure_environment   = models.CharField(
+        max_length=20,
+        choices=[('sandbox', 'Sandbox'), ('production', 'Production')],
+        default='sandbox',
+    )
+
+    # Manual payment details (overrides platform defaults)
+    jazzcash_number    = models.CharField(max_length=20, blank=True)
+    easypaisa_number   = models.CharField(max_length=20, blank=True)
+    bank_account_number = models.CharField(max_length=50, blank=True)
+    bank_account_name   = models.CharField(max_length=200, blank=True)
+
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'org_payment_settings'
+
+    def __str__(self):
+        return f"{self.organization.name} — {self.gateway}"
