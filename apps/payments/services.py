@@ -29,8 +29,8 @@ class SafepayGateway:
     """
 
     @classmethod
-    def _base(cls) -> str:
-        env = getattr(settings, 'SAFEPAY_ENVIRONMENT', 'sandbox')
+    def _base(cls, environment: str = None) -> str:
+        env = environment or getattr(settings, 'SAFEPAY_ENVIRONMENT', 'sandbox')
         return (
             'https://api.getsafepay.com'
             if env == 'production'
@@ -38,8 +38,8 @@ class SafepayGateway:
         )
 
     @classmethod
-    def _checkout_base(cls) -> str:
-        env = getattr(settings, 'SAFEPAY_ENVIRONMENT', 'sandbox')
+    def _checkout_base(cls, environment: str = None) -> str:
+        env = environment or getattr(settings, 'SAFEPAY_ENVIRONMENT', 'sandbox')
         return (
             'https://getsafepay.com'
             if env == 'production'
@@ -55,19 +55,24 @@ class SafepayGateway:
         cancel_url: str,
         customer_phone: str = '',
         description: str = 'Deal Lock Token',
+        merchant_key: str = None,
+        secret_key: str = None,
+        environment: str = None,
     ) -> dict:
         """
         Create a Safepay checkout session.
         Returns: {'checkout_token': str, 'checkout_url': str}
         """
-        merchant_key = getattr(settings, 'SAFEPAY_MERCHANT_KEY', '')
-        secret_key   = getattr(settings, 'SAFEPAY_SECRET_KEY', '')
+        from apps.config.services import SystemConfigService
+        mk  = merchant_key or SystemConfigService.get('safepay_merchant_key') or getattr(settings, 'SAFEPAY_MERCHANT_KEY', '')
+        sk  = secret_key   or SystemConfigService.get('safepay_secret_key')   or getattr(settings, 'SAFEPAY_SECRET_KEY', '')
+        env = environment  or SystemConfigService.get('safepay_environment')   or getattr(settings, 'SAFEPAY_ENVIRONMENT', 'sandbox')
 
-        if not merchant_key or not secret_key:
+        if not mk or not sk:
             raise ValueError("SAFEPAY_MERCHANT_KEY and SAFEPAY_SECRET_KEY must be set.")
 
         payload = {
-            'merchant':    merchant_key,
+            'merchant':    mk,
             'intent':      'CYBERSOURCE',
             'mode':        'payment',
             'currency':    'PKR',
@@ -79,11 +84,11 @@ class SafepayGateway:
         }
 
         resp = requests.post(
-            f'{cls._base()}/v1/payments/create',
+            f'{cls._base(env)}/v1/payments/create',
             json=payload,
             headers={
                 'Content-Type':           'application/json',
-                'X-SFPY-MERCHANT-SECRET': secret_key,
+                'X-SFPY-MERCHANT-SECRET': sk,
             },
             timeout=10,
         )
@@ -91,7 +96,7 @@ class SafepayGateway:
         data = resp.json()
 
         token = data.get('data', {}).get('token') or data.get('token', '')
-        checkout_url = f"{cls._checkout_base()}/checkout?token={token}"
+        checkout_url = f"{cls._checkout_base(env)}/checkout?token={token}"
 
         return {'checkout_token': token, 'checkout_url': checkout_url}
 
@@ -132,8 +137,8 @@ class bSecureGateway:
     _TOKEN_CACHE: dict = {}
 
     @classmethod
-    def _base(cls) -> str:
-        env = getattr(settings, 'BSECURE_ENVIRONMENT', 'sandbox')
+    def _base(cls, environment: str = None) -> str:
+        env = environment or getattr(settings, 'BSECURE_ENVIRONMENT', 'sandbox')
         return (
             'https://api.bsecure.pk'
             if env == 'production'
@@ -141,18 +146,19 @@ class bSecureGateway:
         )
 
     @classmethod
-    def _get_access_token(cls) -> str:
-        client_id     = getattr(settings, 'BSECURE_CLIENT_ID', '')
-        client_secret = getattr(settings, 'BSECURE_CLIENT_SECRET', '')
+    def _get_access_token(cls, client_id: str = None, client_secret: str = None, environment: str = None) -> str:
+        from apps.config.services import SystemConfigService
+        cid = client_id     or SystemConfigService.get('bsecure_client_id')     or getattr(settings, 'BSECURE_CLIENT_ID', '')
+        cs  = client_secret or SystemConfigService.get('bsecure_client_secret') or getattr(settings, 'BSECURE_CLIENT_SECRET', '')
 
-        if not client_id or not client_secret:
+        if not cid or not cs:
             raise ValueError("BSECURE_CLIENT_ID and BSECURE_CLIENT_SECRET must be set.")
 
         resp = requests.post(
-            f'{cls._base()}/v1/oauth/token',
+            f'{cls._base(environment)}/v1/oauth/token',
             json={
-                'client_id':     client_id,
-                'client_secret': client_secret,
+                'client_id':     cid,
+                'client_secret': cs,
                 'grant_type':    'client_credentials',
             },
             timeout=10,
@@ -169,8 +175,13 @@ class bSecureGateway:
         cancel_url: str,
         customer_phone: str = '',
         description: str = 'Deal Lock Token',
+        client_id: str = None,
+        client_secret: str = None,
+        environment: str = None,
     ) -> dict:
-        token = cls._get_access_token()
+        from apps.config.services import SystemConfigService
+        env   = environment or SystemConfigService.get('bsecure_environment') or getattr(settings, 'BSECURE_ENVIRONMENT', 'sandbox')
+        token = cls._get_access_token(client_id=client_id, client_secret=client_secret, environment=env)
         payload = {
             'order_id':           str(order_id),
             'amount':             amount_pkr,
@@ -192,7 +203,7 @@ class bSecureGateway:
             }
 
         resp = requests.post(
-            f'{cls._base()}/v1/order/create',
+            f'{cls._base(env)}/v1/order/create',
             json=payload,
             headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'},
             timeout=10,
@@ -241,6 +252,7 @@ class PaymentService:
         gateway: str,  # 'safepay' | 'bsecure'
         redirect_url: str,
         cancel_url: str,
+        org=None,
     ) -> dict:
         """
         Create a gateway checkout session for a deal lock.
@@ -252,6 +264,25 @@ class PaymentService:
         if not gw_class:
             raise ValueError(f"Unsupported gateway: {gateway}")
 
+        creds = {}
+        if org is not None:
+            try:
+                ps = org.payment_settings
+                if gateway == 'safepay' and ps.safepay_merchant_key:
+                    creds = {
+                        'merchant_key': ps.safepay_merchant_key,
+                        'secret_key':   ps.safepay_secret_key,
+                        'environment':  ps.safepay_environment,
+                    }
+                elif gateway == 'bsecure' and ps.bsecure_client_id:
+                    creds = {
+                        'client_id':     ps.bsecure_client_id,
+                        'client_secret': ps.bsecure_client_secret,
+                        'environment':   ps.bsecure_environment,
+                    }
+            except Exception:
+                pass
+
         result = gw_class.create_checkout(
             order_id       = str(deal.id),
             amount_pkr     = deal.token_amount,
@@ -259,6 +290,7 @@ class PaymentService:
             cancel_url     = cancel_url,
             customer_phone = deal.buyer.phone,
             description    = f'Deal Lock — {deal.property.title}',
+            **creds,
         )
 
         Payment.objects.update_or_create(

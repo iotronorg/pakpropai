@@ -13,21 +13,27 @@ from .serializers import EscrowDealSerializer, InitiateDealLockSerializer, Confi
 
 logger = logging.getLogger(__name__)
 
-def _get_payment_instructions(gateway: str, amount: int, currency: str) -> str:
+def _get_payment_instructions(gateway: str, amount: int, currency: str, org=None) -> str:
     from apps.config.services import SystemConfigService
+    org_ps = None
+    if org is not None:
+        try:
+            org_ps = org.payment_settings
+        except Exception:
+            pass
     if gateway == 'jazzcash':
-        number = SystemConfigService.get('jazzcash_number')
+        number = (org_ps.jazzcash_number if org_ps and org_ps.jazzcash_number else None) or SystemConfigService.get('jazzcash_number')
         if number:
             return f"Send {currency} {amount:,} to JazzCash *{number}*. Use your WhatsApp number as reference."
         return "Our team will contact you with JazzCash payment details within 1 hour."
     if gateway == 'easypaisa':
-        number = SystemConfigService.get('easypaisa_number')
+        number = (org_ps.easypaisa_number if org_ps and org_ps.easypaisa_number else None) or SystemConfigService.get('easypaisa_number')
         if number:
             return f"Send {currency} {amount:,} to EasyPaisa *{number}*. Use your WhatsApp number as reference."
         return "Our team will contact you with EasyPaisa payment details within 1 hour."
     if gateway == 'bank':
-        account = SystemConfigService.get('bank_account_number')
-        name    = SystemConfigService.get('bank_account_name') or 'RealTron AI'
+        account = (org_ps.bank_account_number if org_ps and org_ps.bank_account_number else None) or SystemConfigService.get('bank_account_number')
+        name    = (org_ps.bank_account_name if org_ps and org_ps.bank_account_name else None) or SystemConfigService.get('bank_account_name') or 'RealTron AI'
         if account:
             return f"Transfer {currency} {amount:,} to Account *{account}* ({name}). Reference: your WhatsApp number."
         return "Our team will contact you with bank transfer details within 1 hour."
@@ -57,12 +63,23 @@ class DealLockInitiateView(APIView):
         property_id = ser.validated_data['property_id']
         amount      = ser.validated_data['token_amount']
         gateway     = ser.validated_data['payment_gateway']
+        org         = None
 
         try:
             with transaction.atomic():
-                prop = Property.objects.select_for_update().get(
-                    id=property_id, is_active=True
-                )
+                prop = Property.objects.select_for_update().select_related(
+                    'organization__payment_settings'
+                ).get(id=property_id, is_active=True)
+
+                org = prop.organization
+                if org is not None:
+                    try:
+                        ps = org.payment_settings
+                        if ps.gateway != 'manual':
+                            gateway = ps.gateway
+                    except Exception:
+                        pass
+
                 if EscrowDeal.objects.filter(
                     property=prop,
                     status__in=[EscrowDeal.Status.INITIATED, EscrowDeal.Status.LOCKED],
@@ -88,7 +105,7 @@ class DealLockInitiateView(APIView):
             )
 
         _notify_seller_lock_initiated(deal, seller_token)
-        payment_message = _get_payment_instructions(gateway, amount, deal.currency)
+        payment_message = _get_payment_instructions(gateway, amount, deal.currency, org=org)
 
         return Response({
             'id':              str(deal.id),
@@ -106,11 +123,21 @@ class DealLockInitiateView(APIView):
 
 
 class DealLockConfirmView(APIView):
-    """PATCH /deals/lock/<id>/confirm/ — admin confirms payment and starts 48h window."""
-    permission_classes = [IsAdmin]
+    """PATCH /deals/lock/<id>/confirm/ — admin or org developer confirms payment."""
+    permission_classes = [IsDashboardUser]
 
     def patch(self, request, pk):
         deal = get_object_or_404(EscrowDeal, pk=pk)
+        if request.user.role == 'developer':
+            try:
+                org = request.user.owned_organization
+                if deal.property.organization != org:
+                    return Response({'detail': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
+            except Exception:
+                return Response({'detail': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
+        elif request.user.role != 'admin':
+            return Response({'detail': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
+
         if deal.status != EscrowDeal.Status.INITIATED:
             return Response(
                 {'detail': f"Cannot confirm a deal in '{deal.status}' status."},
@@ -134,15 +161,22 @@ class DealLockConfirmView(APIView):
 
 
 class DealLockCancelView(APIView):
-    """PATCH /deals/lock/<id>/cancel/ — buyer or admin cancels a lock."""
+    """PATCH /deals/lock/<id>/cancel/ — buyer, admin, or org developer cancels a lock."""
     permission_classes = [permissions.IsAuthenticated]
 
     def patch(self, request, pk):
         deal = get_object_or_404(EscrowDeal, pk=pk)
         is_admin = request.user.role == 'admin'
         is_buyer = deal.buyer_id == request.user.pk
+        is_org_admin = False
+        if request.user.role == 'developer':
+            try:
+                org = request.user.owned_organization
+                is_org_admin = deal.property.organization == org
+            except Exception:
+                pass
 
-        if not (is_admin or is_buyer):
+        if not (is_admin or is_buyer or is_org_admin):
             return Response({'detail': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
 
         if deal.status not in (EscrowDeal.Status.INITIATED, EscrowDeal.Status.LOCKED):
@@ -180,7 +214,7 @@ class DealLockListView(generics.ListAPIView):
         if user.role == 'developer':
             try:
                 org = user.owned_organization
-                return qs.filter(agent__organization=org)
+                return qs.filter(property__organization=org)
             except Exception:
                 return qs.none()
         return qs.none()
@@ -215,7 +249,7 @@ class DealLockDetailView(generics.RetrieveAPIView):
         if user.role == 'developer':
             try:
                 org = user.owned_organization
-                return base.filter(agent__organization=org)
+                return base.filter(property__organization=org)
             except Exception:
                 return base.none()
         # client: only their own purchases
@@ -265,11 +299,21 @@ class DealLockSellerConfirmView(APIView):
 
 
 class DealLockReleaseView(APIView):
-    """PATCH /deals/lock/<id>/release/ — admin marks deal successfully completed."""
-    permission_classes = [IsAdmin]
+    """PATCH /deals/lock/<id>/release/ — admin or org developer marks deal completed."""
+    permission_classes = [IsDashboardUser]
 
     def patch(self, request, pk):
         deal = get_object_or_404(EscrowDeal, pk=pk)
+        if request.user.role == 'developer':
+            try:
+                org = request.user.owned_organization
+                if deal.property.organization != org:
+                    return Response({'detail': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
+            except Exception:
+                return Response({'detail': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
+        elif request.user.role != 'admin':
+            return Response({'detail': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
+
         if deal.status != EscrowDeal.Status.LOCKED:
             return Response(
                 {'detail': f"Cannot release a deal in '{deal.status}' status. Only locked deals can be released."},
