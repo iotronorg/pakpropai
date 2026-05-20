@@ -33,6 +33,7 @@ THIRD_PARTY_APPS = [
 LOCAL_APPS = [
     'apps.core',
     'apps.config',
+    'apps.markets',
     'apps.users',
     'apps.organizations',
     'apps.properties',

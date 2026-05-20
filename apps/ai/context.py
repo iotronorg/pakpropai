@@ -13,62 +13,11 @@ the AI response. Slow queries are guarded by a single DB hit per section.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+
+from apps.markets.registry import MarketConfig, MARKET_REGISTRY, get_market_config  # noqa: F401
+from apps.markets.phone import PhoneCountryResolver
 
 logger = logging.getLogger(__name__)
-
-
-# ── Market configuration registry ─────────────────────────────────────────────
-
-@dataclass
-class MarketConfig:
-    country:        str
-    currency:       str
-    currency_sym:   str
-    size_unit:      str           # 'marla', 'sqft', 'sqm'
-    sqft_per_unit:  float         # sqft per primary size unit
-    language:       str           # primary user language code
-    tax_system:     str           # human-readable label
-    price_fmt:      str           # how locals express prices
-    extra:          dict = field(default_factory=dict)
-
-
-_MARKET_REGISTRY: dict[str, MarketConfig] = {
-    'PK': MarketConfig(
-        country='PK',      currency='PKR',  currency_sym='₨',
-        size_unit='marla', sqft_per_unit=272.25,
-        language='ur',     tax_system='Pakistan FBR (Section 7E, CGT, WHT, Stamp Duty)',
-        price_fmt='crore / lakh  (1 crore = PKR 10,000,000 ; 1 lakh = PKR 100,000)',
-    ),
-    'AE': MarketConfig(
-        country='AE',     currency='AED',  currency_sym='د.إ',
-        size_unit='sqft', sqft_per_unit=1.0,
-        language='en',    tax_system='UAE — no income tax; 4% DLD Transfer Fee on purchase',
-        price_fmt='million / thousand AED',
-    ),
-    'GB': MarketConfig(
-        country='GB',     currency='GBP',  currency_sym='£',
-        size_unit='sqft', sqft_per_unit=1.0,
-        language='en',    tax_system='UK — SDLT on purchase, CGT on gains, Council Tax annual',
-        price_fmt='thousands / millions GBP',
-    ),
-    'US': MarketConfig(
-        country='US',     currency='USD',  currency_sym='$',
-        size_unit='sqft', sqft_per_unit=1.0,
-        language='en',    tax_system='US — Property Tax (annual, county-level), Federal CGT',
-        price_fmt='thousands / millions USD',
-    ),
-    'CA': MarketConfig(
-        country='CA',     currency='CAD',  currency_sym='$',
-        size_unit='sqft', sqft_per_unit=1.0,
-        language='en',    tax_system='Canada — Land Transfer Tax, Federal/Provincial CGT',
-        price_fmt='thousands / millions CAD',
-    ),
-}
-
-
-def get_market_config(country: str) -> MarketConfig:
-    return _MARKET_REGISTRY.get(country.upper(), _MARKET_REGISTRY['PK'])
 
 
 # ── Dynamic context builder ────────────────────────────────────────────────────
@@ -95,7 +44,7 @@ class DynamicContextBuilder:
             if lead_block:
                 blocks.append(lead_block)
 
-            country = cls._resolve_country(user, organization)
+            country = cls._resolve_country(user, organization, phone)
             market_block = cls._market_block(country)
             blocks.append(market_block)
 
@@ -219,13 +168,21 @@ class DynamicContextBuilder:
     # ── Market / country section ───────────────────────────────────────────────
 
     @staticmethod
-    def _resolve_country(user, org) -> str:
-        """Priority: org.country → user.country → 'PK'."""
+    def _resolve_country(user, org, phone: str = '') -> str:
+        """Priority: org.country (explicit) → phone dial code → user.country → 'PK'.
+
+        Orgs configure their country intentionally, so it always wins.
+        Phone dial code provides automatic localisation for org-less interactions.
+        """
         try:
             if org and getattr(org, 'country', ''):
                 return org.country.upper()
         except Exception:
             pass
+        if phone:
+            resolved = PhoneCountryResolver.resolve(phone)
+            if resolved:
+                return resolved
         try:
             if user and getattr(user, 'country', ''):
                 return user.country.upper()
