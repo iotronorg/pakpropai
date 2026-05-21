@@ -63,3 +63,31 @@ class BulkOperationThrottle(RoleAwareUserThrottle):
 class ScorePropertyThrottle(RoleAwareUserThrottle):
     """15 rescores/min — each rescore queues an AI Celery task."""
     scope = 'score_property'
+
+
+class WhatsAppWebhookThrottle(AnonRateThrottle):
+    """
+    Per-IP throttle on the WhatsApp inbound webhook.
+    Limits DoS amplification and runaway Gemini API costs from spoofed traffic.
+    Signature verification is the primary guard; this is a cost-cap backstop.
+    """
+    scope = 'whatsapp_webhook'
+
+    def get_cache_key(self, request, view):
+        # Key by the phone_number_id in the payload so legitimate high-volume
+        # orgs on separate numbers don't share a bucket.
+        try:
+            import json
+            body    = json.loads(request.body.decode())
+            pn_id   = (
+                body.get('entry', [{}])[0]
+                    .get('changes', [{}])[0]
+                    .get('value', {})
+                    .get('metadata', {})
+                    .get('phone_number_id', '')
+            )
+            if pn_id:
+                return f'throttle_wa_webhook_{pn_id}'
+        except Exception:
+            pass
+        return super().get_cache_key(request, view)

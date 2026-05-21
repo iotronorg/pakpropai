@@ -10,14 +10,16 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.throttles import WhatsAppWebhookThrottle
 from .models import WhatsAppSession, WhatsAppMessage
 
 logger = logging.getLogger(__name__)
 
 
 class WhatsAppWebhookView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes     = [AllowAny]
     authentication_classes = []
+    throttle_classes       = [WhatsAppWebhookThrottle]
 
     # --- GET: Meta verifies us once on setup --------------------------
     def get(self, request):

@@ -153,7 +153,8 @@ REST_FRAMEWORK = {
         'property_search': '30/min',
         'report_generate': '5/hour',
         'bulk_operation':  '10/min',
-        'score_property':  '15/min',
+        'score_property':    '15/min',
+        'whatsapp_webhook':  '300/min',  # 300 msgs/min per phone_number_id (~5/sec burst cap)
     },
 }
 
@@ -220,6 +221,10 @@ CELERY_BEAT_SCHEDULE = {
     'dispatch-scheduled-campaigns': {
         'task':     'apps.campaigns.tasks.dispatch_scheduled_campaigns',
         'schedule': 300,  # every 5 minutes
+    },
+    'cleanup-expired-otps': {
+        'task':     'apps.users.tasks.cleanup_expired_otps',
+        'schedule': 86400,  # daily
     },
 }
 
