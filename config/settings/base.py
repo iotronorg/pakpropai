@@ -298,12 +298,38 @@ if SENTRY_DSN:
     from sentry_sdk.integrations.django import DjangoIntegration
     from sentry_sdk.integrations.celery import CeleryIntegration
     from sentry_sdk.integrations.redis import RedisIntegration
+    from sentry_sdk.integrations.logging import LoggingIntegration
+    import logging as _logging
+
+    def _before_send(event, hint):
+        # Strip sensitive fields from request bodies before they leave the server
+        _SCRUB = {'password', 'token', 'otp', 'secret', 'api_key', 'access_token'}
+        req = event.get('request', {})
+        body = req.get('data') or {}
+        if isinstance(body, dict):
+            for key in list(body):
+                if any(s in key.lower() for s in _SCRUB):
+                    body[key] = '[Filtered]'
+        return event
+
     sentry_sdk.init(
         dsn=SENTRY_DSN,
-        integrations=[DjangoIntegration(), CeleryIntegration(), RedisIntegration()],
+        integrations=[
+            DjangoIntegration(transaction_style='url'),
+            CeleryIntegration(monitor_beat_tasks=True),
+            RedisIntegration(),
+            LoggingIntegration(
+                level=_logging.INFO,        # breadcrumb level
+                event_level=_logging.ERROR, # only ERROR+ creates Sentry events
+            ),
+        ],
         traces_sample_rate=0.1,
+        profiles_sample_rate=0.1,
         send_default_pii=False,
+        attach_stacktrace=True,
         environment='production' if not DEBUG else 'development',
+        before_send=_before_send,
+        ignore_errors=[KeyboardInterrupt],
     )
 
 # Structured JSON logging — organization_id and lead_id are injected into every
