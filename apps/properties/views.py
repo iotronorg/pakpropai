@@ -21,7 +21,7 @@ _MAX_IMAGES_PER_PROP = 10
 class PropertyViewSet(viewsets.ModelViewSet):
     queryset = Property.objects.filter(is_active=True)
     permission_classes = [IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [filters.OrderingFilter]
     throttle_classes = [PropertySearchThrottle]
 
     def get_permissions(self):
@@ -30,7 +30,6 @@ class PropertyViewSet(viewsets.ModelViewSet):
             # Clients (role=user) are WhatsApp-only and must not submit via API.
             return [IsAgentOrAdmin()]
         return super().get_permissions()
-    search_fields   = ['ref_no', 'title', 'city', 'location', 'description']
     ordering_fields = ['ai_score', 'price', 'created_at']
     ordering        = ['-created_at']
 
@@ -75,6 +74,15 @@ class PropertyViewSet(viewsets.ModelViewSet):
             qs = qs.filter(price__lte=int(max_price))
         if (min_score := params.get('min_score')):
             qs = qs.filter(ai_score__gte=int(min_score))
+        if search_term := params.get('search', '').strip():
+            from django.contrib.postgres.search import SearchVector, SearchQuery, SearchRank
+            vector = SearchVector('title', 'city', 'location', 'description', 'ref_no')
+            query  = SearchQuery(search_term)
+            qs = (
+                qs.annotate(rank=SearchRank(vector, query))
+                  .filter(rank__gte=0.01)
+                  .order_by('-rank')
+            )
         return qs
 
     def perform_create(self, serializer):
