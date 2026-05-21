@@ -1,6 +1,7 @@
 import logging
 import re
 
+from django.db.models import Avg
 from django.utils import timezone
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
@@ -44,6 +45,22 @@ class LeadViewSet(viewsets.ModelViewSet):
                 return qs.none()
 
         return qs.none()
+
+    @action(detail=False, methods=['get'], url_path='stats')
+    def stats(self, request):
+        """GET /leads/stats/ — KPI summary scoped to caller's org/role."""
+        qs = self.get_queryset()
+        today = timezone.now().date()
+        hot_leads   = qs.filter(score__gte=70).count()
+        unassigned  = qs.filter(assigned_agent__isnull=True).count()
+        avg_score   = qs.aggregate(v=Avg('score'))['v']
+        new_today   = qs.filter(created_at__date=today).count()
+        return Response({
+            'hot_leads':  hot_leads,
+            'unassigned': unassigned,
+            'avg_score':  round(avg_score, 1) if avg_score is not None else None,
+            'new_today':  new_today,
+        })
 
     @action(detail=True, methods=['get'], url_path='suggest-agents')
     def suggest_agents(self, request, pk=None):

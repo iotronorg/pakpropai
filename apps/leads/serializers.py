@@ -18,18 +18,21 @@ class LeadSerializer(serializers.ModelSerializer):
         model  = Lead
         fields = (
             'id', 'phone', 'name', 'intent', 'intent_score',
-            'location_interest', 'budget_min', 'budget_max',
-            'status', 'notes', 'source', 'intent_signals',
+            'location_interest', 'budget_min', 'budget_max', 'budget_currency',
+            'status', 'priority', 'routing_state',
+            'notes', 'source', 'intent_signals',
             'organization',
             'assigned_agent_id', 'assigned_agent_name',
-            'created_at',
+            'last_contacted_at', 'created_at',
         )
         read_only_fields = (
             'id', 'phone', 'name', 'intent', 'intent_score',
-            'location_interest', 'budget_min', 'budget_max',
+            'location_interest', 'budget_min', 'budget_max', 'budget_currency',
+            'priority', 'routing_state',
             'source', 'intent_signals',
             'organization',
-            'assigned_agent_id', 'assigned_agent_name', 'created_at',
+            'assigned_agent_id', 'assigned_agent_name',
+            'last_contacted_at', 'created_at',
         )
 
 
