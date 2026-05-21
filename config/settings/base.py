@@ -181,6 +181,25 @@ CELERY_TIMEZONE = 'Asia/Karachi'
 
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 
+# Queue separation: AI/PDF/vision tasks go to high-resource workers;
+# notifications, expiry, and bookkeeping stay on default workers.
+CELERY_TASK_DEFAULT_QUEUE = 'default'
+CELERY_TASK_ROUTES = {
+    # AI inference
+    'apps.whatsapp.tasks.process_incoming_whatsapp_task': {'queue': 'high-resource'},
+    'apps.whatsapp.tasks.transcribe_audio_task':          {'queue': 'high-resource'},
+    'apps.whatsapp.tasks.process_image_task':             {'queue': 'high-resource'},
+    'apps.whatsapp.tasks.process_document_task':          {'queue': 'high-resource'},
+    # Verification (OCR + AI)
+    'apps.verification.tasks.run_verification_task':      {'queue': 'high-resource'},
+    # PDF generation
+    'apps.reports.tasks.generate_report_task':            {'queue': 'high-resource'},
+    'apps.reports.tasks.generate_monthly_reports':        {'queue': 'high-resource'},
+    # Bulk property rescoring
+    'apps.properties.tasks.score_property_task':          {'queue': 'high-resource'},
+    'apps.properties.tasks.rescore_all_properties_task':  {'queue': 'high-resource'},
+}
+
 CELERY_BEAT_SCHEDULE = {
     'expire-deal-locks': {
         'task':     'apps.escrow.tasks.expire_deal_locks',

@@ -653,21 +653,22 @@ class AIServiceManager:
         from apps.ai._tools_context import set_context
         set_context(user, phone, org=organization)
 
+        org_country = getattr(organization, 'country', 'PK').upper() if organization else 'PK'
+        _SUPPORTED_TAX_COUNTRIES = {'PK', 'AE', 'GB', 'US'}
+
         if intent.intent == 'scam_check' and intent.scam_input:
-            # Scam/fraud patterns are universal — direct-route regardless of country.
             return self._direct_scam_check(intent.scam_input, intent.language)
 
         if intent.intent == 'tax_advice' and intent.tax_input:
-            # Pakistan-specific tax engine (Section 7E, CGT, WHT).
-            # Only direct-route for PK-context orgs; route others through LLM for general advice.
-            org_country = getattr(organization, 'country', 'PK') if organization else 'PK'
-            if org_country == 'PK':
+            if org_country in _SUPPORTED_TAX_COUNTRIES:
+                intent.tax_input.country = org_country
                 return self._direct_tax_advice(intent.tax_input, intent.language)
-            return None     # non-PK org → LLM handles with general tax knowledge
+            return None     # unsupported market → LLM handles with general knowledge
 
         if intent.intent == 'loan_eligibility' and intent.loan_input:
             from apps.config.services import SystemConfigService
             if SystemConfigService.get_features().get('feature_loan_eligibility', True):
+                intent.loan_input.country = org_country
                 return self._direct_loan_eligibility(intent.loan_input, intent.language)
             return None
 
@@ -720,32 +721,46 @@ class AIServiceManager:
         if language and not language.startswith('en'):
             return None  # let LLM respond in user's language
         from apps.ai._tools_financial import calculate_7e_tax
+        from apps.markets.registry import get_market_config
         result = calculate_7e_tax(**tax_input.to_tool_kwargs())
         if result.get('error'):
             return None
 
-        fmv   = tax_input.fmv_pkr
+        cfg = get_market_config(tax_input.country)
+        sym = cfg.currency
+        fmv = tax_input.fmv_pkr
+
         lines = [
             '💰 *PROPERTY TAX SUMMARY*',
-            f'Property Value: PKR {fmv:,}',
-            f'Filer Status: {tax_input.filer_status.replace("_", "-")}',
-            '',
+            f'Property Value: {sym} {fmv:,}',
         ]
+        if tax_input.country == 'PK':
+            lines.append(f'Filer Status: {tax_input.filer_status.replace("_", "-")}')
+        lines.append('')
+
         if result.get('exempt'):
-            lines.append(f'✅ *Section 7E: EXEMPT*')
+            lines.append('✅ *TAX EXEMPT*')
             if result.get('exemption_reason'):
                 lines.append(f'   Reason: {result["exemption_reason"]}')
         else:
-            tax7e = result.get('tax_7e_annual_pkr', 0)
-            lines.append(f'*Section 7E (annual):* PKR {tax7e:,}/year')
+            annual = result.get('annual_tax', 0)
+            if annual:
+                label = 'Section 7E (annual)' if tax_input.country == 'PK' else 'Annual Property Tax'
+                lines.append(f'*{label}:* {sym} {annual:,}/year')
 
-        wht = result.get('withholding_tax_on_sale_pkr', 0)
-        if wht:
-            lines.append(f'*WHT on sale:* PKR {wht:,}')
+            transfer = result.get('transfer_tax', 0)
+            if transfer:
+                label = 'Transfer Tax / DLD Fee' if tax_input.country == 'AE' else 'Transfer Tax'
+                lines.append(f'*{label}:* {sym} {transfer:,}')
 
-        stamp = result.get('stamp_duty_estimate_pkr', 0)
-        if stamp:
-            lines.append(f'*Stamp duty:* PKR {stamp:,}')
+            stamp = result.get('stamp_duty', 0)
+            if stamp:
+                label = 'Stamp Duty (SDLT)' if tax_input.country == 'GB' else 'Stamp Duty'
+                lines.append(f'*{label}:* {sym} {stamp:,}')
+
+            wht = result.get('withholding_tax', 0)
+            if wht:
+                lines.append(f'*Withholding Tax:* {sym} {wht:,}')
 
         if result.get('advice'):
             lines += ['', result['advice']]
@@ -753,7 +768,7 @@ class AIServiceManager:
         for note in result.get('notes', [])[:2]:
             lines.append(f'ℹ️ {note}')
 
-        lines += ['', '_Consult a registered CA or tax lawyer for final advice._']
+        lines += ['', '_Consult a registered professional or tax advisor for final advice._']
         return '\n'.join(lines)
 
     @staticmethod
@@ -761,9 +776,13 @@ class AIServiceManager:
         if language and not language.startswith('en'):
             return None  # let LLM respond in user's language
         from apps.ai._tools_financial import check_loan_eligibility
+        from apps.markets.registry import get_market_config
         result = check_loan_eligibility(**loan_input.to_tool_kwargs())
         if not result.get('supported', True) or result.get('error'):
             return None
+
+        cfg = get_market_config(loan_input.country)
+        sym = cfg.currency
 
         eligible = result.get('eligible', False)
         emi      = result.get('estimated_monthly_emi', 0)
@@ -773,30 +792,30 @@ class AIServiceManager:
         reason   = result.get('reason', '')
         steps    = result.get('next_steps', [])
 
-        icon  = '✅' if eligible else '❌'
+        icon = '✅' if eligible else '❌'
         lines = [
-            '🏦 *LOAN ELIGIBILITY RESULT*',
-            f'Monthly Income: PKR {loan_input.monthly_income:,}',
-            f'Loan Requested: PKR {loan_input.loan_amount:,}',
+            '🏦 *LOAN / MORTGAGE ELIGIBILITY*',
+            f'Monthly Income: {sym} {loan_input.monthly_income:,}',
+            f'Loan Requested: {sym} {loan_input.loan_amount:,}',
             '',
             f'{icon} *{"ELIGIBLE" if eligible else "NOT ELIGIBLE"}*',
         ]
         if eligible and emi:
             lines += [
-                f'Estimated EMI: PKR {emi:,}/month',
+                f'Estimated Monthly Payment: {sym} {emi:,}/month',
                 f'Interest Rate: {rate}% p.a. over {tenure} years',
             ]
         if max_loan:
-            lines += ['', f'Max Loan You Qualify For: PKR {max_loan:,}']
+            lines += ['', f'Max Loan You Qualify For: {sym} {max_loan:,}']
         if reason:
             lines += ['', reason]
-        if loan_input.scheme == 'apna_ghar':
+        if loan_input.country == 'PK' and loan_input.scheme == 'apna_ghar':
             lines += ['', '🏠 *Apna Ghar Scheme* — subsidized government financing']
         if steps:
             lines += ['', '*Next Steps:*']
             for i, step in enumerate(steps[:4], 1):
                 lines.append(f'{i}. {step}')
-        lines += ['', '_Consult your bank or HBL/NBP branch for final approval._']
+        lines += ['', '_Consult your bank or a registered mortgage broker for final approval._']
         return '\n'.join(lines)
 
     @staticmethod

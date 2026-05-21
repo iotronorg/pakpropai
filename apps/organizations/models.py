@@ -47,11 +47,23 @@ class Organization(models.Model):
     website = models.URLField(blank=True)
     logo    = models.ImageField(upload_to=_logo_upload_path, blank=True, null=True)
 
+    class Language(models.TextChoices):
+        ENGLISH  = 'en', 'English'
+        ARABIC   = 'ar', 'Arabic'
+        URDU     = 'ur', 'Urdu'
+        FRENCH   = 'fr', 'French'
+        CHINESE  = 'zh', 'Chinese (Simplified)'
+        SPANISH  = 'es', 'Spanish'
+
     # Location (globally extensible)
-    country = models.CharField(max_length=2, default='PK',
-                  help_text='ISO 3166-1 alpha-2 country code, e.g. PK, AE, UK')
-    city    = models.CharField(max_length=100, blank=True)
-    address = models.TextField(blank=True)
+    country  = models.CharField(max_length=2, default='PK',
+                   help_text='ISO 3166-1 alpha-2 country code, e.g. PK, AE, GB, US')
+    language = models.CharField(
+                   max_length=5, choices=Language.choices, default=Language.ENGLISH,
+                   help_text='Preferred AI response language for this org\'s clients',
+               )
+    city     = models.CharField(max_length=100, blank=True)
+    address  = models.TextField(blank=True)
 
     # Plan
     plan = models.CharField(max_length=20, choices=Plan.choices, default=Plan.TRIAL)

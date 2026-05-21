@@ -418,6 +418,27 @@ def _notify_deal_cancelled(deal: EscrowDeal):
         logger.warning('_notify_deal_cancelled: agent notify failed: %s', exc)
 
 
+def _notify_seller_deal_locked(deal: EscrowDeal):
+    """Notify the property owner that online payment was confirmed and the lock is active."""
+    try:
+        seller_user = deal.property.owner
+        if not seller_user or not seller_user.phone:
+            return
+        expires = deal.lock_expires_at.strftime('%d %b %Y, %I:%M %p') if deal.lock_expires_at else 'N/A'
+        msg = (
+            f"🔒 *Deal Lock Activated*\n\n"
+            f"Online payment confirmed for your property:\n"
+            f"🏠 *{deal.property.title}*\n"
+            f"💰 *Token Amount:* {deal.currency} {deal.token_amount:,}\n"
+            f"📅 *Lock Expires:* {expires}\n\n"
+            "The buyer has paid the token amount. Contact them to proceed with the full transaction."
+        )
+        from apps.notifications.services import notify_user
+        notify_user(seller_user, title="Deal Lock Activated", message=msg, event_type='deal_updates')
+    except Exception as exc:
+        logger.warning('_notify_seller_deal_locked: failed: %s', exc)
+
+
 def _notify_seller_lock_initiated(deal: EscrowDeal, token: str):
     """Notify the property owner that a buyer has initiated a deal lock."""
     try:

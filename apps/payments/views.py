@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import json
 import logging
 
@@ -170,6 +172,169 @@ class bSecureWebhookView(APIView):
 
         activated = PaymentService.handle_webhook('bsecure', payload, raw, sig)
         return Response({'received': True, 'activated': activated})
+
+
+def _verify_org_hmac(raw: bytes, sig: str, gateway: str, org=None) -> bool:
+    """Verify HMAC-SHA256; tries org-specific secret first, then falls back to global setting."""
+    secret = None
+    if org is not None:
+        try:
+            ps = org.payment_settings
+            if gateway == 'safepay':
+                secret = ps.safepay_secret_key or None
+            elif gateway == 'bsecure':
+                secret = ps.bsecure_client_secret or None
+        except Exception:
+            pass
+    if not secret:
+        if gateway == 'safepay':
+            secret = getattr(settings, 'SAFEPAY_SECRET_KEY', '')
+        elif gateway == 'bsecure':
+            secret = getattr(settings, 'BSECURE_CLIENT_SECRET', '')
+    if not secret or not sig:
+        return False
+    expected = hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, sig)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class SafepayDealLockWebhookView(APIView):
+    """POST /payments/webhook/safepay/deal-lock/ — Safepay online token payment for deal lock."""
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        raw = request.body
+        sig = request.headers.get('X-Safepay-Signature', '')
+
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            return Response({'detail': 'Bad JSON'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from .services import SafepayGateway
+        parsed   = SafepayGateway.parse_webhook(payload)
+        order_id = parsed.get('order_id', '')
+
+        # Look up deal + org before signature check to enable org-specific secret resolution
+        deal = org = None
+        try:
+            deal = EscrowDeal.objects.select_related(
+                'property__organization', 'property__owner', 'buyer'
+            ).get(id=order_id)
+            org = deal.property.organization
+        except Exception:
+            pass
+
+        if not _verify_org_hmac(raw, sig, 'safepay', org):
+            logger.warning('Safepay deal-lock webhook: invalid signature order_id=%s', order_id)
+            return Response({'detail': 'Invalid signature.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if parsed['status'] != 'paid':
+            if deal:
+                Payment.objects.filter(escrow_deal=deal, gateway='safepay').update(
+                    status=Payment.Status.FAILED
+                )
+            return Response({'received': True, 'activated': False})
+
+        if deal is None:
+            logger.error('Safepay deal-lock webhook: deal not found order_id=%s', order_id)
+            return Response({'detail': 'Deal not found.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Idempotent re-delivery
+        if deal.status == EscrowDeal.Status.LOCKED:
+            return Response({'received': True, 'activated': False, 'detail': 'Already locked.'})
+
+        if deal.status != EscrowDeal.Status.INITIATED:
+            logger.warning(
+                'Safepay deal-lock webhook: deal %s already in status=%s', deal.id, deal.status
+            )
+            return Response({'received': True, 'activated': False})
+
+        Payment.objects.filter(escrow_deal=deal, gateway='safepay').update(
+            status=Payment.Status.COMPLETED,
+            reference=parsed.get('tracker', ''),
+            webhook_payload=payload,
+        )
+        deal.payment_ref = parsed.get('tracker', '')
+        deal.save(update_fields=['payment_ref', 'updated_at'])
+        deal.activate_lock()
+
+        from apps.escrow.views import _notify_buyer_lock_active, _notify_seller_deal_locked
+        _notify_buyer_lock_active(deal)
+        _notify_seller_deal_locked(deal)
+
+        logger.info('Deal lock ACTIVATED via Safepay: deal=%s property=%s', deal.id, deal.property.title)
+        return Response({'received': True, 'activated': True})
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class bSecureDealLockWebhookView(APIView):
+    """POST /payments/webhook/bsecure/deal-lock/ — bSecure online token payment for deal lock."""
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        raw = request.body
+        sig = request.headers.get('X-bSecure-Signature', '')
+
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            return Response({'detail': 'Bad JSON'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from .services import bSecureGateway
+        parsed   = bSecureGateway.parse_webhook(payload)
+        order_id = parsed.get('order_id', '')
+
+        deal = org = None
+        try:
+            deal = EscrowDeal.objects.select_related(
+                'property__organization', 'property__owner', 'buyer'
+            ).get(id=order_id)
+            org = deal.property.organization
+        except Exception:
+            pass
+
+        if not _verify_org_hmac(raw, sig, 'bsecure', org):
+            logger.warning('bSecure deal-lock webhook: invalid signature order_id=%s', order_id)
+            return Response({'detail': 'Invalid signature.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if parsed['status'] != 'paid':
+            if deal:
+                Payment.objects.filter(escrow_deal=deal, gateway='bsecure').update(
+                    status=Payment.Status.FAILED
+                )
+            return Response({'received': True, 'activated': False})
+
+        if deal is None:
+            logger.error('bSecure deal-lock webhook: deal not found order_id=%s', order_id)
+            return Response({'detail': 'Deal not found.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if deal.status == EscrowDeal.Status.LOCKED:
+            return Response({'received': True, 'activated': False, 'detail': 'Already locked.'})
+
+        if deal.status != EscrowDeal.Status.INITIATED:
+            logger.warning(
+                'bSecure deal-lock webhook: deal %s already in status=%s', deal.id, deal.status
+            )
+            return Response({'received': True, 'activated': False})
+
+        Payment.objects.filter(escrow_deal=deal, gateway='bsecure').update(
+            status=Payment.Status.COMPLETED,
+            reference=parsed.get('tracker', ''),
+            webhook_payload=payload,
+        )
+        deal.payment_ref = parsed.get('tracker', '')
+        deal.save(update_fields=['payment_ref', 'updated_at'])
+        deal.activate_lock()
+
+        from apps.escrow.views import _notify_buyer_lock_active, _notify_seller_deal_locked
+        _notify_buyer_lock_active(deal)
+        _notify_seller_deal_locked(deal)
+
+        logger.info('Deal lock ACTIVATED via bSecure: deal=%s property=%s', deal.id, deal.property.title)
+        return Response({'received': True, 'activated': True})
 
 
 class PaymentListView(APIView):

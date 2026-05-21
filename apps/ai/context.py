@@ -81,6 +81,27 @@ class DynamicContextBuilder:
             except Exception:
                 pass
 
+            # Language instruction — overrides default English when org has a non-English locale
+            try:
+                _LANG_NAMES = {
+                    'ar': 'Arabic', 'ur': 'Urdu', 'fr': 'French',
+                    'zh': 'Chinese (Simplified)', 'es': 'Spanish',
+                }
+                org_lang = getattr(org, 'language', '') or ''
+                if not org_lang or org_lang == 'en':
+                    # Derive from market config when org hasn't set an explicit preference
+                    from apps.markets.registry import get_market_config
+                    mk_lang = get_market_config(org.country or 'PK').language
+                    org_lang = mk_lang if mk_lang != 'en' else ''
+                if org_lang and org_lang != 'en':
+                    lang_name = _LANG_NAMES.get(org_lang, org_lang.upper())
+                    lines.append(
+                        f'LANGUAGE DIRECTIVE: Respond in {lang_name} by default. '
+                        f'Switch to English only if the user explicitly writes in English.'
+                    )
+            except Exception:
+                pass
+
             # Live inventory sample — top 5 active properties
             try:
                 from apps.properties.models import Property
