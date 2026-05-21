@@ -191,7 +191,7 @@ class AgentRegisterView(APIView):
 
 class AgentApproveView(APIView):
     """POST /agents/{id}/approve/ — admin always; developer only for their org's applicants."""
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAdminOrDeveloper]
 
     def post(self, request, pk):
         agent = self._get_approvable_agent(request, pk)
@@ -266,7 +266,7 @@ class AgentApproveView(APIView):
 
 class AgentRejectView(APIView):
     """POST /agents/{id}/reject/ — admin always; developer only for their org's applicants."""
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAdminOrDeveloper]
 
     def post(self, request, pk):
         reason = request.data.get('rejection_reason', '').strip()
@@ -374,6 +374,23 @@ class AgentAvailableListView(generics.ListAPIView):
             registration_status=Agent.RegistrationStatus.APPROVED,
             availability_status=Agent.AvailabilityStatus.AVAILABLE,
         ).select_related('user')
+
+        role = self.request.user.role
+        if role == 'developer':
+            try:
+                org = self.request.user.owned_organization
+                qs = qs.filter(organization=org)
+            except Exception:
+                return Agent.objects.none()
+        elif role == 'agent':
+            try:
+                org = self.request.user.agent_profile.organization
+                if org:
+                    qs = qs.filter(organization=org)
+            except Exception:
+                return Agent.objects.none()
+        # admin: sees all available agents platform-wide
+
         city = self.request.query_params.get('city', '').strip()
         if city:
             qs = qs.filter(cities__icontains=city)

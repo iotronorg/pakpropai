@@ -112,12 +112,13 @@ class BillingGatewayDispatcher:
         base = 'https://api.getsafepay.com' if env == 'production' else 'https://sandbox.api.getsafepay.com'
         checkout_base = 'https://getsafepay.com' if env == 'production' else 'https://sandbox.getsafepay.com'
 
-        amount_pkr = _plan_pkr(plan)
-        order_id   = f"billing-{org.id}-{plan}-{uuid.uuid4().hex[:8]}"
+        amount   = _plan_pkr(plan)
+        currency = getattr(org, 'currency', 'PKR')
+        order_id = f"billing-{org.id}-{plan}-{uuid.uuid4().hex[:8]}"
 
         payload = {
             'merchant': merchant_key, 'intent': 'CYBERSOURCE',
-            'mode': 'payment', 'currency': 'PKR', 'amount': amount_pkr,
+            'mode': 'payment', 'currency': currency, 'amount': amount,
             'order_id': order_id, 'cancel_url': cancel_url,
             'redirect_url': success_url,
             'description': f"RealTron AI — {plan.title()} Plan (monthly)",
@@ -159,15 +160,16 @@ class BillingGatewayDispatcher:
         tok.raise_for_status()
         access_token = tok.json().get('access_token', '')
 
-        amount_pkr = _plan_pkr(plan)
-        order_id   = f"billing-{org.id}-{plan}-{uuid.uuid4().hex[:8]}"
+        amount   = _plan_pkr(plan)
+        currency = getattr(org, 'currency', 'PKR')
+        order_id = f"billing-{org.id}-{plan}-{uuid.uuid4().hex[:8]}"
 
         payload = {
-            'order_id': order_id, 'amount': amount_pkr, 'currency': 'PKR',
+            'order_id': order_id, 'amount': amount, 'currency': currency,
             'order_type': 'normal',
             'success_redirect_url': success_url,
             'failure_redirect_url': cancel_url,
-            'products': [{'name': f"RealTron AI {plan.title()} Plan", 'sku': plan, 'price': amount_pkr, 'qty': 1}],
+            'products': [{'name': f"RealTron AI {plan.title()} Plan", 'sku': plan, 'price': amount, 'qty': 1}],
         }
         resp = _req.post(
             f'{base}/v1/order/create', json=payload,

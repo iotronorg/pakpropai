@@ -53,9 +53,9 @@ class CreateCheckoutView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        base_url    = getattr(settings, 'BASE_URL', 'http://localhost:8000')
-        redirect_url = f"{base_url}/payments/return/?status=success&deal_id={deal.id}"
-        cancel_url   = f"{base_url}/payments/return/?status=cancelled&deal_id={deal.id}"
+        origin = request.headers.get('Origin', getattr(settings, 'FRONTEND_URL', 'http://localhost:3000'))
+        redirect_url = f"{origin}/payments/return/?status=success&deal_id={deal.id}"
+        cancel_url   = f"{origin}/payments/return/?status=cancelled&deal_id={deal.id}"
 
         try:
             result = PaymentService.create_checkout(
@@ -84,10 +84,10 @@ class CreateCheckoutView(APIView):
 class PaymentReturnView(APIView):
     """
     GET /payments/return/?status=success&deal_id=<uuid>
-    Landing page after buyer returns from gateway.
+    Called by the authenticated frontend after gateway redirect.
     Real confirmation comes via webhook — this just shows status.
     """
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         ret_status = request.query_params.get('status', 'unknown')
@@ -100,6 +100,9 @@ class PaymentReturnView(APIView):
             deal = EscrowDeal.objects.get(id=deal_id)
         except EscrowDeal.DoesNotExist:
             return Response({'detail': 'Deal not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if deal.buyer != request.user and request.user.role != 'admin':
+            return Response({'detail': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
 
         return Response({
             'deal_id':        str(deal.id),

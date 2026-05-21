@@ -4,6 +4,7 @@ from django.conf import settings
 from django.db import connection
 from django.core.cache import cache
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from .permissions import IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -119,12 +120,9 @@ class AuditLogView(APIView):
       limit=<n>            — page size (default 50, max 200)
       offset=<n>           — offset for pagination
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdminUser]
 
     def get(self, request):
-        if request.user.role != 'admin':
-            return Response({'detail': 'Admin access required.'}, status=403)
-
         from .models import AuditLog
 
         qs = AuditLog.objects.select_related('actor').order_by('-created_at')

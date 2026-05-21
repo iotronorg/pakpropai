@@ -282,6 +282,19 @@ class PropertyCompareView(APIView):
         if len(ids) > 4:
             return Response({'error': 'Maximum 4 properties can be compared at once.'}, status=400)
         props = Property.objects.filter(id__in=ids, is_active=True)
+        user = request.user
+        if user.role == 'developer':
+            try:
+                props = props.filter(organization=user.owned_organization)
+            except Exception:
+                props = Property.objects.none()
+        elif user.role == 'agent':
+            try:
+                org = user.agent_profile.organization
+                if org:
+                    props = props.filter(organization=org)
+            except Exception:
+                props = Property.objects.none()
         return Response({
             'count': props.count(),
             'results': PropertyDetailSerializer(props, many=True, context={'request': request}).data,
@@ -300,6 +313,19 @@ class PropertyMarketTrendsView(APIView):
         period = request.query_params.get('period', 'monthly')
 
         qs = Property.objects.filter(is_active=True, price__isnull=False)
+        user = request.user
+        if user.role == 'developer':
+            try:
+                qs = qs.filter(organization=user.owned_organization)
+            except Exception:
+                return Response({'results': []})
+        elif user.role == 'agent':
+            try:
+                org = user.agent_profile.organization
+                if org:
+                    qs = qs.filter(organization=org)
+            except Exception:
+                return Response({'results': []})
         if city:
             qs = qs.filter(city__icontains=city)
 

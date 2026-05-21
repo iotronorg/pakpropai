@@ -41,6 +41,8 @@ def download_pdf(request, audit_id):
     if not request.user.is_authenticated:
         return HttpResponseForbidden("Authentication required.")
     audit = get_object_or_404(PropertyAudit, id=audit_id)
+    if audit.user != request.user and getattr(request.user, 'role', '') != 'admin':
+        return HttpResponseForbidden("Not authorized.")
     if not audit.pdf_file:
         raise Http404
     return HttpResponseRedirect(audit.pdf_file.url)

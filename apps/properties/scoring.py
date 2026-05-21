@@ -64,7 +64,7 @@ def _location_tier(city: str, location: str) -> str:
     return 'tier_3'
 
 
-def _price_signal(price, area_marla, tier: str, property_type: str) -> str:
+def _price_signal(price, area_marla, tier: str, property_type: str, city: str = '', country: str = 'PK') -> str:
     """Returns 'fair', 'underpriced', 'overpriced', or 'unknown'."""
     if not price or not area_marla or float(area_marla) <= 0:
         return 'unknown'
@@ -72,7 +72,20 @@ def _price_signal(price, area_marla, tier: str, property_type: str) -> str:
         return 'unknown'  # no commercial benchmark
 
     actual_ppm = int(price) / float(area_marla)
-    benchmark  = PRICE_BENCHMARKS_PKR_PER_MARLA[tier]
+
+    benchmark = PRICE_BENCHMARKS_PKR_PER_MARLA[tier]  # default fallback
+    try:
+        from apps.audit.models import AuditBenchmark
+        qs = AuditBenchmark.objects.filter(country=country, size_unit='marla')
+        if city:
+            qs = qs.filter(city__iexact=city)
+        if not qs.exists():
+            qs = AuditBenchmark.objects.filter(country=country, location_key=tier, size_unit='marla')
+        if qs.exists():
+            bm = qs.first()
+            benchmark = (bm.price_per_unit_min + bm.price_per_unit_max) // 2
+    except Exception:
+        pass
 
     ratio = actual_ppm / benchmark
     if ratio < 0.70:
@@ -103,7 +116,8 @@ class PropertyScoringEngine:
         - Used directly to compute a deterministic score
         """
         tier          = _location_tier(prop.city or '', prop.location or '')
-        price_signal  = _price_signal(prop.price, prop.area_marla, tier, prop.property_type)
+        org_country   = getattr(getattr(prop, 'organization', None), 'country', 'PK')
+        price_signal  = _price_signal(prop.price, prop.area_marla, tier, prop.property_type, city=prop.city or '', country=org_country)
         completeness  = _completeness(prop)
 
         # Count linked passing verifications

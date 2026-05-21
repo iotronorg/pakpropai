@@ -210,13 +210,18 @@ class SafepayBillingWebhookView(APIView):
         secret_key = SystemConfigService.get('safepay_secret_key', default='')
         payload    = request.body
 
-        # Verify Safepay HMAC signature (X-SFPY-SIGNATURE header)
+        # Verify Safepay HMAC signature (X-SFPY-SIGNATURE header) — always required
         sig = request.META.get('HTTP_X_SFPY_SIGNATURE', '')
-        if secret_key and sig:
-            expected = hmac.new(secret_key.encode(), payload, hashlib.sha256).hexdigest()
-            if not hmac.compare_digest(expected, sig):
-                logger.warning('Safepay billing webhook: invalid signature')
-                return Response({'detail': 'Invalid signature.'}, status=400)
+        if not secret_key:
+            logger.warning('Safepay billing webhook: safepay_secret_key not configured; rejecting')
+            return Response({'detail': 'Webhook not configured.'}, status=400)
+        if not sig:
+            logger.warning('Safepay billing webhook: missing X-SFPY-SIGNATURE header')
+            return Response({'detail': 'Missing signature.'}, status=400)
+        expected = hmac.new(secret_key.encode(), payload, hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(expected, sig):
+            logger.warning('Safepay billing webhook: invalid signature')
+            return Response({'detail': 'Invalid signature.'}, status=400)
 
         try:
             data     = request.data
@@ -240,6 +245,24 @@ class BSecureBillingWebhookView(APIView):
     permission_classes      = []
 
     def post(self, request):
+        import hmac, hashlib
+        from apps.config.services import SystemConfigService
+
+        secret_key = SystemConfigService.get('bsecure_client_secret', default='')
+        payload    = request.body
+        sig        = request.META.get('HTTP_X_BSECURE_SIGNATURE', '')
+
+        if not secret_key:
+            logger.warning('bSecure billing webhook: bsecure_client_secret not configured; rejecting')
+            return Response({'detail': 'Webhook not configured.'}, status=400)
+        if not sig:
+            logger.warning('bSecure billing webhook: missing X-bSecure-Signature header')
+            return Response({'detail': 'Missing signature.'}, status=400)
+        expected = hmac.new(secret_key.encode(), payload, hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(expected, sig):
+            logger.warning('bSecure billing webhook: invalid signature')
+            return Response({'detail': 'Invalid signature.'}, status=400)
+
         try:
             data     = request.data
             status   = data.get('status', '')
@@ -253,3 +276,88 @@ class BSecureBillingWebhookView(APIView):
             activate_from_order(order_id)
 
         return Response({'received': True})
+
+
+class BillingPortalView(APIView):
+    """POST /billing/portal/ — redirect to Stripe Customer Portal for subscription management."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from django.conf import settings as _settings
+        import stripe as _stripe
+        from .models import OrgSubscription
+        from .gateway import _cfg
+
+        try:
+            org = request.user.owned_organization
+        except Exception:
+            return Response({'detail': 'No organization linked to this account.'}, status=400)
+
+        secret_key = _cfg('stripe_secret_key') or getattr(_settings, 'STRIPE_SECRET_KEY', '')
+        if not secret_key:
+            return Response({'detail': 'Stripe is not configured.'}, status=400)
+
+        _stripe.api_key = secret_key
+
+        try:
+            sub = OrgSubscription.objects.get(organization=org)
+        except OrgSubscription.DoesNotExist:
+            return Response({'detail': 'No subscription found.'}, status=400)
+
+        if not sub.stripe_customer_id:
+            return Response({'detail': 'No Stripe customer found.'}, status=400)
+
+        origin = request.headers.get('Origin', getattr(_settings, 'FRONTEND_URL', 'http://localhost:3000'))
+        session = _stripe.billing_portal.Session.create(
+            customer=sub.stripe_customer_id,
+            return_url=f"{origin}/organization/settings/",
+        )
+        return Response({'url': session.url})
+
+
+class BillingInvoiceView(APIView):
+    """GET /billing/invoices/ — list past Stripe invoices for the org."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from django.conf import settings as _settings
+        import stripe as _stripe
+        from .models import OrgSubscription
+        from .gateway import _cfg
+
+        try:
+            org = request.user.owned_organization
+        except Exception:
+            return Response({'invoices': []})
+
+        secret_key = _cfg('stripe_secret_key') or getattr(_settings, 'STRIPE_SECRET_KEY', '')
+        if not secret_key:
+            return Response({'invoices': []})
+
+        _stripe.api_key = secret_key
+
+        try:
+            sub = OrgSubscription.objects.get(organization=org)
+        except OrgSubscription.DoesNotExist:
+            return Response({'invoices': []})
+
+        if not sub.stripe_customer_id:
+            return Response({'invoices': []})
+
+        invoices = _stripe.Invoice.list(customer=sub.stripe_customer_id, limit=20)
+        return Response({
+            'invoices': [
+                {
+                    'id':                 inv.id,
+                    'number':             inv.number,
+                    'amount_due':         inv.amount_due,
+                    'amount_paid':        inv.amount_paid,
+                    'currency':           inv.currency.upper(),
+                    'status':             inv.status,
+                    'created':            inv.created,
+                    'hosted_invoice_url': inv.hosted_invoice_url,
+                    'invoice_pdf':        inv.invoice_pdf,
+                }
+                for inv in invoices.data
+            ]
+        })

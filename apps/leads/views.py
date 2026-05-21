@@ -67,7 +67,10 @@ class LeadViewSet(viewsets.ModelViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
         from apps.agents.models import Agent
         try:
-            agent = Agent.objects.get(id=agent_id, is_active=True)
+            if request.user.role == 'admin':
+                agent = Agent.objects.get(id=agent_id, is_active=True)
+            else:
+                agent = Agent.objects.get(id=agent_id, is_active=True, organization=lead.organization)
         except Agent.DoesNotExist:
             return Response({'detail': 'Agent not found or inactive.'},
                             status=status.HTTP_404_NOT_FOUND)

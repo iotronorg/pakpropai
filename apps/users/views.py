@@ -10,6 +10,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
 from apps.core.throttles import OtpSendThrottle, OtpDailyThrottle
+from apps.core.permissions import IsAdminUser
 
 _ACCESS_LIFETIME  = int(settings.SIMPLE_JWT.get('ACCESS_TOKEN_LIFETIME',  timedelta(minutes=15)).total_seconds())
 _REFRESH_LIFETIME = int(settings.SIMPLE_JWT.get('REFRESH_TOKEN_LIFETIME', timedelta(days=7)).total_seconds())
@@ -95,6 +96,7 @@ class SendOTPView(APIView):
 
 class VerifyOTPView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [OtpSendThrottle, OtpDailyThrottle]
 
     def post(self, request):
         serializer = VerifyOTPSerializer(data=request.data)
@@ -178,7 +180,7 @@ class LogoutView(APIView):
 
 
 class UserListView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdminUser]
 
     def _require_admin(self, request):
         if request.user.role != User.Role.ADMIN:

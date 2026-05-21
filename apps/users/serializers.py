@@ -1,18 +1,20 @@
+import re
 from rest_framework import serializers
 from .models import User
+
+_E164_RE = re.compile(r'^\+\d{7,15}$')
 
 
 class SendOTPSerializer(serializers.Serializer):
     phone = serializers.CharField(max_length=20)
 
     def validate_phone(self, value):
-        # Pakistan phone format: +923XXXXXXXXX  (12 digits + plus sign)
         v = value.strip().replace(' ', '').replace('-', '')
         if not v.startswith('+'):
             v = '+' + v
-        if not v.startswith('+92') or len(v) != 13:
+        if not _E164_RE.match(v):
             raise serializers.ValidationError(
-                'Phone must be a valid Pakistani number in +92XXXXXXXXXX format.'
+                'Phone must be in E.164 format, e.g. +923001234567.'
             )
         return v
 
@@ -55,9 +57,9 @@ class UserCreateSerializer(serializers.ModelSerializer):
         v = value.strip().replace(' ', '').replace('-', '')
         if not v.startswith('+'):
             v = '+' + v
-        if not v.startswith('+92') or len(v) != 13:
+        if not _E164_RE.match(v):
             raise serializers.ValidationError(
-                'Phone must be a valid Pakistani number in +92XXXXXXXXXX format.'
+                'Phone must be in E.164 format, e.g. +923001234567.'
             )
         return v
 

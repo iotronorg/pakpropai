@@ -103,6 +103,21 @@ _SEARCH_INTENT_KEYWORDS = re.compile(
     re.I,
 )
 
+_DEAL_LOCK_KEYWORDS = re.compile(
+    r'\b(deal.?lock|token.?payment|book|reserve|hold property|lock property|'
+    r'paka karo|book karana|advance de|token de|payment first|'
+    r'pakka|confirm deal|seal deal)\b',
+    re.I,
+)
+
+_DOCUMENT_KEYWORDS = re.compile(
+    r'\b(verify document|check document|ownership letter|allotment letter|'
+    r'registry|fard|intiqal|mutation|noc|title deed|property paper|'
+    r'khasra|khata|bayana|sale deed|verify ownership|'
+    r'document check|papers check|kaghaz check)\b',
+    re.I,
+)
+
 _DIRECT_ROUTE_CONFIDENCE = 0.85
 
 
@@ -159,6 +174,24 @@ class IntentClassifier:
             return IntentResult(
                 intent='loan_eligibility',
                 confidence=0.80,
+                language=language,
+                normalised_query=msg,
+            )
+
+        # ── Deal lock ──────────────────────────────────────────────────────────
+        if _DEAL_LOCK_KEYWORDS.search(lower):
+            return IntentResult(
+                intent='deal_lock',
+                confidence=0.80,
+                language=language,
+                normalised_query=msg,
+            )
+
+        # ── Document verification (text-only) ─────────────────────────────────
+        if _DOCUMENT_KEYWORDS.search(lower):
+            return IntentResult(
+                intent='document_verify_text',
+                confidence=0.75,
                 language=language,
                 normalised_query=msg,
             )

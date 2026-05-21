@@ -63,7 +63,7 @@ class VerificationQueueView(APIView):
         elif role == 'developer':
             try:
                 org = request.user.owned_organization
-                qs = qs.filter(property__assigned_agent__organization=org)
+                qs = qs.filter(property__organization=org)
             except Exception:
                 qs = qs.none()
         # admin: no additional filter
@@ -133,7 +133,6 @@ class DocumentScanListView(APIView):
 
         qs = DocumentScan.objects.select_related('user', 'verification').all()
 
-        # Agents only see scans for their own properties' verifications
         if role == 'agent':
             try:
                 from apps.properties.models import Property
@@ -141,6 +140,12 @@ class DocumentScanListView(APIView):
                     owner=request.user
                 ).values_list('id', flat=True)
                 qs = qs.filter(verification__property_id__in=agent_prop_ids)
+            except Exception:
+                qs = qs.none()
+        elif role == 'developer':
+            try:
+                org = request.user.owned_organization
+                qs = qs.filter(verification__property__organization=org)
             except Exception:
                 qs = qs.none()
 
@@ -173,6 +178,15 @@ class DocumentScanDetailView(APIView):
             agent_prop_ids = Property.objects.filter(owner=request.user).values_list('id', flat=True)
             if not DocumentScan.objects.filter(
                 pk=pk, verification__property_id__in=agent_prop_ids
+            ).exists():
+                return Response({'error': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
+        elif role == 'developer':
+            try:
+                org = request.user.owned_organization
+            except Exception:
+                return Response({'error': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
+            if not DocumentScan.objects.filter(
+                pk=pk, verification__property__organization=org
             ).exists():
                 return Response({'error': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
         return Response(DocumentScanSerializer(scan).data)

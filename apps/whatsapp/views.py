@@ -56,8 +56,10 @@ class WhatsAppWebhookView(APIView):
     @staticmethod
     def _is_signature_valid(body: bytes, signature: str) -> bool:
         if not settings.WA_APP_SECRET:
-            # Dev mode fallback — accept all
-            return True
+            if settings.DEBUG:
+                return True  # dev convenience — never reached in production
+            logger.error("WA webhook: WA_APP_SECRET not configured — rejecting all requests")
+            return False
         if not signature.startswith('sha256='):
             return False
         expected = 'sha256=' + hmac.new(

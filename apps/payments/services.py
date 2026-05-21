@@ -50,7 +50,7 @@ class SafepayGateway:
     def create_checkout(
         cls,
         order_id: str,
-        amount_pkr: int,
+        amount: int,
         redirect_url: str,
         cancel_url: str,
         customer_phone: str = '',
@@ -58,6 +58,7 @@ class SafepayGateway:
         merchant_key: str = None,
         secret_key: str = None,
         environment: str = None,
+        currency: str = 'PKR',
     ) -> dict:
         """
         Create a Safepay checkout session.
@@ -75,8 +76,8 @@ class SafepayGateway:
             'merchant':    mk,
             'intent':      'CYBERSOURCE',
             'mode':        'payment',
-            'currency':    'PKR',
-            'amount':      amount_pkr,
+            'currency':    currency,
+            'amount':      amount,
             'order_id':    str(order_id),
             'cancel_url':  cancel_url,
             'redirect_url': redirect_url,
@@ -170,7 +171,7 @@ class bSecureGateway:
     def create_checkout(
         cls,
         order_id: str,
-        amount_pkr: int,
+        amount: int,
         redirect_url: str,
         cancel_url: str,
         customer_phone: str = '',
@@ -178,21 +179,22 @@ class bSecureGateway:
         client_id: str = None,
         client_secret: str = None,
         environment: str = None,
+        currency: str = 'PKR',
     ) -> dict:
         from apps.config.services import SystemConfigService
         env   = environment or SystemConfigService.get('bsecure_environment') or getattr(settings, 'BSECURE_ENVIRONMENT', 'sandbox')
         token = cls._get_access_token(client_id=client_id, client_secret=client_secret, environment=env)
         payload = {
             'order_id':           str(order_id),
-            'amount':             amount_pkr,
-            'currency':           'PKR',
+            'amount':             amount,
+            'currency':           currency,
             'order_type':         'normal',
             'success_redirect_url': redirect_url,
             'failure_redirect_url': cancel_url,
             'products': [{
                 'name':  description,
                 'sku':   str(order_id),
-                'price': amount_pkr,
+                'price': amount,
                 'qty':   1,
             }],
         }
@@ -285,7 +287,8 @@ class PaymentService:
 
         result = gw_class.create_checkout(
             order_id       = str(deal.id),
-            amount_pkr     = deal.token_amount,
+            amount         = deal.token_amount,
+            currency       = deal.currency,
             redirect_url   = redirect_url,
             cancel_url     = cancel_url,
             customer_phone = deal.buyer.phone,
@@ -298,7 +301,8 @@ class PaymentService:
             gateway     = gateway,
             defaults={
                 'user':           deal.buyer,
-                'amount_pkr':     deal.token_amount,
+                'amount':         deal.token_amount,
+                'currency':       deal.currency,
                 'purpose':        Payment.Purpose.ESCROW_TOKEN,
                 'status':         Payment.Status.PENDING,
                 'checkout_token': result['checkout_token'],
