@@ -314,3 +314,70 @@ class OrgIsolationTest(TestCase):
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         results = resp.data.get('results', resp.data)
         self.assertEqual(len(results), 0, "Developer B must see zero deals")
+
+
+# ── Task 2d: Org payment settings override ────────────────────────────────────
+
+class OrgPaymentSettingsOverrideTest(TestCase):
+    """Deal lock uses org-level payment config when available."""
+
+    def setUp(self):
+        from apps.organizations.models import OrgPaymentSettings
+        self.client = APIClient()
+        self.buyer  = _user(phone='+923008880001')
+
+        self.admin = _user(phone='+923008880002', role='developer')
+        self.org   = Organization.objects.create(name='Payment Org', admin_user=self.admin)
+
+        self.prop  = Property.objects.create(
+            listing_owner_type='organization',
+            organization=self.org,
+            title='Org Property',
+            city='Lahore',
+            location='DHA Phase 5',
+            property_type='residential',
+            price=5_000_000,
+            area_marla=5,
+        )
+
+        self.ps, _ = OrgPaymentSettings.objects.get_or_create(organization=self.org)
+
+    def test_org_jazzcash_number_appears_in_payment_message(self):
+        self.ps.gateway        = 'manual'
+        self.ps.jazzcash_number = '0300-1112233'
+        self.ps.save(update_fields=['gateway', 'jazzcash_number'])
+
+        self.client.force_authenticate(user=self.buyer)
+        resp = self.client.post(
+            reverse('deal-initiate'),
+            {'property_id': str(self.prop.pk), 'token_amount': 25_000, 'payment_gateway': 'jazzcash'},
+            format='json',
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        self.assertIn('0300-1112233', resp.data['payment_message'])
+
+    def test_org_safepay_gateway_overrides_user_choice(self):
+        self.ps.gateway = 'safepay'
+        self.ps.save(update_fields=['gateway'])
+
+        self.client.force_authenticate(user=self.buyer)
+        resp = self.client.post(
+            reverse('deal-initiate'),
+            {'property_id': str(self.prop.pk), 'token_amount': 25_000, 'payment_gateway': 'jazzcash'},
+            format='json',
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(resp.data['payment_gateway'], 'safepay')
+
+    def test_org_manual_gateway_preserves_user_choice(self):
+        self.ps.gateway = 'manual'
+        self.ps.save(update_fields=['gateway'])
+
+        self.client.force_authenticate(user=self.buyer)
+        resp = self.client.post(
+            reverse('deal-initiate'),
+            {'property_id': str(self.prop.pk), 'token_amount': 25_000, 'payment_gateway': 'easypaisa'},
+            format='json',
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(resp.data['payment_gateway'], 'easypaisa')

@@ -42,6 +42,35 @@ def _get_payment_instructions(gateway: str, amount: int, currency: str, org=None
     return "Our team will contact you with payment details within 1 hour."
 
 
+def _check_high_risk_deal(prop, deal) -> None:
+    """Log and alert admin when a deal lock is initiated on a high-risk property."""
+    ai_score   = getattr(prop, 'ai_score', None)
+    risk_level = getattr(prop, 'risk_level', None)
+    is_high_risk = (ai_score is not None and ai_score < 40) or risk_level == 'HIGH'
+    if not is_high_risk:
+        return
+    logger.warning(
+        'HIGH-RISK deal lock initiated: deal=%s property=%s ai_score=%s risk_level=%s',
+        deal.id, prop.id, ai_score, risk_level,
+    )
+    try:
+        from apps.core.models import AuditLog
+        AuditLog.objects.create(
+            event='high_risk_deal_lock',
+            target_type='EscrowDeal',
+            target_id=str(deal.id),
+            metadata={
+                'property_id':  str(prop.id),
+                'property_title': prop.title,
+                'ai_score':     ai_score,
+                'risk_level':   risk_level,
+                'buyer_phone':  getattr(deal.buyer, 'phone', ''),
+            },
+        )
+    except Exception as exc:
+        logger.error('_check_high_risk_deal: failed to create audit log: %s', exc)
+
+
 class IsDashboardUser(permissions.BasePermission):
     def has_permission(self, request, view):
         return request.user.is_authenticated and request.user.role in ('admin', 'agent', 'developer')
@@ -67,8 +96,8 @@ class DealLockInitiateView(APIView):
 
         try:
             with transaction.atomic():
-                prop = Property.objects.select_for_update().select_related(
-                    'organization__payment_settings'
+                prop = Property.objects.select_for_update(of=('self',)).select_related(
+                    'organization'
                 ).get(id=property_id, is_active=True)
 
                 org = prop.organization
@@ -105,6 +134,7 @@ class DealLockInitiateView(APIView):
             )
 
         _notify_seller_lock_initiated(deal, seller_token)
+        _check_high_risk_deal(prop, deal)
         payment_message = _get_payment_instructions(gateway, amount, deal.currency, org=org)
 
         return Response({
@@ -188,6 +218,8 @@ class DealLockCancelView(APIView):
         deal.status = EscrowDeal.Status.CANCELLED
         deal.admin_notes = request.data.get('reason', deal.admin_notes)
         deal.save(update_fields=['status', 'admin_notes', 'updated_at'])
+
+        _notify_deal_cancelled(deal)
 
         return Response({'detail': 'Deal lock cancelled.', 'id': str(deal.id)})
 
@@ -360,6 +392,30 @@ def _notify_buyer_lock_active(deal: EscrowDeal):
         notify_user(deal.buyer, title="Deal Lock Confirmed", message=msg, event_type='deal_updates')
     except Exception as exc:
         logger.warning(f"Deal lock notify failed: {exc}")
+
+
+def _notify_deal_cancelled(deal: EscrowDeal):
+    """Notify seller and assigned agent when a deal lock is cancelled."""
+    msg = (
+        f"❌ *Deal Lock Cancelled*\n\n"
+        f"🏠 *Property:* {deal.property.title}\n"
+        f"💰 *Token Amount:* {deal.currency} {deal.token_amount:,}\n\n"
+        "The deal lock on this property has been cancelled. "
+        "The property is now available for new offers."
+    )
+    try:
+        seller_user = deal.property.owner
+        if seller_user and seller_user.phone:
+            from apps.notifications.services import notify_user
+            notify_user(seller_user, title="Deal Lock Cancelled", message=msg, event_type='deal_updates')
+    except Exception as exc:
+        logger.warning('_notify_deal_cancelled: seller notify failed: %s', exc)
+    try:
+        if deal.agent and getattr(deal.agent, 'user', None) and deal.agent.user.phone:
+            from apps.notifications.services import notify_user
+            notify_user(deal.agent.user, title="Deal Lock Cancelled", message=msg, event_type='deal_updates')
+    except Exception as exc:
+        logger.warning('_notify_deal_cancelled: agent notify failed: %s', exc)
 
 
 def _notify_seller_lock_initiated(deal: EscrowDeal, token: str):

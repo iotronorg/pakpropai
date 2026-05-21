@@ -152,24 +152,83 @@ class TaxAdviceInput(BaseModel):
 
 # ── Intent Classification Result ───────────────────────────────────────────────
 
+# ── Loan Eligibility ──────────────────────────────────────────────────────────
+
+class LoanEligibilityInput(BaseModel):
+    """
+    Extracted loan/mortgage eligibility parameters.
+
+    Populated when IntentClassifier finds both income and loan amount in the message.
+    Routes directly to check_loan_eligibility() bypassing the LLM.
+    """
+    monthly_income: int = Field(..., gt=0, description="Net monthly income in local currency")
+    loan_amount:    int = Field(..., gt=0, description="Requested loan amount in local currency")
+    tenure_years:   int = Field(20, ge=1, le=30)
+    existing_emi:   int = Field(0, ge=0)
+    scheme:         Literal['apna_ghar', 'conventional'] = 'conventional'
+    country:        str = 'PK'
+
+    def to_tool_kwargs(self) -> dict:
+        return {
+            'monthly_income_pkr': self.monthly_income,
+            'loan_amount_pkr':    self.loan_amount,
+            'tenure_years':       self.tenure_years,
+            'existing_emi_pkr':   self.existing_emi,
+            'scheme':             self.scheme,
+            'country':            self.country,
+        }
+
+
+# ── Property Audit ─────────────────────────────────────────────────────────────
+
+class AuditInput(BaseModel):
+    """
+    Extracted property audit parameters.
+
+    Populated when IntentClassifier finds city + estimated value in the message.
+    Routes directly to generate_property_audit() bypassing the LLM.
+    """
+    city:                str
+    location:            str            = ''
+    property_type:       str            = 'residential'
+    estimated_value_pkr: int            = Field(..., gt=0)
+    area_marla:          Optional[float] = Field(None, gt=0)
+    description:         str            = ''
+
+    def to_tool_kwargs(self) -> dict:
+        return {
+            'city':                 self.city,
+            'location':             self.location,
+            'property_type':        self.property_type,
+            'estimated_value_pkr':  self.estimated_value_pkr,
+            'area_marla':           self.area_marla or 0.0,
+            'description':          self.description,
+        }
+
+
+# ── Intent Classification Result ───────────────────────────────────────────────
+
 class IntentResult(BaseModel):
     """
     Output of the pre-LLM intent classifier.
 
     - confidence  : 0.0–1.0 (≥ 0.85 triggers direct Python tool routing)
-    - search_filter / scam_input / tax_input : populated when confidence is high
+    - search_filter / scam_input / tax_input / loan_input / audit_input :
+      populated when confidence is high enough for direct routing
     - normalised_query : cleaned/normalised version of the original message
                          injected back to the LLM when confidence < 0.85
     """
     intent: Literal[
         'property_search', 'scam_check', 'tax_advice', 'loan_eligibility',
         'list_property', 'talk_to_agent', 'deal_lock', 'property_audit',
-        'general_query', 'off_topic', 'greeting',
+        'document_verify_text', 'general_query', 'off_topic', 'greeting',
     ]
-    confidence:       float                           = Field(0.0, ge=0.0, le=1.0)
-    language:         Literal['en', 'ur', 'mixed']   = 'en'
-    extracted_params: dict                            = {}
-    normalised_query: str                             = ''
-    search_filter:    Optional[PropertySearchFilter]  = None
-    scam_input:       Optional[ScamCheckInput]        = None
-    tax_input:        Optional[TaxAdviceInput]        = None
+    confidence:       float                            = Field(0.0, ge=0.0, le=1.0)
+    language:         Literal['en', 'ur', 'mixed']    = 'en'
+    extracted_params: dict                             = {}
+    normalised_query: str                              = ''
+    search_filter:    Optional[PropertySearchFilter]   = None
+    scam_input:       Optional[ScamCheckInput]         = None
+    tax_input:        Optional[TaxAdviceInput]         = None
+    loan_input:       Optional[LoanEligibilityInput]   = None
+    audit_input:      Optional[AuditInput]             = None

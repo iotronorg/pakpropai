@@ -92,7 +92,7 @@ _FRAUD_KEYWORDS = re.compile(
 )
 
 _LOAN_KEYWORDS = re.compile(
-    r'\b(loan|mortgage|emi|apna ghar|home.?finance|bank.?finance|'
+    r'\b(loans?|mortgage|emi|apna ghar|home.?finance|bank.?finance|'
     r'down.?payment|monthly installment|qist)\b',
     re.I,
 )
@@ -119,6 +119,12 @@ _DOCUMENT_KEYWORDS = re.compile(
 )
 
 _DIRECT_ROUTE_CONFIDENCE = 0.85
+
+# Cities outside Pakistan whose audit requests must fall to LLM (non-PKR market)
+_NON_PK_CITIES = {
+    'dubai', 'abu dhabi', 'sharjah', 'ajman', 'london', 'manchester',
+    'birmingham', 'new york', 'los angeles', 'toronto', 'sydney',
+}
 
 
 # ── Intent Classifier ─────────────────────────────────────────────────────────
@@ -171,6 +177,14 @@ class IntentClassifier:
 
         # ── Loan eligibility ───────────────────────────────────────────────────
         if _LOAN_KEYWORDS.search(lower):
+            loan_input = cls._extract_loan_input(msg)
+            if loan_input:
+                return IntentResult(
+                    intent='loan_eligibility',
+                    confidence=0.87,
+                    language=language,
+                    loan_input=loan_input,
+                )
             return IntentResult(
                 intent='loan_eligibility',
                 confidence=0.80,
@@ -196,6 +210,21 @@ class IntentClassifier:
                 normalised_query=msg,
             )
 
+        # ── Property audit — checked BEFORE property_search so audit messages
+        #    containing city/size details don't get misrouted as searches.
+        if re.search(r'\b(audit|report|analysis|detailed.?check)\b', lower, re.I):
+            audit_input = cls._extract_audit_input(msg, lower, history)
+            if audit_input:
+                return IntentResult(
+                    intent='property_audit',
+                    confidence=0.87,
+                    language=language,
+                    audit_input=audit_input,
+                )
+            return IntentResult(
+                intent='property_audit', confidence=0.75, language=language,
+            )
+
         # ── Property search ────────────────────────────────────────────────────
         city = cls._extract_city(lower, history)
         if city or _SEARCH_INTENT_KEYWORDS.search(lower):
@@ -219,12 +248,6 @@ class IntentClassifier:
         if re.search(r'\b(agent|broker|dealer|banda|kisi se baat)\b', lower, re.I):
             return IntentResult(
                 intent='talk_to_agent', confidence=0.75, language=language,
-            )
-
-        # ── Property audit ─────────────────────────────────────────────────────
-        if re.search(r'\b(audit|report|analysis|detailed.?check)\b', lower, re.I):
-            return IntentResult(
-                intent='property_audit', confidence=0.75, language=language,
             )
 
         # ── General real-estate query ──────────────────────────────────────────
@@ -387,6 +410,127 @@ class IntentClassifier:
             return None
 
     @staticmethod
+    def _extract_loan_input(msg: str) -> Optional['LoanEligibilityInput']:
+        from apps.ai.schemas import LoanEligibilityInput
+        lower = msg.lower()
+
+        def _to_pkr(val: str, unit: str) -> int:
+            v = float(val.replace(',', ''))
+            u = unit.lower()
+            return int(v * (10_000_000 if u == 'crore' else 100_000 if u == 'lakh' else 1_000 if u == 'k' else 1))
+
+        income = None
+        m = re.search(
+            r'(?:income|earn(?:ing|s)?|salary|tankhwa|mahana)\s*(?:is|hai|of|:|=)?\s*'
+            r'(\d[\d,]*(?:\.\d+)?)\s*(k|lakh|crore)?',
+            lower, re.I,
+        )
+        if m:
+            income = _to_pkr(m.group(1), m.group(2) or '')
+
+        loan_amount = None
+        m = re.search(
+            r'(?:loan|mortgage|finance|need|chahiye|borrow|lena)\s*'
+            r'(?:of|for|:|=)?\s*(\d[\d,]*(?:\.\d+)?)\s*(lakh|crore|k)?',
+            lower, re.I,
+        )
+        if m:
+            loan_amount = _to_pkr(m.group(1), m.group(2) or '')
+
+        # Fallback: if loan amount still not found, pick the largest crore/lakh amount
+        # that isn't the income value.
+        if not loan_amount:
+            candidates = []
+            for pat, mult in ((_CRORE_RE, 10_000_000), (_LAKH_RE, 100_000)):
+                for hit in pat.finditer(lower):
+                    candidates.append(int(float(hit.group(1)) * mult))
+            if candidates and income:
+                diff = [c for c in candidates if abs(c - income) / max(income, 1) > 0.05]
+                if diff:
+                    loan_amount = max(diff)
+            elif candidates:
+                loan_amount = max(candidates)
+
+        if not income or not loan_amount:
+            return None
+
+        tenure = 20
+        m = re.search(r'(\d+)\s*(?:year|yr|saal)', lower, re.I)
+        if m:
+            tenure = max(1, min(30, int(m.group(1))))
+
+        scheme = 'apna_ghar' if re.search(r'\b(apna.?ghar|mera.?pakistan)\b', lower, re.I) else 'conventional'
+        try:
+            return LoanEligibilityInput(
+                monthly_income=income, loan_amount=loan_amount,
+                tenure_years=tenure, scheme=scheme,
+            )
+        except Exception:
+            return None
+
+    @classmethod
+    def _extract_audit_input(cls, msg: str, lower: str, history=None) -> Optional['AuditInput']:
+        from apps.ai.schemas import AuditInput
+
+        city = cls._extract_city(lower, history)
+        if not city:
+            return None
+
+        # Non-PK markets: let the LLM handle with market-appropriate context
+        if city.lower() in _NON_PK_CITIES:
+            return None
+
+        value = None
+
+        m = _CRORE_RE.search(lower)
+        if m:
+            value = int(float(m.group(1)) * 10_000_000)
+        else:
+            m = _LAKH_RE.search(lower)
+            if m:
+                value = int(float(m.group(1)) * 100_000)
+        if not value:
+            return None
+
+        _LOC_STOP = re.compile(
+            r'(?:\s+(?:under|below|above)|\s+\d+(?:\.\d+)?\s*(?:crore|lakh|marla|kanal|sqft))',
+            re.I,
+        )
+        location = ''
+        for kw in _LOCATION_KEYWORDS:
+            if kw in lower:
+                idx = lower.find(kw)
+                snippet = msg[idx: idx + 35]
+                stop_m = _LOC_STOP.search(snippet)
+                location = (snippet[:stop_m.start()] if stop_m else snippet).strip().split(',')[0]
+                break
+        if not location:
+            location = city  # default to city when no area keyword found
+
+        prop_type = 'residential'
+        for pattern, ptype in _PROP_TYPE_MAP.items():
+            if pattern.search(lower):
+                prop_type = ptype
+                break
+
+        area_marla = None
+        m = _KANAL_RE.search(lower)
+        if m:
+            area_marla = round(float(m.group(1)) * 20, 2)
+        else:
+            m = _MARLA_RE.search(lower)
+            if m:
+                area_marla = round(float(m.group(1)), 2)
+
+        try:
+            return AuditInput(
+                city=city, location=location, property_type=prop_type,
+                estimated_value_pkr=value, area_marla=area_marla,
+            )
+        except Exception:
+            return None
+
+    @staticmethod
     def _normalise_search_query(sf: 'PropertySearchFilter') -> str:
         """Produce a compact normalised string the LLM can act on without ambiguity."""
         parts = [f"city={sf.city}"]
@@ -521,6 +665,18 @@ class AIServiceManager:
                 return self._direct_tax_advice(intent.tax_input, intent.language)
             return None     # non-PK org → LLM handles with general tax knowledge
 
+        if intent.intent == 'loan_eligibility' and intent.loan_input:
+            from apps.config.services import SystemConfigService
+            if SystemConfigService.get_features().get('feature_loan_eligibility', True):
+                return self._direct_loan_eligibility(intent.loan_input, intent.language)
+            return None
+
+        if intent.intent == 'property_audit' and intent.audit_input:
+            from apps.config.services import SystemConfigService
+            if SystemConfigService.get_features().get('feature_property_audit', True):
+                return self._direct_property_audit(intent.audit_input, intent.language)
+            return None
+
         return None     # property_search and others go through LLM for natural formatting
 
     @staticmethod
@@ -599,6 +755,59 @@ class AIServiceManager:
 
         lines += ['', '_Consult a registered CA or tax lawyer for final advice._']
         return '\n'.join(lines)
+
+    @staticmethod
+    def _direct_loan_eligibility(loan_input, language: str) -> Optional[str]:
+        if language and not language.startswith('en'):
+            return None  # let LLM respond in user's language
+        from apps.ai._tools_financial import check_loan_eligibility
+        result = check_loan_eligibility(**loan_input.to_tool_kwargs())
+        if not result.get('supported', True) or result.get('error'):
+            return None
+
+        eligible = result.get('eligible', False)
+        emi      = result.get('estimated_monthly_emi', 0)
+        max_loan = result.get('max_affordable_loan', 0)
+        rate     = result.get('annual_interest_rate_percent', 0)
+        tenure   = result.get('tenure_years', loan_input.tenure_years)
+        reason   = result.get('reason', '')
+        steps    = result.get('next_steps', [])
+
+        icon  = '✅' if eligible else '❌'
+        lines = [
+            '🏦 *LOAN ELIGIBILITY RESULT*',
+            f'Monthly Income: PKR {loan_input.monthly_income:,}',
+            f'Loan Requested: PKR {loan_input.loan_amount:,}',
+            '',
+            f'{icon} *{"ELIGIBLE" if eligible else "NOT ELIGIBLE"}*',
+        ]
+        if eligible and emi:
+            lines += [
+                f'Estimated EMI: PKR {emi:,}/month',
+                f'Interest Rate: {rate}% p.a. over {tenure} years',
+            ]
+        if max_loan:
+            lines += ['', f'Max Loan You Qualify For: PKR {max_loan:,}']
+        if reason:
+            lines += ['', reason]
+        if loan_input.scheme == 'apna_ghar':
+            lines += ['', '🏠 *Apna Ghar Scheme* — subsidized government financing']
+        if steps:
+            lines += ['', '*Next Steps:*']
+            for i, step in enumerate(steps[:4], 1):
+                lines.append(f'{i}. {step}')
+        lines += ['', '_Consult your bank or HBL/NBP branch for final approval._']
+        return '\n'.join(lines)
+
+    @staticmethod
+    def _direct_property_audit(audit_input, language: str) -> Optional[str]:
+        if language and not language.startswith('en'):
+            return None  # let LLM respond in user's language
+        from apps.ai.tools import generate_property_audit
+        result = generate_property_audit(**audit_input.to_tool_kwargs())
+        if not result.get('success'):
+            return None
+        return result.get('whatsapp_summary')
 
     # ── Usage recording ────────────────────────────────────────────────────────
 

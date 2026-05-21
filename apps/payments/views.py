@@ -18,6 +18,21 @@ logger = logging.getLogger(__name__)
 SUPPORTED_ONLINE_GATEWAYS = {'safepay', 'bsecure'}
 
 
+def _safe_origin(request) -> str | None:
+    """
+    Return a validated origin for use in redirect URLs.
+    Prevents open-redirect attacks via a crafted Origin header.
+    Returns None when the origin is not in ALLOWED_FRONTEND_ORIGINS (reject with 400).
+    When ALLOWED_FRONTEND_ORIGINS is not configured, always returns FRONTEND_URL.
+    """
+    frontend = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000').rstrip('/')
+    allowed  = getattr(settings, 'ALLOWED_FRONTEND_ORIGINS', [])
+    origin   = request.headers.get('Origin', frontend)
+    if not allowed:
+        return frontend
+    return origin if origin in allowed else None
+
+
 class CreateCheckoutView(APIView):
     """
     POST /payments/checkout/<deal_id>/
@@ -53,7 +68,9 @@ class CreateCheckoutView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        origin = request.headers.get('Origin', getattr(settings, 'FRONTEND_URL', 'http://localhost:3000'))
+        origin = _safe_origin(request)
+        if origin is None:
+            return Response({'detail': 'Origin not allowed.'}, status=status.HTTP_400_BAD_REQUEST)
         redirect_url = f"{origin}/payments/return/?status=success&deal_id={deal.id}"
         cancel_url   = f"{origin}/payments/return/?status=cancelled&deal_id={deal.id}"
 

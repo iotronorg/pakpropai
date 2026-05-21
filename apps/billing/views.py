@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime
 
+from django.db import IntegrityError
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.permissions import IsAuthenticated
@@ -13,6 +14,22 @@ from .limits import PLAN_LIMITS
 logger = logging.getLogger(__name__)
 
 _UPGRADEABLE_PLANS = {'basic', 'professional', 'enterprise'}
+
+
+def _safe_origin(request) -> str | None:
+    """
+    Return a validated origin for use in redirect URLs.
+    Prevents open-redirect attacks via a crafted Origin header.
+    Returns None when the origin is not in ALLOWED_FRONTEND_ORIGINS (reject with 400).
+    When ALLOWED_FRONTEND_ORIGINS is not configured, always returns FRONTEND_URL.
+    """
+    from django.conf import settings as _s
+    frontend = getattr(_s, 'FRONTEND_URL', 'http://localhost:3000').rstrip('/')
+    allowed  = getattr(_s, 'ALLOWED_FRONTEND_ORIGINS', [])
+    origin   = request.headers.get('Origin', frontend)
+    if not allowed:
+        return frontend
+    return origin if origin in allowed else None
 
 
 class BillingUsageView(APIView):
@@ -74,7 +91,9 @@ class BillingCheckoutView(APIView):
         except Exception:
             return Response({'detail': 'No organization linked to this account.'}, status=404)
 
-        origin = request.headers.get('Origin', 'http://localhost:3000')
+        origin = _safe_origin(request)
+        if origin is None:
+            return Response({'detail': 'Origin not allowed.'}, status=400)
         success_url = f"{origin}/organization/billing/success?plan={plan}"
         cancel_url  = f"{origin}/organization/settings"
 
@@ -109,6 +128,14 @@ class StripeWebhookView(APIView):
         except Exception as exc:
             logger.warning('Stripe webhook signature verification failed: %s', exc)
             return Response({'detail': 'Invalid signature.'}, status=400)
+
+        # Idempotency guard: skip already-processed events
+        from .models import WebhookEvent
+        try:
+            WebhookEvent.objects.create(gateway='stripe', event_id=event.id)
+        except IntegrityError:
+            logger.info('Stripe webhook: duplicate event %s — skipping', event.id)
+            return Response({'received': True})
 
         event_type = event.type
         obj        = event.data.object
@@ -232,6 +259,12 @@ class SafepayBillingWebhookView(APIView):
             return Response({'detail': 'Bad payload.'}, status=400)
 
         if event == 'payment.success' and order_id and order_id.startswith('billing-'):
+            from .models import WebhookEvent
+            try:
+                WebhookEvent.objects.create(gateway='safepay', event_id=order_id)
+            except IntegrityError:
+                logger.info('Safepay billing webhook: duplicate order %s — skipping', order_id)
+                return Response({'received': True})
             from .gateway import activate_from_order
             activate_from_order(order_id)
 
@@ -272,6 +305,12 @@ class BSecureBillingWebhookView(APIView):
             return Response({'detail': 'Bad payload.'}, status=400)
 
         if status in ('completed', 'COMPLETED') and order_id and order_id.startswith('billing-'):
+            from .models import WebhookEvent
+            try:
+                WebhookEvent.objects.create(gateway='bsecure', event_id=order_id)
+            except IntegrityError:
+                logger.info('bSecure billing webhook: duplicate order %s — skipping', order_id)
+                return Response({'received': True})
             from .gateway import activate_from_order
             activate_from_order(order_id)
 
@@ -307,7 +346,9 @@ class BillingPortalView(APIView):
         if not sub.stripe_customer_id:
             return Response({'detail': 'No Stripe customer found.'}, status=400)
 
-        origin = request.headers.get('Origin', getattr(_settings, 'FRONTEND_URL', 'http://localhost:3000'))
+        origin = _safe_origin(request)
+        if origin is None:
+            return Response({'detail': 'Origin not allowed.'}, status=400)
         session = _stripe.billing_portal.Session.create(
             customer=sub.stripe_customer_id,
             return_url=f"{origin}/organization/settings/",

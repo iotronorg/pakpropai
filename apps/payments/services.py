@@ -106,10 +106,13 @@ class SafepayGateway:
         """Verify Safepay webhook HMAC-SHA256 signature."""
         secret = getattr(settings, 'SAFEPAY_SECRET_KEY', '')
         if not secret:
-            logger.warning("SAFEPAY_SECRET_KEY not set — skipping webhook verification (dev mode)")
-            return True
+            logger.error("SAFEPAY_SECRET_KEY not set — rejecting unsigned webhook")
+            return False
+        if not signature:
+            logger.warning("Safepay webhook: missing signature header")
+            return False
         expected = hmac.new(secret.encode(), payload_bytes, hashlib.sha256).hexdigest()
-        return hmac.compare_digest(expected, signature or '')
+        return hmac.compare_digest(expected, signature)
 
     @classmethod
     def parse_webhook(cls, payload: dict) -> Optional[dict]:
@@ -220,10 +223,13 @@ class bSecureGateway:
     def verify_webhook(cls, payload_bytes: bytes, signature: str) -> bool:
         secret = getattr(settings, 'BSECURE_CLIENT_SECRET', '')
         if not secret:
-            logger.warning("BSECURE_CLIENT_SECRET not set — skipping webhook verification (dev mode)")
-            return True
+            logger.error("BSECURE_CLIENT_SECRET not set — rejecting unsigned webhook")
+            return False
+        if not signature:
+            logger.warning("bSecure webhook: missing signature header")
+            return False
         expected = hmac.new(secret.encode(), payload_bytes, hashlib.sha256).hexdigest()
-        return hmac.compare_digest(expected, signature or '')
+        return hmac.compare_digest(expected, signature)
 
     @classmethod
     def parse_webhook(cls, payload: dict) -> Optional[dict]:

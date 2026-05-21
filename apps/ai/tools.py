@@ -81,13 +81,16 @@ def generate_property_audit(
         pdf_filename = f"audit_{audit.id}.pdf"
         pdf_path     = os.path.join(audits_dir, pdf_filename)
 
-        generate_audit_pdf(audit_data, pdf_path)
-
-        audit.pdf_file = f"audits/{pdf_filename}"
-        audit.save(update_fields=['pdf_file'])
-
-        base_url  = getattr(django_settings, 'BASE_URL', 'http://127.0.0.1:8000')
-        pdf_url   = f"{base_url}/api/v1/audit/download/{audit.id}/"
+        pdf_url = None
+        try:
+            generate_audit_pdf(audit_data, pdf_path)
+            audit.pdf_file = f"audits/{pdf_filename}"
+            audit.save(update_fields=['pdf_file'])
+            base_url = getattr(django_settings, 'BASE_URL', 'http://127.0.0.1:8000')
+            pdf_url  = f"{base_url}/api/v1/audit/download/{audit.id}/"
+        except Exception as pdf_exc:
+            import logging as _log
+            _log.getLogger(__name__).warning('Audit PDF generation failed for %s: %s', audit.id, pdf_exc)
 
         # Build WhatsApp summary
         ov  = audit_data['overview']
@@ -142,9 +145,14 @@ def generate_property_audit(
         for i, action in enumerate(rec['top_3_actions'], 1):
             summary_lines.append(f"{i}. {action}")
 
+        pdf_line = (
+            f"📄 *Full PDF Report:* {pdf_url}"
+            if pdf_url else
+            "📄 *PDF report:* generation failed — all data available in your dashboard"
+        )
         summary_lines += [
             "",
-            f"📄 *Full PDF Report:* {pdf_url}",
+            pdf_line,
             "",
             "_Consult a registered property lawyer and CA for final decisions._",
         ]

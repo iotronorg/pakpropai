@@ -75,14 +75,19 @@ def check_loan_eligibility(
         scheme: 'apna_ghar' for Pakistan subsidized scheme, 'conventional' otherwise
         country: ISO 3166-1 alpha-2 code (default 'PK')
     """
-    result = FinancialEngine.check_loan(
-        country,
-        monthly_income=monthly_income_pkr,
-        loan_amount=loan_amount_pkr,
-        tenure_years=tenure_years,
-        existing_emi=existing_emi_pkr,
-        scheme=scheme,
-    )
+    try:
+        result = FinancialEngine.check_loan(
+            country,
+            monthly_income=monthly_income_pkr,
+            loan_amount=loan_amount_pkr,
+            tenure_years=tenure_years,
+            existing_emi=existing_emi_pkr,
+            scheme=scheme,
+        )
+    except Exception as exc:
+        import logging as _log
+        _log.getLogger(__name__).error('FinancialEngine.check_loan failed: %s', exc)
+        return {'supported': False, 'error': str(exc), 'country': country}
     if not result.supported:
         return {'supported': False, 'country': country, 'message': result.reason}
     return {

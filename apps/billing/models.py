@@ -1,6 +1,7 @@
 import uuid
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 
 
 class OrgSubscription(models.Model):
@@ -34,3 +35,21 @@ class OrgSubscription(models.Model):
 
     def __str__(self):
         return f"{self.organization.name} — {self.plan} ({self.status})"
+
+
+class WebhookEvent(models.Model):
+    """
+    Idempotency guard for inbound webhooks from payment gateways.
+    Each (gateway, event_id) pair is processed at most once.
+    """
+    gateway      = models.CharField(max_length=30)
+    event_id     = models.CharField(max_length=500)
+    processed_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table         = 'billing_webhook_events'
+        unique_together  = [('gateway', 'event_id')]
+        indexes          = [models.Index(fields=['gateway', 'event_id'])]
+
+    def __str__(self):
+        return f"{self.gateway}:{self.event_id}"
