@@ -36,6 +36,8 @@ import re
 import time
 from typing import Optional
 
+from apps.core.metrics import ai_requests_total, ai_request_duration_seconds
+
 logger = logging.getLogger(__name__)
 
 # Lazy imports — heavy modules are only loaded when needed
@@ -602,9 +604,12 @@ class AIServiceManager:
         if intent.confidence >= _DIRECT_ROUTE_CONFIDENCE:
             direct_reply = self._try_direct_route(intent, phone, user, organization)
             if direct_reply:
+                elapsed = time.time() - start
+                ai_requests_total.labels(intent=intent.intent, route='direct').inc()
+                ai_request_duration_seconds.labels(route='direct').observe(elapsed)
                 agent._save_history(phone, organization, history, message, direct_reply)
                 self._log_interaction(user, intent, message, direct_reply,
-                                      int((time.time() - start) * 1000), direct=True)
+                                      int(elapsed * 1000), direct=True)
                 self._record_wa_token(organization)
                 return direct_reply
 
@@ -632,8 +637,11 @@ class AIServiceManager:
             logger.warning("LLM output failed guard — using fallback phone=%s", phone)
             reply = GuardrailEngine.fallback_error_reply(intent.language)
 
+        elapsed = time.time() - start
+        ai_requests_total.labels(intent=intent.intent, route='llm').inc()
+        ai_request_duration_seconds.labels(route='llm').observe(elapsed)
         self._log_interaction(user, intent, message, reply,
-                              int((time.time() - start) * 1000), direct=False)
+                              int(elapsed * 1000), direct=False)
         self._record_wa_token(organization)
         return reply
 

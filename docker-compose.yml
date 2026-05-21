@@ -39,6 +39,8 @@ services:
       - .env
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.dev
+      # Allow Prometheus container to scrape /metrics/ (Docker bridge network)
+      PROMETHEUS_ALLOWED_IPS: "0.0.0.0"
     depends_on:
       db:
         condition: service_healthy
@@ -76,6 +78,35 @@ services:
       redis:
         condition: service_healthy
 
+  # ── Observability (optional — comment out if not needed in dev) ───────────
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./ops/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./ops/prometheus-alerts.yaml:/etc/prometheus/prometheus-alerts.yaml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=15d"
+    depends_on:
+      - web
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    depends_on:
+      - prometheus
+
 volumes:
   postgres_data:
   media_files:
+  prometheus_data:
+  grafana_data:

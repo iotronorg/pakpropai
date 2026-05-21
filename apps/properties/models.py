@@ -175,6 +175,10 @@ class Property(models.Model):
             models.Index(fields=['listing_owner_type']),
             models.Index(fields=['organization', 'is_active']),
             models.Index(fields=['owner']),
+            models.Index(fields=['property_type']),
+            models.Index(fields=['price']),
+            models.Index(fields=['is_active', 'city']),
+            models.Index(fields=['is_active', 'created_at']),
         ]
         constraints = [
             # DB-enforced ownership consistency: each listing_owner_type must

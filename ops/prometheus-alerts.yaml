@@ -1,0 +1,122 @@
+groups:
+  - name: realtron_critical
+    interval: 60s
+    rules:
+
+      # ── API errors ──────────────────────────────────────────────────────────
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(django_http_responses_total_by_status_total{status=~"5.."}[5m]))
+          /
+          sum(rate(django_http_responses_total_by_status_total[5m])) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High HTTP error rate (>5%) on RealTron API"
+          description: "Error rate is {{ $value | humanizePercentage }} over the last 5 minutes."
+
+      # ── Latency ─────────────────────────────────────────────────────────────
+      - alert: HighP95Latency
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(django_http_requests_latency_seconds_by_view_method_bucket[5m])) by (le)
+          ) > 2
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p95 API latency exceeds 2 seconds"
+          description: "p95 latency is {{ $value | humanizeDuration }}."
+
+      # ── Database ─────────────────────────────────────────────────────────────
+      - alert: DatabaseDown
+        expr: django_db_execute_total == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No database queries observed — database may be down"
+          description: "django_db_execute_total has been 0 for 2 minutes. Check PostgreSQL connectivity."
+
+      # ── AI request volume drop ────────────────────────────────────────────────
+      - alert: AIRequestsDrop
+        expr: |
+          sum(rate(realtron_ai_requests_total[15m])) < 0.01
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "AI request volume dropped to near-zero"
+          description: "Less than 1 AI request per 100 seconds for 30 minutes. Check WhatsApp webhook / AI backend."
+
+      # ── AI response latency ───────────────────────────────────────────────────
+      - alert: AIHighLatency
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(realtron_ai_request_duration_seconds_bucket{route="llm"}[5m])) by (le)
+          ) > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "LLM route p95 latency exceeds 30 seconds"
+          description: "p95 LLM latency is {{ $value | humanizeDuration }}. Check Gemini API / backend quota."
+
+  - name: realtron_business
+    interval: 120s
+    rules:
+
+      # ── Deal lock anomaly ─────────────────────────────────────────────────────
+      - alert: HighDealLockCancellationRate
+        expr: |
+          sum(rate(realtron_deal_locks_total{status="cancelled"}[1h]))
+          /
+          (sum(rate(realtron_deal_locks_total{status="initiated"}[1h])) + 0.001) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Deal lock cancellation rate exceeds 50%"
+          description: "More than half of initiated deals are being cancelled in the last hour."
+
+      # ── Webhook signature failures ────────────────────────────────────────────
+      - alert: WebhookSignatureFailures
+        expr: |
+          sum(rate(realtron_webhook_events_total{result="invalid_sig"}[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Webhook signature failures detected"
+          description: "{{ $value | humanize }} invalid-signature webhook events/sec. Possible attack or misconfigured secret."
+
+      # ── WhatsApp message volume ────────────────────────────────────────────────
+      - alert: WhatsAppMessageVolumeSpike
+        expr: |
+          sum(rate(realtron_whatsapp_messages_total{direction="inbound"}[5m])) > 100
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "WhatsApp inbound message spike (>100 msg/sec)"
+          description: "Inbound rate is {{ $value | humanize }} msg/sec. Possible abuse or campaign blast."
+
+  - name: realtron_infrastructure
+    interval: 60s
+    rules:
+
+      # ── Redis cache miss rate ──────────────────────────────────────────────────
+      - alert: HighCacheMissRate
+        expr: |
+          (
+            sum(rate(django_cache_get_misses_total[5m]))
+            /
+            (sum(rate(django_cache_get_hits_total[5m])) + sum(rate(django_cache_get_misses_total[5m])) + 0.001)
+          ) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Cache miss rate exceeds 80%"
+          description: "Cache miss rate is {{ $value | humanizePercentage }}. Redis may be cold or evicting keys."

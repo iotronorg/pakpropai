@@ -8,6 +8,7 @@ from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
 
 from apps.properties.models import Property
+from apps.core.metrics import deal_locks_total
 from .models import EscrowDeal
 from .serializers import EscrowDealSerializer, InitiateDealLockSerializer, ConfirmPaymentSerializer
 
@@ -133,6 +134,7 @@ class DealLockInitiateView(APIView):
                 'Try again after it expires.'
             )
 
+        deal_locks_total.labels(status='initiated').inc()
         _notify_seller_lock_initiated(deal, seller_token)
         _check_high_risk_deal(prop, deal)
         payment_message = _get_payment_instructions(gateway, amount, deal.currency, org=org)
@@ -218,6 +220,7 @@ class DealLockCancelView(APIView):
         deal.status = EscrowDeal.Status.CANCELLED
         deal.admin_notes = request.data.get('reason', deal.admin_notes)
         deal.save(update_fields=['status', 'admin_notes', 'updated_at'])
+        deal_locks_total.labels(status='cancelled').inc()
 
         _notify_deal_cancelled(deal)
 
@@ -355,6 +358,7 @@ class DealLockReleaseView(APIView):
         if request.data.get('admin_notes'):
             deal.admin_notes = request.data['admin_notes']
         deal.save(update_fields=['status', 'admin_notes', 'updated_at'])
+        deal_locks_total.labels(status='released').inc()
         return Response({'detail': 'Deal marked as released.', 'id': str(deal.id), 'status': deal.status})
 
 
@@ -373,6 +377,7 @@ class DealLockDisputeView(APIView):
         if request.data.get('admin_notes'):
             deal.admin_notes = request.data['admin_notes']
         deal.save(update_fields=['status', 'admin_notes', 'updated_at'])
+        deal_locks_total.labels(status='disputed').inc()
         return Response({'detail': 'Deal flagged as disputed.', 'id': str(deal.id), 'status': deal.status})
 
 

@@ -20,6 +20,7 @@ DJANGO_APPS = [
 ]
 
 THIRD_PARTY_APPS = [
+    'django_prometheus',
     'corsheaders',
     'rest_framework',
     'rest_framework_simplejwt',
@@ -54,6 +55,7 @@ LOCAL_APPS = [
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
 MIDDLEWARE = [
+    'django_prometheus.middleware.PrometheusBeforeMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
@@ -67,6 +69,7 @@ MIDDLEWARE = [
     'apps.core.middleware.RequestAuditMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'django_prometheus.middleware.PrometheusAfterMiddleware',
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -90,7 +93,11 @@ TEMPLATES = [
 WSGI_APPLICATION = 'config.wsgi.application'
 
 DATABASES = {
-    'default': env.db('DATABASE_URL')
+    'default': {
+        **env.db('DATABASE_URL'),
+        'CONN_MAX_AGE': 60,       # reuse DB connections for up to 60s per worker thread
+        'CONN_HEALTH_CHECKS': True,
+    }
 }
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -296,6 +303,12 @@ if CLOUDINARY_STORAGE['CLOUD_NAME']:
 
 # Base URL for generating absolute links (PDF download, etc.)
 BASE_URL = env('BASE_URL', default='http://127.0.0.1:8000')
+
+# Prometheus — restrict /metrics/ to internal IPs only (Prometheus scraper + localhost).
+# Set PROMETHEUS_ALLOWED_IPS to a comma-separated list in production env.
+# Example: "10.0.0.0/8,172.16.0.0/12,127.0.0.1"
+PROMETHEUS_METRICS_EXPORT_PORT = env.int('PROMETHEUS_METRICS_EXPORT_PORT', default=0)
+PROMETHEUS_ALLOWED_IPS = env.list('PROMETHEUS_ALLOWED_IPS', default=['127.0.0.1', '::1'])
 
 # Safepay (primary online payment gateway)
 # Sign up at: https://getsafepay.com

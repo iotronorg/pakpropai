@@ -3,6 +3,7 @@ import logging
 from django.conf import settings
 from django.db import connection
 from django.core.cache import cache
+from django.http import HttpResponse, HttpResponseForbidden
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from .permissions import IsAdminUser
 from rest_framework.response import Response
@@ -163,3 +164,23 @@ class AuditLogView(APIView):
             'offset':  offset,
             'results': results,
         })
+
+
+def metrics_view(request):
+    """
+    GET /metrics/
+    Prometheus metrics endpoint — restricted to internal IPs only.
+    Set PROMETHEUS_ALLOWED_IPS in env to control scraper access.
+    Set PROMETHEUS_ALLOWED_IPS=0.0.0.0 to allow any IP (dev/Docker only).
+    """
+    allowed = getattr(settings, 'PROMETHEUS_ALLOWED_IPS', ['127.0.0.1', '::1'])
+    if '0.0.0.0' not in allowed:
+        remote_ip = (
+            request.META.get('HTTP_X_FORWARDED_FOR', '').split(',')[0].strip()
+            or request.META.get('REMOTE_ADDR', '')
+        )
+        if remote_ip not in allowed:
+            return HttpResponseForbidden('Forbidden')
+
+    from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+    return HttpResponse(generate_latest(), content_type=CONTENT_TYPE_LATEST)

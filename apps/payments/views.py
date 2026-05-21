@@ -12,6 +12,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.escrow.models import EscrowDeal
+from apps.core.metrics import deal_locks_total, webhook_events_total
 from .models import Payment
 from .services import PaymentService
 
@@ -259,6 +260,8 @@ class SafepayDealLockWebhookView(APIView):
         deal.payment_ref = parsed.get('tracker', '')
         deal.save(update_fields=['payment_ref', 'updated_at'])
         deal.activate_lock()
+        deal_locks_total.labels(status='locked').inc()
+        webhook_events_total.labels(gateway='safepay', result='ok').inc()
 
         from apps.escrow.views import _notify_buyer_lock_active, _notify_seller_deal_locked
         _notify_buyer_lock_active(deal)
@@ -328,6 +331,8 @@ class bSecureDealLockWebhookView(APIView):
         deal.payment_ref = parsed.get('tracker', '')
         deal.save(update_fields=['payment_ref', 'updated_at'])
         deal.activate_lock()
+        deal_locks_total.labels(status='locked').inc()
+        webhook_events_total.labels(gateway='bsecure', result='ok').inc()
 
         from apps.escrow.views import _notify_buyer_lock_active, _notify_seller_deal_locked
         _notify_buyer_lock_active(deal)

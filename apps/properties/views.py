@@ -39,7 +39,9 @@ class PropertyViewSet(viewsets.ModelViewSet):
         return PropertyDetailSerializer
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        qs = super().get_queryset().select_related(
+            'owner', 'organization', 'assigned_agent', 'listed_by_agent'
+        ).prefetch_related('images')
         user = self.request.user
 
         # Developers see only their org's inventory
@@ -273,6 +275,48 @@ class PropertyViewSet(viewsets.ModelViewSet):
         img.image.delete(save=False)
         img.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=False, methods=['get'], url_path='recommended')
+    def recommended(self, request):
+        """GET /properties/recommended/?lead=<uuid> — top matching properties for a lead."""
+        lead_id = request.query_params.get('lead')
+        if not lead_id:
+            return Response({'detail': 'lead param required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from apps.leads.models import Lead
+        from django.shortcuts import get_object_or_404
+        from apps.properties.recommendations import recommend_for_lead
+
+        lead = get_object_or_404(Lead, id=lead_id)
+
+        # Org scoping: developers and agents can only access their own org's leads
+        user = request.user
+        if user.role == 'developer':
+            try:
+                org = user.owned_organization
+                if lead.organization_id and str(lead.organization_id) != str(org.id):
+                    return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+            except Exception:
+                return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        elif user.role == 'agent':
+            try:
+                agent_org = user.agent_profile.organization
+                org_id = agent_org.id if agent_org else None
+                if lead.organization_id and str(lead.organization_id) != str(org_id):
+                    return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+            except Exception:
+                return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        props = recommend_for_lead(lead)
+        return Response(PropertyListSerializer(props, many=True, context={'request': request}).data)
+
+    @action(detail=True, methods=['get'], url_path='similar')
+    def similar(self, request, pk=None):
+        """GET /properties/{id}/similar/ — active listings similar to this property."""
+        from apps.properties.recommendations import similar_to
+        prop = self.get_object()
+        props = similar_to(prop)
+        return Response(PropertyListSerializer(props, many=True, context={'request': request}).data)
 
 
 class PropertyCompareView(APIView):

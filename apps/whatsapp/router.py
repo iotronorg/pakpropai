@@ -10,6 +10,7 @@ import re
 import unicodedata
 
 from django.utils import timezone
+from apps.core.metrics import whatsapp_messages_total
 
 # ── Prompt injection sanitization ─────────────────────────────────────────────
 
@@ -121,6 +122,7 @@ class MessageRouter:
             pass
 
         msg_type = message_data.get('type', 'text')
+        whatsapp_messages_total.labels(message_type=msg_type, direction='inbound').inc()
 
         # ── Resolve message text ───────────────────────────────────────────
         if msg_type == 'audio':

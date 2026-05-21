@@ -200,6 +200,7 @@ class PropertySearchService:
                 'id', 'title', 'city', 'location', 'area_marla', 'price',
                 'property_type', 'furnished_status', 'construction_status',
                 'ai_score', 'installment_available', 'legal_status',
+                'organization_id', 'listed_by_agent_id',
             )
         )
 

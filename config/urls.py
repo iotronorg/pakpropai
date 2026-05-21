@@ -20,9 +20,11 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from apps.core.urls import api_urlpatterns as core_api_urlpatterns
+from apps.core.views import metrics_view
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('metrics/', metrics_view, name='prometheus-metrics'),
     path('', include('apps.core.urls')),
     path('api/v1/', include([
         path('config/',        include('apps.config.urls')),
