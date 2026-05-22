@@ -69,6 +69,7 @@ class User(AbstractBaseUser, PermissionsMixin):
                     help_text='National ID number (format varies by country)')
     is_active = models.BooleanField(default=True)
     is_staff  = models.BooleanField(default=False)
+    is_phone_verified = models.BooleanField(default=False)
     last_active = models.DateTimeField(null=True, blank=True)
     created_at  = models.DateTimeField(auto_now_add=True)
 
@@ -98,8 +99,18 @@ class User(AbstractBaseUser, PermissionsMixin):
 
 
 class OTPCode(models.Model):
+    class Purpose(models.TextChoices):
+        OTP_LOGIN           = 'otp_login',           'OTP Login'
+        REGISTRATION_VERIFY = 'registration_verify', 'Registration Verify'
+        PASSWORD_RESET      = 'password_reset',      'Password Reset'
+
     phone      = models.CharField(max_length=20, db_index=True)
     code       = models.CharField(max_length=6)
+    purpose    = models.CharField(
+        max_length=30,
+        choices=Purpose.choices,
+        default=Purpose.OTP_LOGIN,
+    )
     is_used    = models.BooleanField(default=False)
     attempts   = models.PositiveSmallIntegerField(default=0)
     expires_at = models.DateTimeField()
