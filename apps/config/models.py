@@ -81,6 +81,7 @@ class SystemConfig(models.Model):
         'feature_deal_lock':          'true',
         'feature_voice_messages':     'true',
         'scraper_search_enabled':     'true',
+        'use_membership_rbac':        'false',
     }
 
     key        = models.CharField(max_length=100, unique=True, db_index=True)

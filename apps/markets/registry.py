@@ -64,3 +64,19 @@ def get_market_config(country: str) -> MarketConfig:
 def register_market(config: MarketConfig) -> None:
     """Programmatically add a new market without touching this file."""
     MARKET_REGISTRY[config.country.upper()] = config
+
+
+def get_city_map(country: str | None = None) -> dict[str, str]:
+    """Return lowercased-key → display-name city lookup.
+
+    Pass an ISO 3166-1 alpha-2 country code to get one market's cities,
+    or None to get all markets combined (used by IntentClassifier).
+    """
+    from apps.markets.pk.cities import CITY_MAP as _PK
+    from apps.markets.ae.cities import CITY_MAP as _AE
+    from apps.markets.gb.cities import CITY_MAP as _GB
+
+    _all: dict[str, str] = {**_PK, **_AE, **_GB}
+    if country is None:
+        return _all
+    return {'PK': _PK, 'AE': _AE, 'GB': _GB}.get(country.upper(), {})

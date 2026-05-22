@@ -1,0 +1,17 @@
+CITY_MAP: dict[str, str] = {
+    'lahore': 'Lahore',
+    'karachi': 'Karachi',
+    'islamabad': 'Islamabad',
+    'rawalpindi': 'Rawalpindi',
+    'peshawar': 'Peshawar',
+    'quetta': 'Quetta',
+    'multan': 'Multan',
+    'faisalabad': 'Faisalabad',
+    'sialkot': 'Sialkot',
+    'gujranwala': 'Gujranwala',
+    'hyderabad': 'Hyderabad',
+    'bahawalpur': 'Bahawalpur',
+    'abbottabad': 'Abbottabad',
+    'sargodha': 'Sargodha',
+    'sukkur': 'Sukkur',
+}

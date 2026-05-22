@@ -1,3 +1,4 @@
+import uuid
 from django.db import models
 
 
@@ -151,3 +152,72 @@ class PropertyAudit(models.Model):
             f"{self.property_type} — {self.location}, {self.city} "
             f"({self.get_investment_grade_display()})"
         )
+
+
+class SecurityTrace(models.Model):
+    """
+    Immutable log written by GuardrailEngine on every HIGH/CRITICAL input violation.
+    Used by the Admin panel for threat dashboards and pattern analysis.
+    """
+
+    class Severity(models.IntegerChoices):
+        LOW      = 1, 'Low'
+        MEDIUM   = 2, 'Medium'
+        HIGH     = 3, 'High'
+        CRITICAL = 4, 'Critical'
+
+    id               = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    phone            = models.CharField(max_length=30, blank=True, db_index=True)
+    organization_id  = models.CharField(max_length=100, blank=True, db_index=True)
+    violation_type   = models.CharField(
+                           max_length=30,
+                           help_text='injection | adversarial | jailbreak | profanity | off_topic',
+                           db_index=True,
+                       )
+    severity         = models.SmallIntegerField(choices=Severity.choices, default=Severity.HIGH)
+    message_excerpt  = models.TextField(
+                           blank=True,
+                           help_text='First 300 chars of the blocked message',
+                       )
+    created_at       = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = 'security_traces'
+        ordering = ['-created_at']
+        indexes  = [
+            models.Index(fields=['violation_type', '-created_at']),
+            models.Index(fields=['phone', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f"[{self.get_severity_display()}] {self.violation_type} — {self.phone}"
+
+
+class ComplianceViolation(models.Model):
+    """
+    Immutable log written by ComplianceEngine when LLM output deviates from DB ground truth.
+    Each record represents one intercepted outbound message.
+    """
+
+    id               = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    phone            = models.CharField(max_length=30, blank=True, db_index=True)
+    organization_id  = models.CharField(max_length=100, blank=True, db_index=True)
+    property_id      = models.CharField(max_length=100, blank=True, db_index=True)
+    violation_type   = models.CharField(
+                           max_length=30,
+                           help_text='price_variance | false_installment | location_mismatch',
+                           db_index=True,
+                       )
+    details          = models.TextField(blank=True)
+    created_at       = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = 'compliance_violations'
+        ordering = ['-created_at']
+        indexes  = [
+            models.Index(fields=['violation_type', '-created_at']),
+            models.Index(fields=['organization_id', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.violation_type} — {self.phone} / prop {self.property_id}"

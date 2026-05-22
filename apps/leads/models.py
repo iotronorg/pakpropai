@@ -21,10 +21,11 @@ class Lead(models.Model):
         TAX    = 'tax',    'Tax Advisory'
 
     class Status(models.TextChoices):
-        NEW       = 'new',       'New'
-        WARM      = 'warm',      'Warm'
-        QUALIFIED = 'qualified', 'Qualified'
-        COLD      = 'cold',      'Cold'
+        NEW               = 'new',               'New'
+        WARM              = 'warm',              'Warm'
+        QUALIFIED         = 'qualified',         'Qualified'
+        COLD              = 'cold',              'Cold'
+        BLOCKED_MALICIOUS = 'blocked_malicious', 'Blocked — Malicious'
 
     class RoutingState(models.TextChoices):
         AI_QUEUE       = 'ai_queue',       'AI Routing Queue (unscoped)'

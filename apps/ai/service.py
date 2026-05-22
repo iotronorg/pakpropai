@@ -48,16 +48,6 @@ _KANAL_RE  = re.compile(r'(\d+(?:\.\d+)?)\s*kanal',    re.I)
 _SQFT_RE   = re.compile(r'(\d+(?:,\d{3})*(?:\.\d+)?)\s*(?:sqft|sq\.?\s*ft)',  re.I)
 _URL_RE    = re.compile(r'https?://\S+', re.I)
 
-# Cities — extended as platform expands globally
-_CITY_MAP: dict[str, str] = {
-    'lahore': 'Lahore', 'karachi': 'Karachi', 'islamabad': 'Islamabad',
-    'rawalpindi': 'Rawalpindi', 'peshawar': 'Peshawar', 'quetta': 'Quetta',
-    'multan': 'Multan', 'faisalabad': 'Faisalabad', 'sialkot': 'Sialkot',
-    'gujranwala': 'Gujranwala', 'hyderabad': 'Hyderabad', 'bahawalpur': 'Bahawalpur',
-    'abbottabad': 'Abbottabad', 'sargodha': 'Sargodha', 'sukkur': 'Sukkur',
-    'dubai': 'Dubai', 'abu dhabi': 'Abu Dhabi', 'sharjah': 'Sharjah',
-    'london': 'London', 'manchester': 'Manchester',
-}
 
 _LOCATION_KEYWORDS = [
     'dha', 'bahria', 'gulberg', 'defence', 'model town', 'johar town',
@@ -281,13 +271,14 @@ class IntentClassifier:
 
     @staticmethod
     def _extract_city(lower: str, history: list | None) -> str:
-        for key, name in _CITY_MAP.items():
+        from apps.markets.registry import get_city_map
+        city_map = get_city_map()
+        for key, name in city_map.items():
             if key in lower:
                 return name
-        # Scan last 6 history turns for a city mention
         if history:
             recent = ' '.join(m.get('text', '').lower() for m in history[-6:])
-            for key, name in _CITY_MAP.items():
+            for key, name in city_map.items():
                 if key in recent:
                     return name
         return ''

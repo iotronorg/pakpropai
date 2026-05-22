@@ -2,6 +2,7 @@ import uuid
 from django.db import models
 from django.conf import settings
 from django.utils.text import slugify
+from django.utils import timezone
 
 
 def _logo_upload_path(instance, filename):
@@ -199,3 +200,57 @@ class OrgPaymentSettings(models.Model):
 
     def __str__(self):
         return f"{self.organization.name} — {self.gateway}"
+
+
+class OrganizationMembership(models.Model):
+    """
+    Explicit user ↔ organization association table.
+
+    Currently populated via data migration from Agent.organization and
+    Organization.admin_user. When USE_MEMBERSHIP_RBAC is enabled,
+    querysets will switch from User.agent_profile.organization to this table.
+    """
+
+    class Role(models.TextChoices):
+        OWNER   = 'owner',   'Owner'
+        ADMIN   = 'admin',   'Admin'
+        AGENT   = 'agent',   'Agent'
+        VIEWER  = 'viewer',  'Viewer'
+
+    class EmploymentType(models.TextChoices):
+        INTERNAL  = 'internal',  'Internal'
+        FREELANCE = 'freelance', 'Freelance'
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='memberships',
+    )
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name='memberships',
+    )
+    role            = models.CharField(max_length=20, choices=Role.choices)
+    employment_type = models.CharField(
+        max_length=20, choices=EmploymentType.choices, default=EmploymentType.INTERNAL
+    )
+    is_active = models.BooleanField(default=True)
+    joined_at = models.DateTimeField(auto_now_add=True)
+    left_at   = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table        = 'organization_memberships'
+        unique_together = [('user', 'organization')]
+        indexes         = [
+            models.Index(fields=['organization', 'is_active']),
+            models.Index(fields=['user', 'is_active']),
+        ]
+
+    def deactivate(self):
+        self.is_active = False
+        self.left_at   = timezone.now()
+        self.save(update_fields=['is_active', 'left_at'])
+
+    def __str__(self):
+        return f"{self.user} → {self.organization.name} [{self.role}]"

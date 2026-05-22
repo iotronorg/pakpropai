@@ -73,7 +73,8 @@ def _price_signal(price, area_marla, tier: str, property_type: str, city: str = 
 
     actual_ppm = int(price) / float(area_marla)
 
-    benchmark = PRICE_BENCHMARKS_PKR_PER_MARLA[tier]  # default fallback
+    # PK-only hardcoded fallback; non-PK markets need a DB row or we can't score
+    benchmark: int | None = PRICE_BENCHMARKS_PKR_PER_MARLA[tier] if country == 'PK' else None
     try:
         from apps.audit.models import AuditBenchmark
         qs = AuditBenchmark.objects.filter(country=country, size_unit='marla')
@@ -86,6 +87,9 @@ def _price_signal(price, area_marla, tier: str, property_type: str, city: str = 
             benchmark = (bm.price_per_unit_min + bm.price_per_unit_max) // 2
     except Exception:
         pass
+
+    if benchmark is None:
+        return 'unknown'
 
     ratio = actual_ppm / benchmark
     if ratio < 0.70:
