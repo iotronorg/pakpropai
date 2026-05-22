@@ -9,6 +9,7 @@ from django.shortcuts import get_object_or_404
 
 from apps.properties.models import Property
 from apps.core.metrics import deal_locks_total
+from apps.core.permissions import get_user_org
 from .models import EscrowDeal
 from .serializers import EscrowDealSerializer, InitiateDealLockSerializer, ConfirmPaymentSerializer
 
@@ -161,11 +162,8 @@ class DealLockConfirmView(APIView):
     def patch(self, request, pk):
         deal = get_object_or_404(EscrowDeal, pk=pk)
         if request.user.role == 'developer':
-            try:
-                org = request.user.owned_organization
-                if deal.property.organization != org:
-                    return Response({'detail': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
-            except Exception:
+            org = get_user_org(request.user)
+            if not org or deal.property.organization != org:
                 return Response({'detail': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
         elif request.user.role != 'admin':
             return Response({'detail': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
@@ -202,11 +200,8 @@ class DealLockCancelView(APIView):
         is_buyer = deal.buyer_id == request.user.pk
         is_org_admin = False
         if request.user.role == 'developer':
-            try:
-                org = request.user.owned_organization
-                is_org_admin = deal.property.organization == org
-            except Exception:
-                pass
+            org = get_user_org(request.user)
+            is_org_admin = bool(org and deal.property.organization == org)
 
         if not (is_admin or is_buyer or is_org_admin):
             return Response({'detail': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
@@ -247,11 +242,10 @@ class DealLockListView(generics.ListAPIView):
             except Exception:
                 return qs.none()
         if user.role == 'developer':
-            try:
-                org = user.owned_organization
-                return qs.filter(property__organization=org)
-            except Exception:
+            org = get_user_org(user)
+            if not org:
                 return qs.none()
+            return qs.filter(property__organization=org)
         return qs.none()
 
 
@@ -282,11 +276,10 @@ class DealLockDetailView(generics.RetrieveAPIView):
             except Exception:
                 return base.none()
         if user.role == 'developer':
-            try:
-                org = user.owned_organization
-                return base.filter(property__organization=org)
-            except Exception:
+            org = get_user_org(user)
+            if not org:
                 return base.none()
+            return base.filter(property__organization=org)
         # client: only their own purchases
         return base.filter(buyer=user)
 
@@ -300,12 +293,13 @@ class DealLockSellerConfirmView(APIView):
 
         # Allow: the seller themselves, the assigned agent, or admin
         is_admin  = request.user.role == 'admin'
+        _dev_org = get_user_org(request.user) if request.user.role == 'developer' else None
         is_seller = (
             deal.property.owner_id == request.user.pk
             or (
                 request.user.role == 'developer'
                 and deal.property.organization is not None
-                and getattr(request.user, 'owned_organization', None) == deal.property.organization
+                and _dev_org == deal.property.organization
             )
         )
         is_agent  = (deal.agent and hasattr(request.user, 'agent_profile')
@@ -340,11 +334,8 @@ class DealLockReleaseView(APIView):
     def patch(self, request, pk):
         deal = get_object_or_404(EscrowDeal, pk=pk)
         if request.user.role == 'developer':
-            try:
-                org = request.user.owned_organization
-                if deal.property.organization != org:
-                    return Response({'detail': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
-            except Exception:
+            org = get_user_org(request.user)
+            if not org or deal.property.organization != org:
                 return Response({'detail': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
         elif request.user.role != 'admin':
             return Response({'detail': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)

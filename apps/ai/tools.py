@@ -54,6 +54,9 @@ def generate_property_audit(
             owner_name=owner_name,
             description=description,
             phone=phone,
+            # value_currency and area_sqm are not passed here yet because the
+            # WhatsApp intent extractor works in PKR/marla; org-aware callers
+            # can use AuditEngine.run() directly with area_sqm + value_currency.
         )
 
         # Save to DB
@@ -99,7 +102,9 @@ def generate_property_audit(
         rec = audit_data['recommendations']
 
         area_str  = f"{ov['area_marla']}M " if ov.get('area_marla') else ''
-        value_str = f"PKR {estimated_value_pkr:,}"
+        _cur = ov.get('value_currency', 'PKR')
+        _val = ov.get('estimated_value') or estimated_value_pkr or 0
+        value_str = f"{_cur} {_val:,}"
 
         summary_lines = [
             f"🏠 *PROPERTY AUDIT REPORT*",

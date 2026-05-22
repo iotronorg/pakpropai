@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 from apps.agents.models import Agent
 from apps.escrow.models import EscrowDeal
-from apps.organizations.models import Organization
+from apps.organizations.models import Organization, OrganizationMembership
 from apps.properties.models import Property
 
 User = get_user_model()
@@ -254,6 +254,14 @@ class OrgIsolationTest(TestCase):
     def _org_setup(self, suffix):
         admin = _user(phone=f'+923002{suffix}0001', role='developer')
         org   = Organization.objects.create(name=f'Org {suffix}', admin_user=admin)
+        # Create membership so get_user_org() works under both legacy and
+        # membership-RBAC flag paths.
+        OrganizationMembership.objects.create(
+            user=admin,
+            organization=org,
+            role=OrganizationMembership.Role.OWNER,
+            is_active=True,
+        )
         agent = Agent.objects.create(
             name=f'Agent {suffix}',
             phone=f'+923002{suffix}0002',
@@ -328,6 +336,9 @@ class OrgPaymentSettingsOverrideTest(TestCase):
 
         self.admin = _user(phone='+923008880002', role='developer')
         self.org   = Organization.objects.create(name='Payment Org', admin_user=self.admin)
+        OrganizationMembership.objects.create(
+            user=self.admin, organization=self.org, role='owner', is_active=True
+        )
 
         self.prop  = Property.objects.create(
             listing_owner_type='organization',

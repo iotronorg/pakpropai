@@ -613,15 +613,20 @@ class AIServiceManager:
         if intent.normalised_query and intent.intent == 'property_search':
             enriched_message = f"{intent.normalised_query}\n{message}"
 
+        from apps.core.circuit_breaker import ai_circuit
+        _CANNED_FALLBACK = "I'm having a bit of trouble right now — please try again in a moment."
+
         try:
-            reply = agent.chat(
+            reply = ai_circuit.call(
+                agent.chat,
                 phone, enriched_message, user,
                 organization=organization,
                 extra_context=extra_context,
+                fallback=_CANNED_FALLBACK,
             )
         except Exception as exc:
             logger.error("agent.chat failed phone=%s: %s", phone, exc, exc_info=True)
-            reply = ''
+            reply = _CANNED_FALLBACK
 
         # ── 5. Output guardrail ────────────────────────────────────────────────
         if not GuardrailEngine.check_output(reply):

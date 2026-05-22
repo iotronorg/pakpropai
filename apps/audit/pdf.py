@@ -21,6 +21,25 @@ from reportlab.platypus import (
     KeepTogether,
 )
 
+# ─── Area display helper ──────────────────────────────────────────────────────
+
+_SQFT_PER_SQM  = 10.7639
+_MARLA_PER_SQM = 1 / 25.2929
+
+
+def _format_area_display(area_sqm: float | None, measurement_system: str = 'pk_traditional') -> str:
+    """Return a human-readable area string for the given measurement system."""
+    if area_sqm is None:
+        return 'N/A'
+    if measurement_system == 'pk_traditional':
+        marla = area_sqm * _MARLA_PER_SQM
+        return f"{marla:.1f} Marla"
+    if measurement_system == 'imperial':
+        sqft = area_sqm * _SQFT_PER_SQM
+        return f"{sqft:,.0f} sqft"
+    return f"{area_sqm:,.0f} m²"
+
+
 # ─── Brand colours ────────────────────────────────────────────────────────────
 BRAND_BLUE   = HexColor('#1B4F72')
 GREEN        = HexColor('#27AE60')
@@ -223,7 +242,7 @@ def _table_style(header_bg=BRAND_BLUE, row_alt=LIGHT_GREY):
 
 # ─── Page builders ────────────────────────────────────────────────────────────
 
-def _page1_executive_summary(audit: dict, s: dict) -> list:
+def _page1_executive_summary(audit: dict, s: dict, measurement_system: str = 'pk_traditional') -> list:
     """Page 1 — Executive Summary."""
     ov = audit.get('overview', {})
     sc = audit.get('scores', {})
@@ -234,7 +253,10 @@ def _page1_executive_summary(audit: dict, s: dict) -> list:
     elements.append(Spacer(1, 8))
 
     # Property overview table
-    area = f"{ov.get('area_marla', 'N/A')} Marla" if ov.get('area_marla') else 'N/A'
+    area = _format_area_display(ov.get('area_sqm'), measurement_system)
+    currency = ov.get('value_currency', 'PKR')
+    est_val = ov.get('estimated_value') or ov.get('estimated_value_pkr') or 0
+    val_display = f"{currency} {int(est_val):,}" if currency != 'PKR' else _pkr(est_val)
     ppm = _pkr(ov.get('price_per_marla')) if ov.get('price_per_marla') else 'N/A'
     prop_data = [
         ['Property Details', ''],
@@ -242,7 +264,7 @@ def _page1_executive_summary(audit: dict, s: dict) -> list:
         ['Location',        ov.get('location', 'N/A')],
         ['Type',            ov.get('property_type', 'N/A')],
         ['Area',            area],
-        ['Estimated Value', _pkr(ov.get('estimated_value_pkr', 0))],
+        ['Estimated Value', val_display],
         ['Price / Marla',   ppm],
         ['Owner Name',      ov.get('owner_name', 'N/A') or 'N/A'],
     ]
@@ -394,7 +416,7 @@ def _page2_financial(audit: dict, s: dict) -> list:
     return elements
 
 
-def _page3_market(audit: dict, s: dict) -> list:
+def _page3_market(audit: dict, s: dict, measurement_system: str = 'pk_traditional') -> list:
     """Page 3 — Market Analysis."""
     ma = audit.get('market_analysis', {})
     fa = audit.get('financial_analysis', {})
@@ -457,7 +479,7 @@ def _page3_market(audit: dict, s: dict) -> list:
             comp_data.append([
                 c.get('title', 'N/A')[:50],
                 _pkr(c.get('price', 0)),
-                f"{c.get('area_marla', 'N/A')} Marla",
+                _format_area_display(c.get('area_sqm'), measurement_system),
                 c.get('source', 'N/A'),
             ])
         comp_tbl = Table(comp_data, colWidths=[6 * cm, 4 * cm, 3 * cm, 2 * cm])
@@ -753,13 +775,14 @@ def _page7_recommendations(audit: dict, s: dict) -> list:
 
 # ─── Public API ───────────────────────────────────────────────────────────────
 
-def generate_audit_pdf(audit_data: dict, output_path: str) -> str:
+def generate_audit_pdf(audit_data: dict, output_path: str, measurement_system: str = 'pk_traditional') -> str:
     """
     Generate a multi-page PDF audit report from a structured audit_data dict.
 
     Args:
         audit_data: The dict returned by AuditEngine.run()
         output_path: Absolute file path to write the PDF (must end in .pdf)
+        measurement_system: 'pk_traditional' | 'imperial' | 'metric'
 
     Returns:
         The output_path string on success.
@@ -781,9 +804,9 @@ def generate_audit_pdf(audit_data: dict, output_path: str) -> str:
     s = _styles()
     story = []
 
-    story += _page1_executive_summary(audit_data, s)
+    story += _page1_executive_summary(audit_data, s, measurement_system)
     story += _page2_financial(audit_data, s)
-    story += _page3_market(audit_data, s)
+    story += _page3_market(audit_data, s, measurement_system)
     story += _page4_legal(audit_data, s)
     story += _page5_investment(audit_data, s)
     story += _page6_roles(audit_data, s)

@@ -5,6 +5,10 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
+
+class BillingUnavailableError(Exception):
+    pass
+
 # Plan slug → Stripe Price ID env key
 _PLAN_PRICE_KEY = {
     'basic':        'STRIPE_PRICE_BASIC',
@@ -52,7 +56,8 @@ class StripeService:
         stripe.api_key = _api_key()
         customer_id = cls.get_or_create_customer(org)
 
-        session = stripe.checkout.Session.create(
+        from apps.core.circuit_breaker import stripe_circuit
+        session_params = dict(
             customer=customer_id,
             mode='subscription',
             line_items=[{'price': price_id, 'quantity': 1}],
@@ -62,6 +67,13 @@ class StripeService:
             subscription_data={'metadata': {'org_id': str(org.id), 'plan': plan}},
             allow_promotion_codes=True,
         )
+        session = stripe_circuit.call(
+            stripe.checkout.Session.create,
+            **session_params,
+            fallback=None,
+        )
+        if session is None:
+            raise BillingUnavailableError('Stripe is temporarily unavailable. Please try again shortly.')
         return session.url
 
     @classmethod

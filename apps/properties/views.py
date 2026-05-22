@@ -7,7 +7,7 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.core.permissions import IsOwnerOrReadOnly, IsAgentOrAdmin
+from apps.core.permissions import IsOwnerOrReadOnly, IsAgentOrAdmin, get_user_org
 from apps.core.throttles import PropertySearchThrottle, ScorePropertyThrottle
 from .models import Property, PropertyImage
 from .serializers import (PropertyCreateSerializer, PropertyDetailSerializer,
@@ -46,19 +46,17 @@ class PropertyViewSet(viewsets.ModelViewSet):
 
         # Developers see only their org's inventory
         if user.is_authenticated and user.role == 'developer':
-            try:
-                org = user.owned_organization
-                qs = qs.filter(organization=org)
-            except Exception:
+            org = get_user_org(user)
+            if not org:
                 return qs.none()
+            qs = qs.filter(organization=org)
 
         # Agents see only their org's inventory (freelance agents see all active)
         if user.is_authenticated and user.role == 'agent':
-            try:
-                org = user.agent_profile.organization
-                if org:
-                    qs = qs.filter(organization=org)
-            except Exception:
+            org = get_user_org(user)
+            if org:
+                qs = qs.filter(organization=org)
+            else:
                 return qs.none()
 
         params = self.request.query_params
@@ -105,40 +103,31 @@ class PropertyViewSet(viewsets.ModelViewSet):
         if user.role == 'admin':
             extra = {}
         elif user.role == 'developer':
-            try:
-                org = user.owned_organization
-            except Exception:
-                org = None
+            from rest_framework.exceptions import PermissionDenied
+            org = get_user_org(user)
+            if not org:
+                raise PermissionDenied("No organization found.")
             _check_trial_limit(org)
             extra = {
                 'owner': user,
                 'organization': org,
-                'listing_owner_type': _P.ListingOwnerType.ORGANIZATION if org else _P.ListingOwnerType.CLIENT,
+                'listing_owner_type': _P.ListingOwnerType.ORGANIZATION,
             }
         elif user.role == 'agent':
+            from rest_framework.exceptions import PermissionDenied
+            org = get_user_org(user)
+            if not org:
+                raise PermissionDenied("No organization found.")
+            _check_trial_limit(org)
             try:
                 agent_profile = user.agent_profile
-                org = agent_profile.organization
             except Exception:
                 agent_profile = None
-                org = None
-            if org:
-                _check_trial_limit(org)
-                extra = {
-                    'organization': org,
-                    'listed_by_agent': agent_profile,
-                    'listing_owner_type': _P.ListingOwnerType.ORGANIZATION,
-                }
-            elif agent_profile:
-                extra = {
-                    'listed_by_agent': agent_profile,
-                    'listing_owner_type': _P.ListingOwnerType.FREELANCE_AGENT,
-                }
-            else:
-                extra = {
-                    'owner': user,
-                    'listing_owner_type': _P.ListingOwnerType.CLIENT,
-                }
+            extra = {
+                'organization': org,
+                'listed_by_agent': agent_profile,
+                'listing_owner_type': _P.ListingOwnerType.ORGANIZATION,
+            }
         else:
             extra = {'owner': user, 'listing_owner_type': _P.ListingOwnerType.CLIENT}
         prop = serializer.save(**extra)
@@ -155,7 +144,7 @@ class PropertyViewSet(viewsets.ModelViewSet):
         is_org_admin = (
             request.user.role == 'developer'
             and prop.organization is not None
-            and getattr(request.user, 'owned_organization', None) == prop.organization
+            and get_user_org(request.user) == prop.organization
         )
         is_agent_of_prop = (
             request.user.role == 'agent'
@@ -291,20 +280,11 @@ class PropertyViewSet(viewsets.ModelViewSet):
 
         # Org scoping: developers and agents can only access their own org's leads
         user = request.user
-        if user.role == 'developer':
-            try:
-                org = user.owned_organization
-                if lead.organization_id and str(lead.organization_id) != str(org.id):
-                    return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
-            except Exception:
+        if user.role in ('developer', 'agent'):
+            org = get_user_org(user)
+            if not org:
                 return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
-        elif user.role == 'agent':
-            try:
-                agent_org = user.agent_profile.organization
-                org_id = agent_org.id if agent_org else None
-                if lead.organization_id and str(lead.organization_id) != str(org_id):
-                    return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
-            except Exception:
+            if lead.organization_id and str(lead.organization_id) != str(org.id):
                 return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         props = recommend_for_lead(lead)
@@ -336,17 +316,15 @@ class PropertyCompareView(APIView):
         props = Property.objects.filter(id__in=ids, is_active=True)
         user = request.user
         if user.role == 'developer':
-            try:
-                props = props.filter(organization=user.owned_organization)
-            except Exception:
+            org = get_user_org(user)
+            if not org:
                 props = Property.objects.none()
+            else:
+                props = props.filter(organization=org)
         elif user.role == 'agent':
-            try:
-                org = user.agent_profile.organization
-                if org:
-                    props = props.filter(organization=org)
-            except Exception:
-                props = Property.objects.none()
+            org = get_user_org(user)
+            if org:
+                props = props.filter(organization=org)
         return Response({
             'count': props.count(),
             'results': PropertyDetailSerializer(props, many=True, context={'request': request}).data,
@@ -367,17 +345,14 @@ class PropertyMarketTrendsView(APIView):
         qs = Property.objects.filter(is_active=True, price__isnull=False)
         user = request.user
         if user.role == 'developer':
-            try:
-                qs = qs.filter(organization=user.owned_organization)
-            except Exception:
+            org = get_user_org(user)
+            if not org:
                 return Response({'results': []})
+            qs = qs.filter(organization=org)
         elif user.role == 'agent':
-            try:
-                org = user.agent_profile.organization
-                if org:
-                    qs = qs.filter(organization=org)
-            except Exception:
-                return Response({'results': []})
+            org = get_user_org(user)
+            if org:
+                qs = qs.filter(organization=org)
         if city:
             qs = qs.filter(city__icontains=city)
 

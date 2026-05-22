@@ -249,3 +249,45 @@ class LeadScoreHistory(models.Model):
 
     def __str__(self):
         return f"Lead {self.lead_id}: {self.old_score} → {self.new_score}"
+
+
+class CRMContact(models.Model):
+
+    class Source(models.TextChoices):
+        WHATSAPP = 'whatsapp', 'WhatsApp'
+        MANUAL   = 'manual',   'Manual Entry'
+        IMPORT   = 'import',   'Bulk Import'
+
+    organization = models.ForeignKey(
+        'organizations.Organization',
+        on_delete=models.CASCADE,
+        related_name='crm_contacts',
+    )
+    phone      = models.CharField(max_length=20, help_text='E.164 format')
+    name       = models.CharField(max_length=100, blank=True)
+    source     = models.CharField(max_length=20, choices=Source.choices, default=Source.WHATSAPP)
+    tags       = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table        = 'crm_contacts'
+        unique_together = [('organization', 'phone')]
+        indexes         = [models.Index(fields=['organization', 'phone'])]
+
+    def __str__(self):
+        return f"{self.name or self.phone} ({self.organization.name})"
+
+
+class ClientProfile(models.Model):
+    contact            = models.OneToOneField(CRMContact, on_delete=models.CASCADE,
+                             related_name='client_profile')
+    wa_phone_number    = models.CharField(max_length=20)
+    last_active_at     = models.DateTimeField(null=True, blank=True)
+    preferred_lang     = models.CharField(max_length=10, default='en')
+    conversation_count = models.IntegerField(default=0)
+
+    class Meta:
+        db_table = 'client_profiles'
+
+    def __str__(self):
+        return f"ClientProfile({self.wa_phone_number})"

@@ -144,11 +144,15 @@ class AuditEngine:
         city: str,
         location: str,
         property_type: str,
-        estimated_value_pkr: int,
+        estimated_value: int = None,
+        value_currency: str = 'PKR',
+        area_sqm: float = None,
         area_marla: float = None,
         owner_name: str = '',
         description: str = '',
         phone: str = '',
+        # Legacy alias kept for backward compatibility
+        estimated_value_pkr: int = None,
     ) -> dict:
         """
         Generate a full structured property audit report.
@@ -156,6 +160,19 @@ class AuditEngine:
         financial_analysis, legal_checklist, fraud_indicators,
         role_insights, and recommendations sections.
         """
+        # Resolve legacy param
+        if estimated_value is None and estimated_value_pkr is not None:
+            estimated_value = estimated_value_pkr
+        if estimated_value is None:
+            estimated_value = 0
+
+        # Canonical area: prefer area_sqm; derive from area_marla if needed
+        _SQM_PER_MARLA = 25.2929
+        if area_sqm is None and area_marla is not None:
+            area_sqm = float(area_marla) * _SQM_PER_MARLA
+        if area_sqm is not None:
+            area_sqm = float(area_sqm)
+
         bench = _get_benchmark(city, location)
         loc_lower = location.lower()
         city_lower = city.lower()
@@ -164,7 +181,7 @@ class AuditEngine:
 
         # ── Basic derived values ──────────────────────────────────────────────
         price_per_marla = (
-            int(estimated_value_pkr / float(area_marla)) if area_marla and float(area_marla) > 0 else None
+            int(estimated_value / float(area_marla)) if area_marla and float(area_marla) > 0 else None
         )
         ppm_min, ppm_max = bench['ppm']
         market_avg_ppm = int((ppm_min + ppm_max) / 2)
@@ -287,7 +304,7 @@ class AuditEngine:
         liq_label = 'High' if liq >= 8 else 'Medium' if liq >= 5 else 'Low'
 
         # ── Financial Analysis ────────────────────────────────────────────────
-        val = estimated_value_pkr
+        val = estimated_value
 
         stamp_duty = int(val * 0.03)
         reg_fee = int(val * 0.01)
@@ -479,7 +496,11 @@ class AuditEngine:
                 'location': location,
                 'property_type': property_type,
                 'area_marla': float(area_marla) if area_marla else None,
-                'estimated_value_pkr': estimated_value_pkr,
+                'area_sqm': round(area_sqm, 2) if area_sqm else None,
+                'estimated_value': estimated_value,
+                'value_currency': value_currency,
+                # Legacy field — kept for backward compat; None for non-PKR audits
+                'estimated_value_pkr': estimated_value if value_currency == 'PKR' else None,
                 'owner_name': owner_name,
                 'price_per_marla': price_per_marla,
             },
@@ -507,7 +528,8 @@ class AuditEngine:
                 'estimated_fair_value_max': fair_max,
             },
             'financial_analysis': {
-                'estimated_value_pkr': val,
+                'estimated_value': val,
+                'value_currency': value_currency,
                 'true_cost_buyer': {
                     'asking_price': val,
                     'stamp_duty': stamp_duty,

@@ -276,3 +276,65 @@ class AgentOrgMembership(models.Model):
 
     def __str__(self):
         return f"{self.agent.name} ↔ {self.organization.name} [{self.get_role_display()}]"
+
+
+class FreelanceAgentProfile(models.Model):
+
+    class VerificationStatus(models.TextChoices):
+        UNVERIFIED = 'unverified', 'Unverified'
+        PENDING    = 'pending',    'Pending Review'
+        VERIFIED   = 'verified',   'Verified'
+        REJECTED   = 'rejected',   'Rejected'
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='freelance_profile',
+    )
+    verification_status = models.CharField(
+        max_length=20,
+        choices=VerificationStatus.choices,
+        default=VerificationStatus.UNVERIFIED,
+    )
+    license_number = models.CharField(max_length=50, blank=True,
+        help_text='Market-issued real estate license number')
+    global_rating  = models.DecimalField(max_digits=3, decimal_places=2, null=True, blank=True,
+        help_text='Aggregate rating across all associated organizations')
+    created_at     = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'freelance_agent_profiles'
+
+    def __str__(self):
+        return f"FreelanceAgent({self.user.phone})"
+
+
+class AgentOrganizationMembership(models.Model):
+
+    class CommissionType(models.TextChoices):
+        FLAT       = 'flat',       'Flat Fee'
+        PERCENTAGE = 'percentage', 'Percentage'
+        TIERED     = 'tiered',     'Tiered'
+
+    freelance_agent = models.ForeignKey(
+        FreelanceAgentProfile,
+        on_delete=models.CASCADE,
+        related_name='org_memberships',
+    )
+    organization = models.ForeignKey(
+        'organizations.Organization',
+        on_delete=models.CASCADE,
+        related_name='freelance_members',
+    )
+    commission_type = models.CharField(max_length=20, choices=CommissionType.choices)
+    commission_rate = models.DecimalField(max_digits=8, decimal_places=2)
+    is_active       = models.BooleanField(default=True)
+    joined_at       = models.DateTimeField(auto_now_add=True)
+    left_at         = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table        = 'agent_organization_memberships'
+        unique_together = [('freelance_agent', 'organization')]
+
+    def __str__(self):
+        return f"{self.freelance_agent} → {self.organization.name}"

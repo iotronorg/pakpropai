@@ -13,11 +13,12 @@ def _logo_upload_path(instance, filename):
 class Organization(models.Model):
 
     class OrgType(models.TextChoices):
-        DEVELOPER      = 'developer',      'Real Estate Developer'
-        AGENCY         = 'agency',         'Real Estate Agency'
-        BROKERAGE      = 'brokerage',      'Brokerage Firm'
-        HOUSING_SOCIETY = 'housing_society', 'Housing Society'
-        ENTERPRISE     = 'enterprise',     'Enterprise / Corporate'
+        DEVELOPER             = 'developer',             'Real Estate Developer'
+        AGENCY                = 'agency',                'Real Estate Agency'
+        BROKERAGE             = 'brokerage',             'Brokerage Firm'
+        COMMUNITY_DEVELOPMENT = 'community_development', 'Community Development'
+        HOUSING_SOCIETY       = 'housing_society',       'Housing Society (deprecated)'
+        ENTERPRISE            = 'enterprise',            'Enterprise / Corporate'
 
     class Plan(models.TextChoices):
         TRIAL        = 'trial',        'Trial'
@@ -29,7 +30,7 @@ class Organization(models.Model):
     name       = models.CharField(max_length=200)
     slug       = models.SlugField(max_length=120, unique=True, blank=True,
                      help_text='Auto-generated from name — used in URLs and internal references')
-    org_type   = models.CharField(max_length=20, choices=OrgType.choices, default=OrgType.AGENCY)
+    org_type   = models.CharField(max_length=25, choices=OrgType.choices, default=OrgType.AGENCY)
     admin_user = models.OneToOneField(
                      settings.AUTH_USER_MODEL,
                      on_delete=models.SET_NULL,
@@ -73,6 +74,26 @@ class Organization(models.Model):
                    default=MeasurementSystem.PK_TRADITIONAL,
                    help_text='Primary area unit for property listings in this org',
                )
+
+    _EU_COUNTRIES = frozenset({
+        'DE', 'FR', 'NL', 'BE', 'ES', 'IT', 'SE', 'NO', 'DK',
+        'FI', 'AT', 'CH', 'PT', 'IE', 'PL', 'CZ', 'HU', 'RO',
+    })
+
+    class DataResidencyRegion(models.TextChoices):
+        GLOBAL = 'global', 'Global'
+        EU     = 'eu',     'European Union'
+        UK     = 'uk',     'United Kingdom'
+        UAE    = 'uae',    'UAE'
+        PK     = 'pk',     'Pakistan'
+
+    data_residency_region = models.CharField(
+        max_length=10,
+        choices=DataResidencyRegion.choices,
+        default=DataResidencyRegion.GLOBAL,
+        help_text='Auto-set from country at creation. Drives GDPR module and future DB routing.',
+    )
+
     city     = models.CharField(max_length=100, blank=True)
     address  = models.TextField(blank=True)
 
@@ -105,6 +126,17 @@ class Organization(models.Model):
                 slug = f"{base}-{n}"
                 n += 1
             self.slug = slug
+        if not self.data_residency_region or self.data_residency_region == 'global':
+            if self.country == 'GB':
+                self.data_residency_region = self.DataResidencyRegion.UK
+            elif self.country == 'AE':
+                self.data_residency_region = self.DataResidencyRegion.UAE
+            elif self.country == 'PK':
+                self.data_residency_region = self.DataResidencyRegion.PK
+            elif self.country in self._EU_COUNTRIES:
+                self.data_residency_region = self.DataResidencyRegion.EU
+            else:
+                self.data_residency_region = self.DataResidencyRegion.GLOBAL
         super().save(*args, **kwargs)
 
     def __str__(self):
@@ -222,10 +254,14 @@ class OrganizationMembership(models.Model):
     """
 
     class Role(models.TextChoices):
-        OWNER   = 'owner',   'Owner'
-        ADMIN   = 'admin',   'Admin'
-        AGENT   = 'agent',   'Agent'
-        VIEWER  = 'viewer',  'Viewer'
+        OWNER           = 'owner',           'Owner'
+        ORG_ADMIN       = 'org_admin',       'Organization Admin'
+        TEAM_MANAGER    = 'team_manager',    'Team Manager'
+        SALES_MANAGER   = 'sales_manager',   'Sales Manager'
+        CRM_OPERATOR    = 'crm_operator',    'CRM Operator'
+        AGENT           = 'agent',           'Agent'
+        FREELANCE_AGENT = 'freelance_agent', 'Freelance Agent'
+        VIEWER          = 'viewer',          'Viewer'
 
     class EmploymentType(models.TextChoices):
         INTERNAL  = 'internal',  'Internal'

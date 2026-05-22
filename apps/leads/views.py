@@ -7,6 +7,7 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from apps.core.permissions import get_user_org
 from .models import Lead, LeadActivity, LeadScoreHistory, Appointment, ConversationMessage
 from .serializers import (AppointmentSerializer, ConversationMessageSerializer,
                           LeadSerializer, LeadActivitySerializer, LeadScoreHistorySerializer)
@@ -38,11 +39,10 @@ class LeadViewSet(viewsets.ModelViewSet):
                 return qs.none()
 
         if role == 'developer':
-            try:
-                org = self.request.user.owned_organization
-                return qs.filter(organization=org)
-            except Exception:
+            org = get_user_org(self.request.user)
+            if not org:
                 return qs.none()
+            return qs.filter(organization=org)
 
         return qs.none()
 
@@ -273,11 +273,10 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             except Exception:
                 return qs.none()
         elif role == 'developer':
-            try:
-                org = self.request.user.owned_organization
-                qs = qs.filter(agent__organization=org)
-            except Exception:
+            org = get_user_org(self.request.user)
+            if not org:
                 return qs.none()
+            qs = qs.filter(agent__organization=org)
         # admin sees all
 
         params = self.request.query_params

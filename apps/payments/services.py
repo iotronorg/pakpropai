@@ -84,7 +84,9 @@ class SafepayGateway:
             'description': description,
         }
 
-        resp = requests.post(
+        from apps.core.circuit_breaker import safepay_circuit
+        resp = safepay_circuit.call(
+            requests.post,
             f'{cls._base(env)}/v1/payments/create',
             json=payload,
             headers={
@@ -92,7 +94,10 @@ class SafepayGateway:
                 'X-SFPY-MERCHANT-SECRET': sk,
             },
             timeout=10,
+            fallback=None,
         )
+        if resp is None:
+            return {'status': 'gateway_unavailable', 'checkout_url': None}
         resp.raise_for_status()
         data = resp.json()
 
@@ -207,12 +212,17 @@ class bSecureGateway:
                 'phone_number': customer_phone.lstrip('+92').lstrip('92'),
             }
 
-        resp = requests.post(
+        from apps.core.circuit_breaker import bsecure_circuit
+        resp = bsecure_circuit.call(
+            requests.post,
             f'{cls._base(env)}/v1/order/create',
             json=payload,
             headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'},
             timeout=10,
+            fallback=None,
         )
+        if resp is None:
+            return {'status': 'gateway_unavailable', 'checkout_url': None}
         resp.raise_for_status()
         data = resp.json()
 

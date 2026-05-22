@@ -82,6 +82,24 @@ def get_doc_type_labels(country: str = 'PK') -> dict[str, str]:
     return {'PK': _PK, 'AE': _AE, 'GB': _GB}.get(country.upper(), _PK)
 
 
+def get_financing_calculator(country: str):
+    """Return the financing calculator for the given ISO 3166-1 country code.
+
+    Returns None for unsupported markets (caller should fall back to LLM).
+    """
+    country = country.upper()
+    if country == 'PK':
+        from apps.markets.pk.financing import PakistanCalculator
+        return PakistanCalculator
+    if country == 'AE':
+        from apps.markets.ae.financing import UAECalculator
+        return UAECalculator
+    if country == 'GB':
+        from apps.markets.gb.financing import GBCalculator
+        return GBCalculator
+    return None
+
+
 def get_city_map(country: str | None = None) -> dict[str, str]:
     """Return lowercased-key → display-name city lookup.
 
