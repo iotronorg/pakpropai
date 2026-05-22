@@ -64,24 +64,37 @@ def _location_tier(city: str, location: str) -> str:
     return 'tier_3'
 
 
-def _price_signal(price, area_marla, tier: str, property_type: str, city: str = '', country: str = 'PK') -> str:
+def _price_signal(price, area_marla, tier: str, property_type: str,
+                  city: str = '', country: str = 'PK',
+                  area_sqm: float | None = None) -> str:
     """Returns 'fair', 'underpriced', 'overpriced', or 'unknown'."""
-    if not price or not area_marla or float(area_marla) <= 0:
-        return 'unknown'
     if property_type == 'commercial':
-        return 'unknown'  # no commercial benchmark
+        return 'unknown'
 
-    actual_ppm = int(price) / float(area_marla)
+    # For non-PK markets use sqm as the canonical unit if available
+    if country != 'PK' and area_sqm and float(area_sqm) > 0:
+        area_value = float(area_sqm)
+        lookup_unit = 'sqm'
+    elif area_marla and float(area_marla) > 0:
+        area_value = float(area_marla)
+        lookup_unit = 'marla'
+    else:
+        return 'unknown'
+
+    if not price:
+        return 'unknown'
+
+    actual_ppu = int(price) / area_value
 
     # PK-only hardcoded fallback; non-PK markets need a DB row or we can't score
     benchmark: int | None = PRICE_BENCHMARKS_PKR_PER_MARLA[tier] if country == 'PK' else None
     try:
         from apps.audit.models import AuditBenchmark
-        qs = AuditBenchmark.objects.filter(country=country, size_unit='marla')
+        qs = AuditBenchmark.objects.filter(country=country, size_unit=lookup_unit)
         if city:
             qs = qs.filter(city__iexact=city)
         if not qs.exists():
-            qs = AuditBenchmark.objects.filter(country=country, location_key=tier, size_unit='marla')
+            qs = AuditBenchmark.objects.filter(country=country, location_key=tier, size_unit=lookup_unit)
         if qs.exists():
             bm = qs.first()
             benchmark = (bm.price_per_unit_min + bm.price_per_unit_max) // 2
@@ -91,7 +104,7 @@ def _price_signal(price, area_marla, tier: str, property_type: str, city: str = 
     if benchmark is None:
         return 'unknown'
 
-    ratio = actual_ppm / benchmark
+    ratio = actual_ppu / benchmark
     if ratio < 0.70:
         return 'underpriced'
     if ratio > 1.40:
@@ -121,7 +134,11 @@ class PropertyScoringEngine:
         """
         tier          = _location_tier(prop.city or '', prop.location or '')
         org_country   = getattr(getattr(prop, 'organization', None), 'country', 'PK')
-        price_signal  = _price_signal(prop.price, prop.area_marla, tier, prop.property_type, city=prop.city or '', country=org_country)
+        price_signal  = _price_signal(
+            prop.price, prop.area_marla, tier, prop.property_type,
+            city=prop.city or '', country=org_country,
+            area_sqm=float(prop.area_sqm) if prop.area_sqm else None,
+        )
         completeness  = _completeness(prop)
 
         # Count linked passing verifications

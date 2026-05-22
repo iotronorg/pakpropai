@@ -422,9 +422,12 @@ class TeamView(APIView):
         if not agent_id:
             return Response({'detail': 'agent_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
         try:
-            agent = Agent.objects.get(id=agent_id)
+            agent = Agent.objects.get(id=agent_id, organization__isnull=True)
         except Agent.DoesNotExist:
-            return Response({'detail': 'Agent not found.'}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {'detail': 'Agent not found or already affiliated with an organization.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
         plan = getattr(org, 'plan', 'trial')
         if not UsageLedger.within_limit(str(org.id), plan, 'agents'):

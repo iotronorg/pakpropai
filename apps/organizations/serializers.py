@@ -28,7 +28,7 @@ class OrganizationDetailSerializer(serializers.ModelSerializer):
             'id', 'name', 'slug', 'org_type', 'plan',
             'admin_user', 'admin_phone', 'admin_name',
             'phone', 'email', 'website', 'logo',
-            'country', 'language', 'city', 'address',
+            'country', 'language', 'measurement_system', 'city', 'address',
             'is_active', 'is_verified',
             'created_at', 'updated_at',
         )

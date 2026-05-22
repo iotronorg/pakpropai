@@ -325,16 +325,16 @@ class DocumentComplianceEngine:
     def _check_required_fields(cls, raw_text: str) -> dict[str, bool]:
         """Detect whether critical document fields appear in the extracted text."""
         t = raw_text.lower()
-        has_cnic = (
+        has_national_id = (
             '-' in raw_text
             and any(c.isdigit() for c in raw_text)
             and len([c for c in raw_text if c.isdigit()]) >= 13
         )
         return {
             'owner_name': any(kw in t for kw in ('owner', 'allottee', 'buyer', 'seller', 'malik')),
-            'cnic':       has_cnic,
-            'area':       any(kw in t for kw in ('marla', 'kanal', 'sqft', 'sqm', 'acre', 'ruqba')),
-            'authority':  any(tok in t for tok in _TRUSTED_AUTHORITY_TOKENS),
+            'national_id': has_national_id,
+            'area':        any(kw in t for kw in ('marla', 'kanal', 'sqft', 'sqm', 'acre', 'ruqba')),
+            'authority':   any(tok in t for tok in _TRUSTED_AUTHORITY_TOKENS),
         }
 
     @staticmethod

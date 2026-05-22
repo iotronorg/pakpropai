@@ -8,6 +8,7 @@ class DocumentScan(models.Model):
     """Stores OCR results from documents sent via WhatsApp — no property FK required."""
 
     class DocType(models.TextChoices):
+        # Pakistan
         FARD       = 'fard',       'Fard (Ownership Record)'
         ALLOTMENT  = 'allotment',  'Allotment Letter'
         SALE_DEED  = 'sale_deed',  'Sale Deed / Registry'
@@ -15,7 +16,18 @@ class DocumentScan(models.Model):
         TAX_CERT   = 'tax_cert',   'Tax Certificate'
         CNIC       = 'cnic',       'CNIC'
         POA        = 'poa',        'Power of Attorney'
-        OTHER      = 'other',      'Other Document'
+        # UAE
+        TITLE_DEED  = 'title_deed',  'Title Deed (DLD)'
+        OQOOD       = 'oqood',       'Oqood (Off-plan Registration)'
+        EMIRATES_ID = 'emirates_id', 'Emirates ID'
+        # UK
+        TITLE_REGISTER   = 'title_register',   'Title Register (HM Land Registry)'
+        LAND_CERTIFICATE = 'land_certificate',  'Land Certificate'
+        MORTGAGE_DEED    = 'mortgage_deed',     'Mortgage Deed'
+        # Global
+        PASSPORT        = 'passport',        'Passport'
+        DRIVING_LICENCE = 'driving_licence', 'Driving Licence'
+        OTHER           = 'other',           'Other Document'
 
     class Status(models.TextChoices):
         CLEAN       = 'clean',       'Clean'

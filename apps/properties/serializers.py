@@ -24,8 +24,9 @@ class PropertyListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model  = Property
-        fields = ('id', 'ref_no', 'title', 'city', 'location', 'area_marla', 'price',
-                  'country', 'currency',
+        fields = ('id', 'ref_no', 'title', 'city', 'location',
+                  'area_marla', 'area_unit', 'area_sqm',
+                  'price', 'country', 'currency',
                   'property_type', 'construction_status', 'furnished_status',
                   'legal_status', 'ai_score', 'risk_level', 'primary_image', 'created_at')
 
@@ -46,8 +47,8 @@ class PropertyDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model  = Property
         fields = ('id', 'ref_no', 'owner', 'owner_phone', 'title', 'description',
-                  'city', 'location', 'area_marla', 'price',
-                  'country', 'currency',
+                  'city', 'location', 'area_marla', 'area_unit', 'area_sqm',
+                  'price', 'country', 'currency',
                   'property_type', 'furnished_status', 'construction_status',
                   'legal_status', 'ai_score', 'risk_level', 'assigned_agent',
                   'installment_available', 'raw_docs', 'ai_analysis',
@@ -72,7 +73,8 @@ class PropertyCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model  = Property
-        fields = ('title', 'description', 'city', 'location', 'area_marla',
+        fields = ('title', 'description', 'city', 'location',
+                  'area_marla', 'area_unit',
                   'price', 'country', 'currency',
                   'property_type', 'furnished_status',
                   'construction_status', 'legal_status', 'assigned_agent', 'owner')

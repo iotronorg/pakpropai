@@ -66,6 +66,22 @@ def register_market(config: MarketConfig) -> None:
     MARKET_REGISTRY[config.country.upper()] = config
 
 
+def get_doc_keywords(country: str = 'PK') -> dict[str, str]:
+    """Return keyword → doc_type slug map for the given country."""
+    from apps.markets.pk.document_types import DOC_KEYWORDS as _PK
+    from apps.markets.ae.document_types import DOC_KEYWORDS as _AE
+    from apps.markets.gb.document_types import DOC_KEYWORDS as _GB
+    return {'PK': _PK, 'AE': _AE, 'GB': _GB}.get(country.upper(), _PK)
+
+
+def get_doc_type_labels(country: str = 'PK') -> dict[str, str]:
+    """Return doc_type slug → display label map for the given country."""
+    from apps.markets.pk.document_types import DOC_TYPE_LABELS as _PK
+    from apps.markets.ae.document_types import DOC_TYPE_LABELS as _AE
+    from apps.markets.gb.document_types import DOC_TYPE_LABELS as _GB
+    return {'PK': _PK, 'AE': _AE, 'GB': _GB}.get(country.upper(), _PK)
+
+
 def get_city_map(country: str | None = None) -> dict[str, str]:
     """Return lowercased-key → display-name city lookup.
 

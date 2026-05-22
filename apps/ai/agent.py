@@ -165,7 +165,7 @@ class RealTronAgent:
         backend = self._get_backend()
         org_country = getattr(organization, 'country', 'PK') or 'PK'
         doc_type = detect_doc_type(caption, org_country=org_country)
-        prompt   = ocr_prompt(doc_type, caption)
+        prompt   = ocr_prompt(doc_type, caption, org_country=org_country)
 
         try:
             raw_ocr = backend.analyze_image(image_bytes, mime_type, prompt)
@@ -183,7 +183,7 @@ class RealTronAgent:
             )
 
         result   = parse_ocr_response(raw_ocr, doc_type)
-        summary  = format_doc_summary(result, doc_type)
+        summary  = format_doc_summary(result, doc_type, org_country=org_country)
 
         # Save to DB
         try:

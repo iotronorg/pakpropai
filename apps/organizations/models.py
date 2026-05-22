@@ -56,12 +56,22 @@ class Organization(models.Model):
         CHINESE  = 'zh', 'Chinese (Simplified)'
         SPANISH  = 'es', 'Spanish'
 
+    class MeasurementSystem(models.TextChoices):
+        PK_TRADITIONAL = 'pk_traditional', 'Pakistan Traditional (Marla / Kanal)'
+        IMPERIAL       = 'imperial',       'Imperial (Square Feet)'
+        METRIC         = 'metric',         'Metric (Square Metres)'
+
     # Location (globally extensible)
     country  = models.CharField(max_length=2, default='PK',
                    help_text='ISO 3166-1 alpha-2 country code, e.g. PK, AE, GB, US')
     language = models.CharField(
                    max_length=5, choices=Language.choices, default=Language.ENGLISH,
                    help_text='Preferred AI response language for this org\'s clients',
+               )
+    measurement_system = models.CharField(
+                   max_length=20, choices=MeasurementSystem.choices,
+                   default=MeasurementSystem.PK_TRADITIONAL,
+                   help_text='Primary area unit for property listings in this org',
                )
     city     = models.CharField(max_length=100, blank=True)
     address  = models.TextField(blank=True)

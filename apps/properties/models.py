@@ -121,6 +121,17 @@ class Property(models.Model):
     city          = models.CharField(max_length=100)
     location      = models.CharField(max_length=300)
 
+    # Conversion factors to canonical square metres
+    _SQM_FACTORS: dict = {
+        'marla':  25.2929,
+        'kanal':  505.857,
+        'sqft':   0.092903,
+        'sqm':    1.0,
+        'acre':   4046.856,
+        'guntha': 101.171,
+        'cent':   40.4686,
+    }
+
     # ── Size — unit-agnostic ───────────────────────────────────────────────────
     area_marla    = models.DecimalField(
                         max_digits=10, decimal_places=2, null=True, blank=True,
@@ -131,6 +142,10 @@ class Property(models.Model):
                         choices=AreaUnit.choices,
                         default=AreaUnit.MARLA,
                         help_text='Unit for area_marla — marla, kanal, sqft, sqm, acre, etc.',
+                    )
+    area_sqm      = models.DecimalField(
+                        max_digits=12, decimal_places=4, null=True, blank=True,
+                        help_text='Canonical area in square metres — auto-computed from area_marla + area_unit on save',
                     )
 
     # ── Price — currency stored alongside (ISO 4217) ───────────────────────────
@@ -233,9 +248,16 @@ class Property(models.Model):
             counter.save(update_fields=['last_seq'])
         return f"RT-{city_code}-{year}-{str(counter.last_seq).zfill(9)}"
 
+    def _compute_area_sqm(self):
+        if self.area_marla is None:
+            return None
+        factor = self._SQM_FACTORS.get(self.area_unit or 'marla', 1.0)
+        return round(float(self.area_marla) * factor, 4)
+
     def save(self, *args, **kwargs):
         if not self.ref_no:
             self.ref_no = self._build_ref_no()
+        self.area_sqm = self._compute_area_sqm()
         super().save(*args, **kwargs)
 
     def __str__(self):

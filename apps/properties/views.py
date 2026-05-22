@@ -4,7 +4,7 @@ from rest_framework import filters, status, viewsets
 from rest_framework.views import APIView
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser
-from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.core.permissions import IsOwnerOrReadOnly, IsAgentOrAdmin
@@ -20,7 +20,7 @@ _MAX_IMAGES_PER_PROP = 10
 
 class PropertyViewSet(viewsets.ModelViewSet):
     queryset = Property.objects.filter(is_active=True)
-    permission_classes = [IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
+    permission_classes = [IsAuthenticated, IsOwnerOrReadOnly]
     filter_backends = [filters.OrderingFilter]
     throttle_classes = [PropertySearchThrottle]
 
@@ -324,7 +324,7 @@ class PropertyCompareView(APIView):
     GET /properties/compare/?ids=uuid1,uuid2,uuid3
     Returns full detail for up to 4 properties side-by-side.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAgentOrAdmin]
 
     def get(self, request):
         ids_raw = request.query_params.get('ids', '')
@@ -358,7 +358,7 @@ class PropertyMarketTrendsView(APIView):
     GET /properties/market-trends/?city=Lahore&period=monthly|weekly
     Returns average price and listing count per city per time period.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAgentOrAdmin]
 
     def get(self, request):
         city   = request.query_params.get('city', '').strip()

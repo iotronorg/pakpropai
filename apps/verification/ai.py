@@ -1,88 +1,150 @@
 """Document OCR helpers — detect type, build prompt, parse and format response."""
 
-_DOC_KEYWORDS = {
-    'fard':             'fard',
-    'allotment':        'allotment',
-    'registry':         'sale_deed',
-    'sale deed':        'sale_deed',
-    'deed':             'sale_deed',
-    'noc':              'noc',
-    'no objection':     'noc',
-    'tax certificate':  'tax_cert',
-    'tax cert':         'tax_cert',
-    'cvt':              'tax_cert',
-    'cnic':             'cnic',
-    'identity':         'cnic',
-    'poa':              'poa',
-    'power of attorney':'poa',
-}
-
 
 def detect_doc_type(caption: str, org_country: str = 'PK') -> str:
+    from apps.markets.registry import get_doc_keywords
     cap = caption.lower()
-    for keyword, doc_type in _DOC_KEYWORDS.items():
+    for keyword, doc_type in get_doc_keywords(org_country).items():
         if keyword in cap:
-            # CNIC is a Pakistan-specific identity document; treat as generic for other markets
-            if doc_type == 'cnic' and org_country != 'PK':
-                return 'other'
             return doc_type
     return 'other'
 
 
-def ocr_prompt(doc_type: str, caption: str) -> str:
-    type_guidance = {
-        'fard': (
-            "This is a Fard (ownership record) from PLRA or revenue department. "
-            "Extract: owner name, CNIC number, Khasra/Khatuni number, property address, "
-            "area (ruqba in marla/kanal), registration date, issuing authority."
-        ),
-        'allotment': (
-            "This is an Allotment Letter from a housing authority. "
-            "Extract: allottee name, CNIC, plot/house number, scheme/society name, "
-            "area, allotment date, authority name, ballot number if visible."
-        ),
-        'sale_deed': (
-            "This is a Sale Deed or Registry document. "
-            "Extract: buyer name, seller name, buyer CNIC, seller CNIC, "
-            "property address, area, sale price (PKR), registration date, "
-            "Sub-Registrar office, stamp duty paid."
-        ),
-        'noc': (
-            "This is a No Objection Certificate (NOC). "
-            "Extract: applicant name, property address, issuing authority (LDA/DHA/CDA), "
-            "NOC number, issue date, expiry date if any, purpose of NOC."
-        ),
-        'tax_cert': (
-            "This is a property tax certificate. "
-            "Extract: property owner name, property address, tax amount, "
-            "tax year, payment date, FBR or local body reference number."
-        ),
-        'cnic': (
-            "This is a Pakistani CNIC card. "
-            "Extract: full name, CNIC number (format: XXXXX-XXXXXXX-X), "
-            "date of birth, issue date, expiry date, address."
-        ),
-        'poa': (
-            "This is a Power of Attorney document. "
-            "Extract: principal name, principal CNIC, attorney name, attorney CNIC, "
-            "scope of authority, property details if mentioned, "
-            "notary registration number, date, expiry if any."
-        ),
-    }.get(doc_type, "This is a property-related document.")
+# ── OCR type guidance ─────────────────────────────────────────────────────────
+
+_PK_GUIDANCE: dict[str, str] = {
+    'fard': (
+        "This is a Fard (ownership record) from PLRA or revenue department. "
+        "Extract: owner name, CNIC number, Khasra/Khatuni number, property address, "
+        "area (ruqba in marla/kanal), registration date, issuing authority."
+    ),
+    'allotment': (
+        "This is an Allotment Letter from a housing authority. "
+        "Extract: allottee name, CNIC, plot/house number, scheme/society name, "
+        "area, allotment date, authority name, ballot number if visible."
+    ),
+    'sale_deed': (
+        "This is a Sale Deed or Registry document. "
+        "Extract: buyer name, seller name, buyer CNIC, seller CNIC, "
+        "property address, area, sale price, registration date, "
+        "Sub-Registrar office, stamp duty paid."
+    ),
+    'noc': (
+        "This is a No Objection Certificate (NOC). "
+        "Extract: applicant name, property address, issuing authority (LDA/DHA/CDA), "
+        "NOC number, issue date, expiry date if any, purpose of NOC."
+    ),
+    'tax_cert': (
+        "This is a property tax certificate. "
+        "Extract: property owner name, property address, tax amount, "
+        "tax year, payment date, FBR or local body reference number."
+    ),
+    'cnic': (
+        "This is a Pakistani CNIC card. "
+        "Extract: full name, CNIC number (format: XXXXX-XXXXXXX-X), "
+        "date of birth, issue date, expiry date, address."
+    ),
+    'poa': (
+        "This is a Power of Attorney document. "
+        "Extract: principal name, principal CNIC, attorney name, attorney CNIC, "
+        "scope of authority, property details if mentioned, "
+        "notary registration number, date, expiry if any."
+    ),
+}
+
+_AE_GUIDANCE: dict[str, str] = {
+    'title_deed': (
+        "This is a UAE Title Deed (DLD). "
+        "Extract: owner name, passport/Emirates ID, property address, area (sqft), "
+        "transaction value (AED), DLD registration number, issue date, "
+        "mortgage status if indicated."
+    ),
+    'noc': (
+        "This is a No Objection Certificate (NOC) from a UAE developer or authority. "
+        "Extract: applicant name, property details, issuing authority, "
+        "NOC number, issue date, expiry date if any."
+    ),
+    'oqood': (
+        "This is an Oqood off-plan registration contract. "
+        "Extract: buyer name, developer name, project name, unit details, "
+        "agreed price (AED), payment plan, expected completion date."
+    ),
+    'emirates_id': (
+        "This is a UAE Emirates ID card. "
+        "Extract: full name, Emirates ID number (format: 784-XXXX-XXXXXXX-X), "
+        "nationality, date of birth, expiry date."
+    ),
+    'passport': (
+        "This is a passport. "
+        "Extract: full name, passport number, nationality, date of birth, "
+        "issue date, expiry date, issuing country."
+    ),
+    'poa': (
+        "This is a Power of Attorney document. "
+        "Extract: principal name, ID number, attorney name, attorney ID, "
+        "scope of authority, property details if mentioned, "
+        "notary registration number, date, expiry if any."
+    ),
+}
+
+_GB_GUIDANCE: dict[str, str] = {
+    'title_register': (
+        "This is a UK HM Land Registry Title Register. "
+        "Extract: registered owner name, title number, property address, tenure "
+        "(freehold/leasehold), charges/mortgages registered, last sale price and date."
+    ),
+    'land_certificate': (
+        "This is a UK Land Certificate. "
+        "Extract: title number, owner name, property address, tenure, "
+        "register entries, issue date."
+    ),
+    'mortgage_deed': (
+        "This is a UK Mortgage Deed. "
+        "Extract: borrower name, lender name, property address, "
+        "mortgage amount, interest rate if visible, execution date."
+    ),
+    'passport': (
+        "This is a passport. "
+        "Extract: full name, passport number, nationality, date of birth, "
+        "issue date, expiry date, issuing country."
+    ),
+    'driving_licence': (
+        "This is a UK Driving Licence. "
+        "Extract: full name, licence number, date of birth, address, "
+        "issue date, expiry date, categories held."
+    ),
+    'poa': (
+        "This is a Power of Attorney document. "
+        "Extract: principal name, ID number, attorney name, attorney ID, "
+        "scope of authority, property details if mentioned, "
+        "notary/solicitor registration number, date, expiry if any."
+    ),
+}
+
+_GUIDANCE_BY_COUNTRY: dict[str, dict[str, str]] = {
+    'PK': _PK_GUIDANCE,
+    'AE': _AE_GUIDANCE,
+    'GB': _GB_GUIDANCE,
+}
+
+
+def ocr_prompt(doc_type: str, caption: str, org_country: str = 'PK') -> str:
+    guidance_map = _GUIDANCE_BY_COUNTRY.get(org_country.upper(), _PK_GUIDANCE)
+    type_guidance = guidance_map.get(doc_type, "This is a property-related document.")
 
     return (
         f"{type_guidance}\n\n"
         "Also check for these red flags:\n"
         "- Overwriting, cutting, or corrections on important fields\n"
         "- Blurred or missing official stamps/signatures\n"
-        "- Mismatch between names and CNIC numbers\n"
+        "- Mismatch between names and ID numbers\n"
         "- Photocopied or digitally altered stamps\n"
         "- Missing registration numbers\n\n"
         "Return your response in this exact format:\n"
         "OWNER: [name or N/A]\n"
-        "CNIC: [number or N/A]\n"
+        "ID_NUMBER: [national ID / CNIC / Emirates ID / passport number or N/A]\n"
         "ADDRESS: [property address or N/A]\n"
-        "AREA: [area in marla/kanal or N/A]\n"
+        "AREA: [area with unit or N/A]\n"
         "REG_NUMBER: [registration/reference number or N/A]\n"
         "DATE: [issue/registration date or N/A]\n"
         "AUTHORITY: [issuing body or N/A]\n"
@@ -101,7 +163,8 @@ def parse_ocr_response(raw: str, doc_type: str) -> dict:
     }
     field_map = {
         'OWNER':      'owner_name',
-        'CNIC':       'cnic',
+        'CNIC':       'cnic',       # backward compat — old responses
+        'ID_NUMBER':  'cnic',       # new unified field name
         'ADDRESS':    'address',
         'AREA':       'area',
         'REG_NUMBER': 'registration_number',
@@ -125,19 +188,11 @@ def parse_ocr_response(raw: str, doc_type: str) -> dict:
     return result
 
 
-def format_doc_summary(result: dict, doc_type: str) -> str:
-    doc_labels = {
-        'fard': 'Fard (Ownership Record)',
-        'allotment': 'Allotment Letter',
-        'sale_deed': 'Sale Deed / Registry',
-        'noc': 'NOC',
-        'tax_cert': 'Tax Certificate',
-        'cnic': 'CNIC',
-        'poa': 'Power of Attorney',
-        'other': 'Property Document',
-    }
-    label      = doc_labels.get(doc_type, 'Document')
-    flags      = result.get('flags', [])
+def format_doc_summary(result: dict, doc_type: str, org_country: str = 'PK') -> str:
+    from apps.markets.registry import get_doc_type_labels
+    labels   = get_doc_type_labels(org_country)
+    label    = labels.get(doc_type, 'Document')
+    flags    = result.get('flags', [])
     confidence = result.get('confidence', 'LOW')
     status_icon = '✅' if not flags else '⚠️'
 
@@ -149,7 +204,7 @@ def format_doc_summary(result: dict, doc_type: str) -> str:
 
     field_labels = {
         'owner_name':          '👤 Owner',
-        'cnic':                '🪪 CNIC',
+        'cnic':                '🪪 ID Number',
         'address':             '📍 Address',
         'area':                '📐 Area',
         'registration_number': '🔢 Ref/Reg No',

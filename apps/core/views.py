@@ -175,10 +175,7 @@ def metrics_view(request):
     """
     allowed = getattr(settings, 'PROMETHEUS_ALLOWED_IPS', ['127.0.0.1', '::1'])
     if '0.0.0.0' not in allowed:
-        remote_ip = (
-            request.META.get('HTTP_X_FORWARDED_FOR', '').split(',')[0].strip()
-            or request.META.get('REMOTE_ADDR', '')
-        )
+        remote_ip = request.META.get('REMOTE_ADDR', '')
         if remote_ip not in allowed:
             return HttpResponseForbidden('Forbidden')
 

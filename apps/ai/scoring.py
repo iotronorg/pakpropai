@@ -112,7 +112,7 @@ _OCR_PROMPT = """You are extracting structured data from a Pakistani property do
 Extract the following fields if present:
 - registry_number
 - owner_name
-- cnic
+- national_id
 - property_address
 - area_marla
 - property_type
