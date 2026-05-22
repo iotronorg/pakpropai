@@ -63,7 +63,8 @@ def execute_data_deletion(request_id: str):
         if hasattr(user, 'email'):
             user.email = ''
         user.save()
-        Lead.objects.filter(user=user).update(client_name=_REDACTED)
+        # Lead has no client_name field; PII is on the User row already redacted above
+        Lead.objects.filter(user=user).update(notes='[REDACTED]')
 
         req.status       = 'completed'
         req.completed_at = timezone.now()

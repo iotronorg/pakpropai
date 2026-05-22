@@ -3,7 +3,6 @@ import hmac
 import json
 import threading
 
-from django.contrib.auth import get_user_model
 from django.test import TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 from rest_framework import status
@@ -14,39 +13,14 @@ from apps.agents.models import Agent
 from apps.escrow.models import EscrowDeal
 from apps.organizations.models import Organization, OrganizationMembership
 from apps.properties.models import Property
-
-User = get_user_model()
+from tests.factories import make_user, make_property, make_deal, make_developer, make_agent
 
 _BSECURE_TEST_SECRET = 'test-bsecure-secret'
 
-
-# ── Shared helpers ─────────────────────────────────────────────────────────────
-
-def _user(phone='+923001234567', role='client'):
-    return User.objects.create_user(phone=phone, password='pw', role=role)
-
-
-def _property(title='Test Property'):
-    """Platform-owned — owner=None so _notify_seller_lock_initiated returns early."""
-    return Property.objects.create(
-        listing_owner_type='platform',
-        title=title,
-        city='Lahore',
-        location='DHA Phase 5',
-        property_type='residential',
-        price=5_000_000,
-        area_marla=5,
-    )
-
-
-def _deal(buyer, prop, agent=None):
-    return EscrowDeal.objects.create(
-        buyer=buyer,
-        property=prop,
-        agent=agent,
-        token_amount=25_000,
-        status=EscrowDeal.Status.INITIATED,
-    )
+# Convenience aliases matching the previous local names
+_user     = make_user
+_property = make_property
+_deal     = make_deal
 
 
 def _bsecure_webhook_post(client, payload, secret=_BSECURE_TEST_SECRET):
@@ -252,15 +226,9 @@ class OrgIsolationTest(TestCase):
     """Locking a property under Org A must never affect Org B inventory or deals."""
 
     def _org_setup(self, suffix):
-        admin = _user(phone=f'+923002{suffix}0001', role='developer')
-        org   = Organization.objects.create(name=f'Org {suffix}', admin_user=admin)
-        # Create membership so get_user_org() works under both legacy and
-        # membership-RBAC flag paths.
-        OrganizationMembership.objects.create(
-            user=admin,
-            organization=org,
-            role=OrganizationMembership.Role.OWNER,
-            is_active=True,
+        admin, org = make_developer(
+            phone=f'+923002{suffix}0001',
+            org_name=f'Org {suffix}',
         )
         agent = Agent.objects.create(
             name=f'Agent {suffix}',
@@ -268,13 +236,11 @@ class OrgIsolationTest(TestCase):
             organization=org,
             employment_type='internal',
         )
-        prop = Property.objects.create(
-            listing_owner_type='organization',
-            organization=org,
+        prop = make_property(
+            org=org,
             title='Identical Property Title',
             city='Karachi',
             location='Clifton',
-            property_type='residential',
             price=8_000_000,
             area_marla=10,
         )
@@ -332,26 +298,10 @@ class OrgPaymentSettingsOverrideTest(TestCase):
     def setUp(self):
         from apps.organizations.models import OrgPaymentSettings
         self.client = APIClient()
-        self.buyer  = _user(phone='+923008880001')
-
-        self.admin = _user(phone='+923008880002', role='developer')
-        self.org   = Organization.objects.create(name='Payment Org', admin_user=self.admin)
-        OrganizationMembership.objects.create(
-            user=self.admin, organization=self.org, role='owner', is_active=True
-        )
-
-        self.prop  = Property.objects.create(
-            listing_owner_type='organization',
-            organization=self.org,
-            title='Org Property',
-            city='Lahore',
-            location='DHA Phase 5',
-            property_type='residential',
-            price=5_000_000,
-            area_marla=5,
-        )
-
-        self.ps, _ = OrgPaymentSettings.objects.get_or_create(organization=self.org)
+        self.buyer  = make_user(phone='+923008880001')
+        self.admin, self.org = make_developer(phone='+923008880002', org_name='Payment Org')
+        self.prop   = make_property(org=self.org, title='Org Property')
+        self.ps, _  = OrgPaymentSettings.objects.get_or_create(organization=self.org)
 
     def test_org_jazzcash_number_appears_in_payment_message(self):
         self.ps.gateway        = 'manual'

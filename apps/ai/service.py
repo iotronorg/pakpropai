@@ -112,11 +112,15 @@ _DOCUMENT_KEYWORDS = re.compile(
 
 _DIRECT_ROUTE_CONFIDENCE = 0.85
 
-# Cities outside Pakistan whose audit requests must fall to LLM (non-PKR market)
-_NON_PK_CITIES = {
-    'dubai', 'abu dhabi', 'sharjah', 'ajman', 'london', 'manchester',
-    'birmingham', 'new york', 'los angeles', 'toronto', 'sydney',
-}
+# Cities outside Pakistan whose audit requests must fall to LLM (non-PKR market).
+# Populated from market city maps — avoids maintaining a separate list here.
+def _build_non_pk_cities() -> frozenset:
+    from apps.markets.ae.cities import CITY_MAP as _AE
+    from apps.markets.gb.cities import CITY_MAP as _GB
+    from apps.markets.us.cities import CITY_MAP as _US
+    return frozenset({*_AE, *_GB, *_US})
+
+_NON_PK_CITIES: frozenset = _build_non_pk_cities()
 
 
 # ── Intent Classifier ─────────────────────────────────────────────────────────

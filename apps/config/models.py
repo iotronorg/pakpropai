@@ -41,6 +41,9 @@ class SystemConfig(models.Model):
         'stripe_price_basic_aed':         'STRIPE_PRICE_BASIC_AED',
         'stripe_price_professional_aed':  'STRIPE_PRICE_PROFESSIONAL_AED',
         'stripe_price_enterprise_aed':    'STRIPE_PRICE_ENTERPRISE_AED',
+        'stripe_price_basic_usd':         'STRIPE_PRICE_BASIC_USD',
+        'stripe_price_professional_usd':  'STRIPE_PRICE_PROFESSIONAL_USD',
+        'stripe_price_enterprise_usd':    'STRIPE_PRICE_ENTERPRISE_USD',
     }
 
     DEFAULTS = {
@@ -79,6 +82,12 @@ class SystemConfig(models.Model):
         'billing_price_basic_aed':        '299',
         'billing_price_professional_aed': '899',
         'billing_price_enterprise_aed':   '2699',
+        'stripe_price_basic_usd':         '',
+        'stripe_price_professional_usd':  '',
+        'stripe_price_enterprise_usd':    '',
+        'billing_price_basic_usd':        '49',
+        'billing_price_professional_usd': '149',
+        'billing_price_enterprise_usd':   '449',
         'feature_property_search':    'true',
         'feature_property_listing':   'true',
         'feature_tax_advice':         'true',

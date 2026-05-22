@@ -8,47 +8,26 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from apps.agents.models import Agent
 from apps.escrow.models import EscrowDeal
-from apps.properties.models import Property
-
-from django.contrib.auth import get_user_model
-User = get_user_model()
+from tests.factories import make_user, make_agent, make_property, make_deal
 
 _SAFEPAY_TEST_SECRET = 'test-safepay-secret'
 
 
 def _user(phone='+923001234567', role='client'):
-    return User.objects.create_user(phone=phone, password='pw', role=role)
+    return make_user(phone=phone, role=role)
 
 
 def _agent_user(phone='+923009876543'):
-    u = _user(phone=phone, role='agent')
-    a = Agent.objects.create(user=u, name='Test Agent')
-    return u, a
+    return make_agent(phone=phone)
 
 
 def _property(owner, agent=None):
-    return Property.objects.create(
-        owner=owner,
-        title='Test Property',
-        city='Lahore',
-        location='DHA Phase 5',
-        property_type='residential',
-        price=5_000_000,
-        area_marla=5,
-        assigned_agent=agent,
-    )
+    return make_property(owner=owner, assigned_agent=agent)
 
 
 def _deal(buyer, prop, agent=None):
-    return EscrowDeal.objects.create(
-        buyer=buyer,
-        property=prop,
-        agent=agent,
-        token_amount=25_000,
-        status=EscrowDeal.Status.INITIATED,
-    )
+    return make_deal(buyer=buyer, prop=prop, agent=agent)
 
 
 def _safepay_webhook_post(client, payload, secret=_SAFEPAY_TEST_SECRET):
@@ -218,6 +197,7 @@ class PaymentReturnViewTests(TestCase):
         self.deal = _deal(buyer=self.buyer, prop=self.prop, agent=self.agent)
 
     def test_success_return_returns_200(self):
+        self.client.force_authenticate(user=self.buyer)
         resp = self.client.get(
             reverse('payment-return'),
             {'deal_id': str(self.deal.pk), 'status': 'success'},
@@ -226,6 +206,7 @@ class PaymentReturnViewTests(TestCase):
         self.assertIn('deal_id', resp.data)
 
     def test_cancelled_return_does_not_activate_deal(self):
+        self.client.force_authenticate(user=self.buyer)
         resp = self.client.get(
             reverse('payment-return'),
             {'deal_id': str(self.deal.pk), 'status': 'cancelled'},
@@ -235,11 +216,13 @@ class PaymentReturnViewTests(TestCase):
         self.assertNotEqual(self.deal.status, EscrowDeal.Status.LOCKED)
 
     def test_missing_deal_id_returns_400(self):
+        self.client.force_authenticate(user=self.buyer)
         resp = self.client.get(reverse('payment-return'), {'status': 'success'})
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_nonexistent_deal_returns_404(self):
         import uuid
+        self.client.force_authenticate(user=self.buyer)
         resp = self.client.get(
             reverse('payment-return'),
             {'deal_id': str(uuid.uuid4()), 'status': 'success'},

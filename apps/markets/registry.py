@@ -71,7 +71,8 @@ def get_doc_keywords(country: str = 'PK') -> dict[str, str]:
     from apps.markets.pk.document_types import DOC_KEYWORDS as _PK
     from apps.markets.ae.document_types import DOC_KEYWORDS as _AE
     from apps.markets.gb.document_types import DOC_KEYWORDS as _GB
-    return {'PK': _PK, 'AE': _AE, 'GB': _GB}.get(country.upper(), _PK)
+    from apps.markets.us.document_types import DOC_KEYWORDS as _US
+    return {'PK': _PK, 'AE': _AE, 'GB': _GB, 'US': _US}.get(country.upper(), _PK)
 
 
 def get_doc_type_labels(country: str = 'PK') -> dict[str, str]:
@@ -79,7 +80,8 @@ def get_doc_type_labels(country: str = 'PK') -> dict[str, str]:
     from apps.markets.pk.document_types import DOC_TYPE_LABELS as _PK
     from apps.markets.ae.document_types import DOC_TYPE_LABELS as _AE
     from apps.markets.gb.document_types import DOC_TYPE_LABELS as _GB
-    return {'PK': _PK, 'AE': _AE, 'GB': _GB}.get(country.upper(), _PK)
+    from apps.markets.us.document_types import DOC_TYPE_LABELS as _US
+    return {'PK': _PK, 'AE': _AE, 'GB': _GB, 'US': _US}.get(country.upper(), _PK)
 
 
 def get_financing_calculator(country: str):
@@ -97,6 +99,9 @@ def get_financing_calculator(country: str):
     if country == 'GB':
         from apps.markets.gb.financing import GBCalculator
         return GBCalculator
+    if country == 'US':
+        from apps.markets.us.financing import USCalculator
+        return USCalculator
     return None
 
 
@@ -109,8 +114,9 @@ def get_city_map(country: str | None = None) -> dict[str, str]:
     from apps.markets.pk.cities import CITY_MAP as _PK
     from apps.markets.ae.cities import CITY_MAP as _AE
     from apps.markets.gb.cities import CITY_MAP as _GB
+    from apps.markets.us.cities import CITY_MAP as _US
 
-    _all: dict[str, str] = {**_PK, **_AE, **_GB}
+    _all: dict[str, str] = {**_PK, **_AE, **_GB, **_US}
     if country is None:
         return _all
-    return {'PK': _PK, 'AE': _AE, 'GB': _GB}.get(country.upper(), {})
+    return {'PK': _PK, 'AE': _AE, 'GB': _GB, 'US': _US}.get(country.upper(), {})

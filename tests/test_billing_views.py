@@ -2,24 +2,19 @@
 
 from unittest.mock import MagicMock, patch
 
-from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 from rest_framework.test import APIClient
 
-from apps.organizations.models import Organization
-
-User = get_user_model()
+from tests.factories import make_developer, make_user
 
 
 def _developer(phone='+923001111001'):
-    user = User.objects.create_user(phone=phone, password='pw', role='developer')
-    org  = Organization.objects.create(name='Test Org', admin_user=user)
-    return user, org
+    return make_developer(phone=phone)
 
 
 def _agent(phone='+923001111002'):
-    return User.objects.create_user(phone=phone, password='pw', role='agent')
+    return make_user(phone=phone, role='agent')
 
 
 class OrgPaymentSettingsViewTest(TestCase):

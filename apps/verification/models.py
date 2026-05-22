@@ -24,6 +24,14 @@ class DocumentScan(models.Model):
         TITLE_REGISTER   = 'title_register',   'Title Register (HM Land Registry)'
         LAND_CERTIFICATE = 'land_certificate',  'Land Certificate'
         MORTGAGE_DEED    = 'mortgage_deed',     'Mortgage Deed'
+        # US
+        WARRANTY_DEED      = 'warranty_deed',      'Warranty Deed'
+        TITLE_INSURANCE    = 'title_insurance',    'Title Insurance Policy'
+        HOA_DOCS           = 'hoa_docs',           'HOA Documents'
+        CLOSING_DISCLOSURE = 'closing_disclosure', 'Closing Disclosure (HUD-1)'
+        PROMISSORY_NOTE    = 'promissory_note',    'Promissory Note / Mortgage Note'
+        DRIVERS_LICENSE    = 'drivers_license',    "Driver's License"
+        STATE_ID           = 'state_id',           'State ID'
         # Global
         PASSPORT        = 'passport',        'Passport'
         DRIVING_LICENCE = 'driving_licence', 'Driving Licence'

@@ -88,7 +88,34 @@ _SUFFIX_CURRENCY_RE = re.compile(
     re.I,
 )
 
-# Map from pattern / keyword to ISO currency code
+# Compound: currency PREFIX + number + multiplier — "AED 3 million", "$1.5 million", "₹2.5 crore"
+_COMPOUND_RE = re.compile(
+    r'(?P<pfx>AED|USD|GBP|EUR|SAR|INR|PKR|MYR|SGD|CAD|AUD|Rs\.?|₹|₨|\$|£|€)\s*'
+    r'(?P<num>\d+(?:\.\d+)?)\s*'
+    r'(?P<unit>million|billion|thousand|crore|lakh)\b',
+    re.I | re.UNICODE,
+)
+
+# NUMBER + WORD_CURRENCY — "450,000 pounds", "1 million dollars"
+_WORD_CURRENCY_RE = re.compile(
+    r'(?P<num>\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)'
+    r'\s+'
+    r'(?P<word>pounds?|dollars?|dirhams?|euros?|riyals?|rupees?|درهم|ريال)',
+    re.I | re.UNICODE,
+)
+
+# Map from currency prefix to ISO code
+_PREFIX_TO_ISO: dict[str, str] = {
+    'aed': 'AED', 'usd': 'USD', '$': 'USD',
+    'gbp': 'GBP', '£': 'GBP',
+    'eur': 'EUR', '€': 'EUR',
+    'sar': 'SAR',
+    'inr': 'INR', '₹': 'INR',
+    'pkr': 'PKR', 'rs.': 'PKR', 'rs': 'PKR', '₨': 'PKR',
+    'myr': 'MYR', 'sgd': 'SGD', 'cad': 'CAD', 'aud': 'AUD',
+}
+
+# Map from currency word to ISO code
 _WORD_TO_CURRENCY: dict[str, str] = {
     'dirham': 'AED', 'dirhams': 'AED', 'درهم': 'AED',
     'dollar': 'USD', 'dollars': 'USD',
@@ -96,6 +123,14 @@ _WORD_TO_CURRENCY: dict[str, str] = {
     'euro':   'EUR', 'euros':   'EUR',
     'riyal':  'SAR', 'riyals':  'SAR', 'ريال': 'SAR',
     'rupee':  'INR', 'rupees':  'INR',  # generic; PKR overrides below if PKR signals present
+}
+
+_UNIT_MULTIPLIERS: dict[str, int] = {
+    'million': 1_000_000,
+    'billion': 1_000_000_000,
+    'thousand': 1_000,
+    'crore': 10_000_000,
+    'lakh': 100_000,
 }
 
 
@@ -119,7 +154,7 @@ _INSTALLMENT_RE = re.compile(
     # German
     r'|\b(?:Ratenzahlung|monatliche\s+Zahlung|Teilzahlung)\b'
     # Turkish
-    r'|\b(?:taksit|taksitli\s+ödeme|aylık\s+ödeme)\b'
+    r'|\btaksit\w*|\btaksitli\s+ödeme|\baylık\s+ödeme\b'
     # Russian
     r'|\b(?:рассрочка|ежемесячный\s+платёж|оплата\s+в\s+рассрочку)\b'
     # Chinese
@@ -159,8 +194,8 @@ _CITY_RE = re.compile(
     # Hindi / Devanagari
     r'|(?:मुंबई|दिल्ली|बेंगलुरु|बैंगलोर|चेन्नई|हैदराबाद|'
     r'लाहौर|कराची|इस्लामाबाद)'
-    # Russian
-    r'|(?:Москва|Санкт-Петербург|Дубай|Лондон)'
+    # Russian (nominative + common case forms)
+    r'|(?:Москв[аеыуой]+|Санкт-Петербург[еа]?|Дуба[йе]|Лондон[еа]?)'
     # Chinese Simplified
     r'|(?:上海|北京|深圳|广州|迪拜|伦敦)',
     re.I | re.UNICODE,
@@ -315,22 +350,48 @@ def _extract_price_with_currency(text: str) -> Tuple[Optional[int], Optional[str
     Extract the largest price figure and its currency from free text.
     Returns (amount_integer, iso_currency_code_or_None).
     """
-    # (amount, currency) tuples
-    candidates: list[Tuple[int, Optional[str]]] = []
+    # (amount, currency, has_currency) — has_currency used for tie-breaking
+    candidates: list[Tuple[int, Optional[str], bool]] = []
 
     def _add(val_str: str, multiplier: int, currency: Optional[str]) -> None:
         try:
-            candidates.append((int(Decimal(val_str) * multiplier), currency))
+            candidates.append((int(Decimal(val_str) * multiplier), currency, currency is not None))
         except (InvalidOperation, ValueError):
             pass
 
-    # South-Asian units → PKR (or INR depending on context, detected separately)
+    # Compound: "AED 3 million", "$1.5 million", "₹2.5 crore" — highest priority (tagged)
+    for m in _COMPOUND_RE.finditer(text):
+        try:
+            pfx = m.group('pfx').lower().rstrip('.')
+            iso = _PREFIX_TO_ISO.get(pfx) or pfx.upper()
+            num = Decimal(m.group('num'))
+            unit = m.group('unit').lower()
+            multiplier = _UNIT_MULTIPLIERS.get(unit, 1)
+            val = int(num * multiplier)
+            if val > 0:
+                candidates.append((val, iso, True))
+        except (InvalidOperation, ValueError):
+            pass
+
+    # Word + currency: "450,000 pounds", "1 million dollars"
+    for m in _WORD_CURRENCY_RE.finditer(text):
+        try:
+            cleaned = re.sub(r'[,\s]', '', m.group('num'))
+            val = int(Decimal(cleaned))
+            word = m.group('word').lower().rstrip('s') + 's'  # normalise to plural
+            iso = _WORD_TO_CURRENCY.get(word) or _WORD_TO_CURRENCY.get(m.group('word').lower())
+            if iso and val > 0:
+                candidates.append((val, iso, True))
+        except (InvalidOperation, ValueError):
+            pass
+
+    # South-Asian units
     for m in _CRORE_RE.finditer(text):
         _add(m.group(1), 10_000_000, None)
     for m in _LAKH_RE.finditer(text):
         _add(m.group(1), 100_000, None)
 
-    # International units (no currency implied by unit itself)
+    # International units
     for m in _BILLION_RE.finditer(text):
         _add(m.group(1), 1_000_000_000, None)
     for m in _MILLION_RE.finditer(text):
@@ -345,7 +406,7 @@ def _extract_price_with_currency(text: str) -> Tuple[Optional[int], Optional[str
                 cleaned = re.sub(r'[,\s]', '', m.group(1))
                 val = int(Decimal(cleaned))
                 if 100 < val < 100_000_000_000:
-                    candidates.append((val, currency))
+                    candidates.append((val, currency, True))
             except (InvalidOperation, ValueError):
                 pass
 
@@ -363,15 +424,15 @@ def _extract_price_with_currency(text: str) -> Tuple[Optional[int], Optional[str
             cleaned = re.sub(r'[,\s]', '', m.group(1))
             val = int(Decimal(cleaned))
             if 100 < val < 100_000_000_000:
-                candidates.append((val, m.group(2).upper()))
+                candidates.append((val, m.group(2).upper(), True))
         except (InvalidOperation, ValueError):
             pass
 
     if not candidates:
         return None, None
 
-    # Pick the candidate with the largest amount
-    best_amount, best_currency = max(candidates, key=lambda t: t[0])
+    # Pick largest amount; prefer currency-tagged candidates when amounts tie
+    best_amount, best_currency, _ = max(candidates, key=lambda t: (t[0], t[2]))
 
     # Determine currency from word-context if not already set
     if best_currency is None:
