@@ -73,6 +73,7 @@ class Lead(models.Model):
     intent         = models.CharField(max_length=20, choices=Intent.choices, null=True, blank=True)
     score          = models.SmallIntegerField(default=0)
     intent_signals = models.JSONField(default=dict, blank=True)
+    score_factors  = models.JSONField(default=dict, blank=True)
     city_interest  = models.CharField(max_length=100, blank=True)
 
     # ── Budget — stored with ISO 4217 currency code ─────────────────────────────

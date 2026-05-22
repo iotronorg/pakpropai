@@ -484,6 +484,7 @@ def _capture_agent_request_lead(user, phone: str, city: str, intent: str,
                                  agent=None):
     try:
         from apps.leads.models import Lead
+        from apps.leads.utils import compute_score_factors
         intent_map = {
             'buy': Lead.Intent.BUY, 'sell': Lead.Intent.SELL,
             'rent': Lead.Intent.RENT, 'invest': Lead.Intent.INVEST,
@@ -503,6 +504,8 @@ def _capture_agent_request_lead(user, phone: str, city: str, intent: str,
                     'status':         Lead.Status.QUALIFIED,
                 },
             )
+            lead.score_factors = compute_score_factors(lead)
+            lead.save(update_fields=['score_factors'])
             if agent and not lead.assigned_agent_id:
                 lead.assigned_agent = agent
                 lead.save(update_fields=['assigned_agent'])

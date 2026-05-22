@@ -6,6 +6,7 @@ class LeadSerializer(serializers.ModelSerializer):
     phone             = serializers.CharField(source='user.phone', read_only=True)
     name              = serializers.CharField(source='user.name', read_only=True, allow_null=True)
     intent_score      = serializers.IntegerField(source='score', read_only=True)
+    score_factors     = serializers.JSONField(read_only=True)
     location_interest = serializers.CharField(source='city_interest', read_only=True, allow_blank=True)
     assigned_agent_id = serializers.PrimaryKeyRelatedField(
         source='assigned_agent', read_only=True
@@ -20,7 +21,7 @@ class LeadSerializer(serializers.ModelSerializer):
             'id', 'phone', 'name', 'intent', 'intent_score',
             'location_interest', 'budget_min', 'budget_max', 'budget_currency',
             'status', 'priority', 'routing_state',
-            'notes', 'source', 'intent_signals',
+            'notes', 'source', 'intent_signals', 'score_factors',
             'organization',
             'assigned_agent_id', 'assigned_agent_name',
             'last_contacted_at', 'created_at',
@@ -29,7 +30,7 @@ class LeadSerializer(serializers.ModelSerializer):
             'id', 'phone', 'name', 'intent', 'intent_score',
             'location_interest', 'budget_min', 'budget_max', 'budget_currency',
             'priority', 'routing_state',
-            'source', 'intent_signals',
+            'source', 'intent_signals', 'score_factors',
             'organization',
             'assigned_agent_id', 'assigned_agent_name',
             'last_contacted_at', 'created_at',
