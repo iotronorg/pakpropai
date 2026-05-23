@@ -137,6 +137,6 @@ class AgentRegistrationSerializer(serializers.Serializer):
         )
 
         otp = OTPService.issue(phone, purpose='registration_verify')
-        send_otp_async.delay(phone, otp.code)
+        transaction.on_commit(lambda: send_otp_async.delay(phone, otp.code))
 
         return agent

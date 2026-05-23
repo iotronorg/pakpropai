@@ -144,7 +144,10 @@ class AgentRegisterView(APIView):
     def post(self, request):
         serializer = AgentRegistrationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        agent = serializer.save()
+        try:
+            agent = serializer.save()
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_429_TOO_MANY_REQUESTS)
         self._notify_approvers(agent)
         return Response(
             {
