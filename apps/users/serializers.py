@@ -71,7 +71,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
 
 
 class PasswordLoginSerializer(serializers.Serializer):
-    identifier = serializers.CharField()   # phone (E.164) or email
+    identifier = serializers.CharField(max_length=254)   # phone (E.164) or email
     password   = serializers.CharField(write_only=True)
 
 
@@ -81,7 +81,7 @@ class PasswordResetRequestSerializer(serializers.Serializer):
 
 class PasswordResetConfirmSerializer(serializers.Serializer):
     phone        = serializers.RegexField(r'^\+\d{7,15}$')
-    code         = serializers.CharField(max_length=6)
+    code         = serializers.CharField(min_length=6, max_length=6)
     new_password = serializers.CharField(write_only=True)
 
     def validate_new_password(self, value):
@@ -102,3 +102,8 @@ class PasswordChangeSerializer(serializers.Serializer):
         except DjangoValidationError as exc:
             raise serializers.ValidationError(exc.messages)
         return value
+
+
+class RegistrationOTPVerifySerializer(serializers.Serializer):
+    phone = serializers.RegexField(r'^\+\d{7,15}$')
+    code  = serializers.CharField(min_length=6, max_length=6)

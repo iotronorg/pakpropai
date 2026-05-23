@@ -61,6 +61,7 @@ from .serializers import (
     SendOTPSerializer, VerifyOTPSerializer, UserSerializer, UserListSerializer,
     UserCreateSerializer, PasswordLoginSerializer, PasswordResetRequestSerializer,
     PasswordResetConfirmSerializer, PasswordChangeSerializer,
+    RegistrationOTPVerifySerializer,
 )
 from .services import OTPService
 
@@ -314,10 +315,11 @@ class RegistrationOTPVerifyView(APIView):
     throttle_classes   = [OtpSendThrottle]
 
     def post(self, request):
-        phone = request.data.get('phone', '').strip()
-        code  = request.data.get('code', '').strip()
-        if not phone or not code:
-            return Response({'detail': 'phone and code are required.'}, status=400)
+        serializer = RegistrationOTPVerifySerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=400)
+        phone = serializer.validated_data['phone']
+        code  = serializer.validated_data['code']
 
         try:
             OTPService.verify(phone, code, purpose='registration_verify')
@@ -326,10 +328,10 @@ class RegistrationOTPVerifyView(APIView):
 
         UserModel = get_user_model()
         user = UserModel.objects.filter(phone=phone).first()
-        if user:
-            user.is_phone_verified = True
-            user.save(update_fields=['is_phone_verified'])
-
+        if not user:
+            return Response({'detail': 'User not found.'}, status=400)
+        user.is_phone_verified = True
+        user.save(update_fields=['is_phone_verified'])
         return Response(
             {'detail': 'Phone verified. Your account is pending admin approval.'},
             status=200,
@@ -419,4 +421,10 @@ class PasswordChangeView(APIView):
 
         request.user.set_password(new_password)
         request.user.save(update_fields=['password'])
+
+        from django.utils import timezone
+        from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
+        for token in OutstandingToken.objects.filter(user=request.user, expires_at__gt=timezone.now()):
+            BlacklistedToken.objects.get_or_create(token=token)
+
         return Response({'detail': 'Password updated.'}, status=200)

@@ -283,3 +283,23 @@ class AuthViewTest(TestCase):
             'phone': '+923001000041', 'code': '000000'
         })
         self.assertEqual(resp.status_code, 400)
+
+    def test_registration_otp_verify_user_not_found(self):
+        """OTP verify for a phone with no user record returns 400."""
+        otp = OTPService.issue('+923001000050', purpose='registration_verify')
+        resp = self.client.post(f'{_AUTH}/registration/verify-otp/', {
+            'phone': '+923001000050', 'code': otp.code
+        })
+        self.assertEqual(resp.status_code, 400)
+
+    def test_password_change_old_tokens_blacklisted(self):
+        """After password change, outstanding refresh tokens are blacklisted."""
+        from rest_framework_simplejwt.tokens import RefreshToken
+        from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
+        user = _make_user_with_password('+923001000051', 'OldPass99!')
+        refresh = RefreshToken.for_user(user)
+        self.client.force_authenticate(user=user)
+        self.client.post(f'{_AUTH}/password/change/', {
+            'current_password': 'OldPass99!', 'new_password': 'NewPass99!'
+        })
+        self.assertTrue(BlacklistedToken.objects.filter(token__jti=str(refresh['jti'])).exists())
