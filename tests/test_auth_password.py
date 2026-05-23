@@ -69,3 +69,55 @@ class OTPServicePurposeTest(TestCase):
             OTPService.issue(self.phone, purpose='otp_login')
         with self.assertRaises(ValueError):
             OTPService.issue(self.phone, purpose='otp_login')
+
+
+class AuthSerializerTest(TestCase):
+
+    def test_password_login_serializer_valid(self):
+        from apps.users.serializers import PasswordLoginSerializer
+        s = PasswordLoginSerializer(data={'identifier': '+923001234567', 'password': 'secret'})
+        self.assertTrue(s.is_valid(), s.errors)
+
+    def test_password_login_serializer_missing_fields(self):
+        from apps.users.serializers import PasswordLoginSerializer
+        s = PasswordLoginSerializer(data={})
+        self.assertFalse(s.is_valid())
+        self.assertIn('identifier', s.errors)
+        self.assertIn('password', s.errors)
+
+    def test_password_reset_request_invalid_phone(self):
+        from apps.users.serializers import PasswordResetRequestSerializer
+        s = PasswordResetRequestSerializer(data={'phone': 'not-a-phone'})
+        self.assertFalse(s.is_valid())
+
+    def test_password_reset_confirm_weak_password(self):
+        from apps.users.serializers import PasswordResetConfirmSerializer
+        s = PasswordResetConfirmSerializer(data={
+            'phone': '+923001234567', 'code': '123456', 'new_password': '12345678'
+        })
+        # '12345678' is all-numeric — Django's NumericPasswordValidator should reject it
+        self.assertFalse(s.is_valid())
+        self.assertIn('new_password', s.errors)
+
+    def test_password_change_weak_password(self):
+        from apps.users.serializers import PasswordChangeSerializer
+        s = PasswordChangeSerializer(data={'current_password': 'anything', 'new_password': 'password'})
+        self.assertFalse(s.is_valid())
+        self.assertIn('new_password', s.errors)
+
+    def test_user_serializer_exposes_is_phone_verified(self):
+        from apps.users.serializers import UserSerializer
+        from tests.factories import make_user
+        user = make_user(phone='+923009991111')
+        s = UserSerializer(user)
+        self.assertIn('is_phone_verified', s.data)
+
+    def test_user_serializer_is_phone_verified_read_only(self):
+        from apps.users.serializers import UserSerializer
+        from tests.factories import make_user
+        user = make_user(phone='+923009992222')
+        # Attempting to set is_phone_verified via write should be ignored
+        s = UserSerializer(user, data={'is_phone_verified': True}, partial=True)
+        s.is_valid()
+        # is_phone_verified should not appear in validated_data (it's read-only)
+        self.assertNotIn('is_phone_verified', s.validated_data)

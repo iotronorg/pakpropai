@@ -1,4 +1,6 @@
 import re
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 from .models import User
 
@@ -34,8 +36,9 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model  = User
         fields = ('id', 'phone', 'name', 'email', 'role', 'is_filer',
-                  'ntn', 'cnic', 'last_active', 'created_at')
+                  'ntn', 'cnic', 'last_active', 'created_at', 'is_phone_verified')
         read_only_fields = ('id', 'phone', 'role', 'last_active', 'created_at')
+        extra_kwargs = {'is_phone_verified': {'read_only': True}}
 
 
 class UserListSerializer(serializers.ModelSerializer):
@@ -65,3 +68,37 @@ class UserCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         return User.objects.create_user(**validated_data)
+
+
+class PasswordLoginSerializer(serializers.Serializer):
+    identifier = serializers.CharField()   # phone (E.164) or email
+    password   = serializers.CharField(write_only=True)
+
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    phone = serializers.RegexField(r'^\+\d{7,15}$')
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    phone        = serializers.RegexField(r'^\+\d{7,15}$')
+    code         = serializers.CharField(max_length=6)
+    new_password = serializers.CharField(write_only=True)
+
+    def validate_new_password(self, value):
+        try:
+            validate_password(value)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.messages)
+        return value
+
+
+class PasswordChangeSerializer(serializers.Serializer):
+    current_password = serializers.CharField(write_only=True)
+    new_password     = serializers.CharField(write_only=True)
+
+    def validate_new_password(self, value):
+        try:
+            validate_password(value)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.messages)
+        return value
