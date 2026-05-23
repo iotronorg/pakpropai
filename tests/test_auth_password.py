@@ -5,9 +5,11 @@ from unittest.mock import patch
 
 from django.test import TestCase
 from django.utils import timezone
+from rest_framework.test import APIClient
 
 from apps.users.models import OTPCode, User
 from apps.users.services import OTPService
+from tests.factories import make_user
 
 # MAX_ATTEMPTS is the hard limit checked by OTPCode.is_valid() (attempts < 5)
 _MAX_ATTEMPTS = 5
@@ -105,6 +107,25 @@ class AuthSerializerTest(TestCase):
         self.assertFalse(s.is_valid())
         self.assertIn('new_password', s.errors)
 
+    def test_password_reset_request_valid_phone(self):
+        from apps.users.serializers import PasswordResetRequestSerializer
+        s = PasswordResetRequestSerializer(data={'phone': '+923001234567'})
+        self.assertTrue(s.is_valid(), s.errors)
+
+    def test_password_reset_confirm_strong_password(self):
+        from apps.users.serializers import PasswordResetConfirmSerializer
+        s = PasswordResetConfirmSerializer(data={
+            'phone': '+923001234567', 'code': '123456', 'new_password': 'Str0ng!Pass99'
+        })
+        self.assertTrue(s.is_valid(), s.errors)
+
+    def test_password_change_strong_password(self):
+        from apps.users.serializers import PasswordChangeSerializer
+        s = PasswordChangeSerializer(data={
+            'current_password': 'anything', 'new_password': 'Str0ng!Pass99'
+        })
+        self.assertTrue(s.is_valid(), s.errors)
+
     def test_user_serializer_exposes_is_phone_verified(self):
         from apps.users.serializers import UserSerializer
         from tests.factories import make_user
@@ -121,3 +142,144 @@ class AuthSerializerTest(TestCase):
         s.is_valid()
         # is_phone_verified should not appear in validated_data (it's read-only)
         self.assertNotIn('is_phone_verified', s.validated_data)
+
+
+_AUTH = '/api/v1/auth'
+
+
+def _make_user_with_password(phone, password, **kwargs):
+    """Create a user and set a usable password (factory hardcodes 'pw')."""
+    user = make_user(phone=phone, **kwargs)
+    user.set_password(password)
+    user.save(update_fields=['password'])
+    return user
+
+
+class AuthViewTest(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+
+    # --- PasswordLoginView ---
+
+    def test_password_login_by_phone(self):
+        _make_user_with_password('+923001000001', 'SecurePass99!')
+        resp = self.client.post(f'{_AUTH}/login/', {'identifier': '+923001000001', 'password': 'SecurePass99!'})
+        self.assertEqual(resp.status_code, 200)
+
+    def test_password_login_by_email(self):
+        _make_user_with_password('+923001000002', 'SecurePass99!', email='test@example.com')
+        resp = self.client.post(f'{_AUTH}/login/', {'identifier': 'test@example.com', 'password': 'SecurePass99!'})
+        self.assertEqual(resp.status_code, 200)
+
+    def test_password_login_wrong_password(self):
+        _make_user_with_password('+923001000003', 'SecurePass99!')
+        resp = self.client.post(f'{_AUTH}/login/', {'identifier': '+923001000003', 'password': 'wrong'})
+        self.assertEqual(resp.status_code, 401)
+
+    def test_password_login_user_not_found(self):
+        resp = self.client.post(f'{_AUTH}/login/', {'identifier': '+923001000099', 'password': 'anything'})
+        self.assertEqual(resp.status_code, 401)
+
+    def test_password_login_no_password_set(self):
+        user = make_user(phone='+923001000004')
+        user.set_unusable_password()
+        user.save()
+        resp = self.client.post(f'{_AUTH}/login/', {'identifier': '+923001000004', 'password': 'anything'})
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('No password set', resp.data['detail'])
+
+    def test_password_login_inactive_user(self):
+        user = _make_user_with_password('+923001000005', 'SecurePass99!')
+        user.is_active = False
+        user.save()
+        resp = self.client.post(f'{_AUTH}/login/', {'identifier': '+923001000005', 'password': 'SecurePass99!'})
+        self.assertEqual(resp.status_code, 403)
+
+    # --- PasswordResetRequestView ---
+
+    def test_password_reset_request_known_phone(self):
+        make_user(phone='+923001000010')
+        resp = self.client.post(f'{_AUTH}/password/reset/request/', {'phone': '+923001000010'})
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(OTPCode.objects.filter(phone='+923001000010', purpose='password_reset').exists())
+
+    def test_password_reset_request_unknown_phone(self):
+        resp = self.client.post(f'{_AUTH}/password/reset/request/', {'phone': '+923001000099'})
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(OTPCode.objects.filter(phone='+923001000099').exists())
+
+    # --- PasswordResetConfirmView ---
+
+    def test_password_reset_confirm_success(self):
+        user = make_user(phone='+923001000020')
+        otp = OTPService.issue('+923001000020', purpose='password_reset')
+        resp = self.client.post(f'{_AUTH}/password/reset/confirm/', {
+            'phone': '+923001000020', 'code': otp.code, 'new_password': 'NewSecure99!'
+        })
+        self.assertEqual(resp.status_code, 200)
+        user.refresh_from_db()
+        self.assertTrue(user.check_password('NewSecure99!'))
+
+    def test_password_reset_confirm_wrong_otp(self):
+        make_user(phone='+923001000021')
+        OTPService.issue('+923001000021', purpose='password_reset')
+        resp = self.client.post(f'{_AUTH}/password/reset/confirm/', {
+            'phone': '+923001000021', 'code': '000000', 'new_password': 'NewSecure99!'
+        })
+        self.assertEqual(resp.status_code, 400)
+
+    def test_password_reset_confirm_purpose_mismatch(self):
+        make_user(phone='+923001000022')
+        otp = OTPService.issue('+923001000022', purpose='otp_login')
+        resp = self.client.post(f'{_AUTH}/password/reset/confirm/', {
+            'phone': '+923001000022', 'code': otp.code, 'new_password': 'NewSecure99!'
+        })
+        self.assertEqual(resp.status_code, 400)
+
+    # --- PasswordChangeView ---
+
+    def test_password_change_success(self):
+        user = _make_user_with_password('+923001000030', 'OldPass99!')
+        self.client.force_authenticate(user=user)
+        resp = self.client.post(f'{_AUTH}/password/change/', {
+            'current_password': 'OldPass99!', 'new_password': 'NewPass99!'
+        })
+        self.assertEqual(resp.status_code, 200)
+        user.refresh_from_db()
+        self.assertTrue(user.check_password('NewPass99!'))
+
+    def test_password_change_wrong_current(self):
+        user = _make_user_with_password('+923001000031', 'OldPass99!')
+        self.client.force_authenticate(user=user)
+        resp = self.client.post(f'{_AUTH}/password/change/', {
+            'current_password': 'wrong', 'new_password': 'NewPass99!'
+        })
+        self.assertEqual(resp.status_code, 400)
+
+    def test_password_change_unauthenticated(self):
+        resp = self.client.post(f'{_AUTH}/password/change/', {
+            'current_password': 'anything', 'new_password': 'NewPass99!'
+        })
+        self.assertEqual(resp.status_code, 401)
+
+    # --- RegistrationOTPVerifyView ---
+
+    def test_registration_otp_verify_success(self):
+        user = make_user(phone='+923001000040')
+        user.is_phone_verified = False
+        user.save()
+        otp = OTPService.issue('+923001000040', purpose='registration_verify')
+        resp = self.client.post(f'{_AUTH}/registration/verify-otp/', {
+            'phone': '+923001000040', 'code': otp.code
+        })
+        self.assertEqual(resp.status_code, 200)
+        user.refresh_from_db()
+        self.assertTrue(user.is_phone_verified)
+
+    def test_registration_otp_verify_invalid_code(self):
+        make_user(phone='+923001000041')
+        OTPService.issue('+923001000041', purpose='registration_verify')
+        resp = self.client.post(f'{_AUTH}/registration/verify-otp/', {
+            'phone': '+923001000041', 'code': '000000'
+        })
+        self.assertEqual(resp.status_code, 400)

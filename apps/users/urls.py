@@ -2,7 +2,8 @@ from django.urls import path
 from .views import (
     SendOTPView, VerifyOTPView, MeView, LogoutView,
     CookieTokenRefreshView, UserListView, NotificationPreferencesView,
-    CsrfTokenView,
+    CsrfTokenView, PasswordLoginView, RegistrationOTPVerifyView,
+    PasswordResetRequestView, PasswordResetConfirmView, PasswordChangeView,
 )
 
 urlpatterns = [
@@ -15,4 +16,10 @@ urlpatterns = [
     path('logout/',        LogoutView.as_view(),             name='logout'),
     path('users/',         UserListView.as_view(),           name='user-list'),
     path('users/<uuid:pk>/', UserListView.as_view(),         name='user-detail'),
+    # Password auth
+    path('login/',                      PasswordLoginView.as_view(),        name='password-login'),
+    path('registration/verify-otp/',    RegistrationOTPVerifyView.as_view(), name='registration-verify-otp'),
+    path('password/reset/request/',     PasswordResetRequestView.as_view(),  name='password-reset-request'),
+    path('password/reset/confirm/',     PasswordResetConfirmView.as_view(),  name='password-reset-confirm'),
+    path('password/change/',            PasswordChangeView.as_view(),        name='password-change'),
 ]

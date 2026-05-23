@@ -55,8 +55,13 @@ def _clear_auth_cookies(response):
     response.delete_cookie('refresh_token', path='/', samesite=_COOKIE_SAMESITE)
     response.delete_cookie('user_role',     path='/', samesite=_COOKIE_SAMESITE)
 
+from django.contrib.auth import get_user_model
 from .models import User
-from .serializers import SendOTPSerializer, VerifyOTPSerializer, UserSerializer, UserListSerializer, UserCreateSerializer
+from .serializers import (
+    SendOTPSerializer, VerifyOTPSerializer, UserSerializer, UserListSerializer,
+    UserCreateSerializer, PasswordLoginSerializer, PasswordResetRequestSerializer,
+    PasswordResetConfirmSerializer, PasswordChangeSerializer,
+)
 from .services import OTPService
 
 logger = logging.getLogger(__name__)
@@ -71,8 +76,9 @@ class SendOTPView(APIView):
         serializer.is_valid(raise_exception=True)
         phone = serializer.validated_data['phone']
 
+        purpose = request.data.get('purpose', 'otp_login')
         try:
-            otp = OTPService.issue(phone)
+            otp = OTPService.issue(phone, purpose=purpose)
         except ValueError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_429_TOO_MANY_REQUESTS)
 
@@ -265,3 +271,152 @@ class CsrfTokenView(APIView):
 
     def get(self, request):
         return Response({'csrfToken': get_csrf_token(request)})
+
+
+class PasswordLoginView(APIView):
+    permission_classes = [AllowAny]
+    throttle_classes   = [OtpSendThrottle]
+
+    def post(self, request):
+        serializer = PasswordLoginSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=400)
+
+        identifier = serializer.validated_data['identifier']
+        password   = serializer.validated_data['password']
+
+        UserModel = get_user_model()
+        user = (
+            UserModel.objects.filter(phone=identifier).first()
+            or UserModel.objects.filter(email=identifier).first()
+        )
+
+        if user is not None and not user.has_usable_password():
+            return Response(
+                {'detail': 'No password set. Use Forgot Password to set one.'},
+                status=400,
+            )
+
+        if user is None or not user.check_password(password):
+            return Response({'detail': 'Invalid credentials.'}, status=401)
+
+        if not user.is_active:
+            return Response({'detail': 'Account is inactive.'}, status=403)
+
+        refresh = RefreshToken.for_user(user)
+        response = Response(UserSerializer(user).data, status=200)
+        _set_auth_cookies(response, str(refresh.access_token), str(refresh), role=user.role)
+        return response
+
+
+class RegistrationOTPVerifyView(APIView):
+    permission_classes = [AllowAny]
+    throttle_classes   = [OtpSendThrottle]
+
+    def post(self, request):
+        phone = request.data.get('phone', '').strip()
+        code  = request.data.get('code', '').strip()
+        if not phone or not code:
+            return Response({'detail': 'phone and code are required.'}, status=400)
+
+        try:
+            OTPService.verify(phone, code, purpose='registration_verify')
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+
+        UserModel = get_user_model()
+        user = UserModel.objects.filter(phone=phone).first()
+        if user:
+            user.is_phone_verified = True
+            user.save(update_fields=['is_phone_verified'])
+
+        return Response(
+            {'detail': 'Phone verified. Your account is pending admin approval.'},
+            status=200,
+        )
+
+
+class PasswordResetRequestView(APIView):
+    permission_classes = [AllowAny]
+    throttle_classes   = [OtpSendThrottle, OtpDailyThrottle]
+
+    def post(self, request):
+        serializer = PasswordResetRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=400)
+
+        phone     = serializer.validated_data['phone']
+        UserModel = get_user_model()
+        user      = UserModel.objects.filter(phone=phone).first()
+
+        if user:
+            try:
+                otp = OTPService.issue(phone, purpose='password_reset')
+                try:
+                    from apps.notifications.tasks import send_otp_async
+                    send_otp_async.delay(phone, otp.code)
+                except Exception:
+                    logger.warning("OTP delivery failed for %s during password reset.", phone)
+            except ValueError:
+                pass  # rate-limited — still return 200 (no enumeration)
+
+        return Response(
+            {'detail': 'If that phone is registered, a reset code was sent.'},
+            status=200,
+        )
+
+
+class PasswordResetConfirmView(APIView):
+    permission_classes = [AllowAny]
+    throttle_classes   = [OtpSendThrottle]
+
+    def post(self, request):
+        serializer = PasswordResetConfirmSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=400)
+
+        phone        = serializer.validated_data['phone']
+        code         = serializer.validated_data['code']
+        new_password = serializer.validated_data['new_password']
+
+        try:
+            OTPService.verify(phone, code, purpose='password_reset')
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+
+        UserModel = get_user_model()
+        user = UserModel.objects.filter(phone=phone).first()
+        if not user:
+            return Response({'detail': 'User not found.'}, status=400)
+
+        from django.utils import timezone
+        from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
+        for token in OutstandingToken.objects.filter(user=user, expires_at__gt=timezone.now()):
+            BlacklistedToken.objects.get_or_create(token=token)
+
+        user.set_password(new_password)
+        user.save(update_fields=['password'])
+
+        refresh = RefreshToken.for_user(user)
+        response = Response(UserSerializer(user).data, status=200)
+        _set_auth_cookies(response, str(refresh.access_token), str(refresh), role=user.role)
+        return response
+
+
+class PasswordChangeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = PasswordChangeSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=400)
+
+        current_password = serializer.validated_data['current_password']
+        new_password     = serializer.validated_data['new_password']
+
+        if not request.user.check_password(current_password):
+            return Response({'detail': 'Current password is incorrect.'}, status=400)
+
+        request.user.set_password(new_password)
+        request.user.save(update_fields=['password'])
+        return Response({'detail': 'Password updated.'}, status=200)
