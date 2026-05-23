@@ -73,7 +73,7 @@ class SendOTPView(APIView):
 
         try:
             otp = OTPService.issue(phone)
-        except PermissionError as exc:
+        except ValueError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_429_TOO_MANY_REQUESTS)
 
         if settings.DEBUG:
@@ -106,7 +106,7 @@ class VerifyOTPView(APIView):
         code  = serializer.validated_data['code']
 
         try:
-            user = OTPService.verify(phone, code)
+            user = OTPService.verify_login(phone, code)
         except ValueError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
