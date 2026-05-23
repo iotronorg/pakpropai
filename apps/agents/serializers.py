@@ -1,4 +1,6 @@
 import re
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from rest_framework import serializers
 from .models import Agent
@@ -62,6 +64,9 @@ class AgentRegistrationSerializer(serializers.Serializer):
     areas            = serializers.ListField(child=serializers.CharField(), required=False, default=list)
     specializations  = serializers.ListField(child=serializers.CharField(), required=False, default=list)
 
+    # Auth credentials
+    password = serializers.CharField(write_only=True, min_length=8)
+
     # Optional: link to an Organization at registration time
     organization = serializers.PrimaryKeyRelatedField(
         queryset=Organization.objects.filter(is_active=True),
@@ -69,6 +74,13 @@ class AgentRegistrationSerializer(serializers.Serializer):
         allow_null=True,
         default=None,
     )
+
+    def validate_password(self, value):
+        try:
+            validate_password(value)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.messages)
+        return value
 
     def validate_phone(self, value):
         from apps.users.models import User
@@ -83,15 +95,19 @@ class AgentRegistrationSerializer(serializers.Serializer):
     @transaction.atomic
     def create(self, validated_data):
         from apps.users.models import User
+        from apps.users.services import OTPService
+        from apps.notifications.tasks import send_otp_async
 
-        phone = validated_data['phone']
-        name  = validated_data['name']
+        phone    = validated_data['phone']
+        name     = validated_data['name']
+        password = validated_data.pop('password')
 
         user = User.objects.create_user(
             phone=phone,
             name=name,
             role=User.Role.AGENT,
             is_active=False,   # locked until approved
+            password=password,
         )
 
         org = validated_data.get('organization')
@@ -119,4 +135,8 @@ class AgentRegistrationSerializer(serializers.Serializer):
             is_verified=False,
             is_active=False,
         )
+
+        otp = OTPService.issue(phone, purpose='registration_verify')
+        send_otp_async.delay(phone, otp.code)
+
         return agent

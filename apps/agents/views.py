@@ -150,6 +150,8 @@ class AgentRegisterView(APIView):
             {
                 'detail': 'Registration submitted. You will be notified once your application is reviewed.',
                 'agent_id': agent.id,
+                'otp_required': True,
+                'phone': agent.user.phone,
             },
             status=status.HTTP_201_CREATED,
         )

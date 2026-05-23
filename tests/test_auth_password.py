@@ -303,3 +303,48 @@ class AuthViewTest(TestCase):
             'current_password': 'OldPass99!', 'new_password': 'NewPass99!'
         })
         self.assertTrue(BlacklistedToken.objects.filter(token__jti=str(refresh['jti'])).exists())
+
+
+class AgentRegistrationOTPTest(TestCase):
+
+    def setUp(self):
+        self.client = APIClient()
+        self.register_url = '/api/v1/agents/register/'
+
+    def _registration_payload(self, phone='+923002000001'):
+        return {
+            'phone': phone,
+            'name': 'Test Agent',
+            'password': 'SecurePass99!',
+        }
+
+    @patch('apps.notifications.tasks.send_otp_async.delay', return_value=None)
+    def test_registration_issues_otp(self, mock_send):
+        resp = self.client.post(self.register_url, self._registration_payload())
+        self.assertIn(resp.status_code, [200, 201])
+        self.assertTrue(
+            OTPCode.objects.filter(phone='+923002000001', purpose='registration_verify').exists()
+        )
+
+    @patch('apps.notifications.tasks.send_otp_async.delay', return_value=None)
+    def test_registration_response_includes_otp_required(self, mock_send):
+        resp = self.client.post(self.register_url, self._registration_payload('+923002000002'))
+        self.assertIn(resp.status_code, [200, 201])
+        self.assertTrue(resp.data.get('otp_required'))
+
+    @patch('apps.notifications.tasks.send_otp_async.delay', return_value=None)
+    def test_registration_password_is_hashed(self, mock_send):
+        from django.contrib.auth import get_user_model
+        resp = self.client.post(self.register_url, self._registration_payload('+923002000003'))
+        self.assertIn(resp.status_code, [200, 201])
+        UserModel = get_user_model()
+        user = UserModel.objects.get(phone='+923002000003')
+        self.assertTrue(user.has_usable_password())
+        self.assertTrue(user.check_password('SecurePass99!'))
+
+    def test_registration_weak_password_rejected(self):
+        payload = self._registration_payload('+923002000004')
+        payload['password'] = '12345678'  # all-numeric — Django's NumericPasswordValidator rejects
+        resp = self.client.post(self.register_url, payload)
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('password', resp.data)
