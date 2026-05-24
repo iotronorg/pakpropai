@@ -207,6 +207,9 @@ CELERY_TASK_ROUTES = {
     # Bulk property rescoring
     'apps.properties.tasks.score_property_task':          {'queue': 'high-resource'},
     'apps.properties.tasks.rescore_all_properties_task':  {'queue': 'high-resource'},
+    # Audit PDF generation + WhatsApp delivery
+    'apps.audit.tasks.generate_audit_pdf_task':           {'queue': 'high-resource'},
+    'apps.audit.tasks.send_audit_via_whatsapp_task':      {'queue': 'high-resource'},
 }
 
 CELERY_BEAT_SCHEDULE = {

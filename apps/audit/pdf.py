@@ -2,7 +2,9 @@
 PDF generation for Property Audit reports.
 Uses ReportLab to produce a multi-page branded PDF.
 """
+import io
 import os
+from dataclasses import dataclass
 from datetime import date
 
 from reportlab.lib import colors
@@ -20,6 +22,14 @@ from reportlab.platypus import (
     PageBreak,
     KeepTogether,
 )
+
+@dataclass
+class OrgBrandContext:
+    org_name: str
+    brand_color: str = '#1B4F72'
+    logo_url: str | None = None
+    measurement_system: str = 'pk_traditional'
+
 
 # ─── Area display helper ──────────────────────────────────────────────────────
 
@@ -158,13 +168,30 @@ def _styles():
     }
 
 
-def _header(s):
-    """Return the common page header elements."""
-    return [
-        Paragraph('RealTron AI', s['brand_title']),
+def _header(s, brand_context=None):
+    """Return page header elements, optionally branded to an org."""
+    import io as _io
+    import urllib.request as _req
+    from reportlab.platypus import Image as RLImage
+
+    org_name = brand_context.org_name if brand_context else 'RealTron AI'
+    hr_color = HexColor(brand_context.brand_color) if (brand_context and brand_context.brand_color) else BRAND_BLUE
+
+    elements = []
+    if brand_context and brand_context.logo_url:
+        try:
+            raw = _req.urlopen(brand_context.logo_url, timeout=5).read()
+            img = RLImage(_io.BytesIO(raw), width=3 * cm, height=2 * cm, kind='proportional')
+            elements.append(img)
+        except Exception:
+            pass
+
+    elements += [
+        Paragraph(org_name, s['brand_title']),
         Paragraph('Property Audit Report', s['brand_subtitle']),
-        HRFlowable(width='100%', thickness=1.5, color=BRAND_BLUE, spaceAfter=8),
+        HRFlowable(width='100%', thickness=1.5, color=hr_color, spaceAfter=8),
     ]
+    return elements
 
 
 def _pkr(n):
@@ -242,11 +269,11 @@ def _table_style(header_bg=BRAND_BLUE, row_alt=LIGHT_GREY):
 
 # ─── Page builders ────────────────────────────────────────────────────────────
 
-def _page1_executive_summary(audit: dict, s: dict, measurement_system: str = 'pk_traditional') -> list:
+def _page1_executive_summary(audit: dict, s: dict, measurement_system: str = 'pk_traditional', brand_context=None) -> list:
     """Page 1 — Executive Summary."""
     ov = audit.get('overview', {})
     sc = audit.get('scores', {})
-    elements = _header(s)
+    elements = _header(s, brand_context)
 
     today = date.today().strftime('%B %d, %Y')
     elements.append(Paragraph(f"Generated: {today}", s['small']))
@@ -814,3 +841,42 @@ def generate_audit_pdf(audit_data: dict, output_path: str, measurement_system: s
 
     doc.build(story)
     return output_path
+
+
+def generate_audit_pdf_bytes(
+    audit_data: dict,
+    brand_context: 'OrgBrandContext | None' = None,
+    measurement_system: str = 'pk_traditional',
+) -> bytes:
+    """
+    Generate a multi-page PDF audit report and return raw bytes.
+
+    Args:
+        audit_data:        The dict returned by AuditEngine.run()
+        brand_context:     Optional OrgBrandContext for org logo/name/color
+        measurement_system: 'pk_traditional' | 'imperial' | 'metric'
+    """
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        leftMargin=MARGIN,
+        rightMargin=MARGIN,
+        topMargin=MARGIN,
+        bottomMargin=MARGIN,
+        title='Property Audit Report',
+        author=brand_context.org_name if brand_context else 'RealTron AI',
+    )
+    ms = brand_context.measurement_system if brand_context else measurement_system
+    s = _styles()
+    story = (
+        _page1_executive_summary(audit_data, s, ms, brand_context)
+        + _page2_financial(audit_data, s)
+        + _page3_market(audit_data, s, ms)
+        + _page4_legal(audit_data, s)
+        + _page5_investment(audit_data, s)
+        + _page6_roles(audit_data, s)
+        + _page7_recommendations(audit_data, s)
+    )
+    doc.build(story)
+    return buf.getvalue()

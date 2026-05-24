@@ -136,6 +136,19 @@ class PropertyAudit(models.Model):
     )
     liquidity_score = models.IntegerField(default=5, help_text='1–10; 10 = most liquid')
 
+    delivery_status = models.CharField(
+        max_length=12,
+        choices=[
+            ('pending',    'Pending'),
+            ('generating', 'Generating'),
+            ('ready',      'Ready'),
+            ('sent',       'Sent'),
+            ('failed',     'Failed'),
+        ],
+        default='pending',
+    )
+    cloudinary_url = models.URLField(blank=True, max_length=500)
+
     # Full structured report
     audit_data = models.JSONField(default=dict)
 
@@ -152,6 +165,23 @@ class PropertyAudit(models.Model):
             f"{self.property_type} — {self.location}, {self.city} "
             f"({self.get_investment_grade_display()})"
         )
+
+
+class AuditDeliveryFailure(models.Model):
+    audit        = models.ForeignKey(
+                       PropertyAudit,
+                       on_delete=models.CASCADE,
+                       related_name='delivery_failures',
+                   )
+    failure_type = models.CharField(max_length=20)  # 'pdf_gen' | 'wa_upload' | 'wa_send'
+    error_detail = models.TextField(blank=True)
+    created_at   = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.failure_type} — audit {self.audit_id}"
 
 
 class SecurityTrace(models.Model):

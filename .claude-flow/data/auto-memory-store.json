@@ -70,5 +70,17 @@
       "quality": 0.85
     },
     "createdAt": 1779620125754
+  },
+  {
+    "id": "task-feature_property_audit-task2",
+    "key": "feature_property_audit-task2",
+    "content": "Task completed: feature_property_audit-task2",
+    "namespace": "tasks",
+    "type": "task-outcome",
+    "metadata": {
+      "success": true,
+      "quality": 0.85
+    },
+    "createdAt": 1779635658750
   }
 ]

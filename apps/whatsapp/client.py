@@ -161,3 +161,51 @@ class WhatsAppClient:
         )
         media.raise_for_status()
         return media.content
+
+    def upload_media(self, pdf_bytes: bytes, filename: str) -> str:
+        """
+        Upload a PDF to the WhatsApp media library via multipart/form-data.
+        Returns the media_id string. Raises requests.HTTPError on non-2xx.
+        """
+        url = f"{WA_API_URL}/{self._phone_number_id}/media"
+        r = requests.post(
+            url,
+            headers={'Authorization': f'Bearer {self._access_token}'},
+            files={'file': (filename, pdf_bytes, 'application/pdf')},
+            data={'messaging_product': 'whatsapp', 'type': 'application/pdf'},
+            timeout=30,
+        )
+        r.raise_for_status()
+        return r.json()['id']
+
+    def send_document(
+        self,
+        phone: str,
+        media_id: str,
+        filename: str = 'Property_Audit_Report.pdf',
+        caption: str = '',
+    ) -> dict:
+        """
+        Send a document (by media_id) to a WhatsApp user.
+        Raises ValueError if outside 24-hour window.
+        Raises requests.HTTPError on API error.
+        """
+        if not is_within_24h_window(phone):
+            raise ValueError(
+                f"Cannot send document to {phone}: outside 24-hour WhatsApp window."
+            )
+        to = phone.lstrip('+')
+        payload = {
+            'messaging_product': 'whatsapp',
+            'recipient_type':    'individual',
+            'to':                to,
+            'type':              'document',
+            'document': {
+                'id':       media_id,
+                'filename': filename,
+                'caption':  caption[:1024],
+            },
+        }
+        r = requests.post(self._phone_url(), headers=self._headers(), json=payload, timeout=10)
+        r.raise_for_status()
+        return r.json()
