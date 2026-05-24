@@ -47,8 +47,14 @@ class Organization(models.Model):
         help_text="WhatsApp Cloud API phone_number_id for this org's dedicated WA number",
     )
     email   = models.EmailField(blank=True)
-    website = models.URLField(blank=True)
-    logo    = models.ImageField(upload_to=_logo_upload_path, blank=True, null=True)
+    website       = models.URLField(blank=True)
+    logo          = models.ImageField(upload_to=_logo_upload_path, blank=True, null=True)
+    custom_domain = models.CharField(
+        max_length=255,
+        blank=True,
+        db_index=True,
+        help_text='White-label FQDN, e.g. portal.imarat.ai — resolved by TenantDomainMiddleware',
+    )
     brand_color = models.CharField(
         max_length=7,
         default='#1B4F72',
@@ -308,3 +314,52 @@ class OrganizationMembership(models.Model):
 
     def __str__(self):
         return f"{self.user} → {self.organization.name} [{self.role}]"
+
+
+class DeveloperApiKey(models.Model):
+    """
+    Cryptographic API token for external CRM / integration access.
+
+    The raw token `rtk_<prefix12>_<secret48>` is returned once on creation and
+    never stored.  Only a PBKDF2-SHA256 hash of the secret is persisted here.
+    The prefix is stored in plaintext solely to enable a single indexed DB lookup
+    before constant-time hash verification.
+
+    Scopes govern what the key is allowed to read/write:
+      inventory:read   — list org's properties
+      inventory:write  — push new property listings
+      leads:read       — list org's qualified leads
+      leads:write      — push leads from external CRM
+      webhooks         — manage outbound webhook subscriptions
+    """
+
+    VALID_SCOPES = frozenset({
+        'inventory:read',
+        'inventory:write',
+        'leads:read',
+        'leads:write',
+        'webhooks',
+    })
+
+    id           = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE, related_name='api_keys',
+    )
+    name         = models.CharField(max_length=100, help_text='Label for identification, e.g. "HubSpot CRM"')
+    key_prefix   = models.CharField(max_length=12, unique=True, db_index=True)
+    key_hash     = models.CharField(max_length=128)
+    key_salt     = models.CharField(max_length=64)
+    scopes       = models.JSONField(default=list)
+    is_active    = models.BooleanField(default=True, db_index=True)
+    created_at   = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    expires_at   = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'developer_api_keys'
+        indexes  = [
+            models.Index(fields=['organization', 'is_active']),
+        ]
+
+    def __str__(self):
+        return f"rtk_{self.key_prefix}_*** [{self.organization.name}] {self.name}"

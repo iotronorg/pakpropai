@@ -43,6 +43,7 @@ urlpatterns = [
         path('campaigns/',    include('apps.campaigns.urls')),
         path('billing/',      include('apps.billing.urls')),
         path('compliance/',   include('apps.compliance.urls')),
+        path('external/',     include('apps.organizations.external_urls')),
         *core_api_urlpatterns,
     ])),
 ]

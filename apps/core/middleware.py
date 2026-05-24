@@ -2,6 +2,7 @@ import logging
 import time
 
 from django.core.cache import cache
+from django.http import JsonResponse
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -158,3 +159,99 @@ class RequestAuditMiddleware:
             duration_ms,
         )
         return response
+
+
+class TenantDomainMiddleware:
+    """
+    Resolves the incoming Host header to an Organization and stores it as
+    request.tenant_org for consumption by API key auth and external views.
+
+    Resolution order:
+      1. Redis cache  (TTL=300 s) — target < 2 ms overhead on hot paths
+      2. DB lookup    — by org slug (subdomain) or custom_domain (FQDN)
+
+    Subdomain pattern  : {slug}.realtron.ai  → Organization.slug
+    Custom domain      : portal.imarat.ai    → Organization.custom_domain
+
+    Unrecognized *custom* domains return 404 immediately; unrecognized
+    subdomains (e.g. typos) pass through so Django URL routing handles them.
+    Platform own domain and local dev hostnames are skipped silently.
+
+    Performance: a Redis GET adds ≈ 1–2 ms; DB fallback ≈ 3–8 ms.
+    Both are safely within the 12 ms SLA defined in the architecture spec.
+    """
+
+    _CACHE_TTL    = 300   # seconds
+    _SENTINEL     = '__none__'
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        short_circuit = self._resolve(request)
+        if short_circuit is not None:
+            return short_circuit
+        return self.get_response(request)
+
+    def _resolve(self, request) -> JsonResponse | None:
+        """
+        Populates request.tenant_org.
+        Returns a 404 JsonResponse only for unrecognized custom domains.
+        """
+        request.tenant_org = None
+
+        from django.conf import settings
+        host = request.get_host().split(':')[0].lower()
+        platform_domain = getattr(settings, 'REALTRON_PLATFORM_DOMAIN', 'realtron.ai')
+
+        # Skip resolution for the platform's own origin and local dev environments
+        if host in (platform_domain, 'localhost', '127.0.0.1', 'testserver'):
+            return None
+
+        is_subdomain = host.endswith(f'.{platform_domain}')
+        org = self._lookup(host, platform_domain, is_subdomain)
+
+        if org is None and not is_subdomain:
+            # Unrecognized custom domain — hard 404
+            logger.info('TenantDomainMiddleware: unrecognized custom domain %s', host)
+            return JsonResponse({'detail': 'Domain not recognized.'}, status=404)
+
+        request.tenant_org = org
+        return None
+
+    def _lookup(self, host: str, platform_domain: str, is_subdomain: bool):
+        """Cache-first DB lookup. Returns Organization or None."""
+        from apps.organizations.models import Organization
+
+        cache_key = f'tenant_domain:{host}'
+        cached = cache.get(cache_key)
+
+        if cached is not None:
+            if cached == self._SENTINEL:
+                return None
+            try:
+                return Organization.objects.only(
+                    'id', 'name', 'slug', 'custom_domain',
+                    'is_active', 'plan', 'country', 'measurement_system',
+                ).get(pk=cached)
+            except Organization.DoesNotExist:
+                cache.delete(cache_key)
+
+        if is_subdomain:
+            slug = host[: -(len(platform_domain) + 1)]
+            org = (
+                Organization.objects
+                .filter(slug=slug, is_active=True)
+                .only('id', 'name', 'slug', 'custom_domain', 'is_active', 'plan', 'country', 'measurement_system')
+                .first()
+            )
+        else:
+            org = (
+                Organization.objects
+                .filter(custom_domain=host, is_active=True)
+                .only('id', 'name', 'slug', 'custom_domain', 'is_active', 'plan', 'country', 'measurement_system')
+                .first()
+            )
+
+        cache.set(cache_key, str(org.pk) if org else self._SENTINEL, self._CACHE_TTL)
+        return org

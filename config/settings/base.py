@@ -61,6 +61,7 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
+    'apps.core.middleware.TenantDomainMiddleware',   # must be before auth — resolves tenant context
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -73,6 +74,9 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'django_prometheus.middleware.PrometheusAfterMiddleware',
 ]
+
+# White-label domain routing
+REALTRON_PLATFORM_DOMAIN = env('REALTRON_PLATFORM_DOMAIN', default='realtron.ai')
 
 ROOT_URLCONF = 'config.urls'
 
@@ -155,6 +159,7 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_RATES': {
         'anon':            '30/min',
         'user':            '120/min',
+        'api_key':         '300/min',   # external developer API keys
         'otp_send':        '3/hour',
         'otp_daily':       '10/day',
         'ai_query':        '10/min',
