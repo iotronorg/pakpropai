@@ -48,6 +48,12 @@ class Organization(models.Model):
     email   = models.EmailField(blank=True)
     website = models.URLField(blank=True)
     logo    = models.ImageField(upload_to=_logo_upload_path, blank=True, null=True)
+    brand_color = models.CharField(
+        max_length=7,
+        default='#1B4F72',
+        blank=True,
+        help_text='Hex color code for PDF report header, e.g. #1B4F72',
+    )
 
     class Language(models.TextChoices):
         ENGLISH  = 'en', 'English'
