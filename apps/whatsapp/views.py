@@ -10,7 +10,9 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from django.shortcuts import get_object_or_404
 from apps.core.throttles import WhatsAppWebhookThrottle
+from apps.core.permissions import IsAgentOrAdmin, get_user_org
 import requests as _http_requests
 from .models import OrgWhatsAppConfig, WhatsAppSession, WhatsAppMessage
 from .serializers import OrgWhatsAppConfigSerializer
@@ -425,3 +427,123 @@ class OrgWhatsAppTestMessageView(APIView):
             return Response({'ok': True})
         except Exception as exc:
             return Response({'ok': False, 'detail': str(exc)}, status=502)
+
+
+class TakeControlView(APIView):
+    permission_classes = [IsAuthenticated, IsAgentOrAdmin]
+
+    def post(self, request, session_id):
+        from apps.leads.models import Lead, LeadActivity
+        session = get_object_or_404(WhatsAppSession, id=session_id)
+        user_org = get_user_org(request.user)
+
+        if session.organization_id != (user_org.id if user_org else None):
+            return Response({"detail": "Not found."}, status=404)
+
+        lock_key = f"wa:agent_lock:{session_id}"
+        acquired = cache.add(lock_key, str(request.user.id), timeout=180)
+
+        if not acquired:
+            held_by = cache.get(lock_key)
+            return Response(
+                {"detail": "Session is held by another agent.", "held_by": held_by},
+                status=409,
+            )
+
+        session.conversation_mode = WhatsAppSession.ConversationMode.AGENT_MANAGED
+        session.save(update_fields=["conversation_mode"])
+
+        lead = Lead.objects.filter(user=session.user, organization=user_org).first()
+        if lead:
+            if request.user.role == "agent":
+                try:
+                    lead.assigned_agent = request.user.agent_profile
+                    lead.save(update_fields=["assigned_agent"])
+                except Exception:
+                    pass
+            LeadActivity.objects.create(
+                lead=lead,
+                actor=request.user,
+                action=LeadActivity.ActionType.HANDOVER,
+                meta={"from": "AI", "to": str(request.user.id)},
+            )
+
+        self._broadcast(session, user_org, {
+            "event":      "session_taken",
+            "session_id": str(session.id),
+            "agent_id":   str(request.user.id),
+            "agent_name": getattr(request.user, 'name', None) or str(request.user.phone),
+        })
+
+        return Response({"conversation_mode": "AGENT_MANAGED", "lock_ttl": 180})
+
+    def _broadcast(self, session, org, payload):
+        from asgiref.sync import async_to_sync
+        from channels.layers import get_channel_layer
+        channel_layer = get_channel_layer()
+        if channel_layer is None:
+            return
+        payload["type"] = "agent_message"
+        try:
+            async_to_sync(channel_layer.group_send)(
+                f"org_{org.id}_agent_room", payload
+            )
+        except Exception:
+            logger.warning("TakeControlView broadcast failed", exc_info=True)
+
+
+class ReleaseControlView(APIView):
+    permission_classes = [IsAuthenticated, IsAgentOrAdmin]
+
+    def post(self, request, session_id):
+        from apps.leads.models import Lead, LeadActivity
+        session = get_object_or_404(WhatsAppSession, id=session_id)
+        user_org = get_user_org(request.user)
+
+        if session.organization_id != (user_org.id if user_org else None):
+            return Response({"detail": "Not found."}, status=404)
+
+        lock_key = f"wa:agent_lock:{session_id}"
+        holder = cache.get(lock_key)
+
+        if request.user.role not in ("developer", "admin"):
+            if str(holder) != str(request.user.id):
+                return Response(
+                    {"detail": "You do not hold the lock for this session."},
+                    status=403,
+                )
+
+        cache.delete(lock_key)
+        session.conversation_mode = WhatsAppSession.ConversationMode.AI_MANAGED
+        session.save(update_fields=["conversation_mode"])
+
+        lead = Lead.objects.filter(user=session.user, organization=user_org).first()
+        if lead:
+            LeadActivity.objects.create(
+                lead=lead,
+                actor=request.user,
+                action=LeadActivity.ActionType.HANDOVER,
+                meta={"from": str(request.user.id), "to": "AI"},
+            )
+
+        self._broadcast(session, user_org, {
+            "event":       "session_released",
+            "session_id":  str(session.id),
+            "released_by": str(request.user.id),
+        })
+
+        return Response({"conversation_mode": "AI_MANAGED"})
+
+    def _broadcast(self, session, org, payload):
+        from asgiref.sync import async_to_sync
+        from channels.layers import get_channel_layer
+        channel_layer = get_channel_layer()
+        if channel_layer is None:
+            return
+        payload["type"] = "agent_message"
+        try:
+            async_to_sync(channel_layer.group_send)(
+                f"org_{org.id}_agent_room", payload
+            )
+        except Exception:
+            logger.warning("ReleaseControlView broadcast failed", exc_info=True)

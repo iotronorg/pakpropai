@@ -29,6 +29,7 @@ THIRD_PARTY_APPS = [
     'django_celery_beat',
     'cloudinary',
     'cloudinary_storage',
+    'channels',
 ]
 
 LOCAL_APPS = [
@@ -53,7 +54,7 @@ LOCAL_APPS = [
     'apps.compliance',
 ]
 
-INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
+INSTALLED_APPS = ['daphne'] + DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
 MIDDLEWARE = [
     'django_prometheus.middleware.PrometheusBeforeMiddleware',
@@ -253,12 +254,23 @@ CELERY_BEAT_SCHEDULE = {
         'task':     'apps.users.tasks.cleanup_expired_otps',
         'schedule': 86400,  # daily
     },
+    'revert-orphaned-agent-sessions': {
+        'task': 'apps.whatsapp.tasks.revert_orphaned_agent_sessions',
+        'schedule': 60.0,
+    },
 }
 
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.redis.RedisCache',
         'LOCATION': REDIS_URL,
+    }
+}
+
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {'hosts': [REDIS_URL]},
     }
 }
 

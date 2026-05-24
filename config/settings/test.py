@@ -7,3 +7,7 @@ MIDDLEWARE     = [m   for m   in MIDDLEWARE     if 'debug_toolbar' not in m]
 # Celery tasks run synchronously and errors propagate so assertions work correctly.
 CELERY_TASK_ALWAYS_EAGER    = True
 CELERY_TASK_EAGER_PROPAGATES = True
+
+CHANNEL_LAYERS = {
+    'default': {'BACKEND': 'channels.layers.InMemoryChannelLayer'}
+}

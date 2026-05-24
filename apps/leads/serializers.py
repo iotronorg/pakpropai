@@ -14,6 +14,18 @@ class LeadSerializer(serializers.ModelSerializer):
     assigned_agent_name = serializers.CharField(
         source='assigned_agent.name', read_only=True, allow_null=True, default=None
     )
+    wa_session_id = serializers.SerializerMethodField()
+
+    def get_wa_session_id(self, obj):
+        from apps.whatsapp.models import WhatsAppSession
+        session = (
+            WhatsAppSession.objects
+            .filter(user=obj.user, organization=obj.organization)
+            .only('id')
+            .order_by('-last_message_at')
+            .first()
+        )
+        return str(session.id) if session else None
 
     class Meta:
         model  = Lead
@@ -25,6 +37,7 @@ class LeadSerializer(serializers.ModelSerializer):
             'organization',
             'assigned_agent_id', 'assigned_agent_name',
             'last_contacted_at', 'created_at',
+            'wa_session_id',
         )
         read_only_fields = (
             'id', 'phone', 'name', 'intent', 'intent_score',
@@ -34,6 +47,7 @@ class LeadSerializer(serializers.ModelSerializer):
             'organization',
             'assigned_agent_id', 'assigned_agent_name',
             'last_contacted_at', 'created_at',
+            'wa_session_id',
         )
 
 

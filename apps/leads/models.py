@@ -122,6 +122,7 @@ class LeadActivity(models.Model):
         CONTACTED  = 'contacted',  'Client Contacted'
         SCORED     = 'scored',     'Score Updated'
         DEAL_LOCK  = 'deal_lock',  'Deal Lock Initiated'
+        HANDOVER   = 'handover',   'Handover'
 
     lead       = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name='activities')
     actor      = models.ForeignKey(

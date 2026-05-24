@@ -8,6 +8,11 @@ class WhatsAppSession(models.Model):
     Persistent record of WhatsApp conversations.
     Redis holds the live session; this table is the audit log.
     """
+
+    class ConversationMode(models.TextChoices):
+        AI_MANAGED    = 'AI_MANAGED',    'AI Managed'
+        AGENT_MANAGED = 'AGENT_MANAGED', 'Agent Managed'
+
     id           = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     phone        = models.CharField(max_length=20, db_index=True)
     user         = models.ForeignKey(
@@ -28,6 +33,12 @@ class WhatsAppSession(models.Model):
         related_name='org_wa_sessions',
         db_index=True,
         help_text="Organization that owns this session's WhatsApp number",
+    )
+    conversation_mode = models.CharField(
+        max_length=20,
+        choices=ConversationMode.choices,
+        default=ConversationMode.AI_MANAGED,
+        db_index=True,
     )
 
     class Meta:

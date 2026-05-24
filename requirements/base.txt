@@ -47,3 +47,6 @@ python-json-logger>=3.0.0
 pydantic>=2.0.0
 stripe>=8.0.0
 django-prometheus>=0.3.0
+channels>=4.1.0
+channels-redis>=4.2.0
+daphne>=4.1.0

@@ -330,6 +330,50 @@ def check_whatsapp_token_health():
         return 'error'
 
 
+@shared_task
+def revert_orphaned_agent_sessions() -> int:
+    """
+    Flip AGENT_MANAGED sessions back to AI_MANAGED when their Redis lock has
+    expired. Runs every 60 seconds via Celery Beat.
+    Returns the number of sessions reverted.
+    """
+    from asgiref.sync import async_to_sync
+    from channels.layers import get_channel_layer
+    from django.core.cache import cache
+    from .models import WhatsAppSession
+
+    channel_layer = get_channel_layer()
+
+    orphaned = list(
+        WhatsAppSession.objects.filter(
+            conversation_mode=WhatsAppSession.ConversationMode.AGENT_MANAGED
+        ).select_for_update(skip_locked=True)
+    )
+
+    reverted = 0
+    for session in orphaned:
+        lock_key = f"wa:agent_lock:{session.id}"
+        if cache.get(lock_key) is not None:
+            continue
+
+        session.conversation_mode = WhatsAppSession.ConversationMode.AI_MANAGED
+        session.save(update_fields=["conversation_mode"])
+        reverted += 1
+
+        if channel_layer and session.organization_id:
+            group = f"org_{session.organization_id}_agent_room"
+            try:
+                async_to_sync(channel_layer.group_send)(group, {
+                    "type":       "agent_message",
+                    "event":      "session_reverted",
+                    "session_id": str(session.id),
+                })
+            except Exception:
+                pass
+
+    return reverted
+
+
 def _alert_admins(title: str, message: str):
     try:
         from django.contrib.auth import get_user_model

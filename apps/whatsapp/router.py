@@ -130,6 +130,13 @@ class MessageRouter:
         msg_type = message_data.get('type', 'text')
         whatsapp_messages_total.labels(message_type=msg_type, direction='inbound').inc()
 
+        # ── AGENT_MANAGED: broadcast to agent room, skip LLM entirely ─────────
+        if session_db.conversation_mode == WhatsAppSession.ConversationMode.AGENT_MANAGED:
+            _raw_body = message_data.get('text', {}).get('body', '') or f'[{msg_type}]'
+            cls._broadcast_to_agent_room(message_data, session_db, org, msg_type)
+            cls._log_inbound(message_data, session_db, _raw_body, msg_type)
+            return
+
         # ── Resolve message text ───────────────────────────────────────────
         if msg_type == 'audio':
             from apps.config.services import SystemConfigService
@@ -433,6 +440,51 @@ class MessageRouter:
             f"{lines}\n\n"
             "What would you like to do? Just ask in English or Urdu."
         )
+
+    @classmethod
+    def _broadcast_to_agent_room(cls, message_data: dict, session_db, org, msg_type: str):
+        """
+        Broadcast a raw WhatsApp payload to the org's agent room group.
+        Fire-and-forget — no agent connected means the client gets no reply (correct).
+        """
+        from asgiref.sync import async_to_sync
+        from channels.layers import get_channel_layer
+        from django.utils import timezone as _tz
+
+        channel_layer = get_channel_layer()
+        if channel_layer is None:
+            logger.warning("No channel layer configured — cannot broadcast to agent room.")
+            return
+
+        group_name = f"org_{org.id}_agent_room"
+        lead_id = cls._resolve_lead_id(session_db, org)
+
+        payload = {
+            "type":       "agent_message",
+            "event":      "inbound_message",
+            "session_id": str(session_db.id),
+            "phone":      session_db.phone,
+            "message":    message_data,
+            "msg_type":   msg_type,
+            "timestamp":  _tz.now().isoformat(),
+            "lead_id":    str(lead_id) if lead_id else None,
+        }
+        try:
+            async_to_sync(channel_layer.group_send)(group_name, payload)
+        except Exception:
+            logger.warning(f"group_send to {group_name} failed", exc_info=True)
+
+    @classmethod
+    def _resolve_lead_id(cls, session_db, org):
+        try:
+            from apps.leads.models import Lead
+            return (
+                Lead.objects.filter(user=session_db.user, organization=org)
+                .values_list('id', flat=True)
+                .first()
+            )
+        except Exception:
+            return None
 
     @classmethod
     def _log_inbound(cls, message_data: dict, session_db, body: str, msg_type: str):
