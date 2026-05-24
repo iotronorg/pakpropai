@@ -27,7 +27,7 @@ class OrganizationDetailSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'name', 'slug', 'org_type', 'plan',
             'admin_user', 'admin_phone', 'admin_name',
-            'phone', 'email', 'website', 'logo',
+            'phone', 'email', 'website', 'logo', 'brand_color',
             'country', 'language', 'measurement_system', 'city', 'address',
             'is_active', 'is_verified',
             'created_at', 'updated_at',

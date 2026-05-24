@@ -24,3 +24,9 @@ class TestOrganizationBrandColor(TestCase):
         org = Organization.objects.create(name='Custom Color Org', brand_color='#FF5733')
         org.refresh_from_db()
         self.assertEqual(org.brand_color, '#FF5733')
+
+    def test_brand_color_rejects_invalid_format(self):
+        from django.core.exceptions import ValidationError
+        org = Organization(name='Bad Color Org', brand_color='red')
+        with self.assertRaises(ValidationError):
+            org.full_clean()

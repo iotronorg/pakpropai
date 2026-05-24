@@ -1,6 +1,7 @@
 import uuid
 from django.db import models
 from django.conf import settings
+from django.core.validators import RegexValidator
 from django.utils.text import slugify
 from django.utils import timezone
 
@@ -52,6 +53,7 @@ class Organization(models.Model):
         max_length=7,
         default='#1B4F72',
         blank=True,
+        validators=[RegexValidator(r'^#[0-9A-Fa-f]{6}$', 'Enter a valid hex color, e.g. #1B4F72')],
         help_text='Hex color code for PDF report header, e.g. #1B4F72',
     )
 
