@@ -32,16 +32,23 @@ def process_incoming_whatsapp_task(message: dict, phone_number_id: str = ''):
         )
         return
 
-    # Show blue ticks immediately (3-15 s before AI reply).
+    # Resolve org early so all downstream calls use org-specific credentials.
+    from apps.organizations.models import Organization
+    from apps.whatsapp.client import get_wa_client
     try:
-        from apps.whatsapp.client import WhatsAppClient
-        WhatsAppClient.mark_read(msg_id)
+        org = Organization.objects.filter(wa_phone_number_id=phone_number_id).first()
     except Exception:
-        pass  # Non-critical — never block message processing
+        org = None
+
+    # Show blue ticks immediately (non-critical).
+    try:
+        get_wa_client(org).mark_read(msg_id)
+    except Exception:
+        pass
 
     # ── Dispatch to dedicated media workers ───────────────────────────────────
     if msg_type == 'audio':
-        audio   = message.get('audio', {})
+        audio    = message.get('audio', {})
         media_id = audio.get('id', '')
         mime     = audio.get('mime_type', 'audio/ogg')
         if media_id:
@@ -51,20 +58,18 @@ def process_incoming_whatsapp_task(message: dict, phone_number_id: str = ''):
             )
             transcribe_audio_task.delay(media_id, mime, phone, phone_number_id, message)
             return
-        # No media_id — fall through to router (edge case: forward/status message)
 
     elif msg_type == 'image':
         image    = message.get('image', {})
         media_id = image.get('id', '')
         mime     = image.get('mime_type', 'image/jpeg')
-        caption  = image.get('caption', '')
         if media_id:
             logger.info(
                 "WA inbound image phone=%s msg_id=%s media_id=%s — dispatching Vision worker",
                 phone, msg_id, media_id,
             )
             process_image_task.delay(
-                media_id, mime, phone, phone_number_id, caption, message
+                media_id, mime, phone, phone_number_id, image.get('caption', ''), message
             )
             return
 
@@ -72,41 +77,36 @@ def process_incoming_whatsapp_task(message: dict, phone_number_id: str = ''):
         doc      = message.get('document', {})
         media_id = doc.get('id', '')
         mime     = doc.get('mime_type', 'application/pdf')
-        filename = doc.get('filename', '')
-        caption  = doc.get('caption', '')
         if media_id:
             logger.info(
-                "WA inbound document phone=%s msg_id=%s media_id=%s filename=%s — dispatching OCR worker",
-                phone, msg_id, media_id, filename,
+                "WA inbound document phone=%s msg_id=%s media_id=%s — dispatching OCR worker",
+                phone, msg_id, media_id,
             )
             process_document_task.delay(
-                media_id, mime, phone, phone_number_id, filename, caption, message
+                media_id, mime, phone, phone_number_id, doc.get('filename', ''), doc.get('caption', ''), message
             )
             return
 
     # ── WhatsApp AI token guard ────────────────────────────────────────────────
     try:
-        from apps.organizations.models import Organization
         from apps.billing.ledger import UsageLedger
-
-        org = Organization.objects.filter(wa_phone_number_id=phone_number_id).first()
         if org is not None:
             plan = getattr(org, 'plan', 'trial')
             if not UsageLedger.within_limit(str(org.id), plan, 'wa_tokens'):
                 logger.warning(
-                    'WA token limit exhausted org=%s plan=%s count=%d — sending canned reply',
-                    org.id, plan, UsageLedger.get_wa_token_count(str(org.id)),
+                    'WA token limit exhausted org=%s plan=%s — sending canned reply',
+                    org.id, plan,
                 )
-                from apps.whatsapp.client import WhatsAppClient
-                WhatsAppClient.send_text(
+                get_wa_client(org).send_text(
                     phone,
                     'Our AI assistant is at capacity. One of our agents will follow up with you shortly.',
+                    skip_window_check=True,
                 )
                 return
     except Exception:
         logger.exception('WA token guard failed phone=%s — proceeding', phone)
 
-    # ── Text (and media fallbacks with no media_id) → direct routing ─────────
+    # ── Text (and media fallbacks) → direct routing ───────────────────────────
     try:
         from apps.whatsapp.router import MessageRouter
         MessageRouter.route(message, phone, phone_number_id)

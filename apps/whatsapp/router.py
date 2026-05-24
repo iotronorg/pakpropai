@@ -54,7 +54,7 @@ def _sanitize(text: str) -> str:
     return text.strip()
 
 from apps.users.models import User
-from .client import WhatsAppClient
+from .client import WhatsAppClient, get_wa_client
 from .models import WhatsAppMessage, WhatsAppSession
 
 logger = logging.getLogger(__name__)
@@ -87,7 +87,11 @@ class MessageRouter:
         session_db.user = user
         session_db.message_count += 1
         session_db.last_message_at = timezone.now()
-        session_db.save(update_fields=['user', 'message_count', 'last_message_at'])
+        update_fields = ['user', 'message_count', 'last_message_at']
+        if org is not None and session_db.organization_id != org.pk:
+            session_db.organization = org
+            update_fields.append('organization')
+        session_db.save(update_fields=update_fields)
 
         # Deactivated clients cannot use the service.
         if not user.is_active:
@@ -95,6 +99,7 @@ class MessageRouter:
                 phone,
                 "⛔ Your account has been suspended. Please contact support for assistance.",
                 session_db,
+                org=org,
             )
             return
 
@@ -110,6 +115,7 @@ class MessageRouter:
                     "This WhatsApp number is for property buyers and clients only."
                 ),
                 session_db,
+                org=org,
             )
             return
 
@@ -133,9 +139,10 @@ class MessageRouter:
                     "Voice messages are not supported at the moment. Please type your message.\n"
                     "Voice messages kay liye support abhi available nahi — please type karein.",
                     session_db,
+                    org=org,
                 )
                 return
-            text = cls._transcribe_voice(message_data, phone)
+            text = cls._transcribe_voice(message_data, phone, org=org)
             if not text:
                 # Transcription failed (unsupported backend or download error).
                 # Route a generic prompt to the AI so the user still gets a useful reply
@@ -153,6 +160,7 @@ class MessageRouter:
             image_bytes, mime = cls._download_media(
                 message_data.get('image', {}).get('id'),
                 message_data.get('image', {}).get('mime_type', 'image/jpeg'),
+                org=org,
             )
             if image_bytes:
                 from .sessions import SessionManager as _SM
@@ -161,7 +169,7 @@ class MessageRouter:
                     reply = cls._handle_listing_photo(phone, image_bytes, mime, user, _sess)
                 else:
                     reply = cls._handle_image(phone, image_bytes, mime, caption, user, org)
-                cls._send_and_log(phone, reply, session_db)
+                cls._send_and_log(phone, reply, session_db, org=org)
                 cls._log_inbound(message_data, session_db, caption or '[image]', msg_type)
                 return
             text = caption or "I received an image but couldn't download it."
@@ -172,10 +180,11 @@ class MessageRouter:
             doc_bytes, mime = cls._download_media(
                 message_data.get('document', {}).get('id'),
                 message_data.get('document', {}).get('mime_type', 'application/pdf'),
+                org=org,
             )
             if doc_bytes and mime.startswith('image/'):
                 reply = cls._handle_image(phone, doc_bytes, mime, caption, user, org)
-                cls._send_and_log(phone, reply, session_db)
+                cls._send_and_log(phone, reply, session_db, org=org)
                 cls._log_inbound(message_data, session_db, caption or '[document]', msg_type)
                 return
             text = caption or "I received a document."
@@ -191,6 +200,7 @@ class MessageRouter:
                     phone,
                     "I can't process that message. Please ask about properties, verification, or tax advice.",
                     session_db,
+                    org=org,
                 )
                 return
             display_body = text
@@ -205,7 +215,7 @@ class MessageRouter:
         if text_lower in ('reset', '/start', 'menu', 'main menu'):
             from apps.ai.agent import get_agent
             get_agent().clear_history(phone, org=org)
-            cls._send_and_log(phone, cls._greeting(), session_db)
+            cls._send_and_log(phone, cls._greeting(), session_db, org=org)
             return
 
         # ── LISTING_PHOTOS: intercept text (done/skip) ────────────────────
@@ -229,7 +239,7 @@ class MessageRouter:
                         "You can always add photos later from the web portal. "
                         "Type *menu* for more options."
                     )
-                cls._send_and_log(phone, _msg, session_db)
+                cls._send_and_log(phone, _msg, session_db, org=org)
                 return
             else:
                 _remaining = cls._MAX_WA_PHOTOS - _sess.get('context', {}).get('photo_count', 0)
@@ -238,6 +248,7 @@ class MessageRouter:
                     f"Send a photo to add it to your listing ({_remaining} slot{'s' if _remaining > 1 else ''} left), "
                     "or type *done* to finish.",
                     session_db,
+                    org=org,
                 )
                 return
 
@@ -258,7 +269,7 @@ class MessageRouter:
                 "Type *menu* to restart."
             )
 
-        cls._send_and_log(phone, reply, session_db)
+        cls._send_and_log(phone, reply, session_db, org=org)
 
     # ─── Listing photo upload ────────────────────────────────────────────────
 
@@ -356,11 +367,11 @@ class MessageRouter:
     # ─── Media download ───────────────────────────────────────────────────────
 
     @classmethod
-    def _download_media(cls, media_id: str, mime_type: str) -> tuple:
+    def _download_media(cls, media_id: str, mime_type: str, org=None) -> tuple:
         if not media_id:
             return None, mime_type
         try:
-            data = WhatsAppClient.download_media(media_id)
+            data = get_wa_client(org).download_media(media_id)
             return data, mime_type
         except Exception as exc:
             logger.error(f"Media download failed id={media_id}: {exc}")
@@ -369,7 +380,7 @@ class MessageRouter:
     # ─── Voice transcription ──────────────────────────────────────────────────
 
     @classmethod
-    def _transcribe_voice(cls, message_data: dict, phone: str) -> str:
+    def _transcribe_voice(cls, message_data: dict, phone: str, org=None) -> str:
         audio_info = message_data.get('audio', {})
 
         # Fast-path: dedicated transcribe_audio_task already ran STT — skip re-download.
@@ -384,7 +395,7 @@ class MessageRouter:
             return ''
         try:
             logger.debug(f"[AUDIO] phone={phone} downloading media_id={media_id}")
-            audio_bytes = WhatsAppClient.download_media(media_id)
+            audio_bytes = get_wa_client(org).download_media(media_id)
             logger.debug(f"[AUDIO] downloaded {len(audio_bytes)} bytes, mime={mime_type}")
             from apps.ai.agent import get_agent
             transcript = get_agent().transcribe_audio(audio_bytes, mime_type)
@@ -474,10 +485,11 @@ class MessageRouter:
             pass
 
     @classmethod
-    def _send_and_log(cls, phone: str, body: str, session_db):
+    def _send_and_log(cls, phone: str, body: str, session_db, org=None):
         try:
-            resp  = WhatsAppClient.send_text(phone, body, skip_window_check=True)
-            wa_id = resp.get('messages', [{}])[0].get('id', '') or f"out-{timezone.now().timestamp()}"
+            client = get_wa_client(org)
+            resp   = client.send_text(phone, body, skip_window_check=True)
+            wa_id  = resp.get('messages', [{}])[0].get('id', '') or f"out-{timezone.now().timestamp()}"
             WhatsAppMessage.objects.create(
                 session       = session_db,
                 wa_message_id = wa_id,
@@ -486,7 +498,6 @@ class MessageRouter:
                 body          = body[:2000],
                 raw_payload   = resp,
             )
-            # Mirror outbound replies to CRM so agents see full two-way conversations
             cls._persist_crm_outbound(session_db.user, body, wa_id)
         except Exception as exc:
             logger.error(f"Failed to send reply to {phone}: {exc}")

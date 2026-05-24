@@ -11,7 +11,9 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.throttles import WhatsAppWebhookThrottle
-from .models import WhatsAppSession, WhatsAppMessage
+import requests as _http_requests
+from .models import OrgWhatsAppConfig, WhatsAppSession, WhatsAppMessage
+from .serializers import OrgWhatsAppConfigSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -24,48 +26,88 @@ class WhatsAppWebhookView(APIView):
     # --- GET: Meta verifies us once on setup --------------------------
     def get(self, request):
         mode      = request.GET.get('hub.mode')
-        token     = request.GET.get('hub.verify_token')
-        challenge = request.GET.get('hub.challenge')
+        token     = request.GET.get('hub.verify_token', '')
+        challenge = request.GET.get('hub.challenge', '')
 
-        if mode == 'subscribe' and token == settings.WA_VERIFY_TOKEN:
+        if mode != 'subscribe' or not token:
+            return HttpResponse(status=403)
+
+        # Try per-org verify_token first
+        try:
+            cfg = OrgWhatsAppConfig.objects.get(verify_token=token, is_active=True)
+            from django.utils import timezone as _tz
+            cfg.webhook_verified_at = _tz.now()
+            cfg.save(update_fields=['webhook_verified_at'])
             return HttpResponse(challenge, content_type='text/plain')
+        except OrgWhatsAppConfig.DoesNotExist:
+            pass
+
+        # Fallback to global platform token
+        if token == settings.WA_VERIFY_TOKEN:
+            return HttpResponse(challenge, content_type='text/plain')
+
         return HttpResponse(status=403)
 
     # --- POST: Meta delivers messages here ----------------------------
     def post(self, request):
-        # 1. Verify signature
-        signature = request.headers.get('X-Hub-Signature-256', '')
-        if not self._is_signature_valid(request.body, signature):
-            logger.warning("WA webhook: invalid signature")
-            return Response(status=403)
-
+        # Phase 1: Parse payload to extract phone_number_id (stateless — no DB writes).
+        # Must happen before signature check so we can look up the org's secret.
         try:
             payload = json.loads(request.body.decode())
         except json.JSONDecodeError:
             return Response(status=400)
 
-        # 2. Process every message in the payload
+        phone_number_id = ''
         for entry in payload.get('entry', []):
             for change in entry.get('changes', []):
-                value = change.get('value', {})
-                phone_number_id = value.get('metadata', {}).get('phone_number_id', '')
-                for message in value.get('messages', []) or []:
-                    self._process_with_idempotency(message, phone_number_id)
+                pnid = change.get('value', {}).get('metadata', {}).get('phone_number_id', '')
+                if pnid:
+                    phone_number_id = pnid
+                    break
+            if phone_number_id:
+                break
 
-        # Always 200 — Meta will retry otherwise
+        # Phase 2: Resolve per-org app_secret; fall back to global.
+        app_secret = settings.WA_APP_SECRET
+        if phone_number_id:
+            try:
+                cfg = OrgWhatsAppConfig.objects.get(
+                    phone_number_id=phone_number_id, is_active=True
+                )
+                if cfg.app_secret:
+                    app_secret = cfg.app_secret
+            except OrgWhatsAppConfig.DoesNotExist:
+                pass
+
+        # Phase 3: Verify HMAC-SHA256 signature using the resolved secret.
+        signature = request.headers.get('X-Hub-Signature-256', '')
+        if not self._is_signature_valid(request.body, signature, app_secret):
+            logger.warning(
+                "WA webhook: invalid signature for phone_number_id=%s", phone_number_id
+            )
+            return Response(status=403)
+
+        # Phase 4: Process each message.
+        for entry in payload.get('entry', []):
+            for change in entry.get('changes', []):
+                value        = change.get('value', {})
+                msg_phone_id = value.get('metadata', {}).get('phone_number_id', '')
+                for message in value.get('messages', []) or []:
+                    self._process_with_idempotency(message, msg_phone_id)
+
         return Response({'status': 'ok'})
 
     @staticmethod
-    def _is_signature_valid(body: bytes, signature: str) -> bool:
-        if not settings.WA_APP_SECRET:
+    def _is_signature_valid(body: bytes, signature: str, secret: str) -> bool:
+        if not secret:
             if settings.DEBUG:
-                return True  # dev convenience — never reached in production
-            logger.error("WA webhook: WA_APP_SECRET not configured — rejecting all requests")
+                return True
+            logger.error("WA webhook: no app_secret configured — rejecting all requests")
             return False
         if not signature.startswith('sha256='):
             return False
         expected = 'sha256=' + hmac.new(
-            settings.WA_APP_SECRET.encode(),
+            secret.encode(),
             body,
             hashlib.sha256,
         ).hexdigest()
@@ -278,3 +320,108 @@ class NotificationDetailView(APIView):
                 'results': messages,
             },
         })
+
+
+# ── Organization WhatsApp Config API ──────────────────────────────────────────
+
+def _get_org_for_wa(request):
+    """Return (org, error_response). Matches the OrgPaymentSettingsView pattern."""
+    if request.user.role not in ('developer', 'admin'):
+        return None, Response({'detail': 'Forbidden.'}, status=403)
+    from apps.core.permissions import get_user_org
+    org = get_user_org(request.user)
+    if org is None:
+        return None, Response({'detail': 'No organization linked to this account.'}, status=404)
+    return org, None
+
+
+class OrgWhatsAppConfigView(APIView):
+    """
+    GET  /whatsapp/config/  — fetch org's WA config (secrets masked as ••••••••)
+    PATCH /whatsapp/config/ — partial update; sending ••••••••  leaves field unchanged
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        org, err = _get_org_for_wa(request)
+        if err:
+            return err
+        config, _ = OrgWhatsAppConfig.objects.get_or_create(organization=org)
+        return Response(OrgWhatsAppConfigSerializer(config).data)
+
+    def patch(self, request):
+        org, err = _get_org_for_wa(request)
+        if err:
+            return err
+        config, _ = OrgWhatsAppConfig.objects.get_or_create(organization=org)
+        serializer = OrgWhatsAppConfigSerializer(config, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        config.refresh_from_db()
+        return Response(OrgWhatsAppConfigSerializer(config).data)
+
+
+class OrgWhatsAppVerifyView(APIView):
+    """
+    POST /whatsapp/config/verify/
+    Calls Meta Graph API with org credentials to confirm they are valid.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        org, err = _get_org_for_wa(request)
+        if err:
+            return err
+        try:
+            config = org.whatsapp_config
+        except OrgWhatsAppConfig.DoesNotExist:
+            return Response({'ok': False, 'detail': 'No WhatsApp config set up yet.'}, status=400)
+
+        if not config.access_token or not config.phone_number_id:
+            return Response(
+                {'ok': False, 'detail': 'Access token and Phone Number ID are required before verifying.'},
+                status=400,
+            )
+        try:
+            r = _http_requests.get(
+                f"https://graph.facebook.com/v20.0/{config.phone_number_id}",
+                headers={'Authorization': f'Bearer {config.access_token}'},
+                timeout=10,
+            )
+            if r.status_code == 200:
+                return Response({'ok': True, 'detail': 'Connection verified successfully.'})
+            return Response(
+                {'ok': False, 'detail': f'Meta API returned HTTP {r.status_code}. Check your credentials.'},
+                status=400,
+            )
+        except _http_requests.exceptions.Timeout:
+            return Response({'ok': False, 'detail': 'Connection timed out reaching Meta API.'}, status=502)
+        except Exception as exc:
+            return Response({'ok': False, 'detail': str(exc)}, status=502)
+
+
+class OrgWhatsAppTestMessageView(APIView):
+    """
+    POST /whatsapp/config/test-message/
+    Sends a test WhatsApp message to the requesting admin's phone number.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        org, err = _get_org_for_wa(request)
+        if err:
+            return err
+        phone = request.user.phone
+        if not phone:
+            return Response({'ok': False, 'detail': 'Your account has no phone number set.'}, status=400)
+        try:
+            from .client import get_wa_client
+            client = get_wa_client(org)
+            client.send_text(
+                phone,
+                '✅ Test message from RealTron AI. Your WhatsApp integration is working correctly.',
+                skip_window_check=True,
+            )
+            return Response({'ok': True})
+        except Exception as exc:
+            return Response({'ok': False, 'detail': str(exc)}, status=502)

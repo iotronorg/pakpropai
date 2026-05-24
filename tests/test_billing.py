@@ -112,8 +112,8 @@ class WhatsAppTokenGuardTest(_CacheTestCase):
 
         process_incoming_whatsapp_task(message, phone_number_id='phone_number_id_test')
 
-        MockWAClient.send_text.assert_called_once()
-        call_args = MockWAClient.send_text.call_args[0]
+        MockWAClient.return_value.send_text.assert_called_once()
+        call_args = MockWAClient.return_value.send_text.call_args[0]
         self.assertIn('capacity', call_args[1].lower())
 
     @patch('apps.organizations.models.Organization')
