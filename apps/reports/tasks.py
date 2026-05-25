@@ -266,22 +266,46 @@ def _content_property_analysis(report) -> dict:
     return engine.run()
 
 
+def _resolve_org_country(report) -> str:
+    """Return the ISO 3166-1 alpha-2 country for this report, or '' if unknown."""
+    try:
+        if report.property and report.property.organization:
+            return report.property.organization.country or ''
+    except Exception:
+        pass
+    try:
+        return report.user.owned_organization.country or ''
+    except Exception:
+        return ''
+
+
 def _content_tax_advisory(report) -> dict:
+    country = _resolve_org_country(report)
+    if country != 'PK':
+        return {
+            'supported': False,
+            'country':   country or 'unknown',
+            'message': (
+                'Detailed tax advisory is currently available for Pakistan (PK) only. '
+                'Support for additional markets is on the roadmap. '
+                'Please consult a local tax professional for your jurisdiction.'
+            ),
+        }
+
     prop  = report.property
-    user  = report.user
     meta  = report.content.get('input', {})  # caller may pre-populate input params
 
     property_value = meta.get('property_value') or (prop.price if prop else 0) or 0
     ownership_type = meta.get('ownership_type', 'filer')
     holding_years  = meta.get('holding_years', 1)
 
-    # Section 7E tax (annual)
-    exemption_7e = 25_000_000
+    # Pakistan FBR — Section 7E deemed income tax (annual)
+    exemption_7e = 25_000_000  # PKR 25M threshold
     taxable_7e   = max(0, property_value - exemption_7e)
     rate_7e      = 0.01 if ownership_type == 'filer' else 0.02
     tax_7e       = int(taxable_7e * rate_7e)
 
-    # Capital Gains Tax
+    # Pakistan FBR — Capital Gains Tax schedule
     if holding_years < 1:
         cgt_rate = 0.15
     elif holding_years < 2:
@@ -296,29 +320,31 @@ def _content_tax_advisory(report) -> dict:
         cgt_rate = 0.0
     cgt_amount = int(property_value * cgt_rate)
 
-    # WHT on purchase (buyer)
+    # Pakistan FBR — WHT on purchase (buyer)
     wht_rate   = 0.01 if ownership_type == 'filer' else 0.02
     wht_amount = int(property_value * wht_rate)
 
     return {
-        'property_value':    property_value,
-        'ownership_type':    ownership_type,
-        'holding_years':     holding_years,
+        'supported':       True,
+        'country':         'PK',
+        'property_value':  property_value,
+        'ownership_type':  ownership_type,
+        'holding_years':   holding_years,
         'section_7e': {
             'taxable_value': taxable_7e,
             'rate_pct':      rate_7e * 100,
             'annual_tax':    tax_7e,
-            'note':          'Annual deemed income tax on immovable property over PKR 25M',
+            'note':          'Annual deemed income tax on immovable property over PKR 25M (FBR Section 7E)',
         },
         'capital_gains_tax': {
-            'rate_pct':   cgt_rate * 100,
-            'amount':     cgt_amount,
-            'note':       f'CGT applies on gain at {holding_years}-year holding period',
+            'rate_pct': cgt_rate * 100,
+            'amount':   cgt_amount,
+            'note':     f'CGT applies on gain at {holding_years}-year holding period (FBR schedule)',
         },
         'withholding_tax': {
             'rate_pct': wht_rate * 100,
             'amount':   wht_amount,
-            'note':     'WHT payable by buyer at time of purchase',
+            'note':     'WHT payable by buyer at time of purchase (FBR)',
         },
         'total_estimated_liability': tax_7e + wht_amount,
     }
@@ -463,7 +489,7 @@ def _build_pdf(report, content: dict) -> bytes:
                 ('City',     report.property.city),
                 ('Location', report.property.location),
                 ('Type',     report.property.property_type),
-                ('Price',    f"PKR {report.property.price:,}" if report.property.price else '—'),
+                ('Price',    f"{report.property.currency} {report.property.price:,}" if report.property.price else '—'),
             ]),
             Spacer(1, 0.2 * inch),
         ]

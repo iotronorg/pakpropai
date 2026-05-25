@@ -58,7 +58,7 @@ def send_campaign_messages(self, campaign_id: str):
             failed += 1
             logger.warning(f"Campaign {campaign_id}: failed to send to {phone}: {exc}")
 
-    final_status = Campaign.Status.SENT if sent > 0 or failed == 0 else Campaign.Status.FAILED
+    final_status = Campaign.Status.SENT if sent > 0 else Campaign.Status.FAILED
     campaign.sent_count   = sent
     campaign.failed_count = failed
     campaign.status       = final_status

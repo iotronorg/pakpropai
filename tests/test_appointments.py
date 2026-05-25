@@ -114,6 +114,39 @@ class AppointmentCrossOrgIsolationTest(_Base):
         resp = self._auth(self.dev_user).get(DETAIL_URL(appt.pk))
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
+    def test_developer_cannot_create_appointment_with_foreign_lead(self):
+        payload = {
+            "lead": self.lead2.pk,          # belongs to org2
+            "agent": self.agent.pk,
+            "scheduled_at": _FUTURE(90),
+            "duration_minutes": 60,
+        }
+        resp = self._auth(self.dev_user).post(LIST_URL, payload, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("lead", resp.data)
+
+    def test_developer_cannot_create_appointment_with_foreign_agent(self):
+        payload = {
+            "lead": self.lead.pk,
+            "agent": self.agent2.pk,        # belongs to org2
+            "scheduled_at": _FUTURE(90),
+            "duration_minutes": 60,
+        }
+        resp = self._auth(self.dev_user).post(LIST_URL, payload, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("agent", resp.data)
+
+    def test_agent_cannot_create_appointment_with_foreign_lead(self):
+        payload = {
+            "lead": self.lead2.pk,          # belongs to org2
+            "agent": self.agent.pk,
+            "scheduled_at": _FUTURE(90),
+            "duration_minutes": 60,
+        }
+        resp = self._auth(self.agent_user).post(LIST_URL, payload, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("lead", resp.data)
+
 
 # ── Create ─────────────────────────────────────────────────────────────────────
 

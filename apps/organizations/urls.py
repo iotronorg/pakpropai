@@ -3,11 +3,13 @@ from .views import (
     OrganizationListView, OrganizationDetailView, OrganizationMeView,
     OrgConfigView, OrgDashboardView, OrgAIStatsView,
     OrganizationSuspendView, OrganizationActivateView,
-    AdminOrgConfigView,
+    AdminOrgConfigView, OrgRegistrationView, OrgRegistrationOTPVerifyView,
 )
 
 urlpatterns = [
-    path('',                              OrganizationListView.as_view(),     name='organizations-list'),
+    path('register/',                      OrgRegistrationView.as_view(),          name='org-register'),
+    path('register/verify-otp/',           OrgRegistrationOTPVerifyView.as_view(), name='org-register-verify-otp'),
+    path('',                               OrganizationListView.as_view(),         name='organizations-list'),
     path('me/',                           OrganizationMeView.as_view(),       name='organizations-me'),
     path('me/config/',                    OrgConfigView.as_view(),            name='organizations-config'),
     path('me/config/<str:key>/',          OrgConfigView.as_view(),            name='organizations-config-key'),

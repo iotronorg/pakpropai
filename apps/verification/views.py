@@ -278,7 +278,10 @@ class FraudAlertsView(APIView):
     permission_classes = [IsAdmin]
 
     def get(self, request):
-        limit = min(int(request.query_params.get('limit', 50)), 200)
+        try:
+            limit = min(int(request.query_params.get('limit', 50)), 200)
+        except (ValueError, TypeError):
+            return Response({'detail': 'limit must be an integer.'}, status=400)
 
         # suspicious document scans
         sus_scans = (
@@ -379,7 +382,12 @@ class FraudBlacklistView(APIView):
     def post(self, request):
         token      = (request.data.get('token') or '').strip().lower()
         reason     = request.data.get('reason', '')
-        ttl_days   = int(request.data.get('ttl_days') or 0)
+        try:
+            ttl_days = int(request.data.get('ttl_days') or 0)
+        except (ValueError, TypeError):
+            return Response({'detail': 'ttl_days must be an integer.'}, status=400)
+        if ttl_days > 3650:
+            return Response({'detail': 'ttl_days cannot exceed 3650 (10 years).'}, status=400)
         expires_at = None
 
         if not token:

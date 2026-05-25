@@ -1,4 +1,7 @@
+import re
+
 from rest_framework import serializers
+
 from .models import Organization
 
 
@@ -77,3 +80,41 @@ class OrganizationDetailSerializer(serializers.ModelSerializer):
                 "admin_user must have role 'developer' or 'admin'."
             )
         return user
+
+
+_E164_RE = re.compile(r'^\+\d{7,15}$')
+
+
+class OrgRegistrationSerializer(serializers.Serializer):
+    """Public self-service org signup — no authentication required."""
+    org_name   = serializers.CharField(max_length=200)
+    org_type   = serializers.ChoiceField(choices=Organization.OrgType.choices)
+    country    = serializers.CharField(max_length=2, min_length=2)
+    admin_name = serializers.CharField(max_length=200)
+    phone      = serializers.CharField(max_length=20)
+    email      = serializers.EmailField()
+    password   = serializers.CharField(min_length=8, write_only=True)
+
+    def validate_phone(self, value):
+        if not _E164_RE.match(value):
+            raise serializers.ValidationError(
+                'Phone must be in E.164 format, e.g. +441234567890.'
+            )
+        from apps.users.models import User
+        if User.objects.filter(phone=value).exists():
+            raise serializers.ValidationError('An account with this phone already exists.')
+        return value
+
+    def validate_email(self, value):
+        from apps.users.models import User
+        if User.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError('An account with this email already exists.')
+        return value
+
+    def validate_country(self, value):
+        return value.upper()
+
+
+class OrgRegistrationOTPVerifySerializer(serializers.Serializer):
+    phone = serializers.CharField(max_length=20)
+    code  = serializers.CharField(max_length=10)

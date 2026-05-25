@@ -8,6 +8,8 @@ MIDDLEWARE += ['debug_toolbar.middleware.DebugToolbarMiddleware']
 
 INTERNAL_IPS = ['127.0.0.1']
 
+DEBUG_TOOLBAR_CONFIG = {'IS_RUNNING_TESTS': False}
+
 # Override DB to use local SQLite during initial setup if you don't have Supabase yet
 # Comment this out once you have DATABASE_URL in .env
 # DATABASES = {

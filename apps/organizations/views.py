@@ -9,8 +9,11 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
-from .models import Organization, OrganizationConfig
-from .serializers import OrganizationListSerializer, OrganizationDetailSerializer
+from .models import Organization, OrganizationConfig, OrganizationMembership
+from .serializers import (
+    OrganizationListSerializer, OrganizationDetailSerializer,
+    OrgRegistrationSerializer, OrgRegistrationOTPVerifySerializer,
+)
 from apps.core.permissions import IsAdminUser, IsAdminOrOrgAdmin
 from .services import OrgConfigService
 
@@ -494,3 +497,108 @@ class OrganizationActivateView(APIView):
         org.save(update_fields=['is_active'])
         logger.info(f"Organization activated: {org.id} '{org.name}' by admin {request.user.id}")
         return Response(OrganizationDetailSerializer(org).data)
+
+
+class OrgRegistrationView(APIView):
+    """
+    POST /api/v1/organizations/register/
+    Public self-service endpoint — no auth required.
+
+    Creates User(role=developer) + Organization(plan=trial, is_verified=True)
+    + OrganizationMembership(role=owner), then issues an OTP for phone
+    verification.  Returns {otp_required: true, phone} so the client can
+    present the OTP entry screen.
+    """
+    permission_classes = []
+    authentication_classes = []
+
+    def post(self, request):
+        from rest_framework.permissions import AllowAny
+        serializer = OrgRegistrationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        d = serializer.validated_data
+
+        from django.db import transaction as db_transaction
+        from apps.users.models import User
+        from apps.users.services import OTPService
+
+        with db_transaction.atomic():
+            user = User.objects.create_user(
+                phone=d['phone'],
+                email=d['email'],
+                password=d['password'],
+                name=d['admin_name'],
+                role=User.Role.DEVELOPER,
+                is_active=True,
+                is_phone_verified=False,
+            )
+            org = Organization.objects.create(
+                name=d['org_name'],
+                org_type=d['org_type'],
+                country=d['country'],
+                admin_user=user,
+                plan=Organization.Plan.TRIAL,
+                is_verified=True,
+            )
+            OrganizationMembership.objects.create(
+                user=user,
+                organization=org,
+                role=OrganizationMembership.Role.OWNER,
+                is_active=True,
+            )
+
+        try:
+            otp = OTPService.issue(d['phone'], purpose='org_registration')
+            from apps.notifications.tasks import send_otp_async
+            send_otp_async.delay(d['phone'], otp.code)
+        except Exception:
+            logger.warning("OTP dispatch failed for org registration phone %s", d['phone'])
+
+        logger.info("Org registration initiated: org=%s user=%s", org.id, user.id)
+        return Response(
+            {'otp_required': True, 'phone': d['phone']},
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class OrgRegistrationOTPVerifyView(APIView):
+    """
+    POST /api/v1/organizations/register/verify-otp/
+    Public — no auth required.
+
+    Verifies the OTP issued during org registration, marks the user's phone as
+    verified, and issues httpOnly auth cookies so the user lands directly in
+    their org dashboard without a separate login step.
+    """
+    permission_classes = []
+    authentication_classes = []
+
+    def post(self, request):
+        serializer = OrgRegistrationOTPVerifySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        phone = serializer.validated_data['phone']
+        code  = serializer.validated_data['code']
+
+        from apps.users.services import OTPService
+        from apps.users.models import User
+        from rest_framework_simplejwt.tokens import RefreshToken
+        from apps.users.views import _set_auth_cookies
+
+        try:
+            OTPService.verify(phone, code, purpose='org_registration')
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = User.objects.filter(phone=phone).first()
+        if not user:
+            return Response({'detail': 'User not found.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.is_phone_verified = True
+        user.save(update_fields=['is_phone_verified'])
+
+        refresh = RefreshToken.for_user(user)
+        from apps.users.serializers import UserSerializer
+        response = Response(UserSerializer(user).data, status=status.HTTP_200_OK)
+        _set_auth_cookies(response, str(refresh.access_token), str(refresh), role=user.role)
+        logger.info("Org registration OTP verified, user auto-logged in: user=%s", user.id)
+        return response

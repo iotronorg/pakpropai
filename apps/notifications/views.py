@@ -33,8 +33,11 @@ class NotificationListView(APIView):
         if unread_only:
             qs = qs.filter(is_read=False)
 
-        limit  = min(int(request.query_params.get('limit', 50)), 200)
-        offset = max(int(request.query_params.get('offset', 0)), 0)
+        try:
+            limit  = min(int(request.query_params.get('limit', 50)), 200)
+            offset = max(int(request.query_params.get('offset', 0)), 0)
+        except (ValueError, TypeError):
+            return Response({'detail': 'limit and offset must be integers.'}, status=400)
         total  = qs.count()
         items  = qs[offset: offset + limit]
 

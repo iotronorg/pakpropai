@@ -55,6 +55,14 @@ class NotificationListTests(TestCase):
         self.assertEqual(r.data['count'], 5)
         self.assertEqual(len(r.data['results']), 2)
 
+    def test_bad_limit_returns_400(self):
+        r = self.client.get('/api/v1/notifications/', {'limit': 'abc'})
+        self.assertEqual(r.status_code, 400)
+
+    def test_bad_offset_returns_400(self):
+        r = self.client.get('/api/v1/notifications/', {'offset': 'xyz'})
+        self.assertEqual(r.status_code, 400)
+
     def test_unauthenticated_returns_401(self):
         r = APIClient().get('/api/v1/notifications/')
         self.assertEqual(r.status_code, 401)

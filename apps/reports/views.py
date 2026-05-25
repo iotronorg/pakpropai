@@ -10,6 +10,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.throttles import ReportGenerateThrottle
+from apps.core.permissions import IsAdminUser, IsAdminOrOrgAdmin, IsAgentOrAdmin
 from .models import Report, MonthlyReport
 
 
@@ -38,15 +39,6 @@ def _get_trend(qs, created_field='created_at', period='weekly'):
         return [{'period': r['bucket'].strftime('%Y-%m-%d'), 'count': r['count']} for r in rows]
 
 logger = logging.getLogger(__name__)
-
-
-class IsAdminOrDeveloper(IsAuthenticated):
-    def has_permission(self, request, view):
-        return (super().has_permission(request, view)
-                and request.user.role in ('admin', 'developer'))
-
-    # NOTE: This local class is kept for historical reasons.
-    # New code should import IsAdminOrOrgAdmin from apps.core.permissions.
 
 
 class ReportGenerateView(APIView):
@@ -165,19 +157,9 @@ class MyReportsView(APIView):
         } for r in reports])
 
 
-class IsAdmin(IsAuthenticated):
-    def has_permission(self, request, view):
-        return super().has_permission(request, view) and request.user.role == 'admin'
-
-
-class IsAgent(IsAuthenticated):
-    def has_permission(self, request, view):
-        return super().has_permission(request, view) and request.user.role == 'agent'
-
-
 class AgentPersonalReportView(APIView):
     """GET /reports/my-stats/ — personal performance report for the logged-in agent."""
-    permission_classes = [IsAgent]
+    permission_classes = [IsAgentOrAdmin]
 
     def get(self, request):
         from apps.leads.models import Lead
@@ -225,7 +207,7 @@ class AgentPersonalReportView(APIView):
 
 class LeadReportView(APIView):
     """GET /reports/leads/ — lead funnel and conversion analytics."""
-    permission_classes = [IsAdminOrDeveloper]
+    permission_classes = [IsAdminOrOrgAdmin]
 
     def get(self, request):
         from apps.leads.models import Lead
@@ -266,7 +248,7 @@ class LeadReportView(APIView):
 
 class AgentReportView(APIView):
     """GET /reports/agents/ — agent performance summary. Admin + developer."""
-    permission_classes = [IsAdminOrDeveloper]
+    permission_classes = [IsAdminOrOrgAdmin]
 
     def get(self, request):
         from apps.agents.models import Agent
@@ -304,7 +286,7 @@ class AgentReportView(APIView):
 
 class PropertyReportView(APIView):
     """GET /reports/properties/ — property inventory stats."""
-    permission_classes = [IsAdminOrDeveloper]
+    permission_classes = [IsAdminOrOrgAdmin]
 
     def get(self, request):
         from apps.properties.models import Property
@@ -340,7 +322,7 @@ class PropertyReportView(APIView):
 
 class DealReportView(APIView):
     """GET /reports/deals/ — deal lock analytics. Admin + developer."""
-    permission_classes = [IsAdminOrDeveloper]
+    permission_classes = [IsAdminOrOrgAdmin]
 
     def get(self, request):
         from apps.escrow.models import EscrowDeal
@@ -387,7 +369,7 @@ class DealReportView(APIView):
 
 class RevenueReportView(APIView):
     """GET /reports/revenue/ — deal + payment revenue analytics. Admin only."""
-    permission_classes = [IsAdmin]
+    permission_classes = [IsAdminUser]
 
     def get(self, request):
         from apps.escrow.models import EscrowDeal
@@ -415,9 +397,9 @@ class RevenueReportView(APIView):
                  .values_list('initiated_via', 'c')
         )
 
-        completed_payments  = payments.filter(status='completed')
-        total_payments_pkr  = completed_payments.aggregate(s=Sum('amount_pkr'))['s'] or 0
-        payments_by_gateway = dict(
+        completed_payments     = payments.filter(status='completed')
+        total_payments_amount  = completed_payments.aggregate(s=Sum('amount'))['s'] or 0
+        payments_by_gateway    = dict(
             completed_payments.values_list('gateway')
                               .annotate(c=Count('id'))
                               .values_list('gateway', 'c')
@@ -425,19 +407,19 @@ class RevenueReportView(APIView):
 
         result = {
             'deals': {
-                'total':           deals.count(),
-                'locked':          deals.filter(status='locked').count(),
-                'released':        deals.filter(status='released').count(),
-                'expired':         deals.filter(status='expired').count(),
-                'cancelled':       deals.filter(status='cancelled').count(),
-                'total_token_pkr': total_token_locked,
-                'avg_token_pkr':   int(avg_token),
-                'by_gateway':      by_gateway,
-                'by_channel':      by_channel,
+                'total':              deals.count(),
+                'locked':             deals.filter(status='locked').count(),
+                'released':           deals.filter(status='released').count(),
+                'expired':            deals.filter(status='expired').count(),
+                'cancelled':          deals.filter(status='cancelled').count(),
+                'total_token_amount': total_token_locked,
+                'avg_token_amount':   int(avg_token),
+                'by_gateway':         by_gateway,
+                'by_channel':         by_channel,
             },
             'payments': {
-                'total_completed_pkr': total_payments_pkr,
-                'by_gateway':          payments_by_gateway,
+                'total_completed_amount': total_payments_amount,
+                'by_gateway':             payments_by_gateway,
             },
         }
 
@@ -451,7 +433,7 @@ class RevenueReportView(APIView):
 
 class BotReportView(APIView):
     """GET /reports/bot/ — WhatsApp bot activity analytics. Admin only."""
-    permission_classes = [IsAdmin]
+    permission_classes = [IsAdminUser]
 
     def get(self, request):
         from apps.whatsapp.models import WhatsAppMessage, WhatsAppSession
@@ -526,7 +508,14 @@ class MonthlyReportListView(APIView):
             qs = MonthlyReport.objects.all()
             org_id = request.query_params.get('org')
             if org_id:
-                qs = qs.filter(organization_id=org_id)
+                try:
+                    import uuid as _uuid
+                    qs = qs.filter(organization_id=_uuid.UUID(org_id))
+                except (ValueError, AttributeError):
+                    return Response(
+                        {'detail': 'Invalid org UUID.'},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
 
         else:
             return Response({'detail': 'Forbidden.'}, status=status.HTTP_403_FORBIDDEN)

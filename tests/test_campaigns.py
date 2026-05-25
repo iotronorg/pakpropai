@@ -2,9 +2,10 @@
 Tests for the campaigns feature.
 Covers: CRUD API, org scoping, send/schedule/cancel actions, dispatch task.
 """
+import threading
 from unittest.mock import MagicMock, patch
 
-from django.test import TestCase, override_settings
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -169,6 +170,54 @@ class CampaignActionsTests(TestCase):
         r = self.client.post(f'/api/v1/campaigns/{self.campaign.id}/send/')
         self.assertEqual(r.status_code, 400)
 
+    @patch('apps.campaigns.tasks.send_campaign_messages')
+    def test_send_already_sending_campaign_fails(self, mock_task):
+        """Second send while campaign is SENDING must return 400 (not double-dispatch)."""
+        mock_task.delay = MagicMock()
+        self.campaign.status = Campaign.Status.SENDING
+        self.campaign.save()
+        r = self.client.post(f'/api/v1/campaigns/{self.campaign.id}/send/')
+        self.assertEqual(r.status_code, 400)
+        mock_task.delay.assert_not_called()
+
+
+@override_settings(CACHES=_LOCMEM)
+class CampaignSendRaceTest(TransactionTestCase):
+    """select_for_update() prevents concurrent send from double-dispatching the task."""
+
+    def setUp(self):
+        self.dev_user, self.org = make_developer()
+        self.campaign = Campaign.objects.create(
+            organization=self.org,
+            created_by=self.dev_user,
+            name='Race Test',
+            message_template='Hello',
+        )
+
+    @patch('apps.campaigns.tasks.send_campaign_messages')
+    def test_concurrent_send_dispatches_task_exactly_once(self, mock_task):
+        mock_task.delay = MagicMock()
+        results = []
+
+        def do_send():
+            c = APIClient()
+            c.force_authenticate(user=self.dev_user)
+            r = c.post(f'/api/v1/campaigns/{self.campaign.id}/send/')
+            results.append(r.status_code)
+
+        t1 = threading.Thread(target=do_send)
+        t2 = threading.Thread(target=do_send)
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        # Exactly one request must succeed and one must be rejected
+        self.assertIn(200, results)
+        self.assertIn(400, results)
+        # Task dispatched exactly once
+        self.assertEqual(mock_task.delay.call_count, 1)
+
 
 @override_settings(CACHES=_LOCMEM, CELERY_TASK_ALWAYS_EAGER=True)
 class CampaignDispatchTaskTests(TestCase):
@@ -236,6 +285,21 @@ class CampaignDispatchTaskTests(TestCase):
 
         mock_factory.assert_not_called()
         self.assertIsNone(result)
+
+    @patch('apps.campaigns.tasks.get_wa_client')
+    def test_zero_recipients_marked_failed(self, mock_factory):
+        """Campaign with no matching leads must be marked FAILED, not SENT (A9-LOGIC-1)."""
+        from apps.leads.models import Lead
+        Lead.objects.filter(organization=self.org).delete()
+
+        from apps.campaigns.tasks import send_campaign_messages
+        result = send_campaign_messages(str(self.campaign.id))
+
+        self.assertEqual(result['sent'], 0)
+        self.assertEqual(result['failed'], 0)
+        self.campaign.refresh_from_db()
+        self.assertEqual(self.campaign.status, Campaign.Status.FAILED)
+        mock_factory.assert_called_once()  # WA client still initialised
 
     @patch('apps.campaigns.tasks.send_campaign_messages')
     def test_dispatch_scheduled_fires_due_campaigns(self, mock_send):

@@ -137,3 +137,23 @@ class ReportOrgScopingTest(_Base):
         resp_b = self._auth(self.dev_b).get(PROP_URL)
         self.assertEqual(resp_a.data['total'], 1)
         self.assertEqual(resp_b.data['total'], 1)
+
+
+MONTHLY_URL = "/api/v1/reports/monthly/"
+
+
+class MonthlyReportOrgFilterTest(_Base):
+    """GET /reports/monthly/?org= — bad UUID must return 400, not 500 (A9-LOGIC-2)."""
+
+    def test_bad_uuid_returns_400(self):
+        resp = self._auth(self.admin).get(MONTHLY_URL, {'org': 'not-a-uuid'})
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('detail', resp.data)
+
+    def test_valid_uuid_returns_200(self):
+        resp = self._auth(self.admin).get(MONTHLY_URL, {'org': str(self.org_a.id)})
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+    def test_non_admin_cannot_filter_by_org(self):
+        resp = self._auth(self.dev_a).get(MONTHLY_URL, {'org': str(self.org_b.id)})
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)

@@ -78,6 +78,42 @@ class AppointmentSerializer(serializers.ModelSerializer):
         read_only_fields = ('id', 'lead_phone', 'lead_name', 'agent_name', 'property_title',
                             'reminder_sent_at', 'created_by', 'created_at', 'updated_at')
 
+    def validate(self, attrs):
+        request = self.context.get('request')
+        if not request or request.user.role == 'admin':
+            return attrs
+
+        from apps.core.permissions import get_user_org
+        org = get_user_org(request.user)
+        if org is None:
+            # Agents not yet assigned to an org — fall back to agent profile org
+            try:
+                org = request.user.agent_profile.organization
+            except Exception:
+                pass
+
+        if org is None:
+            return attrs
+
+        lead  = attrs.get('lead')
+        agent = attrs.get('agent')
+        prop  = attrs.get('property')
+
+        if lead and lead.organization_id != org.id:
+            raise serializers.ValidationError(
+                {'lead': 'Lead does not belong to your organisation.'}
+            )
+        if agent and agent.organization_id != org.id:
+            raise serializers.ValidationError(
+                {'agent': 'Agent does not belong to your organisation.'}
+            )
+        if prop and prop.organization_id != org.id:
+            raise serializers.ValidationError(
+                {'property': 'Property does not belong to your organisation.'}
+            )
+
+        return attrs
+
 
 class LeadActivitySerializer(serializers.ModelSerializer):
     actor_phone = serializers.CharField(source='actor.phone', read_only=True, allow_null=True)

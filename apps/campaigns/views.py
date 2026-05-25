@@ -1,3 +1,4 @@
+from django.db import transaction
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -62,15 +63,26 @@ class CampaignViewSet(ModelViewSet):
     @action(detail=True, methods=['post'], url_path='send')
     def send(self, request, pk=None):
         """POST /campaigns/{id}/send/ — queue the campaign for immediate delivery."""
-        campaign = self.get_object()
-        if campaign.status not in (Campaign.Status.DRAFT, Campaign.Status.SCHEDULED):
-            return Response(
-                {"detail": f"Cannot send a campaign with status '{campaign.status}'."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        campaign.status = Campaign.Status.SENDING
-        campaign.scheduled_at = None
-        campaign.save(update_fields=['status', 'scheduled_at'])
+        # select_for_update() prevents concurrent requests from both passing
+        # the status check before either writes SENDING (TOCTOU double-send).
+        # Celery dispatch is outside the transaction so the commit lands first.
+        with transaction.atomic():
+            org = get_user_org(request.user)
+            if not org:
+                return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+            try:
+                campaign = Campaign.objects.select_for_update().get(pk=pk, organization=org)
+            except Campaign.DoesNotExist:
+                return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+            if campaign.status not in (Campaign.Status.DRAFT, Campaign.Status.SCHEDULED):
+                return Response(
+                    {"detail": f"Cannot send a campaign with status '{campaign.status}'."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            campaign.status = Campaign.Status.SENDING
+            campaign.scheduled_at = None
+            campaign.save(update_fields=['status', 'scheduled_at'])
 
         from .tasks import send_campaign_messages
         send_campaign_messages.delay(str(campaign.id))
