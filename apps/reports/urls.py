@@ -3,6 +3,7 @@ from .views import (
     LeadReportView, AgentReportView, PropertyReportView, DealReportView,
     RevenueReportView, BotReportView, AgentPersonalReportView,
     ReportGenerateView, ReportStatusView, ReportDownloadView, MyReportsView,
+    MonthlyReportListView,
 )
 
 urlpatterns = [
@@ -14,6 +15,9 @@ urlpatterns = [
     path('revenue/',    RevenueReportView.as_view(),       name='report-revenue'),
     path('bot/',        BotReportView.as_view(),           name='report-bot'),
     path('my-stats/',   AgentPersonalReportView.as_view(), name='report-my-stats'),
+
+    # Monthly org reports
+    path('monthly/',    MonthlyReportListView.as_view(),   name='report-monthly'),
 
     # User-facing report generation
     path('generate/',                 ReportGenerateView.as_view(),  name='report-generate'),

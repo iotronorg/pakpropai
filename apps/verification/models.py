@@ -107,9 +107,10 @@ class Verification(models.Model):
     status        = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
     ocr_data      = models.JSONField(default=dict, blank=True)
     fraud_flags   = models.JSONField(default=list, blank=True)
-    notes         = models.TextField(blank=True)
-    verified_at   = models.DateTimeField(null=True, blank=True)
-    created_at    = models.DateTimeField(auto_now_add=True)
+    notes            = models.TextField(blank=True)
+    verified_at      = models.DateTimeField(null=True, blank=True)
+    certificate_url  = models.URLField(blank=True)
+    created_at       = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = 'verifications'

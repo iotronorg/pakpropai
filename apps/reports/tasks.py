@@ -12,66 +12,197 @@ logger = logging.getLogger(__name__)
 @shared_task
 def generate_monthly_reports():
     """
-    Runs on the 1st of each month. Computes aggregate stats for the previous
-    calendar month (leads, properties, deals, payments) and sends a summary
-    notification to all admin users.
+    Runs on the 1st of each month. Generates a branded PDF report for each
+    active organization covering the previous calendar month.
     """
-    from django.contrib.auth import get_user_model
-    from apps.leads.models import Lead
-    from apps.properties.models import Property
-    from apps.escrow.models import EscrowDeal
-    from apps.payments.models import Payment
-    from apps.notifications.services import notify_user
+    from apps.organizations.models import Organization
+    from .models import MonthlyReport
+    from .generator import generate_monthly_report_content
 
-    today = date.today()
-    first_of_this_month = today.replace(day=1)
-    last_month_end      = first_of_this_month - timedelta(days=1)
-    last_month_start    = last_month_end.replace(day=1)
+    today                = date.today()
+    first_of_this_month  = today.replace(day=1)
+    last_month_end       = first_of_this_month - timedelta(days=1)
+    last_month_start     = last_month_end.replace(day=1)
 
-    start_dt = timezone.make_aware(
+    start_dt    = timezone.make_aware(
         timezone.datetime(last_month_start.year, last_month_start.month, 1)
     )
-    end_dt = timezone.make_aware(
+    end_dt      = timezone.make_aware(
         timezone.datetime(first_of_this_month.year, first_of_this_month.month, 1)
     )
     month_label = last_month_start.strftime('%B %Y')
 
-    lead_count      = Lead.objects.filter(created_at__gte=start_dt, created_at__lt=end_dt).count()
-    property_count  = Property.objects.filter(created_at__gte=start_dt, created_at__lt=end_dt).count()
-    deal_count      = EscrowDeal.objects.filter(created_at__gte=start_dt, created_at__lt=end_dt).count()
-    revenue_pkr     = sum(
-        Payment.objects.filter(
-            created_at__gte=start_dt,
-            created_at__lt=end_dt,
-            status='paid',
-        ).values_list('amount_pkr', flat=True)
-    )
+    orgs      = Organization.objects.filter(is_active=True)
+    succeeded = 0
+    failed    = 0
 
-    summary = (
-        f"📊 *Monthly Report — {month_label}*\n\n"
-        f"• New Leads: {lead_count}\n"
-        f"• New Properties: {property_count}\n"
-        f"• Deal Locks: {deal_count}\n"
-        f"• Revenue: PKR {revenue_pkr:,}\n\n"
-        "Review the analytics dashboard for full breakdowns."
-    )
+    for org in orgs:
+        if MonthlyReport.objects.filter(organization=org, period_start=last_month_start).exists():
+            logger.info(f"generate_monthly_reports: skipping {org} — report already exists for {month_label}")
+            continue
 
-    User = get_user_model()
-    admins = User.objects.filter(role='admin', is_active=True)
-    notified = 0
-    for admin in admins:
+        report = MonthlyReport.objects.create(
+            organization=org,
+            period_start=last_month_start,
+            period_end=last_month_end,
+            status=MonthlyReport.Status.GENERATING,
+        )
         try:
-            notify_user(admin, title=f'Monthly Report — {month_label}', message=summary)
-            notified += 1
+            content   = generate_monthly_report_content(org, start_dt, end_dt)
+            pdf_bytes = _build_monthly_pdf(org, content, month_label)
+            pdf_url   = _upload_monthly_pdf(report, pdf_bytes)
+
+            report.content    = content
+            report.pdf_url    = pdf_url
+            report.status     = MonthlyReport.Status.READY
+            report.ready_at   = timezone.now()
+            report.save(update_fields=['content', 'pdf_url', 'status', 'ready_at'])
+            succeeded += 1
+            logger.info(f"generate_monthly_reports: {org} — {month_label} ready")
         except Exception as exc:
-            logger.warning(f"generate_monthly_reports: failed to notify admin {admin.pk}: {exc}")
+            logger.warning(f"generate_monthly_reports: {org} — {month_label} failed: {exc}")
+            report.status = MonthlyReport.Status.FAILED
+            report.save(update_fields=['status'])
+            failed += 1
 
     logger.info(
-        f"generate_monthly_reports: {month_label} — leads={lead_count}, "
-        f"properties={property_count}, deals={deal_count}, notified {notified} admins"
+        f"generate_monthly_reports: {month_label} complete — "
+        f"succeeded={succeeded}, failed={failed}"
     )
-    return {'month': month_label, 'leads': lead_count, 'properties': property_count,
-            'deals': deal_count, 'notified': notified}
+    return {'month': month_label, 'succeeded': succeeded, 'failed': failed}
+
+
+def _build_monthly_pdf(org, content: dict, month_label: str) -> bytes:
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.lib.colors import HexColor
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+    )
+
+    BRAND_BLUE = HexColor('#1B4F72')
+    GREY       = HexColor('#F2F3F4')
+
+    buf    = io.BytesIO()
+    doc    = SimpleDocTemplate(buf, pagesize=A4,
+                               leftMargin=inch, rightMargin=inch,
+                               topMargin=inch, bottomMargin=inch)
+    styles = getSampleStyleSheet()
+    H1     = ParagraphStyle('H1', parent=styles['Heading1'],
+                            textColor=BRAND_BLUE, fontSize=18, spaceAfter=6)
+    H2     = ParagraphStyle('H2', parent=styles['Heading2'],
+                            textColor=BRAND_BLUE, fontSize=13, spaceAfter=4)
+    BODY   = styles['BodyText']
+    SMALL  = ParagraphStyle('Small', parent=BODY, fontSize=8,
+                            textColor=HexColor('#666666'))
+
+    story = [
+        Paragraph('RealTron AI', ParagraphStyle('Brand', parent=H1, fontSize=22)),
+        Paragraph(f'Monthly Report — {month_label}', H1),
+        HRFlowable(width='100%', color=BRAND_BLUE, thickness=1.5),
+        Spacer(1, 0.15 * inch),
+        Paragraph(f'Organization: {org.name}', BODY),
+        Paragraph(f'Period: {month_label}', BODY),
+        Spacer(1, 0.25 * inch),
+    ]
+
+    # Leads
+    leads = content.get('leads', {})
+    story += [
+        Paragraph('Leads', H2),
+        _monthly_kv_table([
+            ('Total New Leads',  leads.get('total', 0)),
+            ('Qualified',        leads.get('qualified', 0)),
+            ('Conversion Rate',  f"{leads.get('conversion_rate', 0)}%"),
+            ('Avg Score',        leads.get('avg_score', 0)),
+        ]),
+        Spacer(1, 0.2 * inch),
+    ]
+
+    # Top Agents
+    top_agents = content.get('top_agents', [])
+    if top_agents:
+        story.append(Paragraph('Top Agents', H2))
+        rows = [['Agent', 'Closed Deals', 'Rating']]
+        rows += [[a['name'], a['closed_deals'], a['rating']] for a in top_agents]
+        t = Table(rows, colWidths=['50%', '25%', '25%'])
+        t.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), BRAND_BLUE),
+            ('TEXTCOLOR',  (0, 0), (-1, 0), HexColor('#FFFFFF')),
+            ('FONTNAME',   (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE',   (0, 0), (-1, -1), 9),
+            ('GRID',       (0, 0), (-1, -1), 0.5, HexColor('#BDC3C7')),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [None, GREY]),
+            ('TOPPADDING',    (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ]))
+        story += [t, Spacer(1, 0.2 * inch)]
+
+    # Deals
+    deals = content.get('deals', {})
+    story += [
+        Paragraph('Deal Locks', H2),
+        _monthly_kv_table([
+            ('Total',     deals.get('total', 0)),
+            ('Completed', deals.get('completed', 0)),
+            ('Expired',   deals.get('expired', 0)),
+            ('Disputed',  deals.get('disputed', 0)),
+        ]),
+        Spacer(1, 0.2 * inch),
+    ]
+
+    # Properties
+    props = content.get('properties', {})
+    story += [
+        Paragraph('Property Listings', H2),
+        _monthly_kv_table([
+            ('New Listings', props.get('new_listings', 0)),
+            ('Avg AI Score', props.get('avg_ai_score', 0)),
+        ]),
+        Spacer(1, 0.3 * inch),
+    ]
+
+    story += [
+        HRFlowable(width='100%', color=HexColor('#BDC3C7'), thickness=0.5),
+        Paragraph(
+            'This report is generated by RealTron AI for informational purposes only.',
+            SMALL,
+        ),
+    ]
+
+    doc.build(story)
+    return buf.getvalue()
+
+
+def _monthly_kv_table(rows: list):
+    from reportlab.lib.colors import HexColor
+    from reportlab.platypus import Table, TableStyle
+    GREY = HexColor('#F2F3F4')
+    data = [[k, str(v)] for k, v in rows]
+    t = Table(data, colWidths=['45%', '55%'])
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (0, -1), GREY),
+        ('FONTNAME',   (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTSIZE',   (0, 0), (-1, -1), 9),
+        ('GRID',       (0, 0), (-1, -1), 0.5, HexColor('#BDC3C7')),
+        ('ROWBACKGROUNDS', (0, 0), (-1, -1), [None, GREY]),
+        ('TOPPADDING',    (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+    ]))
+    return t
+
+
+def _upload_monthly_pdf(report, pdf_bytes: bytes) -> str:
+    import cloudinary.uploader
+    result = cloudinary.uploader.upload(
+        pdf_bytes,
+        resource_type='raw',
+        public_id=f'monthly_reports/{report.organization_id}/{report.period_start}',
+        format='pdf',
+        overwrite=True,
+    )
+    return result['secure_url']
 
 
 @shared_task

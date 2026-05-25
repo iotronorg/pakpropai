@@ -10,7 +10,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.throttles import ReportGenerateThrottle
-from .models import Report
+from .models import Report, MonthlyReport
 
 
 def _get_trend(qs, created_field='created_at', period='weekly'):
@@ -506,3 +506,43 @@ class BotReportView(APIView):
             result['trend'] = _get_trend(msgs, 'created_at', period)
 
         return Response(result)
+
+
+class MonthlyReportListView(APIView):
+    """GET /reports/monthly/ — list monthly org reports."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        role = request.user.role
+
+        if role == 'developer':
+            try:
+                org = request.user.owned_organization
+            except Exception:
+                return Response([], status=status.HTTP_200_OK)
+            qs = MonthlyReport.objects.filter(organization=org)
+
+        elif role == 'admin':
+            qs = MonthlyReport.objects.all()
+            org_id = request.query_params.get('org')
+            if org_id:
+                qs = qs.filter(organization_id=org_id)
+
+        else:
+            return Response({'detail': 'Forbidden.'}, status=status.HTTP_403_FORBIDDEN)
+
+        qs = qs.select_related('organization').order_by('-period_start')[:24]
+
+        return Response([
+            {
+                'id':           str(r.id),
+                'organization': str(r.organization_id),
+                'period_start': r.period_start.isoformat(),
+                'period_end':   r.period_end.isoformat(),
+                'status':       r.status,
+                'pdf_url':      r.pdf_url or None,
+                'created_at':   r.created_at.isoformat(),
+                'ready_at':     r.ready_at.isoformat() if r.ready_at else None,
+            }
+            for r in qs
+        ])

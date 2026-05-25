@@ -64,6 +64,66 @@ def notify_verification_status_change(verification_id: str):
             )
 
 
+@shared_task
+def generate_certificate_task(verification_id: str):
+    """
+    Generate and store a trust certificate PDF for a passed Verification.
+    Non-critical: failures are logged but do not affect the verification result.
+    """
+    from .models import Verification
+    from .certificate import generate_trust_certificate
+
+    try:
+        verification = (
+            Verification.objects
+            .select_related('property__organization', 'reviewer')
+            .get(pk=verification_id)
+        )
+    except Verification.DoesNotExist:
+        logger.warning(f"generate_certificate_task: verification {verification_id} not found")
+        return
+
+    if verification.status != Verification.Status.PASSED:
+        logger.info(
+            f"generate_certificate_task: skipping {verification_id} — "
+            f"status is {verification.status}, not passed"
+        )
+        return
+
+    try:
+        import cloudinary.uploader
+
+        public_id = f'trust_certificates/{verification_id}'
+
+        # First pass: generate PDF without QR code, upload to get the stable URL
+        pdf_bytes_v1 = generate_trust_certificate(verification, qr_url='')
+        result = cloudinary.uploader.upload(
+            pdf_bytes_v1,
+            resource_type='raw',
+            public_id=public_id,
+            format='pdf',
+            overwrite=True,
+        )
+        certificate_url = result['secure_url']
+
+        # Second pass: regenerate with QR code pointing to the now-known URL
+        pdf_bytes_v2 = generate_trust_certificate(verification, qr_url=certificate_url)
+        cloudinary.uploader.upload(
+            pdf_bytes_v2,
+            resource_type='raw',
+            public_id=public_id,
+            format='pdf',
+            overwrite=True,
+        )
+
+        verification.certificate_url = certificate_url
+        verification.save(update_fields=['certificate_url'])
+        logger.info(f"generate_certificate_task: certificate ready for {verification_id}")
+
+    except Exception as exc:
+        logger.warning(f"generate_certificate_task: failed for {verification_id}: {exc}")
+
+
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def run_verification_task(self, verification_id: str, image_bytes: bytes = None,
                           mime_type: str = 'image/jpeg'):

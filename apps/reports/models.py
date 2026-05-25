@@ -2,6 +2,7 @@
 import uuid
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 
 
 class Report(models.Model):
@@ -43,3 +44,34 @@ class Report(models.Model):
 
     def __str__(self):
         return f"{self.report_type} — {self.user.phone} ({self.status})"
+
+
+class MonthlyReport(models.Model):
+
+    class Status(models.TextChoices):
+        PENDING    = 'pending',    'Pending'
+        GENERATING = 'generating', 'Generating'
+        READY      = 'ready',      'Ready'
+        FAILED     = 'failed',     'Failed'
+
+    id           = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+                       'organizations.Organization',
+                       on_delete=models.CASCADE,
+                       related_name='monthly_reports',
+                   )
+    period_start = models.DateField()
+    period_end   = models.DateField()
+    status       = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    pdf_url      = models.URLField(blank=True)
+    content      = models.JSONField(default=dict, blank=True)
+    created_at   = models.DateTimeField(auto_now_add=True)
+    ready_at     = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table        = 'monthly_reports'
+        ordering        = ['-period_start']
+        unique_together = ('organization', 'period_start')
+
+    def __str__(self):
+        return f"MonthlyReport {self.period_start:%Y-%m} — {self.organization} ({self.status})"

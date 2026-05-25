@@ -40,6 +40,7 @@ django-celery-beat==2.9.0
 beautifulsoup4==4.12.3
 lxml==5.4.0
 reportlab>=4.0.0
+qrcode[pil]>=7.4.2
 cloudinary>=1.40.0
 django-cloudinary-storage>=0.3.0
 sentry-sdk[django]>=2.0.0

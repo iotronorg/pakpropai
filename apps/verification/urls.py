@@ -12,12 +12,14 @@ from .views import (
     FraudBlacklistView,
     FraudBlacklistDeleteView,
     FlaggedUsersView,
+    TrustCertificateView,
 )
 
 urlpatterns = [
     path('fraud-check/',                                          FraudCheckView.as_view(),              name='fraud-check'),
     path('queue/',                                                VerificationQueueView.as_view(),        name='verification-queue'),
     path('queue/<uuid:pk>/',                                      VerificationReviewView.as_view(),       name='verification-review'),
+    path('<uuid:property_id>/certificate/',                        TrustCertificateView.as_view(),        name='trust-certificate'),
     path('bulk-reject/',                                          BulkRejectVerificationsView.as_view(), name='verification-bulk-reject'),
     path('documents/',                                            DocumentScanListView.as_view(),           name='document-scan-list'),
     path('documents/<int:pk>/',                                   DocumentScanDetailView.as_view(),          name='document-scan-detail'),

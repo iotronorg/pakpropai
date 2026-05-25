@@ -118,6 +118,10 @@ class VerificationReviewView(APIView):
 
         notify_verification_status_change.delay(str(verification.pk))
 
+        if new_status == Verification.Status.PASSED:
+            from .tasks import generate_certificate_task
+            generate_certificate_task.delay(str(verification.pk))
+
         return Response(VerificationSerializer(verification).data)
 
 
@@ -524,4 +528,55 @@ class BulkRejectVerificationsView(APIView):
             count += 1
 
         return Response({'rejected': count})
+
+
+class TrustCertificateView(APIView):
+    """GET /verification/<property_id>/certificate/ — return trust certificate URL."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, property_id):
+        role = request.user.role
+
+        if role == 'agent':
+            return Response({'detail': 'Forbidden.'}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            from apps.properties.models import Property
+            prop = Property.objects.select_related('organization').get(pk=property_id)
+        except Property.DoesNotExist:
+            return Response({'detail': 'Property not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if role == 'developer':
+            try:
+                org = request.user.owned_organization
+            except Exception:
+                return Response({'detail': 'Forbidden.'}, status=status.HTTP_403_FORBIDDEN)
+            if prop.organization_id != org.pk:
+                return Response({'detail': 'Forbidden.'}, status=status.HTTP_403_FORBIDDEN)
+
+        verification = (
+            Verification.objects
+            .filter(property=prop, status=Verification.Status.PASSED)
+            .order_by('-verified_at')
+            .first()
+        )
+
+        if not verification:
+            return Response(
+                {'detail': 'No passed verification found for this property.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not verification.certificate_url:
+            return Response(
+                {'detail': 'Certificate is being generated.'},
+                status=status.HTTP_202_ACCEPTED,
+            )
+
+        return Response({
+            'property_id':      str(property_id),
+            'certificate_url':  verification.certificate_url,
+            'verified_at':      verification.verified_at.isoformat() if verification.verified_at else None,
+            'signal_score':     verification.signal_score,
+        })
 
