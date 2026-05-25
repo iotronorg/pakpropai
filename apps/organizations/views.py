@@ -36,8 +36,24 @@ class OrganizationListView(APIView):
         else:
             return Response(status=status.HTTP_403_FORBIDDEN)
 
-        serializer = OrganizationListSerializer(qs, many=True)
-        return Response({'count': qs.count(), 'results': serializer.data})
+        search = request.query_params.get('search', '').strip()
+        if search:
+            qs = qs.filter(name__icontains=search)
+
+        is_active = request.query_params.get('is_active')
+        if is_active == 'true':
+            qs = qs.filter(is_active=True)
+        elif is_active == 'false':
+            qs = qs.filter(is_active=False)
+
+        qs = qs.order_by('-created_at')
+
+        from rest_framework.pagination import PageNumberPagination
+        paginator = PageNumberPagination()
+        paginator.page_size = 20
+        page = paginator.paginate_queryset(qs, request)
+        serializer = OrganizationListSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
     def post(self, request):
         if request.user.role != 'admin':
@@ -224,6 +240,63 @@ class OrgConfigView(APIView):
         return Response({'detail': f"'{key}' reset to platform default."})
 
 
+class AdminOrgConfigView(APIView):
+    """
+    GET/PATCH /api/v1/organizations/{pk}/config/
+    DELETE    /api/v1/organizations/{pk}/config/{key}/
+    Admin-only: read and override feature flags for any org.
+    """
+    permission_classes = [IsAdminUser]
+
+    def _get_org(self, pk):
+        try:
+            return Organization.objects.get(pk=pk), None
+        except Organization.DoesNotExist:
+            return None, Response({'detail': 'Organization not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    def get(self, request, pk, key=None):
+        org, err = self._get_org(pk)
+        if err:
+            return err
+        features = OrgConfigService.get_features(org)
+        overrides = set(
+            OrganizationConfig.objects.filter(organization=org).values_list('key', flat=True)
+        )
+        return Response({
+            'features': features,
+            'overrides': list(overrides),
+            'allowed_keys': sorted(OrganizationConfig.ALLOWED_KEYS),
+        })
+
+    def patch(self, request, pk, key=None):
+        org, err = self._get_org(pk)
+        if err:
+            return err
+        invalid = set(request.data.keys()) - OrganizationConfig.ALLOWED_KEYS
+        if invalid:
+            return Response(
+                {'detail': f"Invalid keys: {sorted(invalid)}."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        for k, raw_value in request.data.items():
+            value = 'true' if str(raw_value).lower() in ('true', '1', 'yes') else 'false'
+            OrgConfigService.set(org, k, value, user=request.user)
+        features = OrgConfigService.get_features(org)
+        return Response({'features': features})
+
+    def delete(self, request, pk, key):
+        org, err = self._get_org(pk)
+        if err:
+            return err
+        if key not in OrganizationConfig.ALLOWED_KEYS:
+            return Response(
+                {'detail': f"'{key}' is not an overridable key."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        OrgConfigService.reset(org, key)
+        return Response({'detail': f"'{key}' reset to platform default."})
+
+
 class OrgDashboardView(APIView):
     """
     GET /api/v1/organizations/me/dashboard/
@@ -377,3 +450,47 @@ class OrgAIStatsView(APIView):
             },
             'recent_conversations': conversations,
         })
+
+
+class OrganizationSuspendView(APIView):
+    """POST /api/v1/organizations/{id}/suspend/ — admin only."""
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def post(self, request, pk):
+        try:
+            org = Organization.objects.get(pk=pk)
+        except Organization.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if not org.is_active:
+            return Response(
+                {'detail': 'Organization is already suspended.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        org.is_active = False
+        org.save(update_fields=['is_active'])
+        logger.info(f"Organization suspended: {org.id} '{org.name}' by admin {request.user.id}")
+        return Response(OrganizationDetailSerializer(org).data)
+
+
+class OrganizationActivateView(APIView):
+    """POST /api/v1/organizations/{id}/activate/ — admin only."""
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def post(self, request, pk):
+        try:
+            org = Organization.objects.get(pk=pk)
+        except Organization.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if org.is_active:
+            return Response(
+                {'detail': 'Organization is already active.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        org.is_active = True
+        org.save(update_fields=['is_active'])
+        logger.info(f"Organization activated: {org.id} '{org.name}' by admin {request.user.id}")
+        return Response(OrganizationDetailSerializer(org).data)

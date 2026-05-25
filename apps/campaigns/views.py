@@ -4,13 +4,10 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
+from apps.core.permissions import get_user_org
+
 from .models import Campaign
 from .serializers import CampaignSerializer
-
-
-def _get_org(user):
-    """Return the organization for a developer user, or None."""
-    return getattr(user, 'owned_organization', None)
 
 
 class CampaignViewSet(ModelViewSet):
@@ -26,17 +23,21 @@ class CampaignViewSet(ModelViewSet):
         user = self.request.user
         if user.role != 'developer':
             return Campaign.objects.none()
-        org = _get_org(user)
+        org = get_user_org(user)
         if not org:
             return Campaign.objects.none()
-        return Campaign.objects.filter(organization=org).select_related('created_by')
+        qs = Campaign.objects.filter(organization=org).select_related('created_by')
+        status_filter = self.request.query_params.get('status')
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        return qs
 
     def perform_create(self, serializer):
         user = self.request.user
         if user.role != 'developer':
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("Only organization admins can create campaigns.")
-        org = _get_org(user)
+        org = get_user_org(user)
         if not org:
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("No organization found for your account.")

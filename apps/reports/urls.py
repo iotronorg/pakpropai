@@ -1,6 +1,6 @@
 from django.urls import path
 from .views import (
-    LeadReportView, AgentReportView, PropertyReportView,
+    LeadReportView, AgentReportView, PropertyReportView, DealReportView,
     RevenueReportView, BotReportView, AgentPersonalReportView,
     ReportGenerateView, ReportStatusView, ReportDownloadView, MyReportsView,
 )
@@ -10,6 +10,7 @@ urlpatterns = [
     path('leads/',      LeadReportView.as_view(),          name='report-leads'),
     path('agents/',     AgentReportView.as_view(),         name='report-agents'),
     path('properties/', PropertyReportView.as_view(),      name='report-properties'),
+    path('deals/',      DealReportView.as_view(),          name='report-deals'),
     path('revenue/',    RevenueReportView.as_view(),       name='report-revenue'),
     path('bot/',        BotReportView.as_view(),           name='report-bot'),
     path('my-stats/',   AgentPersonalReportView.as_view(), name='report-my-stats'),

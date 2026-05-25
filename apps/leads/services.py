@@ -93,7 +93,7 @@ def suggest_agents_for_lead(lead, limit: int = 3) -> list:
         return []
 
 
-def assign_agent_to_lead(lead, agent, actor=None) -> None:
+def assign_agent_to_lead(lead, agent, actor=None, auto: bool = False) -> None:
     """Assign agent to lead and log the activity."""
     from apps.leads.models import LeadActivity
 
@@ -107,11 +107,12 @@ def assign_agent_to_lead(lead, agent, actor=None) -> None:
         lead=lead,
         actor=actor,
         action=LeadActivity.ActionType.ASSIGNED,
-        notes=f"Assigned to {agent.name}",
+        notes=f"Auto-assigned to {agent.name}" if auto else f"Assigned to {agent.name}",
         meta={
             'old_agent_id': old_agent.id if old_agent else None,
             'new_agent_id': agent.id,
             'new_agent_name': agent.name,
+            'auto': auto,
         },
     )
 

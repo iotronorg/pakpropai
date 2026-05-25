@@ -129,7 +129,7 @@ class AuditLogView(APIView):
         qs = AuditLog.objects.select_related('actor').order_by('-created_at')
 
         if actor := request.query_params.get('actor'):
-            qs = qs.filter(actor_id=actor)
+            qs = qs.filter(actor__phone__icontains=actor)
         if action := request.query_params.get('action'):
             qs = qs.filter(action=action)
         if model := request.query_params.get('target_model'):

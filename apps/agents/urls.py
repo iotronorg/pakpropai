@@ -5,9 +5,11 @@ from .views import (
     AgentAdminDetailView,
     AgentAvailabilityView,
     AgentAvailableListView,
+    AgentLeaderboardView,
     AgentRegisterView,
     AgentApproveView,
     AgentRejectView,
+    AgentStatsView,
     TeamView,
     TeamMemberView,
 )
@@ -17,6 +19,7 @@ urlpatterns = [
     path('me/',                       AgentMeView.as_view(),             name='agents-me'),
     path('me/availability/',          AgentAvailabilityView.as_view(),   name='agents-me-availability'),
     path('available/',                AgentAvailableListView.as_view(),  name='agents-available'),
+    path('leaderboard/',              AgentLeaderboardView.as_view(),    name='agents-leaderboard'),
     path('register/',                 AgentRegisterView.as_view(),       name='agents-register'),
     path('team/',                     TeamView.as_view(),                name='agents-team'),
     path('team/<int:agent_id>/',      TeamMemberView.as_view(),          name='agents-team-member'),
@@ -24,4 +27,5 @@ urlpatterns = [
     path('<int:pk>/approve/',         AgentApproveView.as_view(),        name='agents-approve'),
     path('<int:pk>/reject/',          AgentRejectView.as_view(),         name='agents-reject'),
     path('<int:pk>/availability/',    AgentAvailabilityView.as_view(),   name='agents-availability'),
+    path('<int:pk>/stats/',           AgentStatsView.as_view(),          name='agents-stats'),
 ]

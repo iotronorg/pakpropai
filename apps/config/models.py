@@ -98,6 +98,8 @@ class SystemConfig(models.Model):
         'feature_talk_to_agent':      'true',
         'feature_deal_lock':          'true',
         'feature_voice_messages':     'true',
+        'feature_follow_up_automation': 'false',
+        'feature_auto_assign':          'false',
         'scraper_search_enabled':     'true',
         'use_membership_rbac':        'true',
     }

@@ -88,6 +88,7 @@ class Lead(models.Model):
     status              = models.CharField(max_length=20, choices=Status.choices, default=Status.NEW)
     notes               = models.TextField(blank=True)
     last_contacted_at   = models.DateTimeField(null=True, blank=True)
+    follow_up_sent_at   = models.DateTimeField(null=True, blank=True)
     last_scored_at      = models.DateTimeField(auto_now=True)
     created_at          = models.DateTimeField(auto_now_add=True)
 

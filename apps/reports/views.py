@@ -199,17 +199,21 @@ class AgentPersonalReportView(APIView):
         )
         avg_score = leads.aggregate(avg=Avg('score'))['avg'] or 0
 
+        from apps.agents.stats import _compute_response_time
+        lead_ids = list(leads.values_list('id', flat=True))
+
         result = {
-            'total_leads':   leads.count(),
-            'closed_leads':  leads.filter(status='closed').count(),
-            'hot_leads':     leads.filter(score__gte=70).count(),
-            'avg_score':     round(avg_score, 1),
-            'by_status':     status_counts,
-            'by_source':     source_counts,
-            'total_listings': props.count(),
-            'closed_deals':  agent.closed_deals,
-            'rating':        float(agent.rating),
-            'is_verified':   agent.is_verified,
+            'total_leads':             len(lead_ids),
+            'closed_leads':            leads.filter(routing_state=Lead.RoutingState.CLOSED).count(),
+            'hot_leads':               leads.filter(score__gte=70).count(),
+            'avg_score':               round(avg_score, 1),
+            'by_status':               status_counts,
+            'by_source':               source_counts,
+            'total_listings':          props.count(),
+            'closed_deals':            agent.closed_deals,
+            'rating':                  float(agent.rating),
+            'is_verified':             agent.is_verified,
+            'avg_response_time_hours': _compute_response_time(lead_ids),
         }
 
         period = request.query_params.get('period')
@@ -332,6 +336,53 @@ class PropertyReportView(APIView):
         if period in ('weekly', 'monthly'):
             result['trend'] = _get_trend(qs, 'created_at', period)
         return Response(result)
+
+
+class DealReportView(APIView):
+    """GET /reports/deals/ — deal lock analytics. Admin + developer."""
+    permission_classes = [IsAdminOrDeveloper]
+
+    def get(self, request):
+        from apps.escrow.models import EscrowDeal
+        from django.db.models import ExpressionWrapper, DurationField, F
+
+        qs = EscrowDeal.objects.all()
+        if request.user.role == 'developer':
+            try:
+                org = request.user.owned_organization
+                qs = qs.filter(property__organization=org)
+            except Exception:
+                qs = qs.none()
+
+        status_counts = dict(
+            qs.values_list('status').annotate(c=Count('id')).values_list('status', 'c')
+        )
+        gateway_counts = dict(
+            qs.values_list('payment_gateway').annotate(c=Count('id')).values_list('payment_gateway', 'c')
+        )
+
+        # Avg hours from initiation to payment confirmation (created_at → lock_started_at)
+        confirmed_qs = qs.filter(lock_started_at__isnull=False)
+        avg_hours = None
+        if confirmed_qs.exists():
+            delta = confirmed_qs.annotate(
+                hours=ExpressionWrapper(
+                    F('lock_started_at') - F('created_at'),
+                    output_field=DurationField(),
+                )
+            ).aggregate(avg=Avg('hours'))['avg']
+            if delta:
+                avg_hours = round(delta.total_seconds() / 3600, 1)
+
+        return Response({
+            'total_locks': qs.count(),
+            'completed':   status_counts.get('released',  0),
+            'expired':     status_counts.get('expired',   0),
+            'disputed':    status_counts.get('disputed',  0),
+            'avg_confirm_hours': avg_hours,
+            'by_status':   status_counts,
+            'by_gateway':  gateway_counts,
+        })
 
 
 class RevenueReportView(APIView):

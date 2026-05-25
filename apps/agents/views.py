@@ -368,6 +368,65 @@ class AgentAvailabilityView(APIView):
         return Response({'availability_status': agent.availability_status})
 
 
+class AgentStatsView(APIView):
+    """GET /agents/{id}/stats/?period=weekly|monthly"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        from .stats import compute_agent_stats
+
+        try:
+            agent = Agent.objects.select_related('user', 'organization').get(pk=pk)
+        except Agent.DoesNotExist:
+            raise NotFound("Agent not found.")
+
+        role = request.user.role
+
+        if role == 'agent':
+            try:
+                own = request.user.agent_profile
+            except Agent.DoesNotExist:
+                raise NotFound("No agent profile linked to this account.")
+            if own.id != agent.id:
+                raise PermissionDenied("Agents can only view their own stats.")
+        elif role == 'developer':
+            org = _get_developer_org(request.user)
+            if agent.organization_id != org.id:
+                raise PermissionDenied("You can only view stats for agents in your organisation.")
+        elif role != 'admin':
+            raise PermissionDenied("Access denied.")
+
+        period = request.query_params.get('period')
+        if period not in ('weekly', 'monthly'):
+            period = None
+
+        return Response(compute_agent_stats(agent, period=period))
+
+
+class AgentLeaderboardView(APIView):
+    """GET /agents/leaderboard/ — ranked list by conversion rate."""
+    permission_classes = [IsAdminOrDeveloper]
+
+    def get(self, request):
+        from .stats import compute_leaderboard
+
+        role = request.user.role
+
+        base = Agent.objects.filter(
+            is_active=True,
+            registration_status=Agent.RegistrationStatus.APPROVED,
+        ).select_related('user')
+
+        if role == 'developer':
+            org = _get_developer_org(request.user)
+            agents_qs = base.filter(organization=org)
+        else:
+            agents_qs = base.all()
+
+        results = compute_leaderboard(agents_qs)
+        return Response({'count': len(results), 'results': results})
+
+
 class AgentAvailableListView(generics.ListAPIView):
     """GET /agents/available/?city=Lahore — active, available agents for a city."""
     serializer_class   = AgentSerializer

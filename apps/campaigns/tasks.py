@@ -1,6 +1,7 @@
 import logging
 from celery import shared_task
 from django.utils import timezone
+from apps.whatsapp.client import get_wa_client
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,6 @@ def _get_lead_phones(campaign) -> list[str]:
 def send_campaign_messages(self, campaign_id: str):
     """Fan out WhatsApp messages to all leads matching the campaign audience filter."""
     from .models import Campaign
-    from apps.whatsapp.client import WhatsAppClient
 
     try:
         campaign = Campaign.objects.select_related('organization').get(id=campaign_id)
@@ -46,12 +46,13 @@ def send_campaign_messages(self, campaign_id: str):
     campaign.recipient_count = len(phones)
     campaign.save(update_fields=['recipient_count'])
 
+    wa_client = get_wa_client(org=campaign.organization)
     sent    = 0
     failed  = 0
 
     for phone in phones:
         try:
-            WhatsAppClient.send_text(phone, campaign.message_template, skip_window_check=True)
+            wa_client.send_text(phone, campaign.message_template, skip_window_check=True)
             sent += 1
         except Exception as exc:
             failed += 1

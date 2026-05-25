@@ -175,6 +175,8 @@ class OrganizationConfig(models.Model):
         'feature_talk_to_agent',
         'feature_deal_lock',
         'feature_voice_messages',
+        'feature_follow_up_automation',
+        'feature_auto_assign',
     }
 
     organization = models.ForeignKey(

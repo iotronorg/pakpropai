@@ -266,6 +266,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'apps.whatsapp.tasks.revert_orphaned_agent_sessions',
         'schedule': 60.0,
     },
+    'auto-assign-leads': {
+        'task':     'apps.leads.tasks.auto_assign_unassigned_leads',
+        'schedule': 900,  # every 15 minutes
+    },
 }
 
 CACHES = {
