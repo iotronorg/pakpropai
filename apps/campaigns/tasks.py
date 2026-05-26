@@ -1,83 +1,70 @@
 import logging
 from celery import shared_task
 from django.utils import timezone
-from apps.whatsapp.client import get_wa_client
 
 logger = logging.getLogger(__name__)
 
-_INTENT_FILTERS = {'buy', 'sell', 'rent', 'invest'}
-_STATUS_FILTERS = {'new', 'warm', 'qualified', 'cold'}
 
-
-def _get_lead_phones(campaign) -> list[str]:
-    """Return phone numbers for leads matching the campaign's audience_filter."""
-    from apps.leads.models import Lead
-    qs = Lead.objects.filter(
-        organization=campaign.organization,
-    ).select_related('user').exclude(user__phone='')
-
-    af = campaign.audience_filter
-    if af in _STATUS_FILTERS:
-        qs = qs.filter(status=af)
-    elif af in _INTENT_FILTERS:
-        qs = qs.filter(intent=af)
-    # 'all' — no additional filter
-
-    phones = list(qs.values_list('user__phone', flat=True).distinct())
-    return [p for p in phones if p]
-
-
-@shared_task(bind=True, max_retries=2, default_retry_delay=60)
-def send_campaign_messages(self, campaign_id: str):
-    """Fan out WhatsApp messages to all leads matching the campaign audience filter."""
-    from .models import Campaign
+@shared_task(bind=True, max_retries=10, default_retry_delay=60)
+def dispatch_campaign_to_recipients(self, campaign_id: str):
+    """Fan out a campaign to all pending CampaignRecipient rows with rate limiting."""
+    from .models import Campaign, CampaignRecipient
+    from .campaign_manager import (
+        CampaignOrchestrator, MetaTierRateLimiter,
+        RateLimitExceeded, MetaRateLimitError,
+    )
+    from apps.whatsapp.client import get_wa_client
 
     try:
         campaign = Campaign.objects.select_related('organization').get(id=campaign_id)
     except Campaign.DoesNotExist:
-        logger.error(f"send_campaign_messages: campaign {campaign_id} not found")
+        logger.error("dispatch_campaign_to_recipients: campaign %s not found", campaign_id)
         return
 
-    if campaign.status not in (Campaign.Status.SENDING,):
-        logger.warning(f"Campaign {campaign_id} is not in SENDING state — skipping")
+    if campaign.status != Campaign.Status.SENDING:
+        logger.warning("Campaign %s not in SENDING state — skipping", campaign_id)
         return
 
-    phones = _get_lead_phones(campaign)
-    campaign.recipient_count = len(phones)
-    campaign.save(update_fields=['recipient_count'])
+    orchestrator = CampaignOrchestrator()
+    limiter      = MetaTierRateLimiter()
+    wa_client    = get_wa_client(org=campaign.organization)
 
-    wa_client = get_wa_client(org=campaign.organization)
-    sent    = 0
-    failed  = 0
+    orchestrator.build_recipients(campaign)
 
-    for phone in phones:
+    pending = CampaignRecipient.objects.filter(
+        campaign=campaign,
+        delivery_status=CampaignRecipient.DeliveryStatus.PENDING,
+    )
+
+    for recipient in pending.iterator():
         try:
-            wa_client.send_text(phone, campaign.message_template, skip_window_check=True)
-            sent += 1
-        except Exception as exc:
-            failed += 1
-            logger.warning(f"Campaign {campaign_id}: failed to send to {phone}: {exc}")
+            orchestrator.dispatch_one(recipient, wa_client, limiter)
+        except RateLimitExceeded:
+            backoff = limiter.get_backoff_seconds(self.request.retries)
+            logger.info("Campaign %s: rate limit hit, retrying in %.1fs", campaign_id, backoff)
+            raise self.retry(countdown=backoff)
+        except MetaRateLimitError:
+            backoff = limiter.get_backoff_seconds(self.request.retries)
+            logger.warning("Campaign %s: Meta 429, retrying in %.1fs", campaign_id, backoff)
+            raise self.retry(countdown=backoff)
 
-    final_status = Campaign.Status.SENT if sent > 0 else Campaign.Status.FAILED
-    campaign.sent_count   = sent
-    campaign.failed_count = failed
-    campaign.status       = final_status
+    from django.db.models import Count, Case, When, IntegerField
+    agg = CampaignRecipient.objects.filter(campaign=campaign).aggregate(
+        sent   = Count(Case(When(delivery_status='sent',   then=1), output_field=IntegerField())),
+        failed = Count(Case(When(delivery_status='failed', then=1), output_field=IntegerField())),
+    )
+    campaign.sent_count   = agg['sent']   or 0
+    campaign.failed_count = agg['failed'] or 0
+    campaign.status       = Campaign.Status.SENT if campaign.sent_count > 0 else Campaign.Status.FAILED
     campaign.sent_at      = timezone.now()
     campaign.save(update_fields=['sent_count', 'failed_count', 'status', 'sent_at'])
-
-    logger.info(
-        f"Campaign {campaign_id} complete: {sent} sent, {failed} failed, "
-        f"status={final_status}"
-    )
-    return {'sent': sent, 'failed': failed}
+    logger.info("Campaign %s complete: %d sent, %d failed", campaign_id,
+                campaign.sent_count, campaign.failed_count)
 
 
 @shared_task
 def dispatch_scheduled_campaigns():
-    """
-    Runs every 5 minutes. Finds campaigns that are SCHEDULED and past their
-    scheduled_at time, then queues each for delivery.
-    """
+    """Every 5 min: dispatch campaigns whose scheduled_at has passed."""
     from .models import Campaign
 
     now = timezone.now()
@@ -85,14 +72,24 @@ def dispatch_scheduled_campaigns():
         status=Campaign.Status.SCHEDULED,
         scheduled_at__lte=now,
     )
-
     count = 0
     for campaign in due:
         campaign.status = Campaign.Status.SENDING
         campaign.save(update_fields=['status'])
-        send_campaign_messages.delay(str(campaign.id))
+        dispatch_campaign_to_recipients.delay(str(campaign.id))
         count += 1
 
     if count:
-        logger.info(f"dispatch_scheduled_campaigns: dispatched {count} campaign(s)")
+        logger.info("dispatch_scheduled_campaigns: dispatched %d campaign(s)", count)
     return count
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=300)
+def run_reengagement_worker(self, org_id: str = None):
+    """Every 6 hours: send AI re-engagement messages to cold QUALIFIED leads."""
+    try:
+        from .re_engagement import run_reengagement_pass
+        return run_reengagement_pass(org_id=org_id)
+    except Exception as exc:
+        logger.error("run_reengagement_worker error: %s", exc)
+        raise self.retry(exc=exc)

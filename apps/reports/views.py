@@ -10,7 +10,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.throttles import ReportGenerateThrottle
-from apps.core.permissions import IsAdminUser, IsAdminOrOrgAdmin, IsAgentOrAdmin
+from apps.core.permissions import IsAdminUser, IsAdminOrOrgAdmin, IsAgentOrAdmin, get_user_org
 from .models import Report, MonthlyReport
 
 
@@ -214,11 +214,8 @@ class LeadReportView(APIView):
 
         qs = Lead.objects.all()
         if request.user.role == 'developer':
-            try:
-                org = request.user.owned_organization
-                qs = qs.filter(organization=org)
-            except Exception:
-                qs = qs.none()
+            org = get_user_org(request.user)
+            qs = qs.filter(organization=org) if org else qs.none()
 
         status_counts = dict(
             qs.values_list('status').annotate(c=Count('id')).values_list('status', 'c')
@@ -254,31 +251,34 @@ class AgentReportView(APIView):
         from apps.agents.models import Agent
         from apps.leads.models import Lead
 
-        agents = Agent.objects.filter(is_active=True).select_related('user')
-        if request.user.role == 'developer':
-            try:
-                org = request.user.owned_organization
-                agents = agents.filter(organization=org)
-            except Exception:
-                agents = Agent.objects.none()
+        from django.db.models import Q
 
-        data = []
-        for agent in agents:
-            lead_count   = Lead.objects.filter(assigned_agent=agent).count()
-            closed_count = Lead.objects.filter(
-                assigned_agent=agent, status='qualified'
-            ).count()
-            data.append({
-                'id':           agent.id,
-                'name':         agent.name,
-                'phone':        agent.phone,
-                'is_verified':  agent.is_verified,
-                'total_leads':  lead_count,
-                'closed_leads': closed_count,
-                'closed_deals': agent.closed_deals,
-                'rating':       float(agent.rating),
-                'primary_city': agent.primary_city,
-            })
+        agents_qs = Agent.objects.filter(is_active=True)
+        if request.user.role == 'developer':
+            org = get_user_org(request.user)
+            agents_qs = agents_qs.filter(organization=org) if org else Agent.objects.none()
+
+        # Single annotated query — eliminates the N+1 of the old implementation
+        agents_with_stats = agents_qs.annotate(
+            lead_count=Count('assigned_leads', distinct=True),
+            qualified_count=Count(
+                'assigned_leads',
+                filter=Q(assigned_leads__status='qualified'),
+                distinct=True,
+            ),
+        )
+
+        data = [{
+            'id':           a.id,
+            'name':         a.name,
+            'phone':        a.phone,
+            'is_verified':  a.is_verified,
+            'total_leads':  a.lead_count,
+            'closed_leads': a.qualified_count,
+            'closed_deals': a.closed_deals,
+            'rating':       float(a.rating),
+            'primary_city': a.primary_city,
+        } for a in agents_with_stats]
 
         data.sort(key=lambda a: a['total_leads'], reverse=True)
         return Response({'count': len(data), 'results': data})
@@ -293,11 +293,8 @@ class PropertyReportView(APIView):
 
         qs = Property.objects.filter(is_active=True)
         if request.user.role == 'developer':
-            try:
-                org = request.user.owned_organization
-                qs = qs.filter(organization=org)
-            except Exception:
-                qs = qs.none()
+            org = get_user_org(request.user)
+            qs = qs.filter(organization=org) if org else qs.none()
 
         by_type   = dict(qs.values_list('property_type').annotate(c=Count('id')).values_list('property_type', 'c'))
         by_legal  = dict(qs.values_list('legal_status').annotate(c=Count('id')).values_list('legal_status', 'c'))
@@ -330,11 +327,8 @@ class DealReportView(APIView):
 
         qs = EscrowDeal.objects.all()
         if request.user.role == 'developer':
-            try:
-                org = request.user.owned_organization
-                qs = qs.filter(property__organization=org)
-            except Exception:
-                qs = qs.none()
+            org = get_user_org(request.user)
+            qs = qs.filter(property__organization=org) if org else qs.none()
 
         status_counts = dict(
             qs.values_list('status').annotate(c=Count('id')).values_list('status', 'c')
@@ -498,9 +492,8 @@ class MonthlyReportListView(APIView):
         role = request.user.role
 
         if role == 'developer':
-            try:
-                org = request.user.owned_organization
-            except Exception:
+            org = get_user_org(request.user)
+            if org is None:
                 return Response([], status=status.HTTP_200_OK)
             qs = MonthlyReport.objects.filter(organization=org)
 

@@ -115,6 +115,28 @@ class OrgWhatsAppConfig(models.Model):
                             help_text="Toggle auto-replies")
     otp_template_name = models.CharField(max_length=100, blank=True,
                             help_text="Per-org OTP template name (overrides platform default)")
+    waba_id           = models.CharField(max_length=50, blank=True,
+                            help_text="Meta WhatsApp Business Account ID (used for template listing)")
+    directory_keywords  = models.JSONField(
+                              default=list, blank=True,
+                              help_text='Keyword strings used in Meta Business Directory discovery',
+                          )
+    category_tags       = models.JSONField(
+                              default=list, blank=True,
+                              help_text='Meta WABA vertical tags e.g. ["REAL_ESTATE"]',
+                          )
+    localized_greeting  = models.TextField(
+                              blank=True,
+                              help_text='Greeting shown to directory-sourced users (max 256 chars)',
+                          )
+    support_hours       = models.JSONField(
+                              default=dict, blank=True,
+                              help_text='{"mon":{"open":"09:00","close":"18:00","closed":false},...}',
+                          )
+    meta_profile_synced_at = models.DateTimeField(
+                                 null=True, blank=True,
+                                 help_text='Timestamp of last successful Meta Graph API profile push',
+                             )
     created_at        = models.DateTimeField(auto_now_add=True)
     updated_at        = models.DateTimeField(auto_now=True)
 
@@ -123,3 +145,23 @@ class OrgWhatsAppConfig(models.Model):
 
     def __str__(self):
         return f"WA Config: {self.organization.name} ({self.display_phone or self.phone_number_id or 'unconfigured'})"
+
+
+class NeighbourhoodZone(models.Model):
+    id           = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+                       'organizations.Organization',
+                       on_delete=models.CASCADE,
+                       related_name='neighbourhood_zones',
+                   )
+    name         = models.CharField(max_length=200)
+    centroid_lat = models.DecimalField(max_digits=9, decimal_places=6)
+    centroid_lon = models.DecimalField(max_digits=9, decimal_places=6)
+    radius_km    = models.DecimalField(max_digits=6, decimal_places=2, default=5.00)
+    city         = models.CharField(max_length=100, help_text='City string for Tier-1 alignment')
+
+    class Meta:
+        db_table = 'whatsapp_neighbourhood_zones'
+
+    def __str__(self):
+        return f"{self.name} ({self.organization.name})"

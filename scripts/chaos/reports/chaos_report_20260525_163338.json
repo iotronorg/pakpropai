@@ -1,0 +1,388 @@
+{
+  "run_id": "20260525_163338",
+  "started_at": "2026-05-25T16:33:38.977153+00:00",
+  "finished_at": "2026-05-25T16:33:54.811787+00:00",
+  "scenarios": [
+    {
+      "name": "db-connection-pool-starvation",
+      "passed": false,
+      "duration_s": 5.056549791999714,
+      "assertions": [
+        {
+          "label": "WhatsApp webhook endpoint accepted all messages during DB starvation",
+          "passed": true,
+          "detail": "accepted=5/5  rejected=0  errored=0"
+        },
+        {
+          "label": "Raw message payloads buffered in Redis during DB outage",
+          "passed": false,
+          "detail": "chaos:buffer:* keys found=0"
+        },
+        {
+          "label": "Celery task retry queue populated (exponential backoff active)",
+          "passed": false,
+          "detail": "new_retries_observed=0"
+        },
+        {
+          "label": "WhatsApp sessions structurally intact after DB recovery",
+          "passed": true,
+          "detail": "sessions queryable from ORM post-recovery"
+        },
+        {
+          "label": "Zero inbound message drops (no failed WhatsAppMessage rows)",
+          "passed": true,
+          "detail": "failed_message_rows=0"
+        }
+      ],
+      "metrics": {
+        "connections_held": 10,
+        "max_connections": 100,
+        "injection_duration_s": 0.0,
+        "traffic_dispatched": 5,
+        "traffic_accepted": 5,
+        "traffic_avg_latency_ms": 49.7,
+        "redis_buffered": 0,
+        "retry_delta": 0,
+        "dropped_messages": 0
+      },
+      "error": null
+    },
+    {
+      "name": "redis-cache-layer-crash",
+      "passed": true,
+      "duration_s": 3.126235584000824,
+      "assertions": [
+        {
+          "label": "Inventory GET ops complete without Redis (Django ORM DB fallback)",
+          "passed": true,
+          "detail": "ops=5  failed=0"
+        },
+        {
+          "label": "No duplicate EscrowDeal lock rows after Redis recovery",
+          "passed": true,
+          "detail": "duplicate_locks=0"
+        },
+        {
+          "label": "Inventory item counts unchanged (zero balance drift)",
+          "passed": true,
+          "detail": "total_drift=0  before=0  after=0"
+        },
+        {
+          "label": "Deal lock counts consistent (no unexpected unlocks)",
+          "passed": true,
+          "detail": "before=0  after=0"
+        },
+        {
+          "label": "Cache-vs-DB consistency restored after warm-up",
+          "passed": true,
+          "detail": "orgs_consistent=5/5"
+        }
+      ],
+      "metrics": {
+        "orgs_tested": 5,
+        "ops_fired": 5,
+        "ops_blocked_by_redis": 0,
+        "injection_duration_s": 0.0,
+        "duplicate_locks": 0,
+        "balance_drift": 0,
+        "lock_consistent": true
+      },
+      "error": null
+    }
+  ],
+  "latency_profile": {
+    "sample_count": 10,
+    "error_rate": 0.0,
+    "pipeline_p50_ms": 3311.16,
+    "pipeline_p95_ms": 4293.28,
+    "pipeline_p99_ms": 4307.92,
+    "pipeline_mean_ms": 2950.45,
+    "stage_metrics": {
+      "webhook_landing": {
+        "p50_ms": 19.83,
+        "p95_ms": 21.67,
+        "p99_ms": 21.82,
+        "mean_ms": 16.81,
+        "min_ms": 7.72,
+        "max_ms": 21.85,
+        "samples": 10
+      },
+      "audio_transcription": {
+        "p50_ms": 2300.55,
+        "p95_ms": 2343.92,
+        "p99_ms": 2347.77,
+        "mean_ms": 2300.55,
+        "min_ms": 2252.37,
+        "max_ms": 2348.74,
+        "samples": 2
+      },
+      "llm_orchestration": {
+        "p50_ms": 1750.63,
+        "p95_ms": 3898.06,
+        "p99_ms": 3904.64,
+        "mean_ms": 2184.24,
+        "min_ms": 939.09,
+        "max_ms": 3906.29,
+        "samples": 10
+      },
+      "guardrail_check": {
+        "p50_ms": 5.69,
+        "p95_ms": 18.04,
+        "p99_ms": 18.2,
+        "mean_ms": 7.39,
+        "min_ms": 1.17,
+        "max_ms": 18.24,
+        "samples": 10
+      },
+      "outbound_delivery": {
+        "p50_ms": 342.13,
+        "p95_ms": 393.28,
+        "p99_ms": 397.11,
+        "mean_ms": 281.9,
+        "min_ms": 108.14,
+        "max_ms": 398.06,
+        "samples": 10
+      }
+    },
+    "traces": [
+      {
+        "trace_id": "trace-0000",
+        "msg_type": "text",
+        "total_ms": 1457.5,
+        "stages": [
+          {
+            "stage": "webhook_landing",
+            "duration_ms": 20.57
+          },
+          {
+            "stage": "guardrail_check",
+            "duration_ms": 5.64
+          },
+          {
+            "stage": "llm_orchestration",
+            "duration_ms": 1323.14
+          },
+          {
+            "stage": "outbound_delivery",
+            "duration_ms": 108.14
+          }
+        ]
+      },
+      {
+        "trace_id": "trace-0002",
+        "msg_type": "text",
+        "total_ms": 2310.87,
+        "stages": [
+          {
+            "stage": "webhook_landing",
+            "duration_ms": 7.72
+          },
+          {
+            "stage": "guardrail_check",
+            "duration_ms": 18.24
+          },
+          {
+            "stage": "llm_orchestration",
+            "duration_ms": 2047.9
+          },
+          {
+            "stage": "outbound_delivery",
+            "duration_ms": 237.01
+          }
+        ]
+      },
+      {
+        "trace_id": "trace-0003",
+        "msg_type": "text",
+        "total_ms": 2854.9,
+        "stages": [
+          {
+            "stage": "webhook_landing",
+            "duration_ms": 19.88
+          },
+          {
+            "stage": "guardrail_check",
+            "duration_ms": 5.84
+          },
+          {
+            "stage": "llm_orchestration",
+            "duration_ms": 2692.9
+          },
+          {
+            "stage": "outbound_delivery",
+            "duration_ms": 136.28
+          }
+        ]
+      },
+      {
+        "trace_id": "trace-0006",
+        "msg_type": "text",
+        "total_ms": 1503.06,
+        "stages": [
+          {
+            "stage": "webhook_landing",
+            "duration_ms": 9.29
+          },
+          {
+            "stage": "guardrail_check",
+            "duration_ms": 2.33
+          },
+          {
+            "stage": "llm_orchestration",
+            "duration_ms": 1104.01
+          },
+          {
+            "stage": "outbound_delivery",
+            "duration_ms": 387.44
+          }
+        ]
+      },
+      {
+        "trace_id": "trace-0001",
+        "msg_type": "text",
+        "total_ms": 4270.91,
+        "stages": [
+          {
+            "stage": "webhook_landing",
+            "duration_ms": 21.44
+          },
+          {
+            "stage": "guardrail_check",
+            "duration_ms": 4.69
+          },
+          {
+            "stage": "llm_orchestration",
+            "duration_ms": 3906.29
+          },
+          {
+            "stage": "outbound_delivery",
+            "duration_ms": 338.49
+          }
+        ]
+      },
+      {
+        "trace_id": "trace-0004",
+        "msg_type": "text",
+        "total_ms": 4311.58,
+        "stages": [
+          {
+            "stage": "webhook_landing",
+            "duration_ms": 19.77
+          },
+          {
+            "stage": "guardrail_check",
+            "duration_ms": 5.73
+          },
+          {
+            "stage": "llm_orchestration",
+            "duration_ms": 3888.0
+          },
+          {
+            "stage": "outbound_delivery",
+            "duration_ms": 398.06
+          }
+        ]
+      },
+      {
+        "trace_id": "trace-audio-0005",
+        "msg_type": "audio",
+        "total_ms": 3887.27,
+        "stages": [
+          {
+            "stage": "webhook_landing",
+            "duration_ms": 17.33
+          },
+          {
+            "stage": "audio_transcription",
+            "duration_ms": 2252.37
+          },
+          {
+            "stage": "guardrail_check",
+            "duration_ms": 17.79
+          },
+          {
+            "stage": "llm_orchestration",
+            "duration_ms": 1453.35
+          },
+          {
+            "stage": "outbound_delivery",
+            "duration_ms": 146.42
+          }
+        ]
+      },
+      {
+        "trace_id": "trace-0009",
+        "msg_type": "text",
+        "total_ms": 1306.91,
+        "stages": [
+          {
+            "stage": "webhook_landing",
+            "duration_ms": 20.83
+          },
+          {
+            "stage": "guardrail_check",
+            "duration_ms": 1.21
+          },
+          {
+            "stage": "llm_orchestration",
+            "duration_ms": 939.09
+          },
+          {
+            "stage": "outbound_delivery",
+            "duration_ms": 345.78
+          }
+        ]
+      },
+      {
+        "trace_id": "trace-audio-0007",
+        "msg_type": "audio",
+        "total_ms": 3767.42,
+        "stages": [
+          {
+            "stage": "webhook_landing",
+            "duration_ms": 21.85
+          },
+          {
+            "stage": "audio_transcription",
+            "duration_ms": 2348.74
+          },
+          {
+            "stage": "guardrail_check",
+            "duration_ms": 11.2
+          },
+          {
+            "stage": "llm_orchestration",
+            "duration_ms": 1031.68
+          },
+          {
+            "stage": "outbound_delivery",
+            "duration_ms": 353.95
+          }
+        ]
+      },
+      {
+        "trace_id": "trace-0008",
+        "msg_type": "text",
+        "total_ms": 3834.06,
+        "stages": [
+          {
+            "stage": "webhook_landing",
+            "duration_ms": 9.38
+          },
+          {
+            "stage": "guardrail_check",
+            "duration_ms": 1.17
+          },
+          {
+            "stage": "llm_orchestration",
+            "duration_ms": 3456.07
+          },
+          {
+            "stage": "outbound_delivery",
+            "duration_ms": 367.44
+          }
+        ]
+      }
+    ]
+  }
+}

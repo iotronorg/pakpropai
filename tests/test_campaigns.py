@@ -155,7 +155,7 @@ class CampaignActionsTests(TestCase):
         r = self.client.post(f'/api/v1/campaigns/{self.campaign.id}/cancel/')
         self.assertEqual(r.status_code, 400)
 
-    @patch('apps.campaigns.tasks.send_campaign_messages')
+    @patch('apps.campaigns.tasks.dispatch_campaign_to_recipients')
     def test_send_now_queues_task(self, mock_task):
         mock_task.delay = MagicMock()
         r = self.client.post(f'/api/v1/campaigns/{self.campaign.id}/send/')
@@ -170,7 +170,7 @@ class CampaignActionsTests(TestCase):
         r = self.client.post(f'/api/v1/campaigns/{self.campaign.id}/send/')
         self.assertEqual(r.status_code, 400)
 
-    @patch('apps.campaigns.tasks.send_campaign_messages')
+    @patch('apps.campaigns.tasks.dispatch_campaign_to_recipients')
     def test_send_already_sending_campaign_fails(self, mock_task):
         """Second send while campaign is SENDING must return 400 (not double-dispatch)."""
         mock_task.delay = MagicMock()
@@ -194,7 +194,7 @@ class CampaignSendRaceTest(TransactionTestCase):
             message_template='Hello',
         )
 
-    @patch('apps.campaigns.tasks.send_campaign_messages')
+    @patch('apps.campaigns.tasks.dispatch_campaign_to_recipients')
     def test_concurrent_send_dispatches_task_exactly_once(self, mock_task):
         mock_task.delay = MagicMock()
         results = []
@@ -221,7 +221,7 @@ class CampaignSendRaceTest(TransactionTestCase):
 
 @override_settings(CACHES=_LOCMEM, CELERY_TASK_ALWAYS_EAGER=True)
 class CampaignDispatchTaskTests(TestCase):
-    """send_campaign_messages task fans out WA messages correctly."""
+    """dispatch_campaign_to_recipients task fans out messages via CampaignOrchestrator."""
 
     def setUp(self):
         self.dev_user, self.org = make_developer()
@@ -232,7 +232,6 @@ class CampaignDispatchTaskTests(TestCase):
             message_template='Test broadcast',
             status=Campaign.Status.SENDING,
         )
-        # Create a lead with a phone attached to this org
         self.lead_user = make_user(phone='+923001111111', role='client')
         from apps.leads.models import Lead
         Lead.objects.create(
@@ -241,67 +240,73 @@ class CampaignDispatchTaskTests(TestCase):
             status='warm',
         )
 
-    @patch('apps.campaigns.tasks.get_wa_client')
-    def test_sends_to_all_leads(self, mock_factory):
-        mock_client = MagicMock()
-        mock_factory.return_value = mock_client
+    def _mock_dispatch_one_sent(self, recipient, wa_client, limiter):
+        from apps.campaigns.models import CampaignRecipient
+        from django.utils import timezone as tz
+        recipient.delivery_status = CampaignRecipient.DeliveryStatus.SENT
+        recipient.sent_at = tz.now()
+        recipient.save(update_fields=['delivery_status', 'sent_at'])
 
-        from apps.campaigns.tasks import send_campaign_messages
-        result = send_campaign_messages(str(self.campaign.id))
+    def _mock_dispatch_one_failed(self, recipient, wa_client, limiter):
+        from apps.campaigns.models import CampaignRecipient
+        recipient.delivery_status = CampaignRecipient.DeliveryStatus.FAILED
+        recipient.error_message = 'WA error'
+        recipient.save(update_fields=['delivery_status', 'error_message'])
 
-        mock_factory.assert_called_once_with(org=self.org)
-        mock_client.send_text.assert_called_once_with(
-            self.lead_user.phone,
-            'Test broadcast',
-            skip_window_check=True,
-        )
-        self.assertEqual(result['sent'], 1)
-        self.assertEqual(result['failed'], 0)
+    @patch('apps.campaigns.campaign_manager.CampaignOrchestrator.dispatch_one')
+    @patch('apps.whatsapp.client.get_wa_client')
+    def test_sends_to_all_leads(self, mock_factory, mock_dispatch):
+        mock_factory.return_value = MagicMock()
+        mock_dispatch.side_effect = self._mock_dispatch_one_sent
+
+        from apps.campaigns.tasks import dispatch_campaign_to_recipients
+        dispatch_campaign_to_recipients(str(self.campaign.id))
 
         self.campaign.refresh_from_db()
         self.assertEqual(self.campaign.status, Campaign.Status.SENT)
         self.assertEqual(self.campaign.sent_count, 1)
+        self.assertEqual(self.campaign.failed_count, 0)
 
-    @patch('apps.campaigns.tasks.get_wa_client')
-    def test_failed_sends_tracked(self, mock_factory):
-        mock_client = MagicMock()
-        mock_client.send_text.side_effect = Exception('WA error')
-        mock_factory.return_value = mock_client
+    @patch('apps.campaigns.campaign_manager.CampaignOrchestrator.dispatch_one')
+    @patch('apps.whatsapp.client.get_wa_client')
+    def test_failed_sends_tracked(self, mock_factory, mock_dispatch):
+        mock_factory.return_value = MagicMock()
+        mock_dispatch.side_effect = self._mock_dispatch_one_failed
 
-        from apps.campaigns.tasks import send_campaign_messages
-        result = send_campaign_messages(str(self.campaign.id))
+        from apps.campaigns.tasks import dispatch_campaign_to_recipients
+        dispatch_campaign_to_recipients(str(self.campaign.id))
 
-        self.assertEqual(result['failed'], 1)
         self.campaign.refresh_from_db()
         self.assertEqual(self.campaign.status, Campaign.Status.FAILED)
+        self.assertEqual(self.campaign.failed_count, 1)
 
-    @patch('apps.campaigns.tasks.get_wa_client')
+    @patch('apps.whatsapp.client.get_wa_client')
     def test_skips_non_sending_campaign(self, mock_factory):
         self.campaign.status = Campaign.Status.DRAFT
         self.campaign.save()
 
-        from apps.campaigns.tasks import send_campaign_messages
-        result = send_campaign_messages(str(self.campaign.id))
+        from apps.campaigns.tasks import dispatch_campaign_to_recipients
+        result = dispatch_campaign_to_recipients(str(self.campaign.id))
 
         mock_factory.assert_not_called()
         self.assertIsNone(result)
 
-    @patch('apps.campaigns.tasks.get_wa_client')
-    def test_zero_recipients_marked_failed(self, mock_factory):
-        """Campaign with no matching leads must be marked FAILED, not SENT (A9-LOGIC-1)."""
+    @patch('apps.campaigns.campaign_manager.CampaignOrchestrator.dispatch_one')
+    @patch('apps.whatsapp.client.get_wa_client')
+    def test_zero_recipients_marked_failed(self, mock_factory, mock_dispatch):
+        """Campaign with no matching leads must be marked FAILED (A9-LOGIC-1)."""
         from apps.leads.models import Lead
         Lead.objects.filter(organization=self.org).delete()
 
-        from apps.campaigns.tasks import send_campaign_messages
-        result = send_campaign_messages(str(self.campaign.id))
+        from apps.campaigns.tasks import dispatch_campaign_to_recipients
+        dispatch_campaign_to_recipients(str(self.campaign.id))
 
-        self.assertEqual(result['sent'], 0)
-        self.assertEqual(result['failed'], 0)
         self.campaign.refresh_from_db()
+        self.assertEqual(self.campaign.sent_count, 0)
         self.assertEqual(self.campaign.status, Campaign.Status.FAILED)
-        mock_factory.assert_called_once()  # WA client still initialised
+        mock_dispatch.assert_not_called()
 
-    @patch('apps.campaigns.tasks.send_campaign_messages')
+    @patch('apps.campaigns.tasks.dispatch_campaign_to_recipients')
     def test_dispatch_scheduled_fires_due_campaigns(self, mock_send):
         mock_send.delay = MagicMock()
         self.campaign.status = Campaign.Status.SCHEDULED

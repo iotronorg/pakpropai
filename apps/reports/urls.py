@@ -5,23 +5,29 @@ from .views import (
     ReportGenerateView, ReportStatusView, ReportDownloadView, MyReportsView,
     MonthlyReportListView,
 )
+from .bi_views import FunnelAnalyticsView, WaTokenUsageView, AgentSpeedLeaderboardView
 
 urlpatterns = [
     # Analytics dashboards
-    path('leads/',      LeadReportView.as_view(),          name='report-leads'),
-    path('agents/',     AgentReportView.as_view(),         name='report-agents'),
-    path('properties/', PropertyReportView.as_view(),      name='report-properties'),
-    path('deals/',      DealReportView.as_view(),          name='report-deals'),
-    path('revenue/',    RevenueReportView.as_view(),       name='report-revenue'),
-    path('bot/',        BotReportView.as_view(),           name='report-bot'),
-    path('my-stats/',   AgentPersonalReportView.as_view(), name='report-my-stats'),
+    path('leads/',       LeadReportView.as_view(),             name='report-leads'),
+    path('agents/',      AgentReportView.as_view(),            name='report-agents'),
+    path('properties/',  PropertyReportView.as_view(),         name='report-properties'),
+    path('deals/',       DealReportView.as_view(),             name='report-deals'),
+    path('revenue/',     RevenueReportView.as_view(),          name='report-revenue'),
+    path('bot/',         BotReportView.as_view(),              name='report-bot'),
+    path('my-stats/',    AgentPersonalReportView.as_view(),    name='report-my-stats'),
+
+    # BI analytics
+    path('funnel/',      FunnelAnalyticsView.as_view(),        name='report-funnel'),
+    path('wa-tokens/',   WaTokenUsageView.as_view(),           name='report-wa-tokens'),
+    path('leaderboard/', AgentSpeedLeaderboardView.as_view(),  name='report-leaderboard'),
 
     # Monthly org reports
-    path('monthly/',    MonthlyReportListView.as_view(),   name='report-monthly'),
+    path('monthly/',    MonthlyReportListView.as_view(),       name='report-monthly'),
 
     # User-facing report generation
-    path('generate/',                 ReportGenerateView.as_view(),  name='report-generate'),
-    path('mine/',                     MyReportsView.as_view(),       name='report-mine'),
-    path('<uuid:report_id>/',         ReportStatusView.as_view(),    name='report-status'),
-    path('<uuid:report_id>/download/', ReportDownloadView.as_view(), name='report-download'),
+    path('generate/',                  ReportGenerateView.as_view(),  name='report-generate'),
+    path('mine/',                      MyReportsView.as_view(),       name='report-mine'),
+    path('<uuid:report_id>/',          ReportStatusView.as_view(),    name='report-status'),
+    path('<uuid:report_id>/download/', ReportDownloadView.as_view(),  name='report-download'),
 ]

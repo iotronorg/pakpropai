@@ -270,6 +270,10 @@ CELERY_BEAT_SCHEDULE = {
         'task':     'apps.leads.tasks.auto_assign_unassigned_leads',
         'schedule': 900,  # every 15 minutes
     },
+    'run-reengagement-worker': {
+        'task':     'apps.campaigns.tasks.run_reengagement_worker',
+        'schedule': crontab(minute=0, hour='*/6'),
+    },
 }
 
 CACHES = {

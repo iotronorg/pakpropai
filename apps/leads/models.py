@@ -75,6 +75,16 @@ class Lead(models.Model):
     intent_signals = models.JSONField(default=dict, blank=True)
     score_factors  = models.JSONField(default=dict, blank=True)
     city_interest  = models.CharField(max_length=100, blank=True)
+    last_known_lat = models.DecimalField(
+                         max_digits=9, decimal_places=6,
+                         null=True, blank=True,
+                         help_text='WGS-84 latitude from last dropped location pin',
+                     )
+    last_known_lon = models.DecimalField(
+                         max_digits=9, decimal_places=6,
+                         null=True, blank=True,
+                         help_text='WGS-84 longitude from last dropped location pin',
+                     )
 
     # ── Budget — stored with ISO 4217 currency code ─────────────────────────────
     budget_min      = models.BigIntegerField(null=True, blank=True)

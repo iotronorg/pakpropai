@@ -147,6 +147,16 @@ class Property(models.Model):
                         max_digits=12, decimal_places=4, null=True, blank=True,
                         help_text='Canonical area in square metres — auto-computed from area_marla + area_unit on save',
                     )
+    latitude      = models.DecimalField(
+                        max_digits=9, decimal_places=6,
+                        null=True, blank=True,
+                        help_text='WGS-84 latitude — enables haversine geo-search',
+                    )
+    longitude     = models.DecimalField(
+                        max_digits=9, decimal_places=6,
+                        null=True, blank=True,
+                        help_text='WGS-84 longitude — enables haversine geo-search',
+                    )
 
     # ── Price — currency stored alongside (ISO 4217) ───────────────────────────
     price         = models.BigIntegerField(

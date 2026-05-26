@@ -6,6 +6,7 @@ from .views import (
     OrgWhatsAppConfigView,
     OrgWhatsAppVerifyView,
     OrgWhatsAppTestMessageView,
+    WaProfileSyncView,
     TakeControlView,
     ReleaseControlView,
 )
@@ -18,6 +19,7 @@ urlpatterns = [
     path('config/',                  OrgWhatsAppConfigView.as_view(),       name='wa-config'),
     path('config/verify/',           OrgWhatsAppVerifyView.as_view(),       name='wa-config-verify'),
     path('config/test-message/',     OrgWhatsAppTestMessageView.as_view(),  name='wa-config-test-message'),
+    path('config/sync/',             WaProfileSyncView.as_view(),           name='wa-config-sync'),
     # Agent handover
     path('sessions/<uuid:session_id>/take-control/',    TakeControlView.as_view(),    name='wa-take-control'),
     path('sessions/<uuid:session_id>/release-control/', ReleaseControlView.as_view(), name='wa-release-control'),

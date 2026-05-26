@@ -3,6 +3,7 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet
 
 from apps.core.permissions import get_user_org
@@ -84,8 +85,8 @@ class CampaignViewSet(ModelViewSet):
             campaign.scheduled_at = None
             campaign.save(update_fields=['status', 'scheduled_at'])
 
-        from .tasks import send_campaign_messages
-        send_campaign_messages.delay(str(campaign.id))
+        from .tasks import dispatch_campaign_to_recipients
+        dispatch_campaign_to_recipients.delay(str(campaign.id))
 
         return Response({"detail": "Campaign queued for delivery.", "id": str(campaign.id)})
 
@@ -134,3 +135,44 @@ class CampaignViewSet(ModelViewSet):
         campaign.status = Campaign.Status.SCHEDULED
         campaign.save(update_fields=['scheduled_at', 'status'])
         return Response(CampaignSerializer(campaign).data)
+
+    @action(detail=True, methods=['get'], url_path='progress')
+    def progress(self, request, pk=None):
+        """GET /campaigns/{id}/progress/ — live send progress."""
+        org = get_user_org(request.user)
+        if not org:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+        if not Campaign.objects.filter(pk=pk, organization=org).exists():
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+        from .campaign_manager import CampaignOrchestrator
+        snap = CampaignOrchestrator().get_progress(pk)
+        return Response(snap)
+
+
+class CampaignTemplateListView(APIView):
+    """GET /campaigns/templates/ — list Meta-approved templates for this org."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        if user.role not in ('developer', 'admin'):
+            return Response({"detail": "Forbidden."}, status=status.HTTP_403_FORBIDDEN)
+
+        org = get_user_org(user)
+        if not org:
+            return Response([], status=status.HTTP_200_OK)
+
+        from .campaign_manager import MetaTemplateFetcher
+        fetcher   = MetaTemplateFetcher()
+        templates = fetcher.list_templates(org)
+        data = [
+            {
+                'name':         t.name,
+                'language':     t.language,
+                'category':     t.category,
+                'body_preview': t.body_preview,
+                'components':   t.components,
+            }
+            for t in templates
+        ]
+        return Response(data)

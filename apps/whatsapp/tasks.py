@@ -386,3 +386,62 @@ def _alert_admins(title: str, message: str):
                 logger.warning("_alert_admins: could not notify admin %s: %s", admin.pk, exc)
     except Exception as exc:
         logger.error("_alert_admins: %s", exc)
+
+
+# ── Meta Graph API profile sync ─────────────────────────────────────────────────
+
+@shared_task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=60,
+    ignore_result=True,
+)
+def push_wa_business_profile_to_meta(self, org_id: str):
+    """
+    Push OrgWhatsAppConfig directory fields to Meta's Business Profile API.
+    Retries up to 3 times with exponential backoff (60s, 300s, 900s).
+    """
+    from apps.whatsapp.models import OrgWhatsAppConfig
+    from django.utils import timezone as _tz
+
+    try:
+        cfg = OrgWhatsAppConfig.objects.get(organization_id=org_id)
+    except OrgWhatsAppConfig.DoesNotExist:
+        logger.warning("push_wa_business_profile_to_meta: no config for org %s", org_id)
+        return
+
+    if not cfg.access_token or not cfg.phone_number_id:
+        logger.warning(
+            "push_wa_business_profile_to_meta: org %s missing token or phone_number_id",
+            org_id,
+        )
+        return
+
+    url     = f"{WA_API_URL}/{cfg.phone_number_id}/whatsapp_business_profile"
+    headers = {
+        'Authorization': f'Bearer {cfg.access_token}',
+        'Content-Type':  'application/json',
+    }
+    vertical = cfg.category_tags[0] if cfg.category_tags else ''
+    payload  = {
+        'messaging_product': 'whatsapp',
+        'description':       cfg.localized_greeting[:256] if cfg.localized_greeting else '',
+        'vertical':          vertical,
+    }
+
+    try:
+        resp = requests.post(url, json=payload, headers=headers, timeout=10)
+        resp.raise_for_status()
+        cfg.meta_profile_synced_at = _tz.now()
+        cfg.save(update_fields=['meta_profile_synced_at'])
+        logger.info("push_wa_business_profile_to_meta: success org=%s", org_id)
+    except requests.HTTPError as exc:
+        countdown = 60 * (5 ** self.request.retries)
+        logger.warning(
+            "push_wa_business_profile_to_meta: HTTP %s for org %s — retry %d/%d in %ds",
+            exc.response.status_code, org_id, self.request.retries, self.max_retries, countdown,
+        )
+        raise self.retry(exc=exc, countdown=countdown)
+    except Exception as exc:
+        logger.error("push_wa_business_profile_to_meta: unexpected error org=%s: %s", org_id, exc)
+        raise self.retry(exc=exc, countdown=60 * (5 ** self.request.retries))

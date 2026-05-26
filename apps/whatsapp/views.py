@@ -360,6 +360,11 @@ class OrgWhatsAppConfigView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         config.refresh_from_db()
+
+        if config.access_token and config.phone_number_id:
+            from .tasks import push_wa_business_profile_to_meta
+            push_wa_business_profile_to_meta.delay(str(org.pk))
+
         return Response(OrgWhatsAppConfigSerializer(config).data)
 
 
@@ -427,6 +432,39 @@ class OrgWhatsAppTestMessageView(APIView):
             return Response({'ok': True})
         except Exception as exc:
             return Response({'ok': False, 'detail': str(exc)}, status=502)
+
+
+class WaProfileSyncView(APIView):
+    """
+    POST /whatsapp/config/sync/
+    Enqueues the Celery task that pushes business profile fields to Meta.
+    Developer or admin only.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        org, err = _get_org_for_wa(request)
+        if err:
+            return err
+
+        try:
+            cfg = OrgWhatsAppConfig.objects.get(organization=org)
+        except OrgWhatsAppConfig.DoesNotExist:
+            return Response({'detail': 'WhatsApp config not found.'}, status=404)
+
+        if not cfg.access_token or not cfg.phone_number_id:
+            return Response(
+                {'detail': 'access_token and phone_number_id must be configured before syncing.'},
+                status=400,
+            )
+
+        from .tasks import push_wa_business_profile_to_meta
+        push_wa_business_profile_to_meta.delay(str(org.pk))
+
+        return Response({
+            'status':    'queued',
+            'synced_at': cfg.meta_profile_synced_at,
+        })
 
 
 class TakeControlView(APIView):

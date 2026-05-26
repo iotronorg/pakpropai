@@ -121,11 +121,22 @@ class MessageRouter:
 
         # Every WhatsApp client interaction auto-registers the user as a lead.
         # This is a fire-and-forget upsert — never blocks message processing.
+        lead = None
         try:
             from apps.leads.utils import upsert_lead
+            from apps.leads.models import Lead
             upsert_lead(user, '', organization=org)
+            lead = Lead.objects.filter(user=user, organization=org).order_by('-created_at').first()
         except Exception:
             pass
+
+        # Detect Business Directory click-to-chat entry signals.
+        if lead:
+            try:
+                from .discovery_engine import DirectoryEntryHandler
+                DirectoryEntryHandler.handle(message_data, session_db, lead)
+            except Exception:
+                logger.warning("DirectoryEntryHandler failed for phone=%s", phone, exc_info=True)
 
         msg_type = message_data.get('type', 'text')
         whatsapp_messages_total.labels(message_type=msg_type, direction='inbound').inc()
@@ -196,6 +207,29 @@ class MessageRouter:
                 return
             text = caption or "I received a document."
             display_body = text
+
+        elif msg_type == 'location':
+            loc = message_data.get('location', {})
+            lat = loc.get('latitude')
+            lon = loc.get('longitude')
+            if lat is not None and lon is not None and org is not None and lead is not None:
+                try:
+                    from .discovery_engine import GeoContextResolver
+                    nearby = GeoContextResolver.resolve(float(lat), float(lon), org, lead, session_db)
+                    count  = nearby.count()
+                    city   = session_db.context.get('geo', {}).get('city') or 'your area'
+                    text   = (
+                        f"[System: User dropped a location pin at lat={lat}, lon={lon}. "
+                        f"Resolved city: {city}. {count} active properties match nearby. "
+                        f"Property IDs: {list(nearby.values_list('id', flat=True)[:5])}. "
+                        f"Present relevant nearby listings naturally.]"
+                    )
+                except Exception:
+                    logger.warning("GeoContextResolver failed for phone=%s", phone, exc_info=True)
+                    text = "[User dropped a location pin. Ask what area they are interested in.]"
+            else:
+                text = "[User dropped a location pin. Ask what area they are interested in.]"
+            display_body = '[location pin]'
 
         else:
             raw_text = message_data.get('text', {}).get('body', '').strip()
