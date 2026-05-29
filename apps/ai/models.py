@@ -3,6 +3,31 @@ from django.db import models
 from django.conf import settings
 
 
+class TokenUsageRecord(models.Model):
+    id         = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    org        = models.ForeignKey(
+                     'organizations.Organization',
+                     on_delete=models.CASCADE,
+                     related_name='token_usage_records',
+                 )
+    tokens_in  = models.PositiveIntegerField(default=0)
+    tokens_out = models.PositiveIntegerField(default=0)
+    model      = models.CharField(max_length=80, default='gemini-1.5-flash')
+    intent     = models.CharField(max_length=60, blank=True, null=True)
+    cache_hit  = models.BooleanField(default=False)
+    timestamp  = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = 'ai_token_usage_records'
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['org', 'timestamp']),
+        ]
+
+    def __str__(self):
+        return f"{self.org_id} — {self.model} in={self.tokens_in} out={self.tokens_out} cache={self.cache_hit}"
+
+
 class AIInteraction(models.Model):
     """
     Logs every Gemini call — for cost tracking, debugging, and cache analysis.

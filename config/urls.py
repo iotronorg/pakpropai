@@ -21,10 +21,12 @@ from django.conf import settings
 from django.conf.urls.static import static
 from apps.core.urls import api_urlpatterns as core_api_urlpatterns
 from apps.core.views import metrics_view
+from apps.organizations.theme_views import ThemeConfigView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('metrics/', metrics_view, name='prometheus-metrics'),
+    path('public/', include('apps.campaigns.public_urls')),
     path('', include('apps.core.urls')),
     path('api/v1/', include([
         path('config/',        include('apps.config.urls')),
@@ -42,8 +44,15 @@ urlpatterns = [
         path('notifications/', include('apps.notifications.urls')),
         path('campaigns/',    include('apps.campaigns.urls')),
         path('billing/',      include('apps.billing.urls')),
-        path('compliance/',   include('apps.compliance.urls')),
-        path('external/',     include('apps.organizations.external_urls')),
+        path('compliance/',    include('apps.compliance.urls')),
+        path('observability/', include('apps.observability.urls')),
+        path('ai/', include('apps.ai.urls')),
+        path('provisioning/', include('apps.whatsapp.provisioning_urls')),
+        path('security/',     include('apps.security.urls')),
+        path('inventory/',    include('apps.inventory.urls')),
+        path('sla/',          include('apps.resilience.urls')),
+        path('external/',      include('apps.organizations.external_urls')),
+        path('theme/',         ThemeConfigView.as_view(),  name='theme-config'),
         *core_api_urlpatterns,
     ])),
 ]

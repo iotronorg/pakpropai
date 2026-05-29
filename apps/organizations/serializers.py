@@ -2,7 +2,7 @@ import re
 
 from rest_framework import serializers
 
-from .models import Organization
+from .models import Organization, OrganizationTheme
 
 
 class OrganizationListSerializer(serializers.ModelSerializer):
@@ -118,3 +118,10 @@ class OrgRegistrationSerializer(serializers.Serializer):
 class OrgRegistrationOTPVerifySerializer(serializers.Serializer):
     phone = serializers.CharField(max_length=20)
     code  = serializers.CharField(max_length=10)
+
+
+class OrganizationThemeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = OrganizationTheme
+        fields = ('primary_color', 'secondary_color', 'accent_color', 'logo_url', 'updated_at')
+        read_only_fields = ('updated_at',)

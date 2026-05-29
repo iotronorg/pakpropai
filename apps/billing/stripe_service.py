@@ -170,10 +170,18 @@ class StripeService:
             sub.current_period_end = datetime.fromtimestamp(period_end, tz=timezone.utc)
         sub.save()
 
+        was_trial = org.plan == 'trial'
+
         # Sync plan onto the Organization itself
         org.plan = plan
         org.save(update_fields=['plan', 'updated_at'])
         logger.info('StripeService: org %s upgraded to %s (%s)', org_id, plan, status)
+
+        # Queue provisioning when moving out of trial
+        if was_trial and plan != 'trial' and org.operational_mode == 'sandbox':
+            from apps.whatsapp.tasks import provision_organization_live
+            provision_organization_live.delay(str(org.id))
+            logger.info('StripeService: queued provisioning for org %s', org_id)
 
     @classmethod
     def _downgrade_to_trial(cls, org_id: str, sub_id: str) -> None:

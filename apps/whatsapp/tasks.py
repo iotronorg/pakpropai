@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 # ── Primary webhook dispatcher ─────────────────────────────────────────────────
 
 @shared_task(ignore_result=True)
-def process_incoming_whatsapp_task(message: dict, phone_number_id: str = ''):
+def process_incoming_whatsapp_task(message: dict, phone_number_id: str = '', otel_context: str = ''):
     """
     Async Celery worker for a single inbound WhatsApp message.
 
@@ -22,6 +22,9 @@ def process_incoming_whatsapp_task(message: dict, phone_number_id: str = ''):
     Retries are intentionally disabled: the idempotency key is set in the view
     before dispatch, so a retry would silently drop the message.
     """
+    from apps.observability.celery_tracing import CeleryTaskTracer
+    from opentelemetry import context as otel_ctx_module
+
     msg_id   = message.get('id', '')
     phone    = message.get('from', '')
     msg_type = message.get('type', 'text')
@@ -39,6 +42,14 @@ def process_incoming_whatsapp_task(message: dict, phone_number_id: str = ''):
         org = Organization.objects.filter(wa_phone_number_id=phone_number_id).first()
     except Exception:
         org = None
+
+    org_id = str(org.id) if org else None
+    _otel_span, _otel_token = CeleryTaskTracer.instrument_task(
+        process_incoming_whatsapp_task.request.id or '',
+        'process_whatsapp',
+        org_id,
+        otel_context or None,
+    )
 
     # Show blue ticks immediately (non-critical).
     try:
@@ -115,6 +126,13 @@ def process_incoming_whatsapp_task(message: dict, phone_number_id: str = ''):
             "MessageRouter crashed for phone=%s msg_id=%s type=%s",
             phone, msg_id, msg_type,
         )
+    finally:
+        try:
+            _otel_span.end()
+            if _otel_token is not None:
+                otel_ctx_module.detach(_otel_token)
+        except Exception:
+            pass
 
 
 # ── Dedicated media workers ────────────────────────────────────────────────────
@@ -445,3 +463,101 @@ def push_wa_business_profile_to_meta(self, org_id: str):
     except Exception as exc:
         logger.error("push_wa_business_profile_to_meta: unexpected error org=%s: %s", org_id, exc)
         raise self.retry(exc=exc, countdown=60 * (5 ** self.request.retries))
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60, queue='high-resource')
+def provision_organization_live(self, org_id: str):
+    from apps.whatsapp.production_provisioner import ProductionProvisioningService
+    try:
+        service = ProductionProvisioningService()
+        service.run(org_id)
+    except Exception as exc:
+        logger.error("provision_organization_live: unexpected error org=%s: %s", org_id, exc)
+        raise self.retry(exc=exc)
+
+
+@shared_task(bind=True, max_retries=2, queue='default', name='whatsapp.process_copilot_recommendations')
+def process_copilot_recommendations(self, session_id: str):
+    """
+    Build AI co-pilot recommendations for the latest inbound message in a session.
+    Broadcasts results to the copilot_{org_id}_{session_id} channel group.
+    Must complete in < 120ms in tests (LLM is mocked).
+    """
+    import time
+    t0 = time.perf_counter()
+    try:
+        from apps.whatsapp.models import WhatsAppSession, WhatsAppMessage, CopilotRecommendation
+        from apps.whatsapp.copilot_stream import CopilotIntentExtractor, CopilotRecommendationEngine
+
+        session = WhatsAppSession.objects.select_related('organization').get(id=session_id)
+
+        if not session.copilot_active or session.conversation_mode != 'AGENT_MANAGED':
+            return
+
+        # Get latest inbound message text
+        latest = (
+            WhatsAppMessage.objects
+            .filter(session=session, direction='inbound')
+            .order_by('-created_at')
+            .values('body', 'msg_type')
+            .first()
+        )
+        if not latest:
+            return
+
+        message_text = latest.get('body') or f"[{latest.get('msg_type', 'unknown')}]"
+        msg_index = WhatsAppMessage.objects.filter(session=session).count()
+
+        # Extract intent
+        intent = CopilotIntentExtractor.extract(message_text)
+
+        # Build recommendations
+        org = session.organization
+        items = CopilotRecommendationEngine.build_recommendations(intent, session, org)
+
+        # Persist
+        recs = [
+            CopilotRecommendation(
+                session=session,
+                recommendation_type=item.type,
+                content=item.payload,
+                source_message_index=msg_index,
+            )
+            for item in items
+        ]
+        if recs:
+            CopilotRecommendation.objects.bulk_create(recs)
+
+        # Broadcast to copilot group
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+        channel_layer = get_channel_layer()
+        if channel_layer:
+            group_name = f'copilot_{org.id}_{session_id}'
+            serialized = [
+                {'type': r.recommendation_type, 'payload': r.content, 'id': str(r.id)}
+                for r in recs
+            ]
+            async_to_sync(channel_layer.group_send)(group_name, {
+                'type': 'copilot_update',
+                'recommendations': serialized,
+            })
+
+        elapsed = time.perf_counter() - t0
+        if elapsed > 0.120:
+            logger.warning('process_copilot_recommendations took %.0fms session=%s', elapsed * 1000, session_id)
+
+    except Exception as exc:
+        logger.error('process_copilot_recommendations failed session=%s: %s', session_id, exc, exc_info=True)
+        raise self.retry(exc=exc, countdown=10)
+
+
+@shared_task(name='whatsapp.prune_copilot_recommendations', queue='default')
+def prune_copilot_recommendations():
+    """Daily cleanup of copilot recommendations older than 24 hours."""
+    from django.utils import timezone
+    from datetime import timedelta
+    from apps.whatsapp.models import CopilotRecommendation
+    cutoff = timezone.now() - timedelta(hours=24)
+    deleted, _ = CopilotRecommendation.objects.filter(created_at__lt=cutoff).delete()
+    logger.info('prune_copilot_recommendations: deleted %d rows', deleted)

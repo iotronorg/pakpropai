@@ -111,8 +111,21 @@ class Organization(models.Model):
     city     = models.CharField(max_length=100, blank=True)
     address  = models.TextField(blank=True)
 
+    class OperationalMode(models.TextChoices):
+        SANDBOX     = 'sandbox',     'Sandbox'
+        PROVISIONING = 'provisioning', 'Provisioning'
+        PRODUCTION  = 'production',  'Production'
+        FAILED      = 'failed',      'Failed'
+
     # Plan
     plan = models.CharField(max_length=20, choices=Plan.choices, default=Plan.TRIAL)
+
+    operational_mode = models.CharField(
+        max_length=15,
+        choices=OperationalMode.choices,
+        default=OperationalMode.SANDBOX,
+        db_index=True,
+    )
 
     # Status
     is_active   = models.BooleanField(default=True)
@@ -155,6 +168,55 @@ class Organization(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.get_org_type_display()})"
+
+
+class OrgProvisioningRecord(models.Model):
+
+    class LastStep(models.TextChoices):
+        WABA      = 'waba',      'WABA Verification'
+        WEBHOOK   = 'webhook',   'Webhook Registration'
+        TEMPLATES = 'templates', 'Template Sync'
+        DATA      = 'data',      'Data Migration'
+        COMPLETE  = 'complete',  'Complete'
+
+    organization        = models.OneToOneField(
+                              Organization,
+                              on_delete=models.CASCADE,
+                              related_name='provisioning_record',
+                          )
+    operational_mode    = models.CharField(
+                              max_length=15,
+                              choices=Organization.OperationalMode.choices,
+                              default=Organization.OperationalMode.SANDBOX,
+                          )
+    waba_verified_at       = models.DateTimeField(null=True, blank=True)
+    webhook_verified_at    = models.DateTimeField(null=True, blank=True)
+    templates_approved_at  = models.DateTimeField(null=True, blank=True)
+    data_migrated_at       = models.DateTimeField(null=True, blank=True)
+    sandbox_leads_migrated      = models.IntegerField(default=0)
+    sandbox_sessions_migrated   = models.IntegerField(default=0)
+    sandbox_properties_migrated = models.IntegerField(default=0)
+    error_detail        = models.TextField(blank=True)
+    last_step           = models.CharField(
+                              max_length=15,
+                              choices=LastStep.choices,
+                              blank=True,
+                          )
+    updated_at          = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'org_provisioning_records'
+
+    @classmethod
+    def get_or_create_for_org(cls, org):
+        record, _ = cls.objects.get_or_create(
+            organization=org,
+            defaults={'operational_mode': org.operational_mode},
+        )
+        return record
+
+    def __str__(self):
+        return f"Provisioning({self.organization.name}, {self.operational_mode})"
 
 
 class OrganizationConfig(models.Model):
@@ -365,3 +427,35 @@ class DeveloperApiKey(models.Model):
 
     def __str__(self):
         return f"rtk_{self.key_prefix}_*** [{self.organization.name}] {self.name}"
+
+
+class OrganizationTheme(models.Model):
+    """Per-org white-label color palette and logo override."""
+
+    _HEX_RE = r'^#[0-9A-Fa-f]{6}$'
+
+    organization    = models.OneToOneField(
+                          Organization,
+                          on_delete=models.CASCADE,
+                          related_name='theme',
+                      )
+    primary_color   = models.CharField(
+                          max_length=7, default='#2563EB',
+                          validators=[RegexValidator(_HEX_RE, 'Enter a valid hex color, e.g. #2563EB')],
+                      )
+    secondary_color = models.CharField(
+                          max_length=7, default='#4F46E5',
+                          validators=[RegexValidator(_HEX_RE, 'Enter a valid hex color, e.g. #4F46E5')],
+                      )
+    accent_color    = models.CharField(
+                          max_length=7, default='#0891B2',
+                          validators=[RegexValidator(_HEX_RE, 'Enter a valid hex color, e.g. #0891B2')],
+                      )
+    logo_url        = models.URLField(blank=True)
+    updated_at      = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'org_themes'
+
+    def __str__(self):
+        return f"Theme for {self.organization.name}"

@@ -43,22 +43,24 @@ def get_wa_client(org=None) -> 'WhatsAppClient':
 
     Pass org=None (or an org with no active config) to use global creds.
     """
+    org_id = str(org.id) if org is not None else None
     if org is not None:
         from .models import OrgWhatsAppConfig
         try:
             cfg = org.whatsapp_config
             if cfg.is_active and cfg.access_token and cfg.phone_number_id:
-                return WhatsAppClient(cfg.access_token, cfg.phone_number_id)
+                return WhatsAppClient(cfg.access_token, cfg.phone_number_id, org_id=org_id)
         except OrgWhatsAppConfig.DoesNotExist:
             pass
-    return WhatsAppClient(_wa_token(), _wa_phone_id())
+    return WhatsAppClient(_wa_token(), _wa_phone_id(), org_id=org_id)
 
 
 class WhatsAppClient:
 
-    def __init__(self, access_token: str, phone_number_id: str):
+    def __init__(self, access_token: str, phone_number_id: str, org_id: str | None = None):
         self._access_token    = access_token
         self._phone_number_id = phone_number_id
+        self._org_id          = org_id or 'global'
 
     def _headers(self) -> dict:
         return {
@@ -88,13 +90,20 @@ class WhatsAppClient:
             'type':              'text',
             'text':              {'preview_url': False, 'body': body[:4096]},
         }
-        try:
+        from apps.resilience.resilience_engine import meta_cloud_api_circuit
+        from apps.resilience.fallbacks import MetaLocalBuffer
+        _org_id, _phone, _body = self._org_id, phone, body
+
+        def _do_post():
             r = requests.post(self._phone_url(), headers=self._headers(), json=payload, timeout=10)
             r.raise_for_status()
             return r.json()
-        except requests.exceptions.RequestException as exc:
-            logger.error(f"WA send failed to {phone}: {exc} — body={getattr(exc.response, 'text', '')}")
-            raise
+
+        def _buffer():
+            MetaLocalBuffer.buffer_message(_org_id, _phone, _body)
+            return {}
+
+        return meta_cloud_api_circuit.call(_do_post, fallback_fn=_buffer)
 
     def send_otp(self, phone: str, code: str) -> dict:
         """
@@ -206,6 +215,17 @@ class WhatsAppClient:
                 'caption':  caption[:1024],
             },
         }
-        r = requests.post(self._phone_url(), headers=self._headers(), json=payload, timeout=10)
-        r.raise_for_status()
-        return r.json()
+        from apps.resilience.resilience_engine import meta_cloud_api_circuit
+        from apps.resilience.fallbacks import MetaLocalBuffer
+        _org_id, _phone = self._org_id, phone
+
+        def _do_post():
+            r = requests.post(self._phone_url(), headers=self._headers(), json=payload, timeout=10)
+            r.raise_for_status()
+            return r.json()
+
+        def _buffer():
+            MetaLocalBuffer.buffer_message(_org_id, _phone, f'[DOC] {filename}: {caption}')
+            return {}
+
+        return meta_cloud_api_circuit.call(_do_post, fallback_fn=_buffer)

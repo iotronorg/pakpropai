@@ -1,11 +1,43 @@
 """
-Async Celery tasks for the AI app — security alerting and admin notifications.
+Async Celery tasks for the AI app — security alerting, admin notifications,
+and fire-and-forget token usage recording.
 """
 import logging
 
 from celery import shared_task
 
 logger = logging.getLogger(__name__)
+
+
+@shared_task(
+    ignore_result=True,
+    max_retries=3,
+    default_retry_delay=10,
+    queue='default',
+)
+def record_token_usage(
+    org_id: str,
+    tokens_in: int,
+    tokens_out: int,
+    model: str = 'llm',
+    intent: str | None = None,
+    cache_hit: bool = False,
+) -> None:
+    """Fire-and-forget: write TokenUsageRecord without blocking the WA response path."""
+    try:
+        from apps.ai.models import TokenUsageRecord
+        from apps.organizations.models import Organization
+        org = Organization.objects.get(id=org_id)
+        TokenUsageRecord.objects.create(
+            org=org,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            model=model,
+            intent=intent,
+            cache_hit=cache_hit,
+        )
+    except Exception as exc:
+        logger.error('record_token_usage failed org=%s: %s', org_id, exc)
 
 
 @shared_task(ignore_result=True, max_retries=2, default_retry_delay=10)

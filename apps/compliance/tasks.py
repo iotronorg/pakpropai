@@ -6,6 +6,48 @@ from django.utils import timezone
 logger = logging.getLogger(__name__)
 
 
+@shared_task(
+    bind=True,
+    autoretry_for=(Exception,),
+    max_retries=3,
+    default_retry_delay=60,
+    queue='default',
+)
+def execute_rtbf_erasure(self, request_id: str):
+    """Execute Right-to-Be-Forgotten cascade for a DataDeletionRequest. Idempotent."""
+    from apps.compliance.models import DataDeletionRequest
+    from apps.compliance.erasure import RTBFOrchestrator
+
+    try:
+        req = DataDeletionRequest.objects.get(id=request_id)
+    except DataDeletionRequest.DoesNotExist:
+        logger.error("execute_rtbf_erasure: request %s not found", request_id)
+        return
+
+    if req.status == DataDeletionRequest.Status.COMPLETED:
+        return
+
+    try:
+        RTBFOrchestrator().execute(req)
+    except Exception as exc:
+        logger.error("execute_rtbf_erasure failed request_id=%s: %s", request_id, exc)
+        if self.request.retries >= self.max_retries:
+            req.status = DataDeletionRequest.Status.FAILED
+            req.save(update_fields=['status'])
+            try:
+                from apps.notifications.models import Notification
+                org = getattr(req.user, 'owned_organization', None)
+                if org and hasattr(org, 'admin_user') and org.admin_user:
+                    Notification.objects.create(
+                        user=org.admin_user,
+                        severity='CRITICAL',
+                        message=f'RTBF erasure failed permanently for request {request_id}: {exc}',
+                    )
+            except Exception:
+                logger.error("execute_rtbf_erasure: failed to send admin notification", exc_info=True)
+        raise
+
+
 @shared_task
 def generate_data_export(request_id: str):
     """Serialize all PII for the user and upload to Cloudinary. Sets status=ready."""

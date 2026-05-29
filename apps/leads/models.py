@@ -7,10 +7,11 @@ from django.conf import settings
 class Lead(models.Model):
 
     class Source(models.TextChoices):
-        WHATSAPP = 'whatsapp', 'WhatsApp'
-        REFERRAL = 'referral', 'Referral'
-        WEB      = 'web',      'Web Portal'
-        MANUAL   = 'manual',   'Manual Entry'
+        WHATSAPP       = 'whatsapp',       'WhatsApp'
+        REFERRAL       = 'referral',       'Referral'
+        REFERRAL_VIRAL = 'referral_viral', 'Viral Referral'
+        WEB            = 'web',            'Web Portal'
+        MANUAL         = 'manual',         'Manual Entry'
 
     class Intent(models.TextChoices):
         BUY    = 'buy',    'Buying'
@@ -95,12 +96,15 @@ class Lead(models.Model):
                       )
 
     source              = models.CharField(max_length=20, choices=Source.choices, default=Source.WHATSAPP)
+    referral_code       = models.CharField(max_length=40, blank=True, default='',
+                              help_text='Viral referral link code that originated this lead')
     status              = models.CharField(max_length=20, choices=Status.choices, default=Status.NEW)
     notes               = models.TextField(blank=True)
     last_contacted_at   = models.DateTimeField(null=True, blank=True)
     follow_up_sent_at   = models.DateTimeField(null=True, blank=True)
     last_scored_at      = models.DateTimeField(auto_now=True)
     created_at          = models.DateTimeField(auto_now_add=True)
+    is_sandbox          = models.BooleanField(default=True, db_index=True)
 
     class Meta:
         db_table = 'leads'

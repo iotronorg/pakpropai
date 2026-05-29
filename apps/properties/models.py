@@ -187,6 +187,7 @@ class Property(models.Model):
     raw_docs      = models.JSONField(default=dict, blank=True)
     ai_analysis   = models.JSONField(default=dict, blank=True)
     is_active     = models.BooleanField(default=True)
+    is_sandbox    = models.BooleanField(default=True, db_index=True)
     created_at    = models.DateTimeField(auto_now_add=True)
     updated_at    = models.DateTimeField(auto_now=True)
 

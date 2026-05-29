@@ -141,11 +141,25 @@ class MessageRouter:
         msg_type = message_data.get('type', 'text')
         whatsapp_messages_total.labels(message_type=msg_type, direction='inbound').inc()
 
+        # ── BLOCKED (AML): return canned reply, no AI, no agent ──────────────
+        if session_db.conversation_mode == WhatsAppSession.ConversationMode.BLOCKED:
+            cls._send_and_log(
+                phone,
+                "Your account access has been suspended pending compliance review. "
+                "Please contact support for assistance.",
+                session_db,
+                org=org,
+            )
+            return
+
         # ── AGENT_MANAGED: broadcast to agent room, skip LLM entirely ─────────
         if session_db.conversation_mode == WhatsAppSession.ConversationMode.AGENT_MANAGED:
             _raw_body = message_data.get('text', {}).get('body', '') or f'[{msg_type}]'
             cls._broadcast_to_agent_room(message_data, session_db, org, msg_type)
             cls._log_inbound(message_data, session_db, _raw_body, msg_type)
+            if getattr(session_db, 'copilot_active', False):
+                from apps.whatsapp.tasks import process_copilot_recommendations
+                process_copilot_recommendations.delay(session_id=str(session_db.id))
             return
 
         # ── Resolve message text ───────────────────────────────────────────
@@ -439,7 +453,13 @@ class MessageRouter:
             audio_bytes = get_wa_client(org).download_media(media_id)
             logger.debug(f"[AUDIO] downloaded {len(audio_bytes)} bytes, mime={mime_type}")
             from apps.ai.agent import get_agent
-            transcript = get_agent().transcribe_audio(audio_bytes, mime_type)
+            from apps.resilience.resilience_engine import whisper_stt_circuit
+            from apps.resilience.fallbacks import WhisperLocalFallback
+            transcript = whisper_stt_circuit.call(
+                get_agent().transcribe_audio,
+                audio_bytes, mime_type,
+                fallback_fn=WhisperLocalFallback.transcribe,
+            )
             if transcript:
                 logger.debug(f"[AUDIO] transcribed: {transcript[:80]!r}")
             else:

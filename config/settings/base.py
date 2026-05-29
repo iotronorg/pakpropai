@@ -52,6 +52,11 @@ LOCAL_APPS = [
     'apps.campaigns',
     'apps.billing',
     'apps.compliance',
+    'apps.observability',
+    'apps.security',
+    'apps.inventory',
+    'apps.resilience',
+    'apps.ml',
 ]
 
 INSTALLED_APPS = ['daphne'] + DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -62,6 +67,9 @@ MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'apps.core.middleware.TenantDomainMiddleware',   # must be before auth — resolves tenant context
+    'apps.security.middleware.ApiSecurityMiddleware',
+    'apps.compliance.middleware.PIIMaskingMiddleware',
+    'apps.observability.middleware.OtelDjangoMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -152,9 +160,11 @@ REST_FRAMEWORK = {
     ),
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
+    'EXCEPTION_HANDLER': 'apps.security.exception_handler.security_exception_handler',
     'DEFAULT_THROTTLE_CLASSES': (
         'rest_framework.throttling.AnonRateThrottle',
         'rest_framework.throttling.UserRateThrottle',
+        'apps.security.throttles.BlockedIPThrottle',
     ),
     'DEFAULT_THROTTLE_RATES': {
         'anon':            '30/min',
@@ -169,6 +179,8 @@ REST_FRAMEWORK = {
         'bulk_operation':  '10/min',
         'score_property':    '15/min',
         'whatsapp_webhook':  '300/min',  # 300 msgs/min per phone_number_id (~5/sec burst cap)
+        'public_verify':     '50/min',   # viral referral click-tracking
+        'public_convert':    '20/min',   # viral referral lead creation
     },
 }
 
@@ -273,6 +285,19 @@ CELERY_BEAT_SCHEDULE = {
     'run-reengagement-worker': {
         'task':     'apps.campaigns.tasks.run_reengagement_worker',
         'schedule': crontab(minute=0, hour='*/6'),
+    },
+    'sync-all-inventory-connections': {
+        'task':     'apps.inventory.tasks.sync_all_active_connections',
+        'schedule': 900,  # every 15 minutes
+    },
+    'monitor-tenant-queues': {
+        'task':     'resilience.monitor_tenant_queues',
+        'schedule': 30,   # every 30 seconds
+        'options':  {'queue': 'default'},
+    },
+    'prune-copilot-recommendations': {
+        'task':     'whatsapp.prune_copilot_recommendations',
+        'schedule': 86400,  # daily
     },
 }
 
@@ -435,3 +460,22 @@ LOGGING = {
         'apps':           {'handlers': ['console'], 'level': 'INFO',    'propagate': False},
     },
 }
+
+# OpenTelemetry
+OTEL_SERVICE_NAME = env('OTEL_SERVICE_NAME', default='realtron-ai')
+OTEL_EXPORTER_OTLP_ENDPOINT = env('OTEL_EXPORTER_OTLP_ENDPOINT', default='http://localhost:4317')
+OTEL_EXPORTER_TYPE = env('OTEL_EXPORTER_TYPE', default='tempo')
+ENVIRONMENT = env('ENVIRONMENT', default='development')
+
+# PII masking — paths that bypass PIIMaskingMiddleware
+# Rules:
+#   - auth / registration: need raw phone to create/verify users
+#   - compliance: writes its own anonymised data
+#   - whatsapp/webhook: HMAC-signed by Meta — body must not be modified
+PRIVACY_MASK_EXEMPT_PATHS = [
+    '/api/v1/compliance/',
+    '/api/v1/auth/',
+    '/api/v1/organizations/register/',
+    '/api/v1/whatsapp/webhook/',
+    '/public/',  # viral referral endpoints — user voluntarily submits phone for WA deep-link
+]

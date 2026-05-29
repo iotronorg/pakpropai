@@ -12,6 +12,7 @@ class WhatsAppSession(models.Model):
     class ConversationMode(models.TextChoices):
         AI_MANAGED    = 'AI_MANAGED',    'AI Managed'
         AGENT_MANAGED = 'AGENT_MANAGED', 'Agent Managed'
+        BLOCKED       = 'BLOCKED',       'Blocked (AML)'
 
     id           = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     phone        = models.CharField(max_length=20, db_index=True)
@@ -40,6 +41,8 @@ class WhatsAppSession(models.Model):
         default=ConversationMode.AI_MANAGED,
         db_index=True,
     )
+    is_sandbox    = models.BooleanField(default=True, db_index=True)
+    copilot_active = models.BooleanField(default=False)
 
     class Meta:
         db_table = 'whatsapp_sessions'
@@ -145,6 +148,34 @@ class OrgWhatsAppConfig(models.Model):
 
     def __str__(self):
         return f"WA Config: {self.organization.name} ({self.display_phone or self.phone_number_id or 'unconfigured'})"
+
+
+class CopilotRecommendation(models.Model):
+    """Ephemeral AI recommendations surfaced to agents during live sessions."""
+
+    class RecommendationType(models.TextChoices):
+        INVENTORY_CARD = 'inventory_card', 'Inventory Card'
+        DOC_LINK       = 'doc_link',       'Document Link'
+        TAX_SHEET      = 'tax_sheet',      'Tax Sheet'
+        AI_RESPONSE    = 'ai_response',    'AI Response'
+
+    id                   = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    session              = models.ForeignKey(
+                               WhatsAppSession,
+                               on_delete=models.CASCADE,
+                               related_name='copilot_recommendations',
+                           )
+    recommendation_type  = models.CharField(max_length=20, choices=RecommendationType.choices)
+    content              = models.JSONField()
+    source_message_index = models.IntegerField(default=0)
+    created_at           = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'copilot_recommendations'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Copilot[{self.recommendation_type}] session={self.session_id}"
 
 
 class NeighbourhoodZone(models.Model):

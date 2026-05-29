@@ -139,3 +139,85 @@ class AgentRoomConsumer(AsyncWebsocketConsumer):
             )
         except Exception:
             logger.exception("AgentRoomConsumer._send_whatsapp failed")
+
+
+class AgentCopilotConsumer(AsyncWebsocketConsumer):
+    """
+    Read-only AI co-pilot WebSocket for a single AGENT_MANAGED session.
+
+    URL:   ws/agent/copilot/session/<session_id>/
+    Group: copilot_{org_id}_{session_id}
+
+    On connect:  set session.copilot_active = True
+    On disconnect: set session.copilot_active = False
+    On copilot_update event: broadcast recommendations JSON to the connected agent
+    """
+
+    async def connect(self):
+        user = self.scope.get("user")
+        if not user or not getattr(user, "is_authenticated", False):
+            await self.close(code=4003)
+            return
+
+        session_id = self.scope["url_route"]["kwargs"]["session_id"]
+        session = await self._get_session(session_id)
+
+        if session is None:
+            await self.close(code=4003)
+            return
+
+        # Verify conversation mode
+        if session.conversation_mode != "AGENT_MANAGED":
+            await self.close(code=4003)
+            return
+
+        # Verify user belongs to the session's org (or is platform admin)
+        allowed = await self._is_allowed(user, session)
+        if not allowed:
+            await self.close(code=4003)
+            return
+
+        self.session_id = str(session.id)
+        self.org_id     = str(session.organization_id)
+        self.group_name = f"copilot_{self.org_id}_{self.session_id}"
+
+        await self.channel_layer.group_add(self.group_name, self.channel_name)
+        await self._set_copilot_active(session_id, True)
+        await self.accept()
+
+    async def disconnect(self, close_code):
+        if hasattr(self, "group_name"):
+            await self.channel_layer.group_discard(self.group_name, self.channel_name)
+        if hasattr(self, "session_id"):
+            await self._set_copilot_active(self.session_id, False)
+
+    # ── Group event handler ───────────────────────────────────────────────────
+
+    async def copilot_update(self, event):
+        await self.send(text_data=json.dumps(event))
+
+    # ── Helpers ───────────────────────────────────────────────────────────────
+
+    @sync_to_async
+    def _get_session(self, session_id):
+        from apps.whatsapp.models import WhatsAppSession
+        try:
+            return WhatsAppSession.objects.select_related("organization").get(id=session_id)
+        except WhatsAppSession.DoesNotExist:
+            return None
+
+    @sync_to_async
+    def _is_allowed(self, user, session):
+        if user.role == "admin":
+            return True
+        from apps.organizations.models import OrganizationMembership
+        return OrganizationMembership.objects.filter(
+            user=user,
+            organization=session.organization,
+            is_active=True,
+        ).exists()
+
+    @sync_to_async
+    def _set_copilot_active(self, session_id, value: bool):
+        from apps.whatsapp.models import WhatsAppSession
+        WhatsAppSession.objects.filter(id=session_id).update(copilot_active=value)

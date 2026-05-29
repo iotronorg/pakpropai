@@ -585,6 +585,26 @@ class AIServiceManager:
             logger.info("Guardrail blocked: %s", guard.reason)
             return guard.fallback_reply
 
+        org_id = str(organization.id) if organization else None
+
+        # ── 1b. Token budget check ─────────────────────────────────────────────
+        if organization and org_id:
+            throttle_reply = self._check_token_throttle(organization, org_id)
+            if throttle_reply:
+                return throttle_reply
+
+        # ── 1c. Semantic cache lookup ──────────────────────────────────────────
+        if org_id:
+            from apps.ai.token_governor import SemanticResponseCache
+            cached = SemanticResponseCache.lookup(message, org_id)
+            if cached:
+                from apps.ai.tasks import record_token_usage
+                record_token_usage.delay(
+                    org_id=org_id, tokens_in=0, tokens_out=0,
+                    model='cache', intent=None, cache_hit=True,
+                )
+                return cached
+
         # ── 2. Intent pre-classification (deterministic, no LLM) ──────────────
         agent   = self._get_agent()
         history = agent._load_history(phone, org=organization)
@@ -617,16 +637,16 @@ class AIServiceManager:
         if intent.normalised_query and intent.intent == 'property_search':
             enriched_message = f"{intent.normalised_query}\n{message}"
 
-        from apps.core.circuit_breaker import ai_circuit
+        from apps.resilience.resilience_engine import llm_provider_circuit
         _CANNED_FALLBACK = "I'm having a bit of trouble right now — please try again in a moment."
 
         try:
-            reply = ai_circuit.call(
+            reply = llm_provider_circuit.call(
                 agent.chat,
                 phone, enriched_message, user,
                 organization=organization,
                 extra_context=extra_context,
-                fallback=_CANNED_FALLBACK,
+                fallback_fn=lambda: _CANNED_FALLBACK,
             )
         except Exception as exc:
             logger.error("agent.chat failed phone=%s: %s", phone, exc, exc_info=True)
@@ -637,6 +657,18 @@ class AIServiceManager:
             logger.warning("LLM output failed guard — using fallback phone=%s", phone)
             reply = GuardrailEngine.fallback_error_reply(intent.language)
 
+        # ── 6. Store in semantic cache + record token usage ────────────────────
+        if org_id:
+            from apps.ai.token_governor import SemanticResponseCache
+            SemanticResponseCache.store(message, org_id, reply)
+            from apps.ai.tasks import record_token_usage
+            record_token_usage.delay(
+                org_id=org_id, tokens_in=0, tokens_out=0,
+                model='llm', intent=intent.intent, cache_hit=False,
+            )
+            from apps.ai.token_governor import SlidingWindowTokenBudget
+            SlidingWindowTokenBudget.record_tokens(org_id, 0, 0)
+
         elapsed = time.time() - start
         ai_requests_total.labels(intent=intent.intent, route='llm').inc()
         ai_request_duration_seconds.labels(route='llm').observe(elapsed)
@@ -644,6 +676,32 @@ class AIServiceManager:
                               int(elapsed * 1000), direct=False)
         self._record_wa_token(organization)
         return reply
+
+    @staticmethod
+    def _check_token_throttle(organization, org_id: str) -> Optional[str]:
+        """Return fallback message string if org is throttled/hard_limited, else None."""
+        try:
+            from apps.ai.token_governor import BillingAlertService, SlidingWindowTokenBudget
+            if BillingAlertService.is_throttled(org_id):
+                from apps.config.services import SystemConfigService
+                return SystemConfigService.get(
+                    'ai_throttle_fallback_message',
+                    default="We're experiencing high demand. An agent will follow up shortly.",
+                )
+            status = SlidingWindowTokenBudget.check_budget(org_id, organization)
+            if status.state in ('throttled', 'hard_limit'):
+                BillingAlertService.trigger_budget_alert(organization, status)
+                BillingAlertService.trigger_throttle_state(organization)
+                from apps.config.services import SystemConfigService
+                return SystemConfigService.get(
+                    'ai_throttle_fallback_message',
+                    default="We're experiencing high demand. An agent will follow up shortly.",
+                )
+            if status.state == 'warning':
+                BillingAlertService.trigger_budget_alert(organization, status)
+        except Exception:
+            logger.warning('_check_token_throttle failed', exc_info=True)
+        return None
 
     # ── Direct routing (no LLM) ────────────────────────────────────────────────
 
@@ -665,7 +723,14 @@ class AIServiceManager:
         _SUPPORTED_TAX_COUNTRIES = {'PK', 'AE', 'GB', 'US'}
 
         if intent.intent == 'scam_check' and intent.scam_input:
-            return self._direct_scam_check(intent.scam_input, intent.language)
+            reply = self._direct_scam_check(intent.scam_input, intent.language)
+            if reply and organization:
+                try:
+                    from apps.campaigns.viral_hooks import VirtualHookInjector
+                    reply = VirtualHookInjector.inject_footer(reply, organization)
+                except Exception:
+                    pass
+            return reply
 
         if intent.intent == 'tax_advice' and intent.tax_input:
             if org_country in _SUPPORTED_TAX_COUNTRIES:

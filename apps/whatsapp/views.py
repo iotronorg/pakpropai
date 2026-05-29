@@ -13,6 +13,7 @@ from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
 from apps.core.throttles import WhatsAppWebhookThrottle
 from apps.core.permissions import IsAgentOrAdmin, get_user_org
+from apps.observability.decorators import trace_whatsapp_webhook, _trace_context
 import requests as _http_requests
 from .models import OrgWhatsAppConfig, WhatsAppSession, WhatsAppMessage
 from .serializers import OrgWhatsAppConfigSerializer
@@ -51,6 +52,7 @@ class WhatsAppWebhookView(APIView):
         return HttpResponse(status=403)
 
     # --- POST: Meta delivers messages here ----------------------------
+    @trace_whatsapp_webhook
     def post(self, request):
         # Phase 1: Parse payload to extract phone_number_id (stateless — no DB writes).
         # Must happen before signature check so we can look up the org's secret.
@@ -150,7 +152,8 @@ class WhatsAppWebhookView(APIView):
             return
 
         from .tasks import process_incoming_whatsapp_task
-        process_incoming_whatsapp_task.delay(message, phone_number_id)
+        otel_ctx = getattr(_trace_context, "current", "")
+        process_incoming_whatsapp_task.delay(message, phone_number_id, otel_context=otel_ctx)
 
 
 # ── Notifications / WhatsApp history (admin/agent/developer) ─────────────────

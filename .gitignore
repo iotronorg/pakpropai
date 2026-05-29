@@ -36,3 +36,7 @@ mediafiles/
 # OS
 .DS_Store
 Thumbs.db
+
+# ML datasets (contain conversation data even after scrubbing — never commit)
+datasets/
+docs/ml/eval-reports/

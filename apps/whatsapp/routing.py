@@ -6,4 +6,8 @@ websocket_urlpatterns = [
         r"^ws/agent/org/(?P<org_id>[0-9a-f-]+)/$",
         consumers.AgentRoomConsumer.as_asgi(),
     ),
+    re_path(
+        r"^ws/agent/copilot/session/(?P<session_id>[0-9a-f-]+)/$",
+        consumers.AgentCopilotConsumer.as_asgi(),
+    ),
 ]

@@ -105,6 +105,16 @@ def get_financing_calculator(country: str):
     return None
 
 
+def get_tax_calculator(country: str):
+    """Return a PakistanFBRCalculator for PK; BaseTaxCalculator(supported=False) for others."""
+    from apps.markets.pk.tax import PakistanFBRCalculator, BaseTaxCalculator
+    if country.upper() == 'PK':
+        return PakistanFBRCalculator()
+    calc = BaseTaxCalculator()
+    calc.country = country.upper()
+    return calc
+
+
 def get_city_map(country: str | None = None) -> dict[str, str]:
     """Return lowercased-key → display-name city lookup.
 

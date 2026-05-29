@@ -38,14 +38,58 @@ class DirectoryEntryHandler:
         if source_id:
             signals['discovery_source_id'] = source_id
 
+        # Extract viral referral code from CTWA source_url or referral body
+        ref_code = cls._extract_ref(referral, source_url)
+        if ref_code:
+            signals['ref_code'] = ref_code
+
         lead.intent_signals = signals
         lead.score          = lead.score + _DIRECTORY_SCORE_WEIGHT
-        lead.save(update_fields=['intent_signals', 'score'])
+        save_fields         = ['intent_signals', 'score']
+
+        if ref_code:
+            try:
+                from apps.campaigns.models import ReferralLink
+                from apps.leads.models import Lead as LeadModel
+                rl = ReferralLink.objects.filter(code=ref_code).first()
+                if rl:
+                    ReferralLink.objects.filter(pk=rl.pk).update(clicks=rl.clicks + 1)
+                    lead.referral_code = ref_code
+                    lead.source        = LeadModel.Source.REFERRAL_VIRAL
+                    save_fields        += ['referral_code', 'source']
+            except Exception:
+                logger.warning('DirectoryEntryHandler: referral stamp failed', exc_info=True)
+
+        lead.save(update_fields=save_fields)
 
         logger.info(
-            "DirectoryEntry: source_type=%s ctwa_clid=%s lead=%s",
-            source_type, ctwa_clid, lead.pk,
+            "DirectoryEntry: source_type=%s ctwa_clid=%s ref=%s lead=%s",
+            source_type, ctwa_clid, ref_code, lead.pk,
         )
+
+    @staticmethod
+    def _extract_ref(referral: dict, source_url: str) -> str | None:
+        """Extract ?ref=<code> from source_url or referral body."""
+        from urllib.parse import urlparse, parse_qs
+        if source_url:
+            try:
+                params = parse_qs(urlparse(source_url).query)
+                codes  = params.get('ref', [])
+                if codes:
+                    return codes[0][:40]
+            except Exception:
+                pass
+        # Fallback: check referral dict body field
+        body = referral.get('body', '')
+        if 'ref=' in body:
+            try:
+                params = parse_qs('?' + body.split('?', 1)[-1])
+                codes  = params.get('ref', [])
+                if codes:
+                    return codes[0][:40]
+            except Exception:
+                pass
+        return None
 
 
 _NOMINATIM_URL    = 'https://nominatim.openstreetmap.org/reverse'

@@ -109,6 +109,15 @@ def send_audit_via_whatsapp_task(self, audit_id: int, phone: str, org_id: str) -
             phone, media_id, filename, org, caption='Your property audit report is ready.'
         )
 
+        # Companion text with viral footer
+        try:
+            from apps.campaigns.viral_hooks import VirtualHookInjector
+            from apps.whatsapp.client import get_wa_client
+            companion = VirtualHookInjector.inject_footer('📊 Your full property audit is attached.', org)
+            get_wa_client(org).send_text(phone, companion, skip_window_check=True)
+        except Exception as _footer_exc:
+            logger.warning('send_audit_via_whatsapp_task: footer send failed: %s', _footer_exc)
+
         audit.delivery_status = 'sent'
         audit.save(update_fields=['delivery_status'])
 

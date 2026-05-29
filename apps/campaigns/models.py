@@ -117,3 +117,27 @@ class CampaignRecipient(models.Model):
 
     def __str__(self):
         return f"{self.campaign.name} → {self.phone} [{self.delivery_status}]"
+
+
+class ReferralLink(models.Model):
+    """Viral referral link — org-level or lead-level sharer tracking."""
+    id          = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    org         = models.ForeignKey(
+                      'organizations.Organization', on_delete=models.CASCADE,
+                      related_name='referral_links')
+    lead        = models.ForeignKey(
+                      'leads.Lead', on_delete=models.SET_NULL,
+                      null=True, blank=True, related_name='referral_links',
+                      help_text='The lead who shared the link (null = org-level link)')
+    code        = models.CharField(max_length=40, unique=True, db_index=True,
+                      help_text='UUID4-based unguessable slug')
+    clicks      = models.PositiveIntegerField(default=0)
+    conversions = models.PositiveIntegerField(default=0)
+    created_at  = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table        = 'campaign_referral_links'
+        unique_together = [['org', 'lead']]  # one stable link per org+lead pair
+
+    def __str__(self):
+        return f"Ref({self.code}) org={self.org_id} clicks={self.clicks}"

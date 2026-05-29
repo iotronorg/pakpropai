@@ -138,6 +138,26 @@ class DealLockInitiateView(APIView):
         deal_locks_total.labels(status='initiated').inc()
         _notify_seller_lock_initiated(deal, seller_token)
         _check_high_risk_deal(prop, deal)
+
+        # AML screening — synchronous before response
+        try:
+            from apps.compliance.compliance_service import ComplianceService
+            screening = ComplianceService.screen_deal_lock(deal, request.user)
+            if screening.status == 'blocked':
+                # deal was cancelled inside _handle_blocked
+                from apps.compliance.models import SanctionScreeningResult
+                sr = SanctionScreeningResult.objects.filter(deal_lock=deal).order_by('-screened_at').first()
+                screening_id = str(sr.screening_id) if sr else None
+                return Response(
+                    {
+                        'detail': 'Transaction blocked — compliance review required.',
+                        'screening_id': screening_id,
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+        except Exception as _exc:
+            logger.warning('DealLockInitiateView: AML screening fail-open: %s', _exc)
+
         payment_message = _get_payment_instructions(gateway, amount, deal.currency, org=org)
 
         return Response({
