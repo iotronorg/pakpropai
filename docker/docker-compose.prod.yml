@@ -48,6 +48,37 @@ services:
         condition: service_healthy
     restart: on-failure
 
+  # ── Regional cluster migrations (GLOBAL-7) ─────────────────────────────────
+  # Only runs when EU_DATABASE_URL / UK_DATABASE_URL are set in .env.
+  # If the env var is blank, Django never registers the alias and the command
+  # exits 0 immediately (Django skips unknown databases).
+  # These run AFTER the default migrate completes.
+  migrate-eu:
+    image: realtron-web:${IMAGE_TAG:-latest}
+    command: >
+      sh -c "[ -z \"$$EU_DATABASE_URL\" ] && echo 'EU_DATABASE_URL not set — skipping' ||
+             python manage.py migrate --database eu_cluster --noinput"
+    env_file: ../.env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.prod
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: on-failure
+
+  migrate-uk:
+    image: realtron-web:${IMAGE_TAG:-latest}
+    command: >
+      sh -c "[ -z \"$$UK_DATABASE_URL\" ] && echo 'UK_DATABASE_URL not set — skipping' ||
+             python manage.py migrate --database uk_cluster --noinput"
+    env_file: ../.env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.prod
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: on-failure
+
   # ── Django web (gunicorn) ──────────────────────────────────────────────────
   web:
     build:
@@ -71,6 +102,10 @@ services:
       redis:
         condition: service_healthy
       migrate:
+        condition: service_completed_successfully
+      migrate-eu:
+        condition: service_completed_successfully
+      migrate-uk:
         condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/')"]

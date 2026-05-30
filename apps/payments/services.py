@@ -1,8 +1,9 @@
 """
-Payment gateway clients for PakProp AI.
+Payment gateway clients for RealTron AI.
 
 Safepay  — primary gateway (Pakistan-native, card + JazzCash + EasyPaisa)
 bSecure  — secondary gateway (wider wallet support)
+Stripe   — global gateway (AE, GB, US and all other Stripe-enabled markets)
 
 System NEVER holds funds: payments go directly to merchant account at gateway.
 """
@@ -253,6 +254,166 @@ class bSecureGateway:
         }
 
 
+# ─── Stripe ───────────────────────────────────────────────────────────────────
+
+# ISO 4217 currencies with no subunit (amount sent as-is to Stripe)
+_ZERO_DECIMAL_CURRENCIES = {'BIF', 'CLP', 'GNF', 'JPY', 'KMF', 'KRW', 'MGA', 'PYG', 'RWF', 'UGX', 'VND', 'VUV', 'XAF', 'XOF', 'XPF'}
+
+
+def _to_stripe_amount(amount: int, currency: str) -> int:
+    """Convert a human-scale amount (e.g. 500 AED) to Stripe minor units (50000 fils)."""
+    if currency.upper() in _ZERO_DECIMAL_CURRENCIES:
+        return amount
+    return amount * 100
+
+
+class StripePaymentGateway:
+    """
+    Stripe Checkout Sessions — global card payments for deal locks.
+    Covers AE (AED), GB (GBP), US (USD), and all other Stripe-enabled markets.
+    Amounts passed in via token_amount are human-scale (e.g. 500 AED);
+    this class converts to Stripe minor units internally.
+    """
+
+    @classmethod
+    def create_checkout(
+        cls,
+        order_id: str,
+        amount: int,
+        redirect_url: str,
+        cancel_url: str,
+        customer_phone: str = '',
+        description: str = 'Deal Lock Token',
+        currency: str = 'usd',
+        **kwargs,
+    ) -> dict:
+        """
+        Create a Stripe Checkout Session.
+        Returns: {'checkout_token': session_id, 'checkout_url': session_url}
+        """
+        import stripe
+        stripe.api_key = getattr(settings, 'STRIPE_SECRET_KEY', '')
+        if not stripe.api_key:
+            raise ValueError("STRIPE_SECRET_KEY must be set.")
+
+        stripe_amount = _to_stripe_amount(amount, currency)
+
+        from apps.core.circuit_breaker import stripe_circuit
+
+        def _create():
+            return stripe.checkout.Session.create(
+                payment_method_types=['card'],
+                mode='payment',
+                client_reference_id=str(order_id),
+                success_url=redirect_url,
+                cancel_url=cancel_url,
+                line_items=[{
+                    'price_data': {
+                        'currency': currency.lower(),
+                        'product_data': {'name': description},
+                        'unit_amount': stripe_amount,
+                    },
+                    'quantity': 1,
+                }],
+                payment_intent_data={
+                    'metadata': {'order_id': str(order_id)},
+                },
+            )
+
+        session = stripe_circuit.call(_create, fallback=None)
+        if session is None:
+            return {'status': 'gateway_unavailable', 'checkout_url': None}
+
+        return {'checkout_token': session.id, 'checkout_url': session.url}
+
+    @classmethod
+    def verify_webhook(cls, payload_bytes: bytes, signature: str) -> bool:
+        """Verify Stripe webhook signature via stripe.Webhook.construct_event."""
+        import stripe
+        stripe.api_key = getattr(settings, 'STRIPE_SECRET_KEY', '')
+        secret = getattr(settings, 'STRIPE_DEAL_LOCK_WEBHOOK_SECRET', '')
+        if not secret:
+            logger.error("STRIPE_DEAL_LOCK_WEBHOOK_SECRET not set — rejecting webhook")
+            return False
+        try:
+            stripe.Webhook.construct_event(payload_bytes, signature, secret)
+            return True
+        except stripe.error.SignatureVerificationError:
+            return False
+        except Exception as exc:
+            logger.error("Stripe webhook verification error: %s", exc)
+            return False
+
+    @classmethod
+    def create_sepa_payment(
+        cls,
+        order_id:     str,
+        amount:       int,
+        currency:     str,
+        iban:         str,
+        account_name: str,
+    ) -> dict:
+        """
+        Create a Stripe SEPA Direct Debit PaymentIntent for EU deal locks.
+        Currency must be 'eur'. Returns {payment_intent_id, client_secret, status}.
+        Deal transitions INITIATED → LOCKED via payment_intent.succeeded webhook.
+        """
+        import stripe
+        stripe.api_key = getattr(settings, 'STRIPE_SECRET_KEY', '')
+        if not stripe.api_key:
+            raise ValueError('STRIPE_SECRET_KEY must be set')
+
+        pm = stripe.PaymentMethod.create(
+            type         = 'sepa_debit',
+            sepa_debit   = {'iban': iban},
+            billing_details = {'name': account_name},
+        )
+
+        pi = stripe.PaymentIntent.create(
+            amount               = _to_stripe_amount(amount, currency),
+            currency             = currency.lower(),
+            payment_method_types = ['sepa_debit'],
+            payment_method       = pm.id,
+            confirm              = True,
+            mandate_data         = {'customer_acceptance': {'type': 'offline'}},
+            metadata             = {'order_id': str(order_id)},
+        )
+
+        return {
+            'payment_intent_id': pi.id,
+            'client_secret':     pi.client_secret,
+            'status':            pi.status,
+        }
+
+    @classmethod
+    def parse_webhook(cls, payload: dict) -> Optional[dict]:
+        """
+        Extract payment result from a Stripe webhook event dict.
+        Handles checkout.session.completed and payment_intent.succeeded.
+        Returns: {order_id, status ('paid'|'failed'), tracker, amount}
+        """
+        event_type = payload.get('type', '')
+        obj = payload.get('data', {}).get('object', {})
+
+        if event_type == 'checkout.session.completed':
+            return {
+                'order_id': obj.get('client_reference_id', ''),
+                'tracker':  obj.get('payment_intent', ''),
+                'status':   'paid' if obj.get('payment_status') == 'paid' else 'failed',
+                'amount':   obj.get('amount_total', 0),
+            }
+
+        if event_type == 'payment_intent.succeeded':
+            return {
+                'order_id': obj.get('metadata', {}).get('order_id', ''),
+                'tracker':  obj.get('id', ''),
+                'status':   'paid',
+                'amount':   obj.get('amount', 0),
+            }
+
+        return {'order_id': '', 'tracker': '', 'status': 'failed', 'amount': 0}
+
+
 # ─── Gateway factory ──────────────────────────────────────────────────────────
 
 class PaymentService:
@@ -261,6 +422,7 @@ class PaymentService:
     GATEWAYS = {
         'safepay':  SafepayGateway,
         'bsecure':  bSecureGateway,
+        'stripe':   StripePaymentGateway,
     }
 
     @classmethod

@@ -1,8 +1,13 @@
+import json
+import logging
+
 from django.db.models import Count, Q
 from django.utils import timezone
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
 from datetime import timedelta
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -11,6 +16,8 @@ from .serializers import VerificationSerializer, DocumentScanSerializer
 from .services import FraudCheckService, VerificationSignalService
 from .tasks import notify_verification_status_change
 from apps.core.throttles import FraudCheckThrottle, BulkOperationThrottle
+
+logger = logging.getLogger(__name__)
 
 
 class IsAdmin(IsAuthenticated):
@@ -588,3 +595,179 @@ class TrustCertificateView(APIView):
             'signal_score':     verification.signal_score,
         })
 
+
+# ── ID Verification (Jumio / Onfido / Stripe Identity) ───────────────────────
+
+class IDVerificationSessionView(APIView):
+    """
+    POST /verification/id-verify/
+    Create a hosted ID-verification session for the current user's org market.
+    Returns session_url to redirect the user to the provider's hosted page.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from apps.markets.registry import get_verification_provider
+        from apps.core.permissions import get_user_org
+
+        org_country = 'PK'
+        try:
+            org = get_user_org(request.user)
+            if org:
+                org_country = (getattr(org, 'country', 'PK') or 'PK').upper()
+        except Exception:
+            pass
+
+        provider = get_verification_provider(org_country)
+
+        if not provider.supported:
+            return Response(
+                {
+                    'supported': False,
+                    'detail': (
+                        f'ID verification is not available for your market ({org_country}). '
+                        'Use the WhatsApp document flow instead.'
+                    ),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not provider.is_configured():
+            logger.warning('IDVerificationSessionView: %s not configured for country=%s', provider.name, org_country)
+            return Response(
+                {'supported': False, 'detail': 'Verification provider credentials are not configured. Contact support.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        doc_type     = request.data.get('doc_type', 'passport')
+        redirect_url = request.data.get('redirect_url', '')
+
+        try:
+            session = provider.create_session(
+                user_id      = str(request.user.id),
+                doc_type     = doc_type,
+                redirect_url = redirect_url,
+            )
+        except Exception as exc:
+            logger.error('IDVerificationSessionView: %s session creation failed: %s', provider.name, exc)
+            return Response(
+                {'detail': 'Verification service error. Please try again.'},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        # Record the session so the webhook can look it up later
+        DocumentScan.objects.create(
+            user              = request.user,
+            document_type     = DocumentScan.DocType.PASSPORT if 'passport' in doc_type.lower() else DocumentScan.DocType.OTHER,
+            registration_number = session.session_id,
+            status            = DocumentScan.Status.UNREADABLE,
+            extracted_fields  = {'provider': provider.name, 'session_id': session.session_id},
+        )
+
+        return Response({
+            'supported':   True,
+            'provider':    session.provider,
+            'session_id':  session.session_id,
+            'session_url': session.session_url,
+        }, status=status.HTTP_201_CREATED)
+
+
+def _apply_verification_result(session_id: str, result) -> bool:
+    """Find DocumentScan by session_id and update its status. Returns True if found."""
+    scan = DocumentScan.objects.filter(registration_number=session_id).first()
+    if not scan:
+        return False
+    scan.status = DocumentScan.Status.CLEAN if result.status == 'approved' else DocumentScan.Status.SUSPICIOUS
+    scan.extracted_fields = {**scan.extracted_fields, **result.extracted_fields, 'verification_status': result.status}
+    scan.red_flags        = result.red_flags
+    scan.confidence       = 'HIGH' if result.confidence >= 0.8 else ('MEDIUM' if result.confidence >= 0.5 else 'LOW')
+    scan.save(update_fields=['status', 'extracted_fields', 'red_flags', 'confidence'])
+    return True
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class JumioWebhookView(APIView):
+    """POST /verification/webhook/jumio/ — Jumio callback when verification completes."""
+    permission_classes  = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        try:
+            payload = json.loads(request.body)
+        except json.JSONDecodeError:
+            return Response({'detail': 'Bad JSON'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from .providers.jumio_provider import JumioVerificationProvider
+        provider    = JumioVerificationProvider()
+        session_id, result = provider.parse_webhook(payload)
+
+        if not session_id:
+            return Response({'received': True})
+
+        found = _apply_verification_result(session_id, result)
+        logger.info('JumioWebhookView: session=%s status=%s found=%s', session_id, result.status, found)
+        return Response({'received': True, 'activated': found})
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class OnfidoWebhookView(APIView):
+    """POST /verification/webhook/onfido/ — Onfido check.completed callback."""
+    permission_classes  = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        raw = request.body
+        sig = request.headers.get('X-SHA2-Signature', '')
+
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            return Response({'detail': 'Bad JSON'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from .providers.onfido_provider import OnfidoVerificationProvider
+        provider = OnfidoVerificationProvider()
+
+        if not provider.verify_webhook_signature(raw, sig):
+            logger.warning('OnfidoWebhookView: invalid signature')
+            return Response({'detail': 'Invalid signature.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        session_id, result = provider.parse_webhook(payload)
+        found = _apply_verification_result(session_id, result) if session_id else False
+        logger.info('OnfidoWebhookView: session=%s status=%s found=%s', session_id, result.status, found)
+        return Response({'received': True, 'activated': found})
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class StripeIdentityWebhookView(APIView):
+    """POST /verification/webhook/stripe-identity/ — Stripe Identity verification webhook."""
+    permission_classes  = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        import stripe
+        from django.conf import settings
+
+        raw = request.body
+        sig = request.headers.get('Stripe-Signature', '')
+
+        try:
+            stripe.api_key = getattr(settings, 'STRIPE_SECRET_KEY', '')
+            secret = getattr(settings, 'STRIPE_IDENTITY_WEBHOOK_SECRET', '')
+            event  = stripe.Webhook.construct_event(raw, sig, secret)
+        except stripe.error.SignatureVerificationError:
+            logger.warning('StripeIdentityWebhookView: invalid signature')
+            return Response({'detail': 'Invalid signature.'}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as exc:
+            logger.error('StripeIdentityWebhookView: parse error: %s', exc)
+            return Response({'detail': 'Bad request.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if event['type'] not in ('identity.verification_session.verified',
+                                  'identity.verification_session.requires_input'):
+            return Response({'received': True})
+
+        from .providers.stripe_identity_provider import StripeIdentityProvider
+        provider = StripeIdentityProvider()
+        session_id, result = provider.parse_webhook(dict(event))
+        found = _apply_verification_result(session_id, result) if session_id else False
+        logger.info('StripeIdentityWebhookView: session=%s status=%s found=%s', session_id, result.status, found)
+        return Response({'received': True, 'activated': found})

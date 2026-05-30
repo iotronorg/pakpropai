@@ -88,6 +88,15 @@ def generate_data_export(request_id: str):
         raise
 
 
+@shared_task(bind=True, autoretry_for=(Exception,), max_retries=3, default_retry_delay=300)
+def sync_aml_sanction_lists(self):
+    """Weekly Celery beat task: sync OFAC, UN, and EU sanction lists."""
+    from django.core.management import call_command
+    logger.info('sync_aml_sanction_lists: starting')
+    call_command('sync_sanctions', lists='ofac,un,eu')
+    logger.info('sync_aml_sanction_lists: complete')
+
+
 @shared_task
 def execute_data_deletion(request_id: str):
     """Anonymize all PII for the user. Sets status=completed."""

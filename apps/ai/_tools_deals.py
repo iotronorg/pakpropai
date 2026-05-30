@@ -92,15 +92,15 @@ def initiate_deal_lock(
 
     # ── Valid payment methods — PK markets add JazzCash / EasyPaisa ───────────
     _pk_only_methods    = {'jazzcash', 'easypaisa'}
-    _universal_methods  = {'bank', 'manual', 'safepay', 'bsecure'}
+    _universal_methods  = {'bank', 'manual', 'safepay', 'bsecure', 'stripe'}
     valid_methods = (_pk_only_methods | _universal_methods) if is_pk else _universal_methods
 
     # Auto-select default when caller omits payment_method
     if not payment_method:
-        payment_method = 'jazzcash' if is_pk else 'manual'
+        payment_method = 'jazzcash' if is_pk else 'stripe'
 
     if payment_method not in valid_methods:
-        payment_method = 'jazzcash' if is_pk else 'manual'
+        payment_method = 'jazzcash' if is_pk else 'stripe'
 
     try:
         from apps.properties.models import Property
@@ -142,10 +142,10 @@ def initiate_deal_lock(
             status          = EscrowDeal.Status.INITIATED,
         )
 
-        # ── Online checkout link (Safepay / bSecure) ──────────────────────────
+        # ── Online checkout link (Safepay / bSecure / Stripe) ────────────────
         online_link = ''
         active_gw = SystemConfigService.get_active_gateway()
-        if active_gw in ('safepay', 'bsecure'):
+        if active_gw in ('safepay', 'bsecure', 'stripe'):
             try:
                 from apps.payments.services import PaymentService
                 base_url = SystemConfigService.get('base_url')
@@ -179,6 +179,7 @@ def initiate_deal_lock(
             'bank':      f"Transfer *{amt_str}* to Account *{bank_label}*. Reference: your WhatsApp number.",
             'safepay':   f"Pay *{amt_str}* online via the secure link below.",
             'bsecure':   f"Pay *{amt_str}* online via the secure link below.",
+            'stripe':    f"Pay *{amt_str}* securely by card via the link below.",
             'manual':    "Our team will contact you with payment details within 1 hour.",
         }
         payment_msg = _PAYMENT_INSTRUCTIONS.get(payment_method, _PAYMENT_INSTRUCTIONS['manual'])

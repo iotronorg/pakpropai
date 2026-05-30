@@ -41,6 +41,10 @@ def _get_payment_instructions(gateway: str, amount: int, currency: str, org=None
         return "Our team will contact you with bank transfer details within 1 hour."
     if gateway == 'safepay':
         return "A Safepay payment link will be sent to you shortly."
+    if gateway == 'stripe':
+        return "A secure card payment link will be sent to you shortly."
+    if gateway == 'sepa_debit':
+        return "Complete SEPA Direct Debit via your dashboard. Bank debit clears in 5–8 business days."
     return "Our team will contact you with payment details within 1 hour."
 
 
@@ -108,6 +112,11 @@ class DealLockInitiateView(APIView):
                         ps = org.payment_settings
                         if ps.gateway != 'manual':
                             gateway = ps.gateway
+                        elif getattr(org, 'country', 'PK') not in ('PK',):
+                            # Non-PK org with no explicit gateway — default to Stripe
+                            import django.conf
+                            if getattr(django.conf.settings, 'STRIPE_SECRET_KEY', ''):
+                                gateway = 'stripe'
                     except Exception:
                         pass
 
@@ -120,10 +129,20 @@ class DealLockInitiateView(APIView):
                         'Try again after it expires.'
                     )
                 seller_token = secrets.token_hex(4).upper()
+                # Resolve currency from org's market; fall back to PKR for PK orgs
+                currency = 'PKR'
+                if org is not None:
+                    try:
+                        from apps.markets.registry import get_market_config
+                        currency = get_market_config(getattr(org, 'country', 'PK') or 'PK').currency
+                    except Exception:
+                        pass
+
                 deal = EscrowDeal.objects.create(
                     property                  = prop,
                     buyer                     = request.user,
                     token_amount              = amount,
+                    currency                  = currency,
                     payment_gateway           = gateway,
                     initiated_via             = EscrowDeal.Channel.DASHBOARD,
                     status                    = EscrowDeal.Status.INITIATED,
@@ -160,12 +179,25 @@ class DealLockInitiateView(APIView):
 
         payment_message = _get_payment_instructions(gateway, amount, deal.currency, org=org)
 
+        # Available payment methods for EU orgs: card (stripe) + SEPA
+        available_methods = [gateway]
+        if org is not None:
+            try:
+                from apps.markets.registry import is_eu_country
+                if is_eu_country(getattr(org, 'country', '') or ''):
+                    if 'sepa_debit' not in available_methods:
+                        available_methods.append('sepa_debit')
+            except Exception:
+                pass
+
         return Response({
-            'id':              str(deal.id),
-            'status':          deal.status,
-            'token_amount':    amount,
-            'payment_gateway': gateway,
-            'payment_message': payment_message,
+            'id':                       str(deal.id),
+            'status':                   deal.status,
+            'token_amount':             amount,
+            'currency':                 deal.currency,
+            'payment_gateway':          gateway,
+            'available_payment_methods': available_methods,
+            'payment_message':          payment_message,
             'message': (
                 f"Deal lock requested for *{prop.title}*.\n\n"
                 f"{payment_message}\n\n"

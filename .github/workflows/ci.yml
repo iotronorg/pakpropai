@@ -354,7 +354,7 @@ jobs:
         env:
           CLUSTER: ${{ secrets.ECS_CLUSTER_NAME }}
         run: |
-          for SERVICE in api worker beat frontend; do
+          for SERVICE in api worker worker-hr beat frontend; do
             echo "Updating ${CLUSTER}-${SERVICE}..."
             aws ecs update-service \
               --cluster "$CLUSTER" \

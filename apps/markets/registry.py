@@ -115,6 +115,44 @@ def get_tax_calculator(country: str):
     return calc
 
 
+EU_COUNTRIES = frozenset({
+    'DE', 'FR', 'NL', 'BE', 'AT', 'ES', 'IT', 'PT',
+    'SE', 'FI', 'DK', 'NO', 'CH', 'PL',
+})
+
+
+def is_eu_country(country: str) -> bool:
+    return (country or '').upper() in EU_COUNTRIES
+
+
+def get_verification_provider(country: str):
+    """
+    Return the VerificationProvider for the given ISO 3166-1 country code.
+
+      AE → JumioVerificationProvider   (Emirates ID, passport)
+      GB → OnfidoVerificationProvider  (passport, driving licence)
+      US → StripeIdentityProvider      (state ID, passport)
+      PK → UnsupportedProvider         (PK uses internal AI OCR via WhatsApp)
+      *  → UnsupportedProvider
+    """
+    country = (country or 'PK').upper()
+
+    if country == 'AE':
+        from apps.verification.providers.jumio_provider import JumioVerificationProvider
+        return JumioVerificationProvider()
+
+    if country == 'GB':
+        from apps.verification.providers.onfido_provider import OnfidoVerificationProvider
+        return OnfidoVerificationProvider()
+
+    if country == 'US':
+        from apps.verification.providers.stripe_identity_provider import StripeIdentityProvider
+        return StripeIdentityProvider()
+
+    from apps.verification.providers.base import UnsupportedProvider
+    return UnsupportedProvider(country=country)
+
+
 def get_city_map(country: str | None = None) -> dict[str, str]:
     """Return lowercased-key → display-name city lookup.
 

@@ -146,6 +146,12 @@ class Agent(models.Model):
         help_text='Reason shown to the agent when their application is rejected',
     )
 
+    # ── UK Regulatory ────────────────────────────────────────────────────────
+    companies_house_number = models.CharField(
+        max_length=8, blank=True,
+        help_text='UK Companies House registration number (GB orgs only, 8 chars)',
+    )
+
     # ── Status & Verification ─────────────────────────────────────────────────
     is_verified  = models.BooleanField(default=False,
                        help_text='Admin has verified identity and credentials')

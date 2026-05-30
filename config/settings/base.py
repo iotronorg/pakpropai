@@ -116,6 +116,36 @@ DATABASES = {
     }
 }
 
+# ── Regional clusters — registered only when env var is present (GLOBAL-7) ───
+# Aliases must match _REGION_TO_DB in apps/compliance/regional_router.py.
+# Set EU_DATABASE_URL / UK_DATABASE_URL after provisioning the clusters via Terraform.
+_REGIONAL_DB_OPTS = {'CONN_MAX_AGE': 60, 'CONN_HEALTH_CHECKS': True}
+
+if env('EU_DATABASE_URL', default=None):
+    DATABASES['eu_cluster'] = {
+        **env.db('EU_DATABASE_URL'),
+        **_REGIONAL_DB_OPTS,
+        'TEST': {'NAME': 'test_realtron_eu'},
+    }
+
+if env('UK_DATABASE_URL', default=None):
+    DATABASES['uk_cluster'] = {
+        **env.db('UK_DATABASE_URL'),
+        **_REGIONAL_DB_OPTS,
+        'TEST': {'NAME': 'test_realtron_uk'},
+    }
+
+if env('UAE_DATABASE_URL', default=None):
+    DATABASES['uae_cluster'] = {
+        **env.db('UAE_DATABASE_URL'),
+        **_REGIONAL_DB_OPTS,
+        'TEST': {'NAME': 'test_realtron_uae'},
+    }
+
+# Router sends EU/UK/UAE org queries to the correct regional cluster.
+# Falls back to 'default' when the alias is not registered (cluster not provisioned).
+DATABASE_ROUTERS = ['apps.infra.db_router.OrgRegionalRouter']
+
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
@@ -300,6 +330,10 @@ CELERY_BEAT_SCHEDULE = {
     'prune-copilot-recommendations': {
         'task':     'whatsapp.prune_copilot_recommendations',
         'schedule': 86400,  # daily
+    },
+    'sync-aml-sanctions': {
+        'task':     'apps.compliance.tasks.sync_aml_sanction_lists',
+        'schedule': crontab(hour=2, minute=0, day_of_week=1),  # Monday 02:00 UTC
     },
 }
 

@@ -60,7 +60,20 @@ class TenantIsolationMiddleware:
 
     def __call__(self, request):
         self._attach_tenant(request)
-        return self.get_response(request)
+        # Route DB queries for this request to the org's regional cluster
+        try:
+            from apps.infra.db_router import set_db_org, clear_db_org
+            set_db_org(getattr(request, 'organization', None))
+        except Exception:
+            pass
+        try:
+            return self.get_response(request)
+        finally:
+            try:
+                from apps.infra.db_router import clear_db_org
+                clear_db_org()
+            except Exception:
+                pass
 
     @staticmethod
     def _attach_tenant(request):

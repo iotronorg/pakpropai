@@ -13,6 +13,10 @@ from .views import (
     FraudBlacklistDeleteView,
     FlaggedUsersView,
     TrustCertificateView,
+    IDVerificationSessionView,
+    JumioWebhookView,
+    OnfidoWebhookView,
+    StripeIdentityWebhookView,
 )
 
 urlpatterns = [
@@ -24,6 +28,11 @@ urlpatterns = [
     path('documents/',                                            DocumentScanListView.as_view(),           name='document-scan-list'),
     path('documents/<int:pk>/',                                   DocumentScanDetailView.as_view(),          name='document-scan-detail'),
     path('documents/<int:scan_id>/link/<uuid:verification_id>/',  LinkDocumentToVerificationView.as_view(), name='link-document'),
+    # ID verification (Jumio / Onfido / Stripe Identity)
+    path('id-verify/',                         IDVerificationSessionView.as_view(),  name='id-verify'),
+    path('webhook/jumio/',                     JumioWebhookView.as_view(),           name='webhook-jumio'),
+    path('webhook/onfido/',                    OnfidoWebhookView.as_view(),          name='webhook-onfido'),
+    path('webhook/stripe-identity/',           StripeIdentityWebhookView.as_view(),  name='webhook-stripe-identity'),
     # Fraud monitoring
     path('fraud/stats/',                   FraudStatsView.as_view(),           name='fraud-stats'),
     path('fraud/alerts/',                  FraudAlertsView.as_view(),          name='fraud-alerts'),

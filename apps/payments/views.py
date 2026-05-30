@@ -18,7 +18,7 @@ from .services import PaymentService
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_ONLINE_GATEWAYS = {'safepay', 'bsecure'}
+SUPPORTED_ONLINE_GATEWAYS = {'safepay', 'bsecure', 'stripe'}
 
 
 def _safe_origin(request) -> str | None:
@@ -340,6 +340,172 @@ class bSecureDealLockWebhookView(APIView):
 
         logger.info('Deal lock ACTIVATED via bSecure: deal=%s property=%s', deal.id, deal.property.title)
         return Response({'received': True, 'activated': True})
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class StripeDealLockWebhookView(APIView):
+    """POST /payments/webhook/stripe/deal-lock/ — Stripe card payment confirmation for deal lock."""
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        import stripe
+        raw = request.body
+        sig = request.headers.get('Stripe-Signature', '')
+        secret = getattr(settings, 'STRIPE_DEAL_LOCK_WEBHOOK_SECRET', '')
+
+        if not secret:
+            logger.error('STRIPE_DEAL_LOCK_WEBHOOK_SECRET not configured')
+            return Response({'detail': 'Webhook not configured.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            stripe.api_key = getattr(settings, 'STRIPE_SECRET_KEY', '')
+            event = stripe.Webhook.construct_event(raw, sig, secret)
+        except stripe.error.SignatureVerificationError:
+            logger.warning('Stripe deal-lock webhook: invalid signature')
+            return Response({'detail': 'Invalid signature.'}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as exc:
+            logger.error('Stripe deal-lock webhook: parse error: %s', exc)
+            return Response({'detail': 'Bad request.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if event['type'] not in ('checkout.session.completed', 'payment_intent.succeeded'):
+            return Response({'received': True, 'activated': False})
+
+        from .services import StripePaymentGateway
+        parsed   = StripePaymentGateway.parse_webhook(dict(event))
+        order_id = parsed.get('order_id', '')
+
+        if not order_id:
+            logger.warning('Stripe deal-lock webhook: no order_id in event type=%s', event['type'])
+            return Response({'received': True, 'activated': False})
+
+        try:
+            deal = EscrowDeal.objects.select_related(
+                'property__organization', 'property__owner', 'buyer'
+            ).get(id=order_id)
+        except Exception:
+            logger.error('Stripe deal-lock webhook: deal not found order_id=%s', order_id)
+            return Response({'detail': 'Deal not found.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if parsed['status'] != 'paid':
+            Payment.objects.filter(escrow_deal=deal, gateway='stripe').update(
+                status=Payment.Status.FAILED
+            )
+            return Response({'received': True, 'activated': False})
+
+        # Idempotent re-delivery
+        if deal.status == EscrowDeal.Status.LOCKED:
+            return Response({'received': True, 'activated': False, 'detail': 'Already locked.'})
+
+        if deal.status != EscrowDeal.Status.INITIATED:
+            logger.warning(
+                'Stripe deal-lock webhook: deal %s already in status=%s', deal.id, deal.status
+            )
+            return Response({'received': True, 'activated': False})
+
+        Payment.objects.filter(escrow_deal=deal, gateway='stripe').update(
+            status=Payment.Status.COMPLETED,
+            reference=parsed.get('tracker', ''),
+            webhook_payload=dict(event),
+        )
+        deal.payment_ref = parsed.get('tracker', '')
+        deal.save(update_fields=['payment_ref', 'updated_at'])
+        deal.activate_lock()
+        deal_locks_total.labels(status='locked').inc()
+        webhook_events_total.labels(gateway='stripe', result='ok').inc()
+
+        from apps.escrow.views import _notify_buyer_lock_active, _notify_seller_deal_locked
+        _notify_buyer_lock_active(deal)
+        _notify_seller_deal_locked(deal)
+
+        logger.info('Deal lock ACTIVATED via Stripe: deal=%s property=%s', deal.id, deal.property.title)
+        return Response({'received': True, 'activated': True})
+
+
+class SEPAPaymentView(APIView):
+    """
+    POST /payments/sepa/<deal_id>/
+    Create a SEPA Direct Debit PaymentIntent for EU deal locks.
+    Body: {iban, account_name, mandate_accepted: true}
+    The deal transitions to LOCKED when the bank debit clears via payment_intent.succeeded webhook.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, deal_id):
+        deal = get_object_or_404(EscrowDeal, id=deal_id)
+
+        if deal.buyer != request.user and request.user.role != 'admin':
+            return Response({'detail': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
+
+        if deal.status != EscrowDeal.Status.INITIATED:
+            return Response(
+                {'detail': f"Cannot pay a deal in '{deal.status}' status."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        org     = deal.property.organization
+        country = (getattr(org, 'country', '') or '').upper()
+        from apps.markets.registry import is_eu_country
+        if not is_eu_country(country):
+            return Response(
+                {'detail': 'SEPA Direct Debit is only available for EU organisations.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        iban             = (request.data.get('iban') or '').strip().replace(' ', '')
+        account_name     = (request.data.get('account_name') or '').strip()
+        mandate_accepted = request.data.get('mandate_accepted', False)
+
+        if not iban:
+            return Response({'detail': 'iban is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not account_name:
+            return Response({'detail': 'account_name is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not mandate_accepted:
+            return Response(
+                {'detail': 'You must accept the SEPA Direct Debit mandate to proceed.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from .services import StripePaymentGateway
+        try:
+            result = StripePaymentGateway.create_sepa_payment(
+                order_id     = str(deal.id),
+                amount       = deal.token_amount,
+                currency     = deal.currency,
+                iban         = iban,
+                account_name = account_name,
+            )
+        except Exception as exc:
+            logger.error('SEPAPaymentView: PaymentIntent creation failed deal=%s: %s', deal.id, exc)
+            return Response(
+                {'detail': 'SEPA payment error. Please try again or contact support.'},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        from .models import Payment
+        Payment.objects.update_or_create(
+            escrow_deal = deal,
+            gateway     = 'stripe',
+            defaults={
+                'user':           deal.buyer,
+                'amount':         deal.token_amount,
+                'currency':       deal.currency,
+                'purpose':        Payment.Purpose.ESCROW_TOKEN,
+                'status':         Payment.Status.PENDING,
+                'checkout_token': result['payment_intent_id'],
+                'reference':      result['payment_intent_id'],
+            },
+        )
+
+        return Response({
+            'deal_id':           str(deal.id),
+            'payment_intent_id': result['payment_intent_id'],
+            'status':            result['status'],
+            'message': (
+                'SEPA Direct Debit initiated. Your bank account will be debited '
+                'within 5–8 business days. The deal lock activates on confirmation.'
+            ),
+        }, status=status.HTTP_201_CREATED)
 
 
 class PaymentListView(APIView):

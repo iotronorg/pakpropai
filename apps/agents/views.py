@@ -559,3 +559,73 @@ class FreelanceProfileView(APIView):
             'global_rating': str(profile.global_rating) if profile.global_rating else None,
             'created_at': profile.created_at.isoformat(),
         }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+
+class AgentCompaniesHouseVerifyView(APIView):
+    """
+    POST /agents/verify-companies-house/
+    Developer-only: verify a UK Companies House registration number for the current agent.
+    Only processes for GB orgs — silently skips for other countries.
+    Body: {companies_house_number: str}
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if request.user.role not in ('developer', 'admin'):
+            return Response({'detail': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
+
+        # Resolve org country
+        org_country = ''
+        try:
+            from apps.core.permissions import get_user_org
+            org = get_user_org(request.user)
+            org_country = (getattr(org, 'country', '') or '').upper()
+        except Exception:
+            pass
+
+        if org_country != 'GB':
+            return Response(
+                {'detail': 'Companies House verification is only available for GB organisations.',
+                 'skipped': True},
+                status=status.HTTP_200_OK,
+            )
+
+        number = (request.data.get('companies_house_number') or '').strip().upper()
+        if not number:
+            return Response(
+                {'detail': 'companies_house_number is required.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from .services import CompaniesHouseVerifier
+        result = CompaniesHouseVerifier.verify(number)
+
+        if result['status'] == 'error':
+            return Response(
+                {'detail': 'Companies House lookup failed. Try again later.'},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        # Try to find the agent profile and update it
+        agent = None
+        try:
+            agent = request.user.agent_profile
+        except Exception:
+            pass
+
+        if agent and result['is_active']:
+            agent.companies_house_number = number
+            agent.is_verified = True
+            agent.save(update_fields=['companies_house_number', 'is_verified'])
+
+        return Response({
+            'companies_house_number': number,
+            'company_name':           result['company_name'],
+            'is_active':              result['is_active'],
+            'verified':               result['is_active'],
+            'detail': (
+                f"Verified: {result['company_name']} is an active UK company."
+                if result['is_active']
+                else f"Not verified: company status is '{result['status']}'."
+            ),
+        })

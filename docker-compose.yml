@@ -2,15 +2,15 @@ services:
   db:
     image: postgres:15-alpine
     environment:
-      POSTGRES_DB: pakpropai
-      POSTGRES_USER: pakprop
-      POSTGRES_PASSWORD: pakprop
+      POSTGRES_DB: realtron
+      POSTGRES_USER: realtron
+      POSTGRES_PASSWORD: realtron
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U pakprop -d pakpropai"]
+      test: ["CMD-SHELL", "pg_isready -U realtron -d realtron"]
       interval: 5s
       timeout: 5s
       retries: 5

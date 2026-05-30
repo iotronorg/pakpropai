@@ -435,8 +435,8 @@ class DealLockAIToolCurrencyTest(TestCase):
         self.assertTrue(result['success'], result.get('message'))
         self.assertIn('JazzCash', result['whatsapp_summary'])
 
-    def test_non_pk_org_default_method_is_manual(self):
-        """Default payment method for non-PK orgs must be manual."""
+    def test_non_pk_org_default_method_is_stripe(self):
+        """Default payment method for non-PK orgs is stripe (changed in GLOBAL-1)."""
         from tests.factories import make_developer
         _, org = make_developer(phone='+440000099', org_name='GB Default Org')
         org.country = 'GB'
@@ -444,7 +444,8 @@ class DealLockAIToolCurrencyTest(TestCase):
         prop = make_property(org=org)
         result = self._run_tool(org, prop, amount=2_000, method='')
         self.assertTrue(result['success'], result.get('message'))
-        self.assertIn('contact you with payment details', result['whatsapp_summary'])
+        # Non-PK orgs default to stripe; summary mentions card payment
+        self.assertIn('card', result['whatsapp_summary'].lower())
 
     def test_deal_created_with_correct_currency(self):
         """EscrowDeal.currency must be set from org's market, not hard-coded PKR."""
