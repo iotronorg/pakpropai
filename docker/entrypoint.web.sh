@@ -14,17 +14,10 @@ if [ "${RUN_MIGRATIONS:-false}" = "true" ]; then
     python manage.py migrate --noinput
 fi
 
-echo "[web] Starting gunicorn..."
-exec gunicorn config.wsgi:application \
-    --workers "${GUNICORN_WORKERS:-4}" \
-    --threads "${GUNICORN_THREADS:-2}" \
-    --worker-class gthread \
-    --worker-tmp-dir /dev/shm \
-    --max-requests 1200 \
-    --max-requests-jitter 50 \
-    --timeout 30 \
-    --graceful-timeout 20 \
-    --keep-alive 5 \
-    --log-file - \
-    --access-logfile - \
-    --bind "0.0.0.0:${PORT:-8000}"
+# Use daphne (ASGI) so Django Channels WebSockets work alongside REST.
+# daphne is single-process — scale horizontally via Docker replicas.
+echo "[web] Starting daphne (ASGI)..."
+exec daphne config.asgi:application \
+    --bind 0.0.0.0 \
+    --port "${PORT:-8000}" \
+    --access-log -

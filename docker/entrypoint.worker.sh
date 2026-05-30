@@ -12,13 +12,21 @@ MODE="${1:-worker}"
 
 case "$MODE" in
     worker)
-        echo "[worker] Starting Celery worker (concurrency=${CELERY_CONCURRENCY:-4})..."
+        # CELERY_QUEUES env var selects which queue(s) this worker consumes.
+        # default = lightweight tasks; high-resource = WA processing, STT, ML.
+        # If unset, consume from all queues (useful for single-service deploys).
+        QUEUE_ARGS=""
+        if [ -n "${CELERY_QUEUES:-}" ]; then
+            QUEUE_ARGS="-Q ${CELERY_QUEUES}"
+        fi
+        echo "[worker] Starting Celery worker (queues=${CELERY_QUEUES:-all}, concurrency=${CELERY_CONCURRENCY:-4})..."
         exec celery -A config worker \
             --loglevel "${CELERY_LOGLEVEL:-info}" \
             --concurrency "${CELERY_CONCURRENCY:-4}" \
             --without-gossip \
             --without-mingle \
-            -Ofair
+            -Ofair \
+            ${QUEUE_ARGS}
         ;;
     beat)
         echo "[beat] Starting Celery beat scheduler..."

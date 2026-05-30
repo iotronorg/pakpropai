@@ -56,8 +56,16 @@ class Agent(models.Model):
     whatsapp_number = models.CharField(max_length=20, blank=True,
                           help_text='WhatsApp number if different from phone')
     email           = models.EmailField(blank=True)
+    national_id_number = models.CharField(
+                             max_length=50, blank=True,
+                             help_text=(
+                                 'National identity document number. '
+                                 'Format varies by country: CNIC (PK), Emirates ID (AE), '
+                                 'National Insurance (GB), SSN last-4 (US), etc.'
+                             ),
+                         )
     cnic_number     = models.CharField(max_length=20, blank=True,
-                          help_text='For individual agents only (format: 12345-1234567-1)')
+                          help_text='[Deprecated — use national_id_number] Pakistan CNIC (format: 12345-1234567-1)')
     profile_photo   = models.ImageField(upload_to='agents/photos/', blank=True, null=True)
 
     # ── Professional Details ───────────────────────────────────────────────────
@@ -90,8 +98,16 @@ class Agent(models.Model):
     # ── Business Information (Agencies / Developers) ──────────────────────────
     registration_number = models.CharField(max_length=100, blank=True,
                               help_text='SECP company registration or chamber of commerce number')
+    tax_id_number       = models.CharField(
+                              max_length=50, blank=True,
+                              help_text=(
+                                  'Tax registration number. '
+                                  'Format varies by country: NTN (PK), TRN (AE), '
+                                  'UTR/VAT number (GB), EIN/TIN (US), etc.'
+                              ),
+                          )
     ntn_number          = models.CharField(max_length=50, blank=True,
-                              help_text='FBR National Tax Number')
+                              help_text='[Deprecated — use tax_id_number] Pakistan FBR National Tax Number')
     website             = models.URLField(blank=True)
     office_address      = models.TextField(blank=True,
                               help_text='Full office/branch address')

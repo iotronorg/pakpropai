@@ -4,6 +4,7 @@ from .views import (
     OrgConfigView, OrgDashboardView, OrgAIStatsView,
     OrganizationSuspendView, OrganizationActivateView,
     AdminOrgConfigView, OrgRegistrationView, OrgRegistrationOTPVerifyView,
+    OrgMembershipView,
 )
 from .theme_views import OrgThemeView
 
@@ -17,6 +18,8 @@ urlpatterns = [
     path('me/dashboard/',                 OrgDashboardView.as_view(),         name='organizations-dashboard'),
     path('me/ai-stats/',                  OrgAIStatsView.as_view(),           name='organizations-ai-stats'),
     path('me/theme/',                     OrgThemeView.as_view(),             name='org-theme'),
+    path('me/members/',                   OrgMembershipView.as_view(),        name='org-members'),
+    path('me/members/<int:membership_id>/', OrgMembershipView.as_view(),      name='org-member-detail'),
     path('<uuid:pk>/suspend/',            OrganizationSuspendView.as_view(),  name='org-suspend'),
     path('<uuid:pk>/activate/',           OrganizationActivateView.as_view(), name='org-activate'),
     path('<uuid:pk>/config/',             AdminOrgConfigView.as_view(),       name='admin-org-config'),

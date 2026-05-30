@@ -144,6 +144,11 @@ class Organization(models.Model):
             models.Index(fields=['is_active']),
         ]
 
+    # Countries where sqft (imperial) is the standard real-estate unit.
+    _IMPERIAL_COUNTRIES = frozenset({
+        'AE', 'GB', 'US', 'CA', 'IN', 'SG', 'HK', 'MY', 'PH', 'BD',
+    })
+
     def save(self, *args, **kwargs):
         if not self.slug:
             base = slugify(self.name)
@@ -153,17 +158,32 @@ class Organization(models.Model):
                 slug = f"{base}-{n}"
                 n += 1
             self.slug = slug
+
+        country = (self.country or '').upper()
+
         if not self.data_residency_region or self.data_residency_region == 'global':
-            if self.country == 'GB':
+            if country == 'GB':
                 self.data_residency_region = self.DataResidencyRegion.UK
-            elif self.country == 'AE':
+            elif country == 'AE':
                 self.data_residency_region = self.DataResidencyRegion.UAE
-            elif self.country == 'PK':
+            elif country == 'PK':
                 self.data_residency_region = self.DataResidencyRegion.PK
-            elif self.country in self._EU_COUNTRIES:
+            elif country in self._EU_COUNTRIES:
                 self.data_residency_region = self.DataResidencyRegion.EU
             else:
                 self.data_residency_region = self.DataResidencyRegion.GLOBAL
+
+        # Auto-set measurement_system from country when still at the model default
+        # (pk_traditional). Mirrors data_residency_region pattern — never overrides
+        # an explicit admin/developer choice since non-default values are left alone.
+        if self.measurement_system == self.MeasurementSystem.PK_TRADITIONAL:
+            if country in self._IMPERIAL_COUNTRIES:
+                self.measurement_system = self.MeasurementSystem.IMPERIAL
+            elif country and country != 'PK':
+                # EU and all other non-PK, non-imperial markets → metric
+                self.measurement_system = self.MeasurementSystem.METRIC
+            # PK stays pk_traditional (correct default, no change needed)
+
         super().save(*args, **kwargs)
 
     def __str__(self):

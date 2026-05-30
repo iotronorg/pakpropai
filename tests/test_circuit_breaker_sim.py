@@ -210,6 +210,12 @@ class CircuitBreakerTimingTests(TestCase):
 class MetaLocalBufferTests(TestCase):
     """Tests e, n — buffer write and org isolation."""
 
+    def setUp(self):
+        meta_cloud_api_circuit.reset()
+
+    def tearDown(self):
+        meta_cloud_api_circuit.reset()
+
     def test_e_open_circuit_buffers_message(self):
         """When meta_cloud_api circuit is OPEN, send_text buffers the message."""
         svc = 'meta_cloud_api'

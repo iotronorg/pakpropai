@@ -524,3 +524,38 @@ class TeamMemberView(APIView):
         agent.save(update_fields=['organization', 'employment_type', 'updated_at'])
         UsageLedger.decrement_agents(str(org.id))
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class FreelanceProfileView(APIView):
+    """
+    POST /agents/freelance-profile/ — create or update the caller's FreelanceAgentProfile.
+    Only agents with role='agent' may call this.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if request.user.role != 'agent':
+            raise PermissionDenied("Only agents can create a freelance profile.")
+
+        from .models import FreelanceAgentProfile
+        license_number = request.data.get('license_number', '').strip()
+
+        profile, created = FreelanceAgentProfile.objects.get_or_create(
+            user=request.user,
+            defaults={
+                'license_number': license_number,
+                'verification_status': FreelanceAgentProfile.VerificationStatus.PENDING if license_number else FreelanceAgentProfile.VerificationStatus.UNVERIFIED,
+            },
+        )
+        if not created and license_number:
+            profile.license_number = license_number
+            profile.verification_status = FreelanceAgentProfile.VerificationStatus.PENDING
+            profile.save(update_fields=['license_number', 'verification_status'])
+
+        return Response({
+            'id': profile.id,
+            'license_number': profile.license_number,
+            'verification_status': profile.verification_status,
+            'global_rating': str(profile.global_rating) if profile.global_rating else None,
+            'created_at': profile.created_at.isoformat(),
+        }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)

@@ -348,3 +348,109 @@ class AgentRegistrationOTPTest(TestCase):
         resp = self.client.post(self.register_url, payload)
         self.assertEqual(resp.status_code, 400)
         self.assertIn('password', resp.data)
+
+
+class TokenRefreshRotationTest(TestCase):
+    """CookieTokenRefreshView must rotate the refresh token (A10-SEC-1 fix)."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user = make_user(phone='+923005000001', role='developer')
+        from rest_framework_simplejwt.tokens import RefreshToken as _RT
+        refresh = _RT.for_user(self.user)
+        self.raw_refresh = str(refresh)
+        self.raw_access = str(refresh.access_token)
+
+    def _post_refresh(self):
+        self.client.cookies['refresh_token'] = self.raw_refresh
+        return self.client.post('/api/v1/auth/token/refresh/')
+
+    def test_refresh_returns_200(self):
+        resp = self._post_refresh()
+        self.assertEqual(resp.status_code, 200)
+
+    def test_refresh_sets_new_access_cookie(self):
+        resp = self._post_refresh()
+        self.assertIn('access_token', resp.cookies)
+
+    def test_refresh_sets_new_refresh_cookie(self):
+        """After refresh, a new refresh_token cookie must be issued (rotation)."""
+        resp = self._post_refresh()
+        self.assertIn('refresh_token', resp.cookies)
+        new_raw = resp.cookies['refresh_token'].value
+        self.assertNotEqual(new_raw, self.raw_refresh,
+                            "Refresh token must change after rotation — old token reused")
+
+    def test_old_refresh_token_is_blacklisted(self):
+        """Old refresh token must be blacklisted after rotation."""
+        import base64, json
+        from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
+        self._post_refresh()
+        # Decode JTI from raw JWT without calling RefreshToken() — that would
+        # raise TokenError because the token is now blacklisted.
+        parts = self.raw_refresh.split('.')
+        payload = json.loads(base64.b64decode(parts[1] + '=='))
+        old_jti = payload['jti']
+        self.assertTrue(
+            BlacklistedToken.objects.filter(token__jti=old_jti).exists(),
+            "Old refresh token must be blacklisted after CookieTokenRefreshView rotation",
+        )
+
+    def test_old_refresh_token_rejected_after_rotation(self):
+        """Re-using the old refresh token after rotation must return 401."""
+        self._post_refresh()
+        # Try the old refresh token again
+        resp2 = self._post_refresh()
+        self.assertEqual(resp2.status_code, 401,
+                         "Re-using a rotated-away refresh token must be rejected")
+
+
+class UserPhoneValidatorTest(TestCase):
+    """User model phone validator enforces E.164 (A10-GLOBAL-4 fix).
+
+    The validator must require the + prefix so only E.164-formatted numbers
+    are stored in the DB — bare digits without + must be rejected at model level.
+    """
+
+    def _save(self, phone):
+        from apps.users.models import User
+        user = User(phone=phone, role='client')
+        user.set_unusable_password()   # prevent blank-password validation error
+        user.full_clean()              # triggers model-level validators incl. phone
+
+    def test_valid_e164_accepted(self):
+        self._save('+923001234567')   # PK
+        self._save('+971501234567')   # AE
+        self._save('+447911123456')   # GB
+        self._save('+12125551234')    # US
+        self._save('+1234567')        # minimum length (7 digits after +)
+
+    def test_missing_plus_rejected(self):
+        from django.core.exceptions import ValidationError
+        with self.assertRaises(ValidationError, msg='923001234567 (no +) must be rejected'):
+            self._save('923001234567')
+
+    def test_bare_digits_rejected(self):
+        from django.core.exceptions import ValidationError
+        with self.assertRaises(ValidationError):
+            self._save('03001234567')   # PK local format without +
+
+    def test_too_short_rejected(self):
+        from django.core.exceptions import ValidationError
+        with self.assertRaises(ValidationError):
+            self._save('+12345')   # only 5 digits — below E.164 minimum
+
+    def test_too_long_rejected(self):
+        from django.core.exceptions import ValidationError
+        with self.assertRaises(ValidationError):
+            self._save('+1234567890123456')   # 16 digits — above E.164 maximum
+
+    def test_error_message_mentions_e164(self):
+        from django.core.exceptions import ValidationError
+        try:
+            self._save('0923001234567')
+        except ValidationError as exc:
+            msg = str(exc)
+            self.assertIn('E.164', msg)
+        else:
+            self.fail('ValidationError not raised for number without +')

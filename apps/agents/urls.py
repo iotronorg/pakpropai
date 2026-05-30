@@ -12,12 +12,14 @@ from .views import (
     AgentStatsView,
     TeamView,
     TeamMemberView,
+    FreelanceProfileView,
 )
 
 urlpatterns = [
     path('',                          AgentListView.as_view(),          name='agents-list'),
     path('me/',                       AgentMeView.as_view(),             name='agents-me'),
     path('me/availability/',          AgentAvailabilityView.as_view(),   name='agents-me-availability'),
+    path('freelance-profile/',        FreelanceProfileView.as_view(),    name='agents-freelance-profile'),
     path('available/',                AgentAvailableListView.as_view(),  name='agents-available'),
     path('leaderboard/',              AgentLeaderboardView.as_view(),    name='agents-leaderboard'),
     path('register/',                 AgentRegisterView.as_view(),       name='agents-register'),

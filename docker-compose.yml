@@ -49,7 +49,8 @@ services:
 
   worker:
     build: .
-    command: celery -A config worker --loglevel=info --concurrency 2
+    # Consume both queues in dev so all tasks are processed without a second container.
+    command: celery -A config worker --loglevel=info --concurrency 2 -Q default,high-resource
     volumes:
       - .:/app
       - media_files:/app/media
@@ -77,6 +78,26 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  # ── Frontend (Next.js dev server with hot reload) ────────────────────────
+  frontend:
+    build:
+      context: ../pakpropaiweb
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../pakpropaiweb:/app
+      # Named volume keeps the container's node_modules intact so the host
+      # mount above doesn't overwrite the installed packages.
+      - frontend_nm:/app/node_modules
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
+      NEXT_TELEMETRY_DISABLED: "1"
+      # Required for file-watch hot reload inside Docker on Linux/WSL:
+      WATCHPACK_POLLING: "true"
+    depends_on:
+      - web
 
   # ── Observability (optional — comment out if not needed in dev) ───────────
   prometheus:
@@ -110,3 +131,4 @@ volumes:
   media_files:
   prometheus_data:
   grafana_data:
+  frontend_nm:

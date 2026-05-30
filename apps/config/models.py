@@ -104,6 +104,10 @@ class SystemConfig(models.Model):
         'feature_auto_assign':          'false',
         'scraper_search_enabled':     'true',
         'use_membership_rbac':        'true',
+        # Deal lock token amount bounds (in the org's local currency).
+        # Admins can override per market. 0 means no lower/upper bound.
+        'deal_lock_min_amount':       '0',
+        'deal_lock_max_amount':       '0',
     }
 
     key        = models.CharField(max_length=100, unique=True, db_index=True)

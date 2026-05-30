@@ -20,6 +20,7 @@ class AgentSerializer(serializers.ModelSerializer):
             'id', 'name', 'agent_type', 'employment_type', 'phone', 'whatsapp_number', 'email',
             'company_name', 'designation', 'bio',
             'specializations', 'cities', 'areas', 'primary_city',
+            'national_id_number', 'tax_id_number',
             'is_verified', 'is_active', 'is_featured',
             'availability_status',
             'registration_status', 'rejection_reason',

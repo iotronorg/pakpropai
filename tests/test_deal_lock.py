@@ -342,3 +342,120 @@ class OrgPaymentSettingsOverrideTest(TestCase):
         )
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
         self.assertEqual(resp.data['payment_gateway'], 'easypaisa')
+
+
+# ── A10-GLOBAL-2 fix: deal lock AI tool — currency & market-aware methods ─────
+
+class DealLockAIToolCurrencyTest(TestCase):
+    """initiate_deal_lock() AI tool must use the org's currency, not hard-coded PKR."""
+
+    def _make_org(self, country: str):
+        from apps.organizations.models import Organization
+        from tests.factories import make_developer
+        _, org = make_developer(phone=f'+{country}0000{hash(country) % 99999:05d}',
+                                org_name=f'Test Org {country}')
+        org.country = country
+        org.save(update_fields=['country'])
+        return org
+
+    def _run_tool(self, org, prop, amount=50_000, method=''):
+        from apps.ai._tools_context import set_context
+        from apps.ai._tools_deals import initiate_deal_lock
+        user = prop.owner or prop.organization.admin_user
+        set_context(user, user.phone, org=org)
+        result = initiate_deal_lock(
+            property_id=str(prop.pk),
+            token_amount=amount,
+            payment_method=method,
+        )
+        # Clear context after each call
+        set_context(None, '', org=None)
+        return result
+
+    def test_pk_org_summary_shows_pkr(self):
+        org = self._make_org('PK')
+        _, org2 = __import__('tests.factories', fromlist=['make_developer']).make_developer(
+            phone='+920000001', org_name='PK Org')
+        org2.country = 'PK'
+        org2.save(update_fields=['country'])
+        prop = make_property(org=org2)
+        result = self._run_tool(org2, prop, amount=50_000, method='manual')
+        self.assertTrue(result['success'], result.get('message'))
+        self.assertIn('PKR', result['whatsapp_summary'])
+        self.assertEqual(result['currency'], 'PKR')
+
+    def test_ae_org_summary_shows_aed(self):
+        from tests.factories import make_developer
+        _, org = make_developer(phone='+971000001', org_name='AE Org')
+        org.country = 'AE'
+        org.save(update_fields=['country'])
+        prop = make_property(org=org)
+        result = self._run_tool(org, prop, amount=5_000, method='manual')
+        self.assertTrue(result['success'], result.get('message'))
+        self.assertIn('AED', result['whatsapp_summary'])
+        self.assertNotIn('PKR', result['whatsapp_summary'])
+        self.assertEqual(result['currency'], 'AED')
+
+    def test_gb_org_summary_shows_gbp(self):
+        from tests.factories import make_developer
+        _, org = make_developer(phone='+440000001', org_name='GB Org')
+        org.country = 'GB'
+        org.save(update_fields=['country'])
+        prop = make_property(org=org)
+        result = self._run_tool(org, prop, amount=2_000, method='manual')
+        self.assertTrue(result['success'], result.get('message'))
+        self.assertIn('GBP', result['whatsapp_summary'])
+        self.assertNotIn('PKR', result['whatsapp_summary'])
+        self.assertEqual(result['currency'], 'GBP')
+
+    def test_ae_org_jazzcash_not_in_valid_methods(self):
+        """JazzCash must not be a valid payment method for non-PK orgs."""
+        from tests.factories import make_developer
+        _, org = make_developer(phone='+971000002', org_name='AE Org 2')
+        org.country = 'AE'
+        org.save(update_fields=['country'])
+        prop = make_property(org=org)
+        # Requesting jazzcash from an AE org falls back to manual
+        result = self._run_tool(org, prop, amount=5_000, method='jazzcash')
+        self.assertTrue(result['success'], result.get('message'))
+        # Should NOT contain JazzCash in the payment instructions
+        self.assertNotIn('JazzCash', result['whatsapp_summary'])
+
+    def test_pk_org_default_method_is_jazzcash(self):
+        """Default payment method for PK orgs must be jazzcash."""
+        from apps.config.models import SystemConfig
+        from tests.factories import make_developer
+        # Ensure a JazzCash number is configured so the tool doesn't bail out
+        SystemConfig.objects.update_or_create(key='jazzcash_number', defaults={'value': '0300-9999999'})
+        _, org = make_developer(phone='+920000099', org_name='PK Default Org')
+        org.country = 'PK'
+        org.save(update_fields=['country'])
+        prop = make_property(org=org)
+        result = self._run_tool(org, prop, amount=50_000, method='')
+        self.assertTrue(result['success'], result.get('message'))
+        self.assertIn('JazzCash', result['whatsapp_summary'])
+
+    def test_non_pk_org_default_method_is_manual(self):
+        """Default payment method for non-PK orgs must be manual."""
+        from tests.factories import make_developer
+        _, org = make_developer(phone='+440000099', org_name='GB Default Org')
+        org.country = 'GB'
+        org.save(update_fields=['country'])
+        prop = make_property(org=org)
+        result = self._run_tool(org, prop, amount=2_000, method='')
+        self.assertTrue(result['success'], result.get('message'))
+        self.assertIn('contact you with payment details', result['whatsapp_summary'])
+
+    def test_deal_created_with_correct_currency(self):
+        """EscrowDeal.currency must be set from org's market, not hard-coded PKR."""
+        from apps.escrow.models import EscrowDeal
+        from tests.factories import make_developer
+        _, org = make_developer(phone='+971000003', org_name='AE Currency Org')
+        org.country = 'AE'
+        org.save(update_fields=['country'])
+        prop = make_property(org=org)
+        result = self._run_tool(org, prop, amount=3_000, method='manual')
+        self.assertTrue(result['success'], result.get('message'))
+        deal = EscrowDeal.objects.get(id=result['deal_id'])
+        self.assertEqual(deal.currency, 'AED')
+        self.assertNotEqual(deal.currency, 'PKR')

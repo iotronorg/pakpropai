@@ -18,7 +18,7 @@ class EscrowDealSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'property', 'property_title', 'property_city',
             'buyer_phone', 'seller_phone', 'agent_name',
-            'token_amount', 'status', 'payment_gateway', 'payment_ref',
+            'token_amount', 'currency', 'status', 'payment_gateway', 'payment_ref',
             'initiated_via', 'buyer_confirmed', 'seller_confirmed',
             'lock_started_at', 'lock_expires_at', 'hours_remaining',
             'admin_notes', 'created_at', 'updated_at',
@@ -38,7 +38,7 @@ class InitiateDealLockSerializer(serializers.Serializer):
     token_amount = serializers.IntegerField(min_value=MIN_TOKEN, max_value=MAX_TOKEN)
     payment_gateway = serializers.ChoiceField(
         choices=EscrowDeal.Gateway.choices,
-        default=EscrowDeal.Gateway.JAZZCASH,
+        default=EscrowDeal.Gateway.MANUAL,
     )
 
     def validate_property_id(self, value):

@@ -6,6 +6,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
@@ -602,3 +603,92 @@ class OrgRegistrationOTPVerifyView(APIView):
         _set_auth_cookies(response, str(refresh.access_token), str(refresh), role=user.role)
         logger.info("Org registration OTP verified, user auto-logged in: user=%s", user.id)
         return response
+
+
+class OrgMembershipView(APIView):
+    """
+    GET  /api/v1/organizations/me/members/        — list active members of caller's org
+    POST /api/v1/organizations/me/members/        — invite an existing user into the org
+    DELETE /api/v1/organizations/me/members/{id}/ — deactivate a membership
+    """
+    permission_classes = [IsAuthenticated, IsAdminOrOrgAdmin]
+
+    def _get_org(self, user):
+        from apps.core.permissions import get_user_org
+        org = get_user_org(user)
+        if org is None:
+            raise PermissionDenied('No organization found for this account.')
+        return org
+
+    def get(self, request):
+        org = self._get_org(request.user)
+        members = OrganizationMembership.objects.filter(
+            organization=org, is_active=True
+        ).select_related('user').order_by('joined_at')
+        data = [
+            {
+                'id': str(m.id),
+                'user_phone': m.user.phone,
+                'user_name': getattr(m.user, 'name', None),
+                'role': m.role,
+                'employment_type': m.employment_type,
+                'is_active': m.is_active,
+                'joined_at': m.joined_at.isoformat(),
+            }
+            for m in members
+        ]
+        return Response(data)
+
+    def post(self, request):
+        from apps.users.models import User
+        org = self._get_org(request.user)
+        phone = request.data.get('phone', '').strip()
+        role = request.data.get('role', OrganizationMembership.Role.AGENT)
+        employment_type = request.data.get('employment_type', OrganizationMembership.EmploymentType.INTERNAL)
+
+        if not phone:
+            return Response({'detail': 'phone is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if role not in OrganizationMembership.Role.values:
+            return Response({'detail': f'Invalid role: {role}'}, status=status.HTTP_400_BAD_REQUEST)
+        if employment_type not in OrganizationMembership.EmploymentType.values:
+            return Response({'detail': f'Invalid employment_type: {employment_type}'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = User.objects.filter(phone=phone).first()
+        if not user:
+            return Response({'detail': 'No user found with this phone number.'}, status=status.HTTP_404_NOT_FOUND)
+
+        membership, created = OrganizationMembership.objects.get_or_create(
+            user=user,
+            organization=org,
+            defaults={'role': role, 'employment_type': employment_type, 'is_active': True},
+        )
+        if not created:
+            if not membership.is_active:
+                membership.is_active = True
+                membership.role = role
+                membership.employment_type = employment_type
+                membership.left_at = None
+                membership.save(update_fields=['is_active', 'role', 'employment_type', 'left_at'])
+            else:
+                return Response({'detail': 'User is already a member of this organization.'}, status=status.HTTP_409_CONFLICT)
+
+        return Response({
+            'id': str(membership.id),
+            'user_phone': user.phone,
+            'user_name': getattr(user, 'name', None),
+            'role': membership.role,
+            'employment_type': membership.employment_type,
+            'is_active': membership.is_active,
+            'joined_at': membership.joined_at.isoformat(),
+        }, status=status.HTTP_201_CREATED)
+
+    def delete(self, request, membership_id):
+        org = self._get_org(request.user)
+        try:
+            membership = OrganizationMembership.objects.get(id=membership_id, organization=org, is_active=True)
+        except OrganizationMembership.DoesNotExist:
+            return Response({'detail': 'Membership not found.'}, status=status.HTTP_404_NOT_FOUND)
+        if membership.role == OrganizationMembership.Role.OWNER:
+            return Response({'detail': 'Cannot remove the organization owner.'}, status=status.HTTP_400_BAD_REQUEST)
+        membership.deactivate()
+        return Response(status=status.HTTP_204_NO_CONTENT)

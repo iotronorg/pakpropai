@@ -105,16 +105,19 @@ class DynamicContextBuilder:
             # Live inventory sample — top 5 active properties
             try:
                 from apps.properties.models import Property
+                from apps.markets.registry import get_market_config as _get_cfg
+                org_currency = _get_cfg(getattr(org, 'country', 'PK') or 'PK').currency
                 sample = list(
                     Property.objects
                     .filter(organization=org, is_active=True)
                     .order_by('-created_at')
-                    .values('title', 'city', 'location', 'price', 'property_type')[:5]
+                    .values('title', 'city', 'location', 'price', 'currency', 'property_type')[:5]
                 )
                 if sample:
                     lines.append('Inventory sample (live):')
                     for p in sample:
-                        price = f"PKR {p['price']:,}" if p['price'] else 'POA'
+                        cur = p.get('currency') or org_currency
+                        price = f"{cur} {p['price']:,}" if p['price'] else 'POA'
                         lines.append(
                             f"  • {p['title']} — {p['location']}, {p['city']} · {price}"
                         )
@@ -213,8 +216,9 @@ class DynamicContextBuilder:
 
     @staticmethod
     def _market_block(country: str) -> str:
+        from apps.ai.knowledge import get_market_knowledge
         cfg = get_market_config(country)
-        return (
+        config_block = (
             '═══ MARKET CONFIGURATION ═══\n'
             f'Country : {cfg.country}  |  Currency : {cfg.currency} ({cfg.currency_sym})\n'
             f'Size unit: {cfg.size_unit}  ({cfg.sqft_per_unit} sqft each)\n'
@@ -223,3 +227,7 @@ class DynamicContextBuilder:
             f'RULE: Always express prices in {cfg.currency} and sizes in {cfg.size_unit}. '
             f'Convert any user input to these units before calling tools.'
         )
+        market_knowledge = get_market_knowledge(country)
+        if market_knowledge:
+            return config_block + '\n' + market_knowledge
+        return config_block

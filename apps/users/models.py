@@ -7,8 +7,8 @@ from django.db import models
 from django.utils import timezone
 
 _phone_validator = RegexValidator(
-    regex=r'^\+?[0-9]{10,15}$',
-    message='Phone must be 10–15 digits, optionally prefixed with +.',
+    regex=r'^\+[0-9]{7,15}$',
+    message='Phone must be in E.164 format: + followed by 7–15 digits, e.g. +923001234567.',
 )
 
 _PK_CNIC_RE = re.compile(r'^\d{5}-\d{7}-\d$')

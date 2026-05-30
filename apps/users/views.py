@@ -143,10 +143,17 @@ class MeView(APIView):
 
 
 class CookieTokenRefreshView(APIView):
-    """POST /auth/token/refresh/ — issue a new access token from the httpOnly refresh cookie."""
+    """POST /auth/token/refresh/ — issue a new access token from the httpOnly refresh cookie.
+
+    Mirrors simplejwt's TokenRefreshSerializer rotation logic: when
+    ROTATE_REFRESH_TOKENS=True, the old refresh token is blacklisted and a new
+    refresh token is issued alongside the new access token.
+    """
     permission_classes = [AllowAny]
 
     def post(self, request):
+        from rest_framework_simplejwt.settings import api_settings as jwt_settings
+
         raw_refresh = request.COOKIES.get('refresh_token')
         if not raw_refresh:
             return Response({'error': 'No refresh token cookie.'}, status=status.HTTP_401_UNAUTHORIZED)
@@ -158,6 +165,22 @@ class CookieTokenRefreshView(APIView):
             _clear_auth_cookies(response)
             return response
 
+        # Mirror simplejwt TokenRefreshSerializer rotation behaviour.
+        # Without this, the old refresh token stays valid for its full 7-day
+        # lifetime even though ROTATE_REFRESH_TOKENS=True — breaking the
+        # sliding session security model.
+        new_raw_refresh = raw_refresh
+        if jwt_settings.ROTATE_REFRESH_TOKENS:
+            if jwt_settings.BLACKLIST_AFTER_ROTATION:
+                try:
+                    refresh.blacklist()
+                except AttributeError:
+                    pass  # token_blacklist app not in INSTALLED_APPS — safe to skip
+            refresh.set_jti()
+            refresh.set_exp()
+            refresh.set_iat()
+            new_raw_refresh = str(refresh)
+
         response = Response({'detail': 'Token refreshed.'})
         response.set_cookie(
             'access_token', new_access,
@@ -167,6 +190,15 @@ class CookieTokenRefreshView(APIView):
             secure=_COOKIE_SECURE,
             path='/',
         )
+        if jwt_settings.ROTATE_REFRESH_TOKENS:
+            response.set_cookie(
+                'refresh_token', new_raw_refresh,
+                max_age=_REFRESH_LIFETIME,
+                httponly=True,
+                samesite=_COOKIE_SAMESITE,
+                secure=_COOKIE_SECURE,
+                path='/',
+            )
         return response
 
 

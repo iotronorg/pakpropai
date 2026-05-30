@@ -237,3 +237,156 @@ jobs:
           SMOKE_WA_VERIFY_TOKEN: ${{ secrets.STAGING_WA_VERIFY_TOKEN }}
         run: python scripts/smoke_test.py
         working-directory: pakpropai
+
+  # ── 3b. Push to AWS ECR (main branch only) ──────────────────────────────
+  push-ecr:
+    name: Push to AWS ECR
+    needs: [test, security]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write   # required for OIDC → AWS
+      contents: read
+
+    outputs:
+      image_tag: ${{ steps.tag.outputs.short_sha }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute image tag
+        id: tag
+        run: echo "short_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_GITHUB_ACTIONS_ROLE_ARN }}
+          aws-region:     ${{ secrets.AWS_REGION }}
+
+      - name: Log in to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build & push API image to ECR
+        uses: docker/build-push-action@v5
+        with:
+          context: pakpropai
+          file:    pakpropai/docker/Dockerfile.web
+          push:    true
+          tags: |
+            ${{ secrets.ECR_API_REPO }}:${{ steps.tag.outputs.short_sha }}
+            ${{ secrets.ECR_API_REPO }}:latest
+          cache-from: type=gha,scope=ecr-api
+          cache-to:   type=gha,mode=max,scope=ecr-api
+
+      - name: Build & push Worker image to ECR
+        uses: docker/build-push-action@v5
+        with:
+          context: pakpropai
+          file:    pakpropai/docker/Dockerfile.worker
+          push:    true
+          tags: |
+            ${{ secrets.ECR_WORKER_REPO }}:${{ steps.tag.outputs.short_sha }}
+            ${{ secrets.ECR_WORKER_REPO }}:latest
+          cache-from: type=gha,scope=ecr-worker
+          cache-to:   type=gha,mode=max,scope=ecr-worker
+
+      - name: Build & push Frontend image to ECR
+        uses: docker/build-push-action@v5
+        with:
+          context: pakpropaiweb
+          file:    pakpropaiweb/Dockerfile
+          push:    true
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
+          tags: |
+            ${{ secrets.ECR_FRONTEND_REPO }}:${{ steps.tag.outputs.short_sha }}
+            ${{ secrets.ECR_FRONTEND_REPO }}:latest
+          cache-from: type=gha,scope=ecr-frontend
+          cache-to:   type=gha,mode=max,scope=ecr-frontend
+
+  # ── 4. Zero-downtime ECS deploy + health-check rollback ─────────────────
+  deploy-prod:
+    name: Deploy to Production (ECS)
+    needs: push-ecr
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ secrets.FRONTEND_URL }}
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_GITHUB_ACTIONS_ROLE_ARN }}
+          aws-region:     ${{ secrets.AWS_REGION }}
+
+      - name: Run database migrations (one-off ECS task)
+        run: |
+          TASK_ARN=$(aws ecs run-task \
+            --cluster "${{ secrets.ECS_CLUSTER_NAME }}" \
+            --task-definition "${{ secrets.ECS_CLUSTER_NAME }}-api" \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[${{ secrets.ECS_PRIVATE_SUBNET_IDS }}],securityGroups=[${{ secrets.ECS_TASKS_SG_ID }}],assignPublicIp=DISABLED}" \
+            --overrides '{"containerOverrides":[{"name":"api","command":["python","manage.py","migrate","--noinput"],"environment":[{"name":"RUN_MIGRATIONS","value":"true"}]}]}' \
+            --query 'tasks[0].taskArn' --output text)
+          echo "Migration task: $TASK_ARN"
+          aws ecs wait tasks-stopped \
+            --cluster "${{ secrets.ECS_CLUSTER_NAME }}" \
+            --tasks "$TASK_ARN"
+          EXIT_CODE=$(aws ecs describe-tasks \
+            --cluster "${{ secrets.ECS_CLUSTER_NAME }}" \
+            --tasks "$TASK_ARN" \
+            --query 'tasks[0].containers[0].exitCode' --output text)
+          echo "Migration exit code: $EXIT_CODE"
+          [ "$EXIT_CODE" = "0" ] || (echo "Migration failed"; exit 1)
+
+      - name: Update ECS services (rolling deploy)
+        env:
+          CLUSTER: ${{ secrets.ECS_CLUSTER_NAME }}
+        run: |
+          for SERVICE in api worker beat frontend; do
+            echo "Updating ${CLUSTER}-${SERVICE}..."
+            aws ecs update-service \
+              --cluster "$CLUSTER" \
+              --service "${CLUSTER}-${SERVICE}" \
+              --force-new-deployment \
+              --query 'service.serviceName' --output text
+          done
+
+      - name: Wait for API service to stabilise (up to 10 min)
+        run: |
+          aws ecs wait services-stable \
+            --cluster "${{ secrets.ECS_CLUSTER_NAME }}" \
+            --services "${{ secrets.ECS_CLUSTER_NAME }}-api" \
+            --cli-read-timeout 600
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install health-check dependencies
+        run: pip install requests boto3
+
+      - name: Run post-deploy health checks (auto-rollback on failure)
+        env:
+          HEALTH_URL:  ${{ secrets.BASE_URL }}/health/
+          ECS_CLUSTER: ${{ secrets.ECS_CLUSTER_NAME }}
+          ECS_SERVICE: ${{ secrets.ECS_CLUSTER_NAME }}-api
+          AWS_REGION:  ${{ secrets.AWS_REGION }}
+        run: python infra/scripts/health_check.py
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::Production deploy failed. ECS circuit breaker should have auto-rolled back."
+          echo "Check CloudWatch: /ecs/${{ secrets.ECS_CLUSTER_NAME }}/api"

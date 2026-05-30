@@ -79,6 +79,14 @@ from apps.whatsapp.client import WhatsAppClient
 
 class TestWhatsAppClientAuditMethods(TestCase):
 
+    def setUp(self):
+        from apps.resilience.resilience_engine import meta_cloud_api_circuit
+        meta_cloud_api_circuit.reset()
+
+    def tearDown(self):
+        from apps.resilience.resilience_engine import meta_cloud_api_circuit
+        meta_cloud_api_circuit.reset()
+
     @patch('apps.whatsapp.client.requests.post')
     def test_upload_media_returns_media_id(self, mock_post):
         mock_post.return_value.json.return_value = {'id': 'doc_abc123'}

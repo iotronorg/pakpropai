@@ -51,6 +51,8 @@ urlpatterns = [
         path('security/',     include('apps.security.urls')),
         path('inventory/',    include('apps.inventory.urls')),
         path('sla/',          include('apps.resilience.urls')),
+        path('voice/',        include('apps.voice.urls')),
+        path('marketplace/',  include('apps.marketplace.urls')),
         path('external/',      include('apps.organizations.external_urls')),
         path('theme/',         ThemeConfigView.as_view(),  name='theme-config'),
         *core_api_urlpatterns,

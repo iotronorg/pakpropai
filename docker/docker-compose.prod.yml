@@ -79,7 +79,7 @@ services:
       start_period: 60s
       retries: 3
 
-  # ── Celery async worker ────────────────────────────────────────────────────
+  # ── Celery worker — default queue (notifications, scoring, billing) ─────────
   worker:
     build:
       context: ..
@@ -91,6 +91,32 @@ services:
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.prod
       CELERY_CONCURRENCY: "4"
+      CELERY_QUEUES: "default"
+    volumes:
+      - media_files:/app/media
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  # ── Celery worker — high-resource queue (WA processing, STT, ML) ──────────
+  # WhatsApp processing, transcription, and ML tasks are routed here via
+  # CELERY_TASK_ROUTES. Without this service those tasks never execute.
+  worker-hr:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.worker
+    image: realtron-worker:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    command: ["worker"]
+    env_file: ../.env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.prod
+      CELERY_CONCURRENCY: "2"
+      CELERY_QUEUES: "high-resource"
     volumes:
       - media_files:/app/media
     depends_on:
@@ -116,6 +142,29 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+
+  # ── Frontend (Next.js standalone) ─────────────────────────────────────────
+  # NEXT_PUBLIC_API_URL is baked into the JS bundle at build time.
+  # Set it in your .env file or pass it via the shell before running compose.
+  frontend:
+    build:
+      context: ../../pakpropaiweb
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?Set NEXT_PUBLIC_API_URL in .env, e.g. https://api.your-domain.com/api/v1}
+    image: realtron-frontend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      web:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
 
 volumes:
   postgres_data:

@@ -57,6 +57,8 @@ LOCAL_APPS = [
     'apps.inventory',
     'apps.resilience',
     'apps.ml',
+    'apps.voice',
+    'apps.marketplace',
 ]
 
 INSTALLED_APPS = ['daphne'] + DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -324,6 +326,11 @@ WA_PHONE_NUMBER_ID = env('WA_PHONE_NUMBER_ID', default='')
 # Create in Meta Business Manager → WhatsApp → Message Templates.
 # Body example: "Your PakProp AI code is {{1}}. Expires in 5 minutes."
 WA_OTP_TEMPLATE_NAME = env('WA_OTP_TEMPLATE_NAME', default='')
+
+# Twilio Voice
+TWILIO_ACCOUNT_SID  = env('TWILIO_ACCOUNT_SID',  default='')
+TWILIO_AUTH_TOKEN   = env('TWILIO_AUTH_TOKEN',    default='')
+TWILIO_PHONE_NUMBER = env('TWILIO_PHONE_NUMBER',  default='')
 
 # OpenAI (Whisper STT primary provider)
 OPENAI_API_KEY = env('OPENAI_API_KEY', default='')

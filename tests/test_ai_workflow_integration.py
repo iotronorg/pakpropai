@@ -19,6 +19,7 @@ from django.test import TestCase, override_settings
 
 from apps.ai.service import AIServiceManager
 from apps.core.circuit_breaker import ai_circuit
+from apps.resilience.resilience_engine import llm_provider_circuit
 
 _LOCMEM_CACHE = {'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}}
 
@@ -306,21 +307,30 @@ class GuardrailEndToEndTest(TestCase):
 
 @override_settings(CACHES=_LOCMEM_CACHE)
 class CircuitBreakerFallbackTest(TestCase):
-    """When ai_circuit is OPEN, process() returns the canned fallback without calling LLM."""
+    """When llm_provider_circuit is OPEN, process() returns the canned fallback without calling LLM.
+
+    Note: service.py switched from apps.core.circuit_breaker.ai_circuit to
+    apps.resilience.resilience_engine.llm_provider_circuit in FEATURE-SLA-RESILIENCE-CLUSTER
+    (2026-05-29). Tests must open llm_provider_circuit, not ai_circuit.
+    """
 
     _CANNED = "I'm having a bit of trouble right now — please try again in a moment."
 
     def setUp(self):
         self.manager = AIServiceManager()
         ai_circuit.reset()
+        llm_provider_circuit.reset()
 
     def tearDown(self):
         ai_circuit.reset()
+        llm_provider_circuit.reset()
 
     def _open_circuit(self):
-        """Force circuit to OPEN with a recent opened_at so recovery doesn't trigger."""
-        ai_circuit._set_state('open')
-        cache.set(ai_circuit._open_at_key, time.time(), timeout=300)
+        """Force llm_provider_circuit to OPEN so LLM calls are bypassed."""
+        svc = llm_provider_circuit.service
+        llm_provider_circuit._set_state('OPEN')
+        # Set open_at to now so _should_recover() (60s TTL) returns False
+        cache.set(f'cb_open_at:{svc}', time.time(), timeout=300)
 
     @patch('apps.ai.service.AIServiceManager._log_interaction')
     @patch('apps.ai.service.AIServiceManager._record_wa_token')
@@ -360,3 +370,92 @@ class CircuitBreakerFallbackTest(TestCase):
             self.assertTrue(len(reply) > 0)
         except Exception as exc:
             self.fail(f'process() raised unexpectedly: {exc}')
+
+
+class MarketKnowledgeRoutingTest(TestCase):
+    """get_market_knowledge() returns the correct market module and the base prompt is neutral.
+
+    Validates A10-GLOBAL-1 fix: SYSTEM_PROMPT must contain no PK-specific content,
+    and each market's knowledge block must be injected correctly.
+    """
+
+    def test_system_prompt_contains_no_urdu(self):
+        from apps.ai.knowledge import SYSTEM_PROMPT
+        pk_phrases = ['Ji,', 'Zaroor', 'Theek hai', 'Romanized Urdu', 'Pakistani property buyers']
+        for phrase in pk_phrases:
+            self.assertNotIn(phrase, SYSTEM_PROMPT,
+                             f"SYSTEM_PROMPT must not contain PK-specific phrase: {phrase!r}")
+
+    def test_system_prompt_contains_no_fbr_tables(self):
+        from apps.ai.knowledge import SYSTEM_PROMPT
+        pk_tax = ['Section 7E', 'FBR', 'PKR 25 million', 'WHT', 'Stamp Duty', 'Apna Ghar']
+        for term in pk_tax:
+            self.assertNotIn(term, SYSTEM_PROMPT,
+                             f"SYSTEM_PROMPT must not contain PK tax term: {term!r}")
+
+    def test_system_prompt_contains_no_marla_kanal(self):
+        from apps.ai.knowledge import SYSTEM_PROMPT
+        self.assertNotIn('marla', SYSTEM_PROMPT.lower())
+        self.assertNotIn('kanal', SYSTEM_PROMPT.lower())
+
+    def test_pk_market_knowledge_contains_fbr_content(self):
+        from apps.ai.knowledge import get_market_knowledge
+        pk = get_market_knowledge('PK')
+        self.assertIn('SECTION 7E', pk)   # heading is uppercase in pk/knowledge.py
+        self.assertIn('FBR', pk)
+        self.assertIn('marla', pk.lower())
+        self.assertIn('Urdu', pk)
+
+    def test_ae_market_knowledge_contains_dld_content(self):
+        from apps.ai.knowledge import get_market_knowledge
+        ae = get_market_knowledge('AE')
+        self.assertIn('DLD', ae)
+        self.assertIn('RERA', ae)
+        self.assertIn('AED', ae)
+        self.assertNotIn('marla', ae.lower())
+        self.assertNotIn('FBR', ae)
+
+    def test_gb_market_knowledge_contains_sdlt_content(self):
+        from apps.ai.knowledge import get_market_knowledge
+        gb = get_market_knowledge('GB')
+        self.assertIn('SDLT', gb)
+        self.assertIn('GBP', gb)
+        self.assertNotIn('marla', gb.lower())
+        self.assertNotIn('FBR', gb)
+
+    def test_us_market_knowledge_contains_us_content(self):
+        from apps.ai.knowledge import get_market_knowledge
+        us = get_market_knowledge('US')
+        self.assertIn('USD', us)
+        self.assertIn('Property Tax', us)
+        self.assertNotIn('marla', us.lower())
+
+    def test_unknown_country_returns_empty_string(self):
+        from apps.ai.knowledge import get_market_knowledge
+        # Truly unknown ISO code → empty (no module exists for 'XX')
+        self.assertEqual(get_market_knowledge('XX'), '')
+        # Empty string falls back to PK (safe default) — not empty
+        self.assertIn('FBR', get_market_knowledge(''))
+
+    def test_dynamic_context_injects_pk_knowledge_for_pk_org(self):
+        """DynamicContextBuilder._market_block() must include PK knowledge for PK country."""
+        from apps.ai.context import DynamicContextBuilder
+        block = DynamicContextBuilder._market_block('PK')
+        self.assertIn('SECTION 7E', block)   # heading is uppercase in pk/knowledge.py
+        self.assertIn('PKR', block)
+
+    def test_dynamic_context_injects_ae_knowledge_for_ae_org(self):
+        """DynamicContextBuilder._market_block() must include AE knowledge for AE country."""
+        from apps.ai.context import DynamicContextBuilder
+        block = DynamicContextBuilder._market_block('AE')
+        self.assertIn('DLD', block)
+        self.assertIn('AED', block)
+        self.assertNotIn('Section 7E', block)
+        self.assertNotIn('marla', block.lower())
+
+    def test_dynamic_context_pk_block_has_no_urdu_in_config_section(self):
+        """Market config section is always in English; Urdu phrases belong to PK knowledge."""
+        from apps.ai.context import DynamicContextBuilder
+        block = DynamicContextBuilder._market_block('AE')
+        self.assertNotIn('Romanized Urdu', block)
+        self.assertNotIn('Ji,', block)

@@ -1,13 +1,46 @@
 import logging
-from ._tools_context import _ctx_user, _ctx_phone
+from ._tools_context import _ctx_user, _ctx_phone, _ctx_org
 
 logger = logging.getLogger(__name__)
 
 
+def _resolve_currency(org) -> str:
+    """Return the ISO 4217 currency code for the org's market. Never raises."""
+    try:
+        from apps.markets.registry import get_market_config
+        country = getattr(org, 'country', 'PK') or 'PK'
+        return get_market_config(country).currency
+    except Exception:
+        return 'PKR'
+
+
+def _get_org_payment_info(org):
+    """
+    Return (jazzcash_no, easypaisa_no, bank_no, bank_name) preferring
+    org-level OrgPaymentSettings over platform SystemConfig defaults.
+    """
+    from apps.config.services import SystemConfigService
+    jazz = easypaisa = bank_no = bank_name = ''
+    try:
+        ps = org.payment_settings
+        jazz      = ps.jazzcash_number or ''
+        easypaisa = ps.easypaisa_number or ''
+        bank_no   = ps.bank_account_number or ''
+        bank_name = ps.bank_account_name or ''
+    except Exception:
+        pass
+    # Fall back to platform-level defaults for any empty field
+    if not jazz:      jazz      = SystemConfigService.get('jazzcash_number', '')
+    if not easypaisa: easypaisa = SystemConfigService.get('easypaisa_number', '')
+    if not bank_no:   bank_no   = SystemConfigService.get('bank_account_number', '')
+    if not bank_name: bank_name = SystemConfigService.get('bank_account_name', '')
+    return jazz, easypaisa, bank_no, bank_name
+
+
 def initiate_deal_lock(
     property_id: str,
-    token_amount_pkr: int,
-    payment_method: str = 'jazzcash',
+    token_amount: int,
+    payment_method: str = '',
 ) -> dict:
     """
     Lock a property exclusively for the buyer for 48 hours by paying a token amount.
@@ -15,27 +48,59 @@ def initiate_deal_lock(
 
     Args:
         property_id: The UUID of the property to lock (from search results).
-        token_amount_pkr: Token amount in PKR. Must be between 25,000 and 100,000.
-        payment_method: Payment method — one of 'jazzcash', 'easypaisa', 'bank', 'manual'.
+        token_amount: Token/deposit amount in the organisation's local currency.
+        payment_method: Payment method. For Pakistan: 'jazzcash', 'easypaisa', 'bank', 'manual'.
+                        For other markets: 'bank', 'manual', 'safepay', 'bsecure'.
+                        Leave blank to auto-select from org's configured gateway.
     """
     user  = _ctx_user.get()
     phone = _ctx_phone.get()
+    org   = _ctx_org.get()
 
     if not user or not phone:
         return {'success': False, 'message': 'Could not identify your account. Please try again.'}
 
-    if token_amount_pkr < 25_000 or token_amount_pkr > 100_000:
+    # ── Resolve market currency ────────────────────────────────────────────────
+    currency = _resolve_currency(org)
+    country  = getattr(org, 'country', 'PK') or 'PK'
+    is_pk    = country.upper() == 'PK'
+
+    # ── Amount bounds (configurable; 0 = no bound) ────────────────────────────
+    from apps.config.services import SystemConfigService
+    try:
+        min_amount = int(SystemConfigService.get('deal_lock_min_amount', '0')) or 0
+        max_amount = int(SystemConfigService.get('deal_lock_max_amount', '0')) or 0
+    except (ValueError, TypeError):
+        min_amount = max_amount = 0
+
+    if min_amount > 0 and token_amount < min_amount:
         return {
             'success': False,
             'message': (
-                "Token amount must be between *PKR 25,000* and *PKR 100,000*.\n"
-                "Please specify an amount in this range."
+                f"Token amount must be at least *{currency} {min_amount:,}*.\n"
+                "Please specify a higher amount."
+            ),
+        }
+    if max_amount > 0 and token_amount > max_amount:
+        return {
+            'success': False,
+            'message': (
+                f"Token amount cannot exceed *{currency} {max_amount:,}*.\n"
+                "Please specify a lower amount."
             ),
         }
 
-    valid_methods = {'jazzcash', 'easypaisa', 'bank', 'manual'}
+    # ── Valid payment methods — PK markets add JazzCash / EasyPaisa ───────────
+    _pk_only_methods    = {'jazzcash', 'easypaisa'}
+    _universal_methods  = {'bank', 'manual', 'safepay', 'bsecure'}
+    valid_methods = (_pk_only_methods | _universal_methods) if is_pk else _universal_methods
+
+    # Auto-select default when caller omits payment_method
+    if not payment_method:
+        payment_method = 'jazzcash' if is_pk else 'manual'
+
     if payment_method not in valid_methods:
-        payment_method = 'jazzcash'
+        payment_method = 'jazzcash' if is_pk else 'manual'
 
     try:
         from apps.properties.models import Property
@@ -70,14 +135,15 @@ def initiate_deal_lock(
         deal = EscrowDeal.objects.create(
             property        = prop,
             buyer           = user,
-            token_amount    = token_amount_pkr,
+            token_amount    = token_amount,
+            currency        = currency,
             payment_gateway = payment_method,
             initiated_via   = EscrowDeal.Channel.WHATSAPP,
             status          = EscrowDeal.Status.INITIATED,
         )
 
+        # ── Online checkout link (Safepay / bSecure) ──────────────────────────
         online_link = ''
-        from apps.config.services import SystemConfigService
         active_gw = SystemConfigService.get_active_gateway()
         if active_gw in ('safepay', 'bsecure'):
             try:
@@ -91,26 +157,28 @@ def initiate_deal_lock(
                 )
                 online_link = result.get('checkout_url', '')
             except Exception as exc:
-                logger.warning(f"Could not create {active_gw} checkout for deal {deal.id}: {exc}")
+                logger.warning("Could not create %s checkout for deal %s: %s", active_gw, deal.id, exc)
 
-        jazzcash_number   = SystemConfigService.get('jazzcash_number')
-        easypaisa_number  = SystemConfigService.get('easypaisa_number')
-        bank_account_no   = SystemConfigService.get('bank_account_number')
-        bank_account_name = SystemConfigService.get('bank_account_name')
+        # ── Manual payment instructions ───────────────────────────────────────
+        jazz, easypaisa, bank_no, bank_name = _get_org_payment_info(org) if org else ('', '', '', '', )
 
         if not online_link:
-            if payment_method == 'jazzcash' and not jazzcash_number:
-                return {'success': False, 'message': 'JazzCash payments are not configured yet. Please contact support or choose a different payment method.'}
-            if payment_method == 'easypaisa' and not easypaisa_number:
-                return {'success': False, 'message': 'EasyPaisa payments are not configured yet. Please contact support or choose a different payment method.'}
-            if payment_method == 'bank' and not bank_account_no:
-                return {'success': False, 'message': 'Bank transfer payments are not configured yet. Please contact support or choose a different payment method.'}
+            if payment_method == 'jazzcash' and not jazz:
+                return {'success': False, 'message': 'JazzCash payments are not configured. Please contact support or choose a different payment method.'}
+            if payment_method == 'easypaisa' and not easypaisa:
+                return {'success': False, 'message': 'EasyPaisa payments are not configured. Please contact support or choose a different payment method.'}
+            if payment_method == 'bank' and not bank_no:
+                return {'success': False, 'message': 'Bank transfer details are not configured. Please contact support or choose a different payment method.'}
 
-        bank_label = f"{bank_account_no} ({bank_account_name})" if bank_account_name else bank_account_no
+        bank_label = f"{bank_no} ({bank_name})" if bank_name else bank_no
+        amt_str    = f"{currency} {token_amount:,}"
+
         _PAYMENT_INSTRUCTIONS = {
-            'jazzcash':  f"Send *PKR {token_amount_pkr:,}* to JazzCash *{jazzcash_number}*. Use your WhatsApp number as reference.",
-            'easypaisa': f"Send *PKR {token_amount_pkr:,}* to EasyPaisa *{easypaisa_number}*. Use your WhatsApp number as reference.",
-            'bank':      f"Transfer *PKR {token_amount_pkr:,}* to Account *{bank_label}*. Reference: your WhatsApp number.",
+            'jazzcash':  f"Send *{amt_str}* to JazzCash *{jazz}*. Use your WhatsApp number as reference.",
+            'easypaisa': f"Send *{amt_str}* to EasyPaisa *{easypaisa}*. Use your WhatsApp number as reference.",
+            'bank':      f"Transfer *{amt_str}* to Account *{bank_label}*. Reference: your WhatsApp number.",
+            'safepay':   f"Pay *{amt_str}* online via the secure link below.",
+            'bsecure':   f"Pay *{amt_str}* online via the secure link below.",
             'manual':    "Our team will contact you with payment details within 1 hour.",
         }
         payment_msg = _PAYMENT_INSTRUCTIONS.get(payment_method, _PAYMENT_INSTRUCTIONS['manual'])
@@ -121,7 +189,7 @@ def initiate_deal_lock(
             f"🔒 *Deal Lock Requested!*\n\n"
             f"🏠 *Property:* {prop.title}\n"
             f"📍 *Location:* {prop.city} — {prop.location}\n"
-            f"💰 *Token Amount:* PKR {token_amount_pkr:,}\n"
+            f"💰 *Token Amount:* {amt_str}\n"
             f"🔑 *Lock ID:* `{str(deal.id)[:8].upper()}`\n\n"
             f"*Payment Instructions:*\n{payment_msg}"
             f"{online_section}\n\n"
@@ -133,13 +201,14 @@ def initiate_deal_lock(
             'success':      True,
             'deal_id':      str(deal.id),
             'property':     prop.title,
-            'token_amount': token_amount_pkr,
+            'token_amount': token_amount,
+            'currency':     currency,
             'whatsapp_summary': summary,
             '_instruction': 'Return the whatsapp_summary VERBATIM.',
         }
 
     except Exception as exc:
-        logger.error(f"initiate_deal_lock failed: {exc}", exc_info=True)
+        logger.error("initiate_deal_lock failed: %s", exc, exc_info=True)
         return {
             'success': False,
             'message': 'Could not process your deal lock request. Please try again.',

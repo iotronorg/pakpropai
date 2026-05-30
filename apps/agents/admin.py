@@ -14,7 +14,7 @@ class AgentAdmin(admin.ModelAdmin):
         'rating', 'total_leads', 'closed_deals',
     )
     list_filter  = ('agent_type', 'is_verified', 'is_active', 'is_featured', 'primary_city')
-    search_fields = ('name', 'phone', 'email', 'company_name', 'cnic_number', 'license_number')
+    search_fields = ('name', 'phone', 'email', 'company_name', 'national_id_number', 'cnic_number', 'license_number')
     readonly_fields = (
         'joined_at', 'updated_at', 'total_leads', 'total_listings',
         'closed_deals', 'last_active_at',
@@ -26,7 +26,8 @@ class AgentAdmin(admin.ModelAdmin):
         ('Identity', {
             'fields': (
                 'name', 'agent_type', 'profile_photo',
-                'phone', 'whatsapp_number', 'email', 'cnic_number',
+                'phone', 'whatsapp_number', 'email',
+                'national_id_number', 'cnic_number',
             ),
         }),
         ('Professional Details', {
@@ -49,7 +50,7 @@ class AgentAdmin(admin.ModelAdmin):
         ('Business Information', {
             'classes': ('collapse',),
             'fields': (
-                'registration_number', 'ntn_number',
+                'registration_number', 'tax_id_number', 'ntn_number',
                 'website', 'office_address',
                 'instagram_handle', 'facebook_page',
             ),

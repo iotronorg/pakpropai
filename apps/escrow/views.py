@@ -206,6 +206,7 @@ class DealLockConfirmView(APIView):
 
         deal.activate_lock()
         _notify_buyer_lock_active(deal)
+        _notify_syndication_on_deal_lock(deal)
 
         return Response(EscrowDealSerializer(deal).data)
 
@@ -475,3 +476,25 @@ def _notify_seller_lock_initiated(deal: EscrowDeal, token: str):
         WhatsAppClient.send_text(phone, msg)
     except Exception as exc:
         logger.warning(f"Seller deal lock notify failed: {exc}")
+
+
+def _notify_syndication_on_deal_lock(deal: EscrowDeal):
+    """Fire-and-forget: confirm any pending syndication commission for this deal's lead."""
+    try:
+        from apps.marketplace.models import SyndicationLeadSubmission
+        from apps.marketplace.commission_ledger import CommissionLedger
+        submission = (
+            SyndicationLeadSubmission.objects
+            .filter(lead=deal.buyer, status=SyndicationLeadSubmission.Status.ACCEPTED)
+            .select_related('listing')
+            .first()
+        )
+        if submission is None:
+            return
+        CommissionLedger().confirm_deal(deal_lock=deal, submission=submission)
+        submission.status = SyndicationLeadSubmission.Status.CONVERTED
+        SyndicationLeadSubmission.objects.filter(pk=submission.pk).update(
+            status=SyndicationLeadSubmission.Status.CONVERTED
+        )
+    except Exception:
+        logger.warning('Syndication deal-lock hook failed (non-fatal)', exc_info=True)

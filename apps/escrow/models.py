@@ -18,10 +18,17 @@ class EscrowDeal(models.Model):
         EXPIRED   = 'expired',   'Expired'
 
     class Gateway(models.TextChoices):
-        JAZZCASH  = 'jazzcash',  'JazzCash'
-        EASYPAISA = 'easypaisa', 'EasyPaisa'
+        # Pakistan-specific mobile wallets — only valid for PK-country orgs
+        JAZZCASH  = 'jazzcash',  'JazzCash (PK)'
+        EASYPAISA = 'easypaisa', 'EasyPaisa (PK)'
+        # Pakistan online gateways
+        SAFEPAY   = 'safepay',   'Safepay (PK)'
+        BSECURE   = 'bsecure',   'bSecure (PK)'
+        # Global gateways
+        STRIPE    = 'stripe',    'Stripe'
+        CARD      = 'card',      'Card (Online)'
+        # Universal
         BANK      = 'bank',      'Bank Transfer'
-        SAFEPAY   = 'safepay',   'Safepay'
         MANUAL    = 'manual',    'Manual (Admin)'
 
     class Channel(models.TextChoices):
