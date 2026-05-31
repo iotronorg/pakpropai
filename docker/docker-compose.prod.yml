@@ -178,29 +178,6 @@ services:
       migrate:
         condition: service_completed_successfully
 
-  # ── Frontend (Next.js standalone) ─────────────────────────────────────────
-  # NEXT_PUBLIC_API_URL is baked into the JS bundle at build time.
-  # Set it in your .env file or pass it via the shell before running compose.
-  frontend:
-    build:
-      context: ../../pakpropaiweb
-      dockerfile: Dockerfile
-      args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?Set NEXT_PUBLIC_API_URL in .env, e.g. https://api.your-domain.com/api/v1}
-    image: realtron-frontend:${IMAGE_TAG:-latest}
-    restart: unless-stopped
-    ports:
-      - "${FRONTEND_PORT:-3000}:3000"
-    depends_on:
-      web:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
-      interval: 30s
-      timeout: 10s
-      start_period: 30s
-      retries: 3
-
 volumes:
   postgres_data:
   redis_data:
