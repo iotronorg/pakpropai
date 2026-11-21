@@ -22,6 +22,7 @@ from django.conf.urls.static import static
 from apps.core.urls import api_urlpatterns as core_api_urlpatterns
 from apps.core.views import metrics_view
 from apps.organizations.theme_views import ThemeConfigView
+from drf_spectacular.views import SpectacularAPIView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -55,6 +56,8 @@ urlpatterns = [
         path('marketplace/',  include('apps.marketplace.urls')),
         path('external/',      include('apps.organizations.external_urls')),
         path('theme/',         ThemeConfigView.as_view(),  name='theme-config'),
+        # OpenAPI 3.1 (ADR-016): staff only unless OPENAPI_SCHEMA_PUBLIC.
+        path('schema/',        SpectacularAPIView.as_view(), name='openapi-schema'),
         *core_api_urlpatterns,
     ])),
 ]

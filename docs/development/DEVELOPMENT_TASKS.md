@@ -43,8 +43,13 @@ Priority: P0 (blocker) → P3.
 | T‑1060 | [!] | P1 | Location hierarchy + PostGIS + geocoding backfill | Blocked: owner picks geocoding vendor; PostGIS in all envs |
 | T‑1070 | [ ] | P1 | Listing schema v2 (expand/contract) | after T‑1050 |
 | T‑1080 | [ ] | P2 | Listing lifecycle + transitions + expiry | after T‑1070 |
-| T‑1090 | [ ] | P2 | API standards: OpenAPI, error envelope, filter validation, idempotency keys | |
-| T‑1100 | [ ] | P2 | Search indexes (composite, GIN, trigram) | **Next** |
+| T‑1090 | [~] | P2 | API standards: OpenAPI, error envelope, filter validation, idempotency keys | Split into a–d below |
+| T‑1090a | [x] | P2 | OpenAPI 3.1 schema | ADR‑016. `drf-spectacular==0.29.0`; `GET /api/v1/schema/` (staff/admin unless `OPENAPI_SCHEMA_PUBLIC`); JWT header/cookie + org API‑key schemes; CI `spectacular --validate` + `openapi-schema` artefact; error/warning budget ratchet (154/32 unique). 11 tests |
+| T‑1090b | [ ] | P2 | Consistent error envelope | **Next.** Must stay backward‑compatible for the separate frontend (additive `error {code, message, fields}` alongside DRF's existing keys); see ADR‑016 |
+| T‑1090c | [ ] | P2 | Query‑param filter validation (filtersets/serializers) for list endpoints | Generalise `_int_param`; KI‑036 (`?ref_no=` exact); documents params in the schema |
+| T‑1090d | [ ] | P2 | `Idempotency-Key` for enquiry/payment/booking POSTs | GAP‑032; reuse the outbox‑style unique key store |
+| T‑1091 | [ ] | P3 | Annotate the 154 schema‑less `APIView`s (`serializer_class`/`@extend_schema`); fix 13 operationId collisions | KI‑037; lower the budgets in `tests/test_openapi_schema.py` as they go |
+| T‑1100 | [x] | P2 | Search indexes (composite, GIN, trigram) | ADR‑015. `pg_trgm`; 4 concurrent indexes (FTS GIN, trigram on `UPPER(city)`/`UPPER(location)`, partial rank B‑tree); index‑backed `?search=` (prefix/AND, `simple` config, ref‑no exact). 200k‑row EXPLAIN: no seq scans; selective FTS 631 → 3 ms. 28 tests. GiST/geo stays with T‑1060 |
 | T‑1110 | [ ] | P2 | Media pipeline hardening for images | |
 | T‑1120 | [ ] | P2 | AI provider abstraction, prompt registry, market‑pack prompts | |
 

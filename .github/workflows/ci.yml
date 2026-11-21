@@ -122,6 +122,16 @@ jobs:
           python manage.py migrate --noinput users zero 2>/dev/null || true
           python manage.py migrate --noinput
 
+      - name: Generate and validate OpenAPI schema (ADR-016)
+        run: python manage.py spectacular --validate --file openapi.yaml
+
+      - name: Publish OpenAPI schema artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-schema
+          path: openapi.yaml
+          if-no-files-found: error
+
       - name: Run full test suite
         run: |
           pytest tests/ apps/ \

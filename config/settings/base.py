@@ -22,6 +22,9 @@ DJANGO_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    # Registers OpClass as an index wrapper and the trigram/unaccent lookups;
+    # required by the search indexes (ADR-015).
+    'django.contrib.postgres',
 ]
 
 THIRD_PARTY_APPS = [
@@ -30,6 +33,7 @@ THIRD_PARTY_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
+    'drf_spectacular',
     'django_celery_results',
     'django_celery_beat',
     'cloudinary',
@@ -199,6 +203,7 @@ REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
     'EXCEPTION_HANDLER': 'apps.security.exception_handler.security_exception_handler',
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_THROTTLE_CLASSES': (
         'rest_framework.throttling.AnonRateThrottle',
         'rest_framework.throttling.UserRateThrottle',
@@ -220,6 +225,23 @@ REST_FRAMEWORK = {
         'public_verify':     '50/min',   # viral referral click-tracking
         'public_convert':    '20/min',   # viral referral lead creation
     },
+}
+
+# ── OpenAPI (T-1090a, ADR-016) ─────────────────────────────────────────────────
+# GET /api/v1/schema/ — staff only unless OPENAPI_SCHEMA_PUBLIC=True.
+# CI also builds it: python manage.py spectacular --validate --file openapi.yaml
+OPENAPI_SCHEMA_PUBLIC = env.bool('OPENAPI_SCHEMA_PUBLIC', default=False)
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'RealTron AI Real Estate Agent API',
+    'DESCRIPTION': 'Backend API. Generated from the code; see docs/development/ARCHITECTURE_DECISIONS.md ADR-016.',
+    'VERSION': '1.0.0',
+    'OAS_VERSION': '3.1.0',
+    'SCHEMA_PATH_PREFIX': r'/api/v1',
+    'SERVE_INCLUDE_SCHEMA': False,
+    'SERVE_PERMISSIONS': ['apps.core.openapi.SchemaAccessPermission'],
+    'SERVE_AUTHENTICATION': None,   # REST_FRAMEWORK defaults (JWT header/cookie)
+    'COMPONENT_SPLIT_REQUEST': True,
+    'SORT_OPERATIONS': True,
 }
 
 from datetime import timedelta

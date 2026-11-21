@@ -8,3 +8,4 @@ class CoreConfig(AppConfig):
 
     def ready(self):
         from . import checks  # noqa: F401  (registers system checks)
+        from . import openapi  # noqa: F401  (registers OpenAPI auth extensions)

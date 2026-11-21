@@ -124,3 +124,22 @@
   - New `tests/test_outbox.py` (26).
   - Updated to outbox semantics: `test_celery_tasks.py` (2), `test_otp_hashing.py` (1), `test_service_layer.py` (1), `test_org_registration.py` (1).
   - Flaky `test_api_key_security.py::test_raw_token_not_stored` fixed (KI‑034).
+
+## 2026-11-21 — Session 6 (M1; no commits)
+
+- **T‑1100 search indexes (ADR‑015):**
+  - New `apps/properties/text_search.py`: `SEARCH_CONFIG`, `SEARCH_FIELDS`, `search_vector()`, `build_prefix_tsquery()`, `apply_text_search()` (ref‑number exact path, sanitised prefix tsquery, `@@` filter + `ts_rank` ordering).
+  - `apps/properties/models.py`: 4 new `Meta.indexes` (`prop_fts_gin`, `prop_city_trgm`, `prop_location_trgm`, `prop_active_rank_idx`).
+  - Migrations `properties 0021_pg_trgm_extension` (extension kept on reverse) and `0022_search_indexes` (non‑atomic, `AddIndexConcurrently` ×4).
+  - `apps/properties/views.py`: `?search=` → `apply_text_search` (was an unindexable `rank >= 0.01` filter).
+  - `config/settings/base.py`: `django.contrib.postgres` in `INSTALLED_APPS`.
+  - `GO_LIVE_CHECKLIST.md` §9.
+- **Tests:** new `tests/test_search_indexes.py` (28).
+- **T‑1090a OpenAPI (ADR‑016):**
+  - `requirements/base.txt`: `drf-spectacular==0.29.0`.
+  - `config/settings/base.py`: `drf_spectacular` app, `DEFAULT_SCHEMA_CLASS`, `SPECTACULAR_SETTINGS`, `OPENAPI_SCHEMA_PUBLIC`.
+  - New `apps/core/openapi.py` (auth extensions, `SchemaAccessPermission`), imported in `CoreConfig.ready()`.
+  - `config/urls.py`: `api/v1/schema/`.
+  - `.github/workflows/ci.yml`: generate + validate + upload `openapi-schema` artefact.
+  - `.env.example`: `OPENAPI_SCHEMA_PUBLIC`; `.gitignore`: `/openapi.yaml`.
+- **Tests:** new `tests/test_openapi_schema.py` (11).

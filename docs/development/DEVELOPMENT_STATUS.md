@@ -1,19 +1,19 @@
 # Development Status
 
-_Last updated: 2026-11-21 (session 5)_
+_Last updated: 2026-11-21 (session 6)_
 
 | Item | Value |
 |---|---|
-| Branch | `development` (session 5 work uncommitted; sessions 1–4 committed by the owner up to `b9ac8a7`) |
+| Branch | `development` (session 6 work uncommitted; sessions 1–5 committed by the owner up to `63c3cd6`) |
 | Current milestone | **M1 — Core foundation** ([MILESTONE_01](milestones/MILESTONE_01_CORE_FOUNDATION.md)); M0 code‑complete, awaiting first GitHub Actions run |
 | M0 progress | All 17 tasks complete. Remaining exit criterion: CI green on GitHub Actions (owner pushes) |
-| M1 progress | 4 of 18 tasks done: T‑1010, T‑1020, T‑1030, T‑1021. T‑1060 blocked on a vendor decision; T‑1033 needs an owner policy sign‑off |
-| Test suite | **1528 passed, 1 skipped, 0 failed** (session start 1477/1/0) — see [TESTING_STATUS](TESTING_STATUS.md) |
-| Last completed task | T‑1021 transactional outbox (ADR‑014) + KI‑033 fix |
-| Next task | **T‑1100** search indexes (milestone order), then T‑1090 API standards |
+| M1 progress | 5 of 18 tasks done (T‑1010, T‑1020, T‑1030, T‑1021, T‑1100) plus T‑1090a of 4 subtasks. T‑1060 blocked on a vendor decision; T‑1033 needs an owner policy sign‑off |
+| Test suite | **1567 passed, 1 skipped, 0 failed** (session start 1528/1/0) — see [TESTING_STATUS](TESTING_STATUS.md) |
+| Last completed task | T‑1090a OpenAPI 3.1 schema (ADR‑016), after T‑1100 search indexes (ADR‑015) |
+| Next task | **T‑1090b** error envelope (backward‑compatible), then T‑1090c → T‑1090d → T‑1050 |
 
 ## Owner decisions (2026-11-21)
-- **No commits by the agent.** Session 5 work is uncommitted on `development`.
+- **No commits by the agent.** Session 6 work is uncommitted on `development`.
 - **Approved:** encryption (T‑0010), artifact removal (T‑0011), CI deploy‑job fixes (KI‑008).
 
 ## Open questions (non‑blocking)
@@ -24,6 +24,7 @@ _Last updated: 2026-11-21 (session 5)_
 
 ## Operator actions before deploying these changes
 See **[GO_LIVE_CHECKLIST](GO_LIVE_CHECKLIST.md)**: DB backup, `FIELD_ENCRYPTION_KEYS`, config‑row check. Summary:
+- **Session 6** adds `properties 0021` (`CREATE EXTENSION pg_trgm`) and `properties 0022` (non‑atomic, 4 × `CREATE INDEX CONCURRENTLY`; run off‑peak on a direct DB connection). `?search=` semantics changed (prefix match, no stemming); see checklist §9. New dependency `drf-spectacular` (image rebuild) and optional `OPENAPI_SCHEMA_PUBLIC`.
 - Session 4 adds `users 0013` (OTP hashing) and the worker command `replay_whatsapp_dead_letters`; see checklist §6.
 - **Session 5 makes outbound WhatsApp actually work (KI‑033).** OTPs, notifications and alerts were never delivered before. Expect a jump in outbound volume; see checklist §8. Session 5 also adds `core 0002` (outbox) and the beat jobs `relay-outbox`/`purge-outbox`.
 - Session 5 adds `organizations 0024` (membership backfill) and `reconcile_memberships`. Review `orphan_agent` rows by hand: ex‑team agents may still have org access. See checklist §7.

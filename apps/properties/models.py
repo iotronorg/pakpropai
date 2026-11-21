@@ -1,8 +1,12 @@
 import uuid
+from django.contrib.postgres.indexes import GinIndex, OpClass
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
+from django.db.models.functions import Upper
 from django.conf import settings
 from django.utils import timezone
+
+from .text_search import search_vector
 
 
 # Default map — override with CITY_CODE_MAP in Django settings for other markets.
@@ -225,6 +229,19 @@ class Property(models.Model):
             models.Index(fields=['price']),
             models.Index(fields=['is_active', 'city']),
             models.Index(fields=['is_active', 'created_at']),
+            # ── Search indexes (T-1100, ADR-015; migration 0022) ──────────────
+            # Full-text: the expression must match text_search.search_vector().
+            GinIndex(search_vector(), name='prop_fts_gin'),
+            # Trigram on UPPER(col): serves Django's icontains/iexact SQL
+            # (UPPER(col::text) LIKE/= UPPER(%s)) used by search, recs, API.
+            GinIndex(OpClass(Upper('city'), name='gin_trgm_ops'), name='prop_city_trgm'),
+            GinIndex(OpClass(Upper('location'), name='gin_trgm_ops'), name='prop_location_trgm'),
+            # Ranked consumer search: ORDER BY ai_score DESC, created_at DESC LIMIT n.
+            models.Index(
+                fields=['-ai_score', '-created_at'],
+                condition=models.Q(is_active=True),
+                name='prop_active_rank_idx',
+            ),
         ]
         constraints = [
             # DB-enforced ownership consistency: each listing_owner_type must

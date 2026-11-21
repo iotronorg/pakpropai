@@ -39,9 +39,16 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | 2026-11-21 | Working tree, session 5 | `makemigrations --check` / `manage.py check` / `bandit -r apps/ -ll` | No changes / no issues / 8 findings, 0 HIGH | — |
 | 2026-11-21 | Working tree, session 5 | `migrate` → `migrate organizations 0023` → `migrate`; `reconcile_memberships [--fail-on-drift]` | OK both ways; all categories 0, exit 0 | — |
 | 2026-11-21 | Working tree, session 5 | `makemigrations --check`, `check`, `migrate core 0001` → `migrate` | No changes / no issues / OK | — |
+| 2026-11-21 | `HEAD` 63c3cd6, session 6 start | `pytest tests/ apps/` | **1528 passed, 1 skipped, 0 failed** (matches handoff) | 4m53s |
+| 2026-11-21 | Working tree, after T‑1100 | `pytest tests/ apps/` | **1556 passed, 1 skipped, 0 failed**, 108 subtests | 4m48s |
+| 2026-11-21 | Working tree, session 6 end (after T‑1090a; image rebuilt with drf‑spectacular) | `pytest tests/ apps/` | **1567 passed, 1 skipped, 0 failed**, 111 subtests | 4m37s |
+| 2026-11-21 | Working tree, session 6 | `manage.py spectacular --validate --file openapi.yaml` | exit 0; valid OpenAPI 3.1; 220 paths; 154 unique errors / 32 unique warnings (KI‑037) | — |
+| 2026-11-21 | Working tree, session 6 end | `makemigrations --check` / `manage.py check` / `bandit -r apps/ -ll` / CI YAML parse | No changes / no issues / 8 Medium, **0 HIGH** / OK | — |
+| 2026-11-21 | Scratch DB `bench` | `migrate` → `migrate properties 0020` → `migrate` | OK both ways; indexes dropped on reverse, `pg_trgm` kept | — |
+| 2026-11-21 | Scratch DB `bench`, 200k synthetic listings, `ANALYZE` | `EXPLAIN ANALYZE` of 7 hot query shapes (scratchpad script) | No seq scans. City icontains + rank 2.7 ms; city+location 4.7 ms; price band 0.3 ms; viewer‑org OR 1.6 ms; API city iexact 0.07 ms; FTS old→new: selective 631→3 ms, common 757→238 ms, "penthouse" 720→92 ms | — |
 | 2026-11-21 | Container | `infra/scripts/health_check.py` against dead port / missing URL / local 200 server | exit 1 / exit 1 / exit 0 | — |
 
-## Tests added in sessions 2–5
+## Tests added in sessions 2–6
 
 | File | Tests | Covers |
 |---|---|---|
@@ -56,6 +63,8 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | `tests/test_whatsapp_inbound_resilience.py` | 16 | T‑1020: retry on transient DB errors, backoff, dead‑letter, no retry after a send, org‑lookup retry, replay + command, webhook key release |
 | `tests/test_membership_consolidation.py` | 25 | T‑1030: agent/owner projection sync (join, move, unlink, rejoin, owner kept, unrelated saves), admin transfer, API writer paths (team add/remove revokes access, members delete, JSON registration + invite — KI‑032), primary org choice, drift report/repair/command, backfill migration idempotency |
 | `tests/test_outbox.py` | 26 | T‑1021: rollback leaves no row, on‑commit dispatch with id only, idempotent key, encrypted at rest, broker‑down fallback to relay, sent/permanent/transient/backoff/exhausted/expired, lease skip + stale‑lease reclaim, payload wipe, relay/purge; end‑to‑end OTP endpoint and `notify_user` through the real client (HTTP patched), notification idempotency/24 h window/final attempt/preferences; KI‑033 static guard + hot‑lead alert |
+| `tests/test_search_indexes.py` | 28 | T‑1100: indexes + `pg_trgm` exist and are valid; planner uses each index for the exact SQL the code emits (`enable_seqscan=off`); tsquery builder (prefix/AND, operator stripping, unicode, caps, always‑valid tsquery); API `?search=` (plural prefix, AND, fields, ref‑no exact + partial, sandbox hidden, city combo, junk → empty); migration is non‑atomic + concurrent |
+| `tests/test_openapi_schema.py` | 11 | T‑1090a: valid 3.1 schema, core paths, auth schemes, list params, error/warning budget ratchet, access (anon/user refused, admin/staff allowed, public flag) |
 
 ## Modified existing tests (behaviour change, not weakening)
 

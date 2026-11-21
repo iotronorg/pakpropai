@@ -96,14 +96,9 @@ class PropertyViewSet(viewsets.ModelViewSet):
         if (min_score := _int_param(params, 'min_score')) is not None:
             qs = qs.filter(ai_score__gte=min_score)
         if search_term := params.get('search', '').strip():
-            from django.contrib.postgres.search import SearchVector, SearchQuery, SearchRank
-            vector = SearchVector('title', 'city', 'location', 'description', 'ref_no')
-            query  = SearchQuery(search_term)
-            qs = (
-                qs.annotate(rank=SearchRank(vector, query))
-                  .filter(rank__gte=0.01)
-                  .order_by('-rank')
-            )
+            # Index-backed (prop_fts_gin); see ADR-015.
+            from .text_search import apply_text_search
+            qs = apply_text_search(qs, search_term)
         return qs
 
     def perform_create(self, serializer):

@@ -202,3 +202,39 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - a new app or library (django‑outbox etc.): `apps/core` already hosts cross‑cutting models;
   - `select_for_update(skip_locked)` claiming: a conditional `UPDATE` gives the same exclusivity without holding a transaction open across the HTTP call;
   - routing to a new `outbound` queue by default: workers pinned to `default` would never deliver OTPs.
+
+## ADR‑015 — Listing search indexes and index‑backed full‑text search
+- **Date:** 2026-11-21 (session 6) · Task T‑1100 · GAP‑040
+- **Context:** `properties` had only single‑column B‑trees, and none matched the SQL the code emits:
+  - `city__icontains` / `location__icontains` (search service, recommendations, discovery engine) and `city__iexact` (API, `similar_to`) compile to `UPPER(col::text) LIKE/= UPPER(%s)`, which a plain B‑tree on `city` cannot serve;
+  - `?search=` built `SearchVector(...)` with no config, i.e. the server's mutable `default_text_search_config`, which cannot be indexed, and filtered on `rank >= 0.01`, so every request computed `to_tsvector` for every active row.
+- **Decision:**
+  - `properties 0021`: `CREATE EXTENSION IF NOT EXISTS pg_trgm` (reverse keeps it). `django.contrib.postgres` added to `INSTALLED_APPS`; without it Django renders `OpClass` index SQL incorrectly.
+  - `properties 0022` (`atomic = False`, `AddIndexConcurrently`):
+    - `prop_fts_gin`: GIN on `to_tsvector('simple', title‖city‖location‖description‖ref_no)`;
+    - `prop_city_trgm`, `prop_location_trgm`: GIN `gin_trgm_ops` on `UPPER(col)`, which serves both `LIKE '%x%'` and `=` (Postgres ≥ 14);
+    - `prop_active_rank_idx`: B‑tree `(ai_score DESC, created_at DESC) WHERE is_active`, for the consumer search's ordered `LIMIT 10`. Not partial on `is_sandbox`, because `visible_to(org)` ORs the org's own sandbox rows.
+  - `apps/properties/text_search.py` is the only full‑text path. `search_vector()` is used by both the index definition and the query, so they cannot drift. `apply_text_search()` filters with `@@` (index) and then ranks; ties go to newest. Tests pin each index to the real query shape with `enable_seqscan = off`.
+  - **Query semantics:** letters/digits only (no tsquery operator from user input can reach `to_tsquery`), up to 8 tokens AND‑ed, tokens of ≥ 2 characters matched as prefixes, input capped at 200 characters. A full generated reference number goes to the unique `ref_no` B‑tree as an exact match, because the default parser reads `-000000001` as a signed integer.
+- **Why `simple`:** an index needs an explicit config. Listings are multilingual place names that English stemming mangles; prefix matching recovers plural/suffix matches. Changing the config later means rebuilding `prop_fts_gin`.
+- **Measured** (200k synthetic rows, Postgres 15): no sequential scan in any hot query; city/location/rank queries 0.3–5 ms; full‑text with a selective term 631 → 3 ms, with a term matching ~17 % of rows 757 → 238 ms (ranking reads every match).
+- **Rejected:**
+  - a stored generated `tsvector` column: it rewrites the table under an exclusive lock, and Django's `GeneratedField` would need a schema change for every listing‑v2 field (T‑1070). Reconsider with listing v2 if common‑term ranking becomes hot (KI‑035).
+  - dropping the old single‑column indexes now: not measured in production; revisit with real `pg_stat_user_indexes` data.
+  - GiST/PostGIS geo index: belongs to T‑1060.
+
+## ADR‑016 — OpenAPI 3.1 via drf‑spectacular; staff‑only serving; budget ratchet
+- **Date:** 2026-11-21 (session 6) · Task T‑1090a · GAP‑030, PRD D6, TR‑07
+- **Context:** No schema existed, so API contracts were implicit and the separate frontend repo (R‑36) had nothing to build mocks from. The GAP analysis marks the package choice as an implementation decision.
+- **Decision:**
+  - `drf-spectacular==0.29.0` (BSD, no service, no cost); `DEFAULT_SCHEMA_CLASS = AutoSchema`; `OAS_VERSION 3.1.0`; path prefix `/api/v1`; split request/response components.
+  - `apps/core/openapi.py`: auth extensions document the real schemes (`jwtBearer`, `jwtCookie`, `orgApiKey`).
+  - **Serving:** `GET /api/v1/schema/` (YAML, `?format=json`). `SchemaAccessPermission` allows staff and platform admins only, unless `OPENAPI_SCHEMA_PUBLIC=True`. The schema is a map of every endpoint, so publishing it is an operator choice per environment. No Swagger UI: it loads assets from a CDN, which the CSP would have to allow.
+  - **Publishing:** CI runs `manage.py spectacular --validate` and uploads `openapi.yaml` as the `openapi-schema` artefact. That is the published contract.
+  - **Ratchet:** `tests/test_openapi_schema.py` fails when the number of unique generator errors (154) or warnings (32) grows. The 154 are `APIView`s with no serializer (KI‑037, T‑1091). Budgets are lowered as views are annotated.
+- **Error envelope (T‑1090b) direction, recorded here so the next session does not re‑decide it:** the frontend is a separate repo and reads DRF's current shapes (`detail`, field‑keyed lists). The envelope must be **additive**: keep the existing keys and add `error: {code, message, fields}` plus `request_id`. A breaking replacement needs a versioned API or frontend sign‑off.
+- **Rejected:**
+  - `drf-yasg`: Swagger 2.0 only;
+  - a hand‑written schema: drifts from the code;
+  - a public schema by default;
+  - failing CI on any generator warning: it would block every PR until all 154 views are annotated.

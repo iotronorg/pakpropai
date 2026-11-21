@@ -81,3 +81,33 @@
    - Run `EXPLAIN ANALYZE` on the common filters (city, purpose/type, price range, `is_active` + `is_sandbox`, org) and on the full‑text search.
    - Add composite B‑tree, GIN (tsvector / JSON `cities`) and `pg_trgm` indexes. Use `AddIndexConcurrently` with `atomic = False`, and check that `pg_trgm` is available in every environment.
 4. Then T‑1090 → T‑1050 → T‑1031 (starts from the ADR‑013 phase B reader list) → T‑1032 → T‑1022.
+
+## Session 6 — 2026-11-21 — M1: search indexes + OpenAPI
+- **Start state:** the owner had committed session 5 (`63c3cd6`); the tree was clean. The baseline re‑run gave **1528 passed, 1 skipped**, matching the handoff.
+- **Completed:** T‑1100 (ADR‑015):
+  - `pg_trgm` and 4 concurrently built indexes: full‑text GIN, trigram GIN on `UPPER(city)`/`UPPER(location)`, partial rank B‑tree;
+  - `?search=` rewritten to an index‑backed, sanitised prefix query, with exact matching for full reference numbers;
+  - checked with `EXPLAIN ANALYZE` on 200k rows: no sequential scans; selective full‑text 631 → 3 ms.
+- **Found and fixed:**
+  - none of the old single‑column indexes matched the `UPPER(col) LIKE` SQL Django emits;
+  - the old full‑text search used the server's mutable default config and filtered on rank, so it could never use an index;
+  - `OpClass` index SQL is invalid unless `django.contrib.postgres` is installed (added);
+  - the default parser splits `RT-…-000000001` so tokens could not match it (ref‑number exact path).
+- **Completed:** T‑1090a (ADR‑016):
+  - drf‑spectacular OpenAPI 3.1 at `/api/v1/schema/` (staff only by default);
+  - CI validates the schema and publishes it as an artefact;
+  - a ratchet test stops schema debt from growing (154 schema‑less `APIView`s → KI‑037/T‑1091).
+- **Split:** T‑1090 into a–d. The direction for the error envelope (T‑1090b) is recorded in ADR‑016: additive and backward‑compatible.
+- **New issues:** KI‑035 (common‑term ranking cost), KI‑036 (`?ref_no=` unindexed), KI‑037 (OpenAPI coverage).
+- **Tests:** 1567 passed, 1 skipped, 0 failed (start 1528). No migration drift; `check` clean; Bandit 0 HIGH. `properties 0021/0022` migrated forward → back → forward.
+- **Not committed.**
+
+### Handoff → session 7
+1. `git status`: session‑6 changes are uncommitted. **Do not commit.** `requirements/base.txt` changed, so run `REBUILD=1 scripts/dev/test.sh` once (expect 1567 passed, 1 skipped).
+2. Next: **T‑1090b** consistent error envelope.
+   - Start in `apps/security/exception_handler.py` (`security_exception_handler`, the configured `EXCEPTION_HANDLER`). Keep its 401/403 auth‑failure logic.
+   - Wrap DRF's response **additively**: keep `detail` and field keys; add `error: {code, message, fields}` and `request_id`. There is no request‑id middleware yet: only `apps/security/middleware.py:126` reads the `X-Request-ID` header. Add a small middleware that echoes or generates it.
+   - Also cover Django 404/500 JSON for `/api/` paths.
+   - Document it as a shared component in the schema (`apps/core/openapi.py`).
+   - Grep tests for exact `resp.json() == {...}` error assertions before changing shapes.
+3. Then T‑1090c (filter validation + KI‑036) → T‑1090d (Idempotency‑Key) → T‑1050 (`Market` entity; `apps/markets` already exists, so inspect it first) → T‑1031.
