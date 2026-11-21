@@ -71,3 +71,18 @@
 - **T‑0017:** audit tool confirmation guard; the direct route marks an explicit request. **Bug fix:** `PropertyAudit` field names (KI‑026).
 - **T‑0015:** `FeatureEnabled` permission; `feature_voice_calls` / `feature_syndication` default off; voice and marketplace views gated.
 - **T‑0014/16:** README corrected; `.env.example` keys; `GO_LIVE_CHECKLIST.md`.
+
+## 2026-11-21 — Session 4 (M1 start; no commits)
+
+- **M1 milestone file** `milestones/MILESTONE_01_CORE_FOUNDATION.md` created from PRD Phase 1 (tasks T‑1010…T‑1120, order, dependencies).
+- **T‑1010 OTP hashing (ADR‑011):**
+  - `apps/users/models.py`: `code` → `code_hash`; `hash_code`, `set_code`, `check_code`.
+  - `apps/users/services.py`: `issue()` stores only the hash; `verify()` uses `check_code`.
+  - `apps/users/admin.py`: list shows `purpose` instead of the code.
+  - Migration `users 0013_otp_code_hash` (hash existing rows → drop column; reverse invalidates).
+  - All existing `otp.code` callers (views, agent/org registration) unchanged — they use the instance returned by `issue()`.
+- **T‑1020 inbound resilience (ADR‑012):**
+  - New `apps/whatsapp/inbound_resilience.py` and `management/commands/replay_whatsapp_dead_letters.py`.
+  - `apps/whatsapp/tasks.py`: task is bound, `acks_late`, `max_retries=6`; `_retry_inbound`.
+  - `apps/whatsapp/client.py`, `router.py`: side‑effect markers.
+  - `apps/whatsapp/views.py`: idempotency key released on dispatch failure.

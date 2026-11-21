@@ -26,13 +26,14 @@ class OTPService:
         if recent >= cls.MAX_PER_HOUR:
             raise ValueError('Too many OTP requests. Try again in an hour.')
 
-        code = cls.generate_code()
-        return OTPCode.objects.create(
+        otp = OTPCode(
             phone=phone,
-            code=code,
             purpose=purpose,
             expires_at=timezone.now() + cls.OTP_LIFETIME,
         )
+        otp.set_code(cls.generate_code())  # plaintext stays on `otp.code` only
+        otp.save()
+        return otp
 
     @classmethod
     def verify(cls, phone: str, code: str, purpose: str = 'otp_login') -> OTPCode:
@@ -47,7 +48,7 @@ class OTPService:
             raise ValueError('No OTP found. Request a new one.')
         if not otp.is_valid():
             raise ValueError('OTP expired or too many attempts.')
-        if otp.code != code:
+        if not otp.check_code(code):
             OTPCode.objects.filter(pk=otp.pk).update(attempts=F('attempts') + 1)
             raise ValueError('Invalid OTP code.')
 

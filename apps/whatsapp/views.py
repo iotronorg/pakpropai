@@ -154,7 +154,17 @@ class WhatsAppWebhookView(APIView):
 
         from .tasks import process_incoming_whatsapp_task
         otel_ctx = getattr(_trace_context, "current", "")
-        process_incoming_whatsapp_task.delay(message, phone_number_id, otel_context=otel_ctx)
+        try:
+            process_incoming_whatsapp_task.delay(message, phone_number_id, otel_context=otel_ctx)
+        except Exception:
+            # T-1020: the message never reached the broker. Release the key so
+            # Meta's re-delivery (triggered by the 500) is processed, not dropped.
+            try:
+                cache.delete(idem_key)
+            except Exception:
+                logger.exception("WA webhook: could not release idempotency key %s", idem_key)
+            logger.exception("WA webhook: dispatch failed for msg %s — returning 500 for Meta retry", msg_id)
+            raise
 
 
 # ── Notifications / WhatsApp history (admin/agent/developer) ─────────────────

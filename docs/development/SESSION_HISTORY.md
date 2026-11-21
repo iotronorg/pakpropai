@@ -30,3 +30,20 @@
 1. `git status`: everything is uncommitted on `development`, including 7 deleted artifact files. **Do not commit** (owner rule).
 2. `scripts/dev/test.sh` → expect 1452 passed, 1 skipped.
 3. M0 exit is pending only a GitHub Actions run (owner pushes). Start M1: create `milestones/MILESTONE_01_CORE_FOUNDATION.md` from PRD Phase 1, then T‑1010 OTP hashing.
+
+## Session 4 — 2026-11-21 — M1 start
+- **Focus:** the pasted prompt had no focus filled in, so the tracker's next task was taken (M1 kickoff → T‑1010, T‑1020).
+- **Start state:** owner had committed sessions 1–3 (`d283324`); tree clean; baseline 1452/1/0.
+- **Completed:** M1 milestone file; T‑1010 OTP hashing (ADR‑011); T‑1020 inbound WhatsApp retry/dead‑letter (ADR‑012). The outbound outbox was split out as T‑1021.
+- **Tests:** 1477 passed, 1 skipped, 0 failed; no migration drift; Bandit 0 HIGH.
+- **Found:**
+  - Under DB errors the inbound task fell back to `org=None` (wrong tenant credentials).
+  - An enqueue failure left the idempotency key set, so Meta's retry was dropped.
+  - The OTP admin listed plaintext codes.
+  - New issues logged: KI‑029/030/031.
+- **Not committed.**
+
+### Handoff → session 5
+1. `git status`: session‑4 changes are uncommitted. **Do not commit.**
+2. `scripts/dev/test.sh` → expect 1477 passed, 1 skipped.
+3. Next: **T‑1030**. Write the membership consolidation ADR: inventory `OrganizationMembership`, `AgentOrgMembership`, `AgentOrganizationMembership`, `Agent.organization`, `Organization.admin_user`, and every reader of each (`get_user_org`, permissions, the `use_membership_rbac` flag). Choose the canonical model and a dual‑read/backfill plan. Then T‑1031 with permission‑matrix tests. KI‑030 can be fixed alongside.

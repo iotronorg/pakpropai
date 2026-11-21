@@ -501,6 +501,8 @@ class MessageRouter:
         Broadcast a raw WhatsApp payload to the org's agent room group.
         Fire-and-forget — no agent connected means the client gets no reply (correct).
         """
+        from .inbound_resilience import mark_side_effect
+        mark_side_effect()  # T-1020: agents would see the message twice on retry
         from asgiref.sync import async_to_sync
         from channels.layers import get_channel_layer
         from django.utils import timezone as _tz

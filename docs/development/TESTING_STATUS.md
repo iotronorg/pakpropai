@@ -29,9 +29,12 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | 2026-11-21 | Working tree, session 3 | `bandit -r apps/ -ll` | 8 findings, **0 HIGH** | — |
 | 2026-11-21 | Working tree, session 3 | Prod settings `manage.py check` without / with `FIELD_ENCRYPTION_KEYS` | `core.E002` error / no issues | — |
 | 2026-11-21 | Scratch DB `rehearsal` | `migrate users` forward → reverse → forward with a plaintext CNIC row | varchar plaintext → text `enc1:` → varchar plaintext → text `enc1:` | — |
+| 2026-11-21 | Working tree, session 4 start | `pytest tests/ apps/` | **1452 passed, 1 skipped, 0 failed** (matches handoff) | 4m44s |
+| 2026-11-21 | Working tree, session 4 end | `pytest tests/ apps/` | **1477 passed, 1 skipped, 0 failed**, 98 subtests | 4m41s |
+| 2026-11-21 | Working tree, session 4 | `makemigrations --check` / `manage.py check` / `bandit -r apps/ -ll` | No changes / no issues / 8 findings, 0 HIGH | — |
 | 2026-11-21 | Container | `infra/scripts/health_check.py` against dead port / missing URL / local 200 server | exit 1 / exit 1 / exit 0 | — |
 
-## Tests added in sessions 2–3
+## Tests added in sessions 2–4
 
 | File | Tests | Covers |
 |---|---|---|
@@ -42,11 +45,15 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | `tests/test_field_encryption.py` | 13 | T‑0010 primitives, rotation, at‑rest ciphertext, webhook lookup, legacy plaintext, config cache, migration helpers |
 | `tests/test_compliance_wiring.py` | 4 | T‑0009 end‑to‑end grounding check |
 
+| `tests/test_otp_hashing.py` | 9 | T‑1010: no plaintext column/value, keyed + bound hash, API send→verify, migration forward/reverse (`MigrationExecutor`) |
+| `tests/test_whatsapp_inbound_resilience.py` | 16 | T‑1020: retry on transient DB errors, backoff, dead‑letter, no retry after a send, org‑lookup retry, replay + command, webhook key release |
+
 ## Modified existing tests (behaviour change, not weakening)
 
 - `test_compliance.py::test_export_endpoint_queues_task`: it now patches `.delay` and asserts the task is enqueued with a real `DataExportRequest` id. This is stricter than before, and it no longer calls Cloudinary.
 - Deal‑creation test classes in `test_deal_lock.py`, `test_sepa_payments.py`, `test_stripe_deal_lock.py` and `test_compliance_views.py` now call `enable_feature('feature_deal_lock')` in `setUp`, because deal lock is frozen by default (ADR‑006). `DealLockBlockedEntityTest` previously could pass from any 403; it now reaches the sanctions check.
 
+- Session 4: `test_celery_tasks.py::CleanupExpiredOTPsTest` creates rows with `code_hash` (the `code` column no longer exists).
 - Session 3: syndication isolation tests (8 classes) and `VoiceInboundWebhookTest` call `enable_feature(...)`, because those modules are frozen by default.
 
 ## Coverage
@@ -55,4 +62,5 @@ Not measured yet (no coverage run executed). CI is configured with `--cov=apps`.
 ## Not covered / gaps
 - No test runs against a real LLM provider (all tests mock or use local backend paths).
 - Gemini AFC multi‑round token counting is not verifiable without the provider (KI‑006 residual).
+- Inbound retries are tested by simulating broker redelivery (`apply(retries=n)`): Celery 5.4 eager mode does not execute retries (KI‑031). The DB‑starvation chaos run has not been repeated.
 - CI workflow changes were validated as YAML and the health script locally; the workflow has not been run on GitHub Actions.

@@ -30,9 +30,9 @@ class CleanupExpiredOTPsTest(TestCase):
     def test_deletes_all_expired_otps_and_returns_count(self):
         from apps.users.models import OTPCode
         from apps.users.tasks import cleanup_expired_otps
-        OTPCode.objects.create(phone='+923001111001', code='000001',
+        OTPCode.objects.create(phone='+923001111001', code_hash='x' * 64,
                                expires_at=timezone.now() - timedelta(minutes=5))
-        OTPCode.objects.create(phone='+923001111002', code='000002',
+        OTPCode.objects.create(phone='+923001111002', code_hash='y' * 64,
                                expires_at=timezone.now() - timedelta(hours=1))
         deleted = cleanup_expired_otps()
         self.assertEqual(deleted, 2)
@@ -41,7 +41,7 @@ class CleanupExpiredOTPsTest(TestCase):
     def test_skips_non_expired_otps(self):
         from apps.users.models import OTPCode
         from apps.users.tasks import cleanup_expired_otps
-        OTPCode.objects.create(phone='+923001111003', code='000003',
+        OTPCode.objects.create(phone='+923001111003', code_hash='z' * 64,
                                expires_at=timezone.now() + timedelta(minutes=10))
         deleted = cleanup_expired_otps()
         self.assertEqual(deleted, 0)

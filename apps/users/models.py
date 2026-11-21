@@ -107,7 +107,10 @@ class OTPCode(models.Model):
         PASSWORD_RESET      = 'password_reset',      'Password Reset'
 
     phone      = models.CharField(max_length=20, db_index=True)
-    code       = models.CharField(max_length=6)
+    # T-1010 / KI-016: only a keyed HMAC of the code is stored, never the code.
+    # The plaintext exists only on the in-memory instance returned by
+    # ``OTPService.issue()`` (``otp.code``) so it can be delivered once.
+    code_hash  = models.CharField(max_length=64, default='')
     purpose    = models.CharField(
         max_length=30,
         choices=Purpose.choices,
@@ -128,6 +131,23 @@ class OTPCode(models.Model):
             and self.attempts < 5
             and timezone.now() < self.expires_at
         )
+
+    @staticmethod
+    def hash_code(phone: str, purpose: str, code: str) -> str:
+        """Keyed HMAC-SHA256 bound to phone + purpose (key: FIELD_HASH_KEY / encryption key)."""
+        from apps.core.crypto import blind_index
+        return blind_index(f'otp:v1:{purpose}:{phone}:{code}')
+
+    def set_code(self, code: str) -> None:
+        """Store the hash and keep the plaintext on this instance only (for delivery)."""
+        self.code = code
+        self.code_hash = self.hash_code(self.phone, self.purpose, code)
+
+    def check_code(self, code: str) -> bool:
+        import hmac
+        if not code or not self.code_hash:
+            return False
+        return hmac.compare_digest(self.code_hash, self.hash_code(self.phone, self.purpose, str(code)))
 
     def __str__(self):
         return f"OTP for {self.phone} — used={self.is_used}"

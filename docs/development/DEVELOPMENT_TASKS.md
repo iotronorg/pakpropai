@@ -25,14 +25,25 @@ Priority: P0 (blocker) → P3.
 | T‑0017 | [x] | P1 | Confirmation guard for `generate_property_audit` | LLM path guarded; direct route = explicit request. Also fixed `PropertyAudit` field‑name bug (KI‑026) |
 | T‑0016 | [x] | P1 | Operator go‑live checklist | `GO_LIVE_CHECKLIST.md` |
 
-## M1 — Core foundation (Phase 1) — not started
+## M1 — Core foundation (Phase 1) — in progress ([MILESTONE_01](milestones/MILESTONE_01_CORE_FOUNDATION.md))
 
-| ID | Status | P | Task |
-|---|---|---|---|
-| T‑1010 | [ ] | P1 | OTP hashing (KI‑016) |
-| T‑1020 | [ ] | P1 | Transactional outbox / retry for WhatsApp under DB starvation (KI‑019) |
-| T‑1030 | [ ] | P1 | Membership model consolidation plan (KI‑010) |
-| T‑1040 | [ ] | P2 | `is_sandbox` for unscoped leads (KI‑017) |
+| ID | Status | P | Task | Notes |
+|---|---|---|---|---|
+| T‑1010 | [x] | P1 | OTP hashing (KI‑016) | ADR‑011. `OTPCode.code_hash` (keyed HMAC bound to phone+purpose), constant‑time check, `users 0013` hashes existing rows; admin no longer lists codes. 9 tests |
+| T‑1020 | [x] | P1 | Inbound WhatsApp retry/dead‑letter under DB starvation (KI‑019) | ADR‑012. Retries with backoff on transient DB errors only when nothing was sent; `acks_late`; Redis dead‑letter + `replay_whatsapp_dead_letters`; webhook releases idempotency key on enqueue failure. 16 tests. Outbound outbox split to T‑1021 |
+| T‑1021 | [ ] | P1 | Transactional outbox for outbound side effects (WhatsApp sends/notifications written in the DB transaction, dispatched by a relay) | GAP‑043, TR‑09 |
+| T‑1030 | [ ] | P1 | Membership model consolidation plan (KI‑010) | **Next** |
+| T‑1031 | [ ] | P1 | Policy‑based RBAC + active org context + permission‑matrix tests | after T‑1030 |
+| T‑1040 | [ ] | P2 | `is_sandbox` for unscoped leads (KI‑017) | after T‑1030 |
+| T‑1011 | [ ] | P1 | MFA (TOTP) for staff and org admins | GAP‑082 |
+| T‑1050 | [ ] | P1 | `Market` entity; remove hardcoded PK defaults; UTC + per‑entity TZ | TR‑04 |
+| T‑1060 | [!] | P1 | Location hierarchy + PostGIS + geocoding backfill | Blocked: owner picks geocoding vendor; PostGIS in all envs |
+| T‑1070 | [ ] | P1 | Listing schema v2 (expand/contract) | after T‑1050 |
+| T‑1080 | [ ] | P2 | Listing lifecycle + transitions + expiry | after T‑1070 |
+| T‑1090 | [ ] | P2 | API standards: OpenAPI, error envelope, filter validation, idempotency keys | |
+| T‑1100 | [ ] | P2 | Search indexes (composite, GIN, trigram) | |
+| T‑1110 | [ ] | P2 | Media pipeline hardening for images | |
+| T‑1120 | [ ] | P2 | AI provider abstraction, prompt registry, market‑pack prompts | |
 
 ## M2 — AI agent MVP — planned entries referenced by ADRs
 

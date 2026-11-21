@@ -82,6 +82,8 @@ class WhatsAppClient:
                 f"Cannot send free-form message to {phone}: outside 24-hour WhatsApp window. "
                 "Use send_template() with a pre-approved template instead."
             )
+        from .inbound_resilience import mark_side_effect
+        mark_side_effect()  # T-1020: a retry after this point could duplicate the reply
         to = phone.lstrip('+')
         payload = {
             'messaging_product': 'whatsapp',
@@ -134,6 +136,8 @@ class WhatsAppClient:
                 'components': components or [],
             },
         }
+        from .inbound_resilience import mark_side_effect
+        mark_side_effect()  # T-1020: a retry after this point could duplicate the reply
         r = requests.post(self._phone_url(), headers=self._headers(), json=payload, timeout=10)
         r.raise_for_status()
         return r.json()
@@ -203,6 +207,8 @@ class WhatsAppClient:
             raise ValueError(
                 f"Cannot send document to {phone}: outside 24-hour WhatsApp window."
             )
+        from .inbound_resilience import mark_side_effect
+        mark_side_effect()  # T-1020: a retry after this point could duplicate the reply
         to = phone.lstrip('+')
         payload = {
             'messaging_product': 'whatsapp',

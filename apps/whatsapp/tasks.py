@@ -10,8 +10,32 @@ logger = logging.getLogger(__name__)
 
 # ── Primary webhook dispatcher ─────────────────────────────────────────────────
 
-@shared_task(ignore_result=True)
-def process_incoming_whatsapp_task(message: dict, phone_number_id: str = '', otel_context: str = ''):
+INBOUND_MAX_RETRIES = 6
+
+
+def _retry_inbound(task, exc, message: dict, phone_number_id: str, otel_context: str):
+    """Retry on a transient DB error; dead-letter once retries are exhausted (T-1020)."""
+    from apps.whatsapp.inbound_resilience import dead_letter, retry_countdown
+    retries = task.request.retries or 0
+    if retries >= task.max_retries:
+        dead_letter(message, phone_number_id, otel_context, exc)
+        return None
+    countdown = retry_countdown(retries)
+    logger.warning(
+        "WA inbound transient DB error msg_id=%s — retry %d/%d in %ds: %s",
+        message.get('id'), retries + 1, task.max_retries, countdown, exc,
+    )
+    raise task.retry(exc=exc, countdown=countdown)
+
+
+@shared_task(
+    bind=True,
+    ignore_result=True,
+    acks_late=True,
+    reject_on_worker_lost=True,
+    max_retries=INBOUND_MAX_RETRIES,
+)
+def process_incoming_whatsapp_task(self, message: dict, phone_number_id: str = '', otel_context: str = ''):
     """
     Async Celery worker for a single inbound WhatsApp message.
 
@@ -19,10 +43,16 @@ def process_incoming_whatsapp_task(message: dict, phone_number_id: str = '', ote
     Media messages (audio / image / document) are handed off to dedicated
     workers with separate resource profiles; text goes straight to the router.
 
-    Retries are intentionally disabled: the idempotency key is set in the view
-    before dispatch, so a retry would silently drop the message.
+    Retries (T-1020 / KI-019): transient DB errors (connection starvation) are
+    retried with exponential backoff while the message sits in the Redis broker,
+    but only if nothing user-visible was sent during the failed attempt. After
+    the last retry the message goes to the Redis dead-letter list
+    (``manage.py replay_whatsapp_dead_letters``). The webhook idempotency key
+    only guards the view against Meta re-deliveries; it does not block these
+    retries.
     """
     from apps.observability.celery_tracing import CeleryTaskTracer
+    from apps.whatsapp.inbound_resilience import TRANSIENT_DB_ERRORS, track_side_effects
     from opentelemetry import context as otel_ctx_module
 
     msg_id   = message.get('id', '')
@@ -40,12 +70,15 @@ def process_incoming_whatsapp_task(message: dict, phone_number_id: str = '', ote
     from apps.whatsapp.client import get_wa_client
     try:
         org = Organization.objects.filter(wa_phone_number_id=phone_number_id).first()
+    except TRANSIENT_DB_ERRORS as exc:
+        # Falling back to org=None here would answer with the wrong tenant's credentials.
+        return _retry_inbound(self, exc, message, phone_number_id, otel_context)
     except Exception:
         org = None
 
     org_id = str(org.id) if org else None
     _otel_span, _otel_token = CeleryTaskTracer.instrument_task(
-        process_incoming_whatsapp_task.request.id or '',
+        self.request.id or '',
         'process_whatsapp',
         org_id,
         otel_context or None,
@@ -118,9 +151,21 @@ def process_incoming_whatsapp_task(message: dict, phone_number_id: str = '', ote
         logger.exception('WA token guard failed phone=%s — proceeding', phone)
 
     # ── Text (and media fallbacks) → direct routing ───────────────────────────
+    retry_exc = None
     try:
         from apps.whatsapp.router import MessageRouter
-        MessageRouter.route(message, phone, phone_number_id)
+        with track_side_effects() as effects:
+            try:
+                MessageRouter.route(message, phone, phone_number_id)
+            except TRANSIENT_DB_ERRORS as exc:
+                if effects.count == 0:
+                    retry_exc = exc
+                else:
+                    logger.exception(
+                        "MessageRouter DB error after %d outbound side effect(s) — not retried "
+                        "(would duplicate replies) phone=%s msg_id=%s",
+                        effects.count, phone, msg_id,
+                    )
     except Exception:
         logger.exception(
             "MessageRouter crashed for phone=%s msg_id=%s type=%s",
@@ -133,6 +178,9 @@ def process_incoming_whatsapp_task(message: dict, phone_number_id: str = '', ote
                 otel_ctx_module.detach(_otel_token)
         except Exception:
             pass
+
+    if retry_exc is not None:
+        return _retry_inbound(self, retry_exc, message, phone_number_id, otel_context)
 
 
 # ── Dedicated media workers ────────────────────────────────────────────────────

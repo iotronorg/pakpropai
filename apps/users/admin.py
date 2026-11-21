@@ -23,7 +23,7 @@ class UserAdmin(DjangoUserAdmin):
 
 @admin.register(OTPCode)
 class OTPCodeAdmin(admin.ModelAdmin):
-    list_display  = ('phone', 'code', 'is_used', 'attempts', 'expires_at', 'created_at')
+    list_display  = ('phone', 'purpose', 'is_used', 'attempts', 'expires_at', 'created_at')
     list_filter   = ('is_used',)
     search_fields = ('phone',)
     readonly_fields = ('created_at',)
