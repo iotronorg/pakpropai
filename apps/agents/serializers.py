@@ -97,7 +97,7 @@ class AgentRegistrationSerializer(serializers.Serializer):
     def create(self, validated_data):
         from apps.users.models import User
         from apps.users.services import OTPService
-        from apps.notifications.tasks import send_otp_async
+        from apps.notifications.delivery import enqueue_otp
 
         phone    = validated_data['phone']
         name     = validated_data['name']
@@ -138,6 +138,6 @@ class AgentRegistrationSerializer(serializers.Serializer):
         )
 
         otp = OTPService.issue(phone, purpose='registration_verify')
-        transaction.on_commit(lambda: send_otp_async.delay(phone, otp.code))
+        enqueue_otp(otp)  # outbox row commits with the agent; dispatched on commit
 
         return agent

@@ -129,8 +129,8 @@ class LeadViewSet(viewsets.ModelViewSet):
         phone = lead.user.phone.lstrip('+')
         wa_id = ''
         try:
-            from apps.whatsapp.client import WhatsAppClient
-            resp  = WhatsAppClient.send_text(phone, body, skip_window_check=True)
+            from apps.whatsapp.client import get_wa_client
+            resp  = get_wa_client(lead.organization).send_text(phone, body, skip_window_check=True)
             wa_id = (resp.get('messages') or [{}])[0].get('id', '')
         except Exception as exc:
             logger.warning(f"WhatsApp send failed for lead {lead.id}: {exc}")

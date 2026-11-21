@@ -212,15 +212,19 @@ class SendWhatsAppAsyncTest(TestCase):
 
     @patch('apps.whatsapp.client.WhatsAppClient.send_text',
            side_effect=Exception('network timeout'))
-    def test_marks_failed_on_general_error(self, _wa):
+    def test_general_error_schedules_outbox_retry(self, _wa):
+        # ADR-014: transient errors are retried by the outbox with backoff; the
+        # notification only becomes FAILED once attempts are exhausted.
+        from apps.core.models import OutboxMessage
         from apps.notifications.tasks import send_whatsapp_async
         n = self._make_notification()
-        try:
-            send_whatsapp_async.delay(str(n.id))
-        except Exception:
-            pass
+        send_whatsapp_async.delay(str(n.id))
         n.refresh_from_db()
-        self.assertEqual(n.status, 'failed')
+        self.assertEqual(n.status, 'pending')
+        self.assertIn('network timeout', n.error)
+        msg = OutboxMessage.objects.get(idempotency_key=f'notification:{n.id}')
+        self.assertEqual((msg.status, msg.attempts), ('pending', 1))
+        self.assertGreater(msg.available_at, timezone.now())
 
     def test_noop_for_nonexistent_notification_id(self):
         from apps.notifications.tasks import send_whatsapp_async
@@ -245,15 +249,16 @@ class RetryFailedNotificationsTest(TestCase):
             error=error,
         )
 
-    @patch('apps.notifications.tasks.send_whatsapp_async.delay')
-    def test_requeues_failed_notification(self, mock_delay):
+    def test_requeues_failed_notification(self):
+        from apps.core.models import OutboxMessage
         from apps.notifications.tasks import retry_failed_notifications
         n = self._make_failed()
         count = retry_failed_notifications()
         self.assertEqual(count, 1)
         n.refresh_from_db()
         self.assertEqual(n.status, 'pending')
-        mock_delay.assert_called_once_with(str(n.id))
+        msg = OutboxMessage.objects.get(kind='notification.whatsapp')
+        self.assertTrue(msg.idempotency_key.startswith(f'notification:{n.id}:retry:'))
 
     @patch('apps.notifications.tasks.send_whatsapp_async.delay')
     def test_skips_24h_window_failures(self, mock_delay):

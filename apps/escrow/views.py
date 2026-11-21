@@ -502,7 +502,7 @@ def _notify_seller_lock_initiated(deal: EscrowDeal, token: str):
         seller_user = deal.property.owner
         if not seller_user or not seller_user.phone:
             return
-        from apps.whatsapp.client import WhatsAppClient
+        from apps.whatsapp.client import get_wa_client
         phone = seller_user.phone.lstrip('+')
         msg = (
             f"🔒 *Deal Lock Request*\n\n"
@@ -513,7 +513,7 @@ def _notify_seller_lock_initiated(deal: EscrowDeal, token: str):
             "Please contact your agent or reply with your code to confirm. "
             "If you did not authorize this, contact support immediately."
         )
-        WhatsAppClient.send_text(phone, msg)
+        get_wa_client(getattr(deal.property, 'organization', None)).send_text(phone, msg)
     except Exception as exc:
         logger.warning(f"Seller deal lock notify failed: {exc}")
 

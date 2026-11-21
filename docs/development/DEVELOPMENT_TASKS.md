@@ -31,7 +31,8 @@ Priority: P0 (blocker) → P3.
 |---|---|---|---|---|
 | T‑1010 | [x] | P1 | OTP hashing (KI‑016) | ADR‑011. `OTPCode.code_hash` (keyed HMAC bound to phone+purpose), constant‑time check, `users 0013` hashes existing rows; admin no longer lists codes. 9 tests |
 | T‑1020 | [x] | P1 | Inbound WhatsApp retry/dead‑letter under DB starvation (KI‑019) | ADR‑012. Retries with backoff on transient DB errors only when nothing was sent; `acks_late`; Redis dead‑letter + `replay_whatsapp_dead_letters`; webhook releases idempotency key on enqueue failure. 16 tests. Outbound outbox split to T‑1021 |
-| T‑1021 | [ ] | P1 | Transactional outbox for outbound side effects (WhatsApp sends/notifications written in the DB transaction, dispatched by a relay) | GAP‑043, TR‑09. **Next** |
+| T‑1021 | [x] | P1 | Transactional outbox for outbound side effects | ADR‑014. `OutboxMessage` (encrypted payload), on‑commit dispatch + relay + purge, lease/backoff/expiry, configurable queue. Adopted for OTPs (KI‑029 resolved) and notifications. Fixed KI‑033 (12 class‑level `WhatsAppClient` calls — nothing was being delivered). 26 tests |
+| T‑1022 | [ ] | P1 | Outbox adoption for remaining sends | hot‑lead/verification signals, listing alerts, escrow notices, lead `send-message`; add a generic `whatsapp.text` kind with per‑site idempotency keys |
 | T‑1030 | [x] | P1 | Membership model consolidation plan (KI‑010) | ADR‑013 phase A: inventory, canonical `OrganizationMembership`, projection sync hooks, `organizations 0024` backfill, `reconcile_memberships`, deterministic primary org. Fixed stale access after team removal. Also KI‑032 (2 masking exemptions). 25 tests |
 | T‑1031 | [ ] | P1 | Policy‑based RBAC + active org context + permission‑matrix tests | ADR‑013 phase B: move `owned_organization`/`agent_profile.organization` readers to memberships; restrict owner/org_admin grants in invite API; KI‑030 |
 | T‑1032 | [ ] | P2 | Membership contract (ADR‑013 phase C) | after T‑1031 and a clean `reconcile_memberships` in prod: drop `AgentOrganizationMembership`, re‑key `AgentOrgMembership`, retire `admin_user` one‑to‑one |
@@ -43,7 +44,7 @@ Priority: P0 (blocker) → P3.
 | T‑1070 | [ ] | P1 | Listing schema v2 (expand/contract) | after T‑1050 |
 | T‑1080 | [ ] | P2 | Listing lifecycle + transitions + expiry | after T‑1070 |
 | T‑1090 | [ ] | P2 | API standards: OpenAPI, error envelope, filter validation, idempotency keys | |
-| T‑1100 | [ ] | P2 | Search indexes (composite, GIN, trigram) | |
+| T‑1100 | [ ] | P2 | Search indexes (composite, GIN, trigram) | **Next** |
 | T‑1110 | [ ] | P2 | Media pipeline hardening for images | |
 | T‑1120 | [ ] | P2 | AI provider abstraction, prompt registry, market‑pack prompts | |
 

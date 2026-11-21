@@ -106,16 +106,17 @@ class NotifyUserServiceTest(TestCase):
         self.assertEqual(n.title, 'Hello')
         self.assertEqual(n.message, 'World')
 
-    @patch('apps.notifications.tasks.send_whatsapp_async.delay')
-    def test_dispatches_task_when_prefs_allow(self, mock_delay):
+    def test_dispatches_task_when_prefs_allow(self):
+        from apps.core.models import OutboxMessage
         from apps.notifications.services import notify_user
-        from apps.notifications.models import UserNotificationPreference
+        from apps.notifications.models import Notification, UserNotificationPreference
         UserNotificationPreference.objects.update_or_create(
             user=self.user,
             defaults={'whatsapp_enabled': True, 'lead_updates': True},
         )
         notify_user(self.user, title='T', message='M', event_type='lead_updates')
-        mock_delay.assert_called_once()
+        n = Notification.objects.get(user=self.user)
+        self.assertTrue(OutboxMessage.objects.filter(idempotency_key=f'notification:{n.id}').exists())
 
     @patch('apps.notifications.tasks.send_whatsapp_async.delay')
     def test_marks_failed_when_whatsapp_channel_disabled(self, mock_delay):

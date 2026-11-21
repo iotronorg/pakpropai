@@ -72,13 +72,14 @@ class OTPStorageTest(TestCase):
 
 class OTPEndpointsTest(TestCase):
 
-    @patch('apps.notifications.tasks.send_otp_async.delay')
-    def test_send_then_verify_via_api(self, mock_delay):
+    def test_send_then_verify_via_api(self):
+        import json
+        from apps.core.models import OutboxMessage
         client = APIClient()
         resp = client.post('/api/v1/auth/otp/send/', {'phone': PHONE}, format='json')
         self.assertEqual(resp.status_code, 200, resp.content)
-        mock_delay.assert_called_once()
-        sent_code = mock_delay.call_args[0][1]
+        # ADR-014: the code is delivered from the (encrypted) outbox payload.
+        sent_code = json.loads(OutboxMessage.objects.get(kind='whatsapp.otp').payload)['code']
         self.assertNotIn(sent_code, OTPCode.objects.get(phone=PHONE).code_hash)
 
         resp = client.post('/api/v1/auth/otp/verify/', {'phone': PHONE, 'code': sent_code}, format='json')

@@ -1,3 +1,4 @@
+import json
 """
 Tests for the public self-service org registration flow.
 Covers: happy path, duplicate phone/email, invalid inputs, OTP verify + auto-login.
@@ -58,7 +59,11 @@ class OrgRegistrationHappyPathTests(TestCase):
         mock_task.delay = MagicMock()
         c = APIClient()
         c.post('/api/v1/organizations/register/', _VALID_PAYLOAD, format='json')
-        mock_task.delay.assert_called_once()
+        # ADR-014: delivery goes through the outbox, not a broker message with the code.
+        from apps.core.models import OutboxMessage
+        msg = OutboxMessage.objects.get(kind='whatsapp.otp')
+        self.assertEqual(json.loads(msg.payload)['phone'], _VALID_PAYLOAD['phone'])
+        mock_task.delay.assert_not_called()
 
     @patch('apps.notifications.tasks.send_otp_async')
     def test_unauthenticated_access_allowed(self, mock_task):

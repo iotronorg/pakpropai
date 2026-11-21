@@ -10,10 +10,11 @@ logger = logging.getLogger(__name__)
 @shared_task
 def retry_failed_notifications():
     """
-    Runs every 30 minutes. Re-queues FAILED notifications from the last 48h,
-    excluding ones that failed due to the WhatsApp 24h messaging window
-    (those won't succeed on retry — the client must message first).
+    Runs every 30 minutes. Re-queues FAILED notifications from the last 48h through
+    the outbox, excluding ones that failed due to the WhatsApp 24h messaging window
+    (those won't succeed on retry — the client must message first) or preferences.
     """
+    from .delivery import enqueue_notification
     from .models import Notification
 
     cutoff = timezone.now() - timedelta(hours=48)
@@ -26,50 +27,39 @@ def retry_failed_notifications():
     for n in qs:
         n.status = Notification.Status.PENDING
         n.save(update_fields=['status'])
-        send_whatsapp_async.delay(str(n.id))
+        enqueue_notification(n, retry=True)
         count += 1
 
     logger.info(f"retry_failed_notifications: re-queued {count} notification(s)")
     return count
 
 
+# ── Legacy task shims ─────────────────────────────────────────────────────────
+# New code enqueues through apps.core.outbox (ADR-014). These remain so messages
+# already sitting in the broker at deploy time are still processed.
+
 @shared_task(bind=True, max_retries=3, default_retry_delay=15)
 def send_otp_async(self, phone: str, code: str):
-    """Deliver an OTP via WhatsApp. Retries up to 3× with 15-second backoff."""
-    from apps.whatsapp.client import WhatsAppClient
+    """Deprecated: deliver an OTP passed in the broker message. Never logs the code."""
+    from apps.whatsapp.client import get_wa_client
     try:
-        WhatsAppClient.send_otp(phone, code)
-        logger.info(f"OTP delivered to {phone}")
+        get_wa_client(None).send_otp(phone, code)
+        logger.info("OTP delivered to %s (legacy task)", phone)
     except Exception as exc:
-        logger.error(f"OTP delivery attempt {self.request.retries + 1} failed for {phone}: {exc}")
-        logger.warning(f"[OTP FALLBACK] {phone}: {code}")
+        logger.error("OTP delivery attempt %s failed for %s: %s", self.request.retries + 1, phone, exc)
         raise self.retry(exc=exc)
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=30)
-def send_whatsapp_async(self, notification_id: str):
+@shared_task
+def send_whatsapp_async(notification_id: str):
+    """Deprecated: route a notification id through the outbox and deliver it now."""
+    from apps.core import outbox
+    from .delivery import enqueue_notification
     from .models import Notification
-    from apps.whatsapp.client import WhatsAppClient
 
     try:
         n = Notification.objects.get(id=notification_id)
-    except Notification.DoesNotExist:
-        return
-
-    try:
-        resp = WhatsAppClient.send_text(n.user.phone, n.message)
-        n.status        = Notification.Status.SENT
-        n.wa_message_id = resp.get('messages', [{}])[0].get('id', '')
-        n.sent_at       = timezone.now()
-        n.save()
-    except ValueError as exc:
-        # 24h window expired — retrying won't help; mark as skipped
-        n.status = Notification.Status.FAILED
-        n.error  = str(exc)[:1000]
-        n.save()
-        logger.warning(f"WA 24h window expired for notification {notification_id}: {exc}")
-    except Exception as exc:
-        n.status = Notification.Status.FAILED
-        n.error  = str(exc)[:1000]
-        n.save()
-        raise self.retry(exc=exc)
+    except (Notification.DoesNotExist, ValueError):
+        return None
+    msg = enqueue_notification(n)
+    return outbox.dispatch(msg.pk)

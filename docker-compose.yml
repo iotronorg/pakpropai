@@ -56,7 +56,7 @@ services:
   worker:
     build: .
     # Consume both queues in dev so all tasks are processed without a second container.
-    command: celery -A config worker --loglevel=info --concurrency 2 -Q default,high-resource
+    command: celery -A config worker --loglevel=info --concurrency 2 -Q default,high-resource,outbound
     volumes:
       - .:/app
       - media_files:/app/media

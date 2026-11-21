@@ -5,11 +5,15 @@ from django.utils import timezone
 logger = logging.getLogger(__name__)
 
 
+def _wa(deal):
+    from apps.whatsapp.client import get_wa_client
+    return get_wa_client(getattr(deal.property, 'organization', None))
+
+
 @shared_task
 def expire_deal_locks():
     """Mark LOCKED deals past their expiry as EXPIRED. Run every 30 minutes."""
     from .models import EscrowDeal
-    from apps.whatsapp.client import WhatsAppClient
 
     now     = timezone.now()
     expired = EscrowDeal.objects.filter(status=EscrowDeal.Status.LOCKED, lock_expires_at__lte=now)
@@ -28,7 +32,6 @@ def expire_deal_locks():
 
 def _notify_buyer_expired(deal):
     try:
-        from apps.whatsapp.client import WhatsAppClient
         phone = deal.buyer.phone.lstrip('+')
         msg = (
             f"⏰ *Deal Lock Expired*\n\n"
@@ -36,7 +39,7 @@ def _notify_buyer_expired(deal):
             "The property is now available to other buyers. "
             "Type *lock property* to start a new deal lock if you're still interested."
         )
-        WhatsAppClient.send_text(phone, msg)
+        _wa(deal).send_text(phone, msg)
     except Exception as exc:
         logger.warning(f"Deal lock expiry buyer notify failed deal={deal.pk}: {exc}")
 
@@ -44,7 +47,6 @@ def _notify_buyer_expired(deal):
 def _notify_seller_expired(deal):
     """Notify the seller (or property owner) and agent that the deal lock expired."""
     try:
-        from apps.whatsapp.client import WhatsAppClient
 
         title = deal.property.title
 
@@ -52,7 +54,7 @@ def _notify_seller_expired(deal):
         seller = deal.seller or getattr(deal.property, 'owner', None)
         if seller and seller.phone:
             phone = seller.phone.lstrip('+')
-            WhatsAppClient.send_text(
+            _wa(deal).send_text(
                 phone,
                 f"⏰ *Deal Lock Expired*\n\n"
                 f"The 48-hour deal lock on *{title}* has expired without completing payment.\n\n"
@@ -63,7 +65,7 @@ def _notify_seller_expired(deal):
         agent = deal.agent
         if agent and agent.user and agent.user.phone:
             phone = agent.user.phone.lstrip('+')
-            WhatsAppClient.send_text(
+            _wa(deal).send_text(
                 phone,
                 f"⏰ *Deal Lock Expired*\n\n"
                 f"The deal lock on *{title}* has expired.\n\n"

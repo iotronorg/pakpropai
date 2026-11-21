@@ -33,9 +33,12 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | 2026-11-21 | Working tree, session 4 end | `pytest tests/ apps/` | **1477 passed, 1 skipped, 0 failed**, 98 subtests | 4m41s |
 | 2026-11-21 | Working tree, session 4 | `makemigrations --check` / `manage.py check` / `bandit -r apps/ -ll` | No changes / no issues / 8 findings, 0 HIGH | — |
 | 2026-11-21 | `HEAD` b9ac8a7, session 5 start | `pytest tests/ apps/` | **1477 passed, 1 skipped, 0 failed** (matches handoff) | 4m35s |
-| 2026-11-21 | Working tree, session 5 end | `pytest tests/ apps/` | **1502 passed, 1 skipped, 0 failed**, 98 subtests | 4m35s |
+| 2026-11-21 | Working tree, after T‑1030 | `pytest tests/ apps/` | **1502 passed, 1 skipped, 0 failed**, 98 subtests | 4m35s |
+| 2026-11-21 | Working tree, after T‑1021 (first run) | `pytest tests/ apps/` | 1527 passed, 1 skipped, **1 failed**: `test_api_key_security::test_raw_token_not_stored`, a flaky pre‑existing test (KI‑034), fixed and re‑run 3× green | 4m39s |
+| 2026-11-21 | Working tree, session 5 end | `pytest tests/ apps/` | **1528 passed, 1 skipped, 0 failed**, 98 subtests | 4m31s |
 | 2026-11-21 | Working tree, session 5 | `makemigrations --check` / `manage.py check` / `bandit -r apps/ -ll` | No changes / no issues / 8 findings, 0 HIGH | — |
 | 2026-11-21 | Working tree, session 5 | `migrate` → `migrate organizations 0023` → `migrate`; `reconcile_memberships [--fail-on-drift]` | OK both ways; all categories 0, exit 0 | — |
+| 2026-11-21 | Working tree, session 5 | `makemigrations --check`, `check`, `migrate core 0001` → `migrate` | No changes / no issues / OK | — |
 | 2026-11-21 | Container | `infra/scripts/health_check.py` against dead port / missing URL / local 200 server | exit 1 / exit 1 / exit 0 | — |
 
 ## Tests added in sessions 2–5
@@ -52,12 +55,14 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | `tests/test_otp_hashing.py` | 9 | T‑1010: no plaintext column/value, keyed + bound hash, API send→verify, migration forward/reverse (`MigrationExecutor`) |
 | `tests/test_whatsapp_inbound_resilience.py` | 16 | T‑1020: retry on transient DB errors, backoff, dead‑letter, no retry after a send, org‑lookup retry, replay + command, webhook key release |
 | `tests/test_membership_consolidation.py` | 25 | T‑1030: agent/owner projection sync (join, move, unlink, rejoin, owner kept, unrelated saves), admin transfer, API writer paths (team add/remove revokes access, members delete, JSON registration + invite — KI‑032), primary org choice, drift report/repair/command, backfill migration idempotency |
+| `tests/test_outbox.py` | 26 | T‑1021: rollback leaves no row, on‑commit dispatch with id only, idempotent key, encrypted at rest, broker‑down fallback to relay, sent/permanent/transient/backoff/exhausted/expired, lease skip + stale‑lease reclaim, payload wipe, relay/purge; end‑to‑end OTP endpoint and `notify_user` through the real client (HTTP patched), notification idempotency/24 h window/final attempt/preferences; KI‑033 static guard + hot‑lead alert |
 
 ## Modified existing tests (behaviour change, not weakening)
 
 - `test_compliance.py::test_export_endpoint_queues_task`: it now patches `.delay` and asserts the task is enqueued with a real `DataExportRequest` id. This is stricter than before, and it no longer calls Cloudinary.
 - Deal‑creation test classes in `test_deal_lock.py`, `test_sepa_payments.py`, `test_stripe_deal_lock.py` and `test_compliance_views.py` now call `enable_feature('feature_deal_lock')` in `setUp`, because deal lock is frozen by default (ADR‑006). `DealLockBlockedEntityTest` previously could pass from any 403; it now reaches the sanctions check.
 
+- Session 5 (T‑1021): `test_celery_tasks.py` general‑error test now expects an outbox retry (notification stays `pending`) instead of immediate `failed`; the requeue test and `test_otp_hashing`/`test_service_layer`/`test_org_registration` read the outbox instead of a mocked `.delay`. `test_api_key_security` flake fixed (KI‑034).
 - Session 5: `test_org_membership.py` (4 setUps) and `test_lead_scoring.py` seed the owner membership with `get_or_create`, because creating an org with `admin_user` now creates it (ADR‑013). Assertions unchanged.
 - Session 4: `test_celery_tasks.py::CleanupExpiredOTPsTest` creates rows with `code_hash` (the `code` column no longer exists).
 - Session 3: syndication isolation tests (8 classes) and `VoiceInboundWebhookTest` call `enable_feature(...)`, because those modules are frozen by default.
@@ -66,6 +71,7 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 Not measured yet (no coverage run executed). CI is configured with `--cov=apps`.
 
 ## Not covered / gaps
+- Outbound WhatsApp is tested with `requests.post` patched; no test hits Meta. The tests used to patch `WhatsAppClient` methods at class level, which hid KI‑033; new tests go through the real client.
 - No test runs against a real LLM provider (all tests mock or use local backend paths).
 - Gemini AFC multi‑round token counting is not verifiable without the provider (KI‑006 residual).
 - Inbound retries are tested by simulating broker redelivery (`apply(retries=n)`): Celery 5.4 eager mode does not execute retries (KI‑031). The DB‑starvation chaos run has not been repeated.

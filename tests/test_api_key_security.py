@@ -61,8 +61,7 @@ class TestApiKeyManagerGeneration(TestCase):
         raw, instance = _make_key(org)
 
         # The full secret must NOT appear anywhere in DB-persisted fields
-        prefix = raw.split('_')[1]
-        secret = raw.split('_')[2]
+        _, prefix, secret = raw.split('_', 2)  # secret may itself contain '_' (was flaky)
         self.assertEqual(instance.key_prefix, prefix)
         self.assertNotIn(secret, instance.key_hash)
         self.assertNotIn(secret, instance.key_salt)

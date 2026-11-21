@@ -62,12 +62,12 @@ def warm_search_cache(
 def _send_scraped_followup(phone: str, results: list):
     """Send a brief WhatsApp message with live scraped listings."""
     try:
-        from apps.whatsapp.client import WhatsAppClient
+        from apps.whatsapp.client import get_wa_client
         count = len(results)
         lines = [f"🔍 Found {count} live listing{'s' if count != 1 else ''} from Zameen/Graana:\n"]
         for i, r in enumerate(results, 1):
             lines.append(r.format_wa(index=i))
-        WhatsAppClient.send_text(phone, "\n\n".join(lines), skip_window_check=True)
+        get_wa_client(None).send_text(phone, "\n\n".join(lines), skip_window_check=True)
         logger.info(f"Sent scraped follow-up to phone={phone} ({count} results)")
     except Exception as exc:
         logger.warning(f"_send_scraped_followup failed phone={phone}: {exc}")
@@ -126,7 +126,7 @@ def _notify_matching_leads(prop) -> int:
     try:
         from django.db.models import Q
         from apps.leads.models import Lead
-        from apps.whatsapp.client import WhatsAppClient
+        from apps.whatsapp.client import get_wa_client
 
         city_lower = (prop.city or '').strip().lower()
         if not city_lower:
@@ -140,7 +140,7 @@ def _notify_matching_leads(prop) -> int:
                 status__in=_ALERT_STATUSES,
             )
             .exclude(intent__in=_SKIP_INTENTS)
-            .select_related('user')
+            .select_related('user', 'organization')
         )
 
         # Budget gate: only notify if lead's max budget covers this price (same currency)
@@ -167,7 +167,7 @@ def _notify_matching_leads(prop) -> int:
                     f"💰 {price_str}\n\n"
                     "Reply here to get full details or book a visit! 🔑"
                 )
-                WhatsAppClient.send_text(lead.user.phone.lstrip('+'), msg)
+                get_wa_client(lead.organization).send_text(lead.user.phone.lstrip('+'), msg)
                 sent += 1
             except Exception as exc:
                 logger.warning(f"Listing alert WA failed lead={lead.id}: {exc}")

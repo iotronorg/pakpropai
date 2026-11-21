@@ -62,7 +62,7 @@ def _fire_hot_lead_alert(lead) -> None:
         agent = lead.assigned_agent
         if not agent or not agent.user or not agent.user.phone:
             return
-        from apps.whatsapp.client import WhatsAppClient
+        from apps.whatsapp.client import get_wa_client
         city   = lead.city_interest or 'Not specified'
         intent = lead.get_intent_display() if lead.intent else 'Not specified'
         msg = (
@@ -72,7 +72,7 @@ def _fire_hot_lead_alert(lead) -> None:
             f"🎯 Intent: {intent}\n\n"
             "Follow up NOW before the moment passes! ⚡"
         )
-        WhatsAppClient.send_text(agent.user.phone.lstrip('+'), msg)
+        get_wa_client(lead.organization).send_text(agent.user.phone.lstrip('+'), msg)
         logger.info(f"Hot lead alert sent for lead={lead.id} score={lead.score} agent={agent.id}")
     except Exception as exc:
         logger.warning(f"Hot lead WA alert failed for lead {lead.id}: {exc}")

@@ -51,3 +51,11 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - [ ] **Decide each `orphan_agent` and `extra_owner` row by hand.** These are never auto‑revoked: an orphan can be a legitimate invite to a second org, or an ex‑agent who must lose access. Revoke via `DELETE /api/v1/organizations/me/members/<id>/` or the admin.
 - [ ] Optional: schedule `reconcile_memberships --fail-on-drift` as a daily job and alert on a non‑zero exit.
 - [ ] JSON clients can now self‑register agents and invite members by phone. `PIIMaskingMiddleware` exemptions were added for `/api/v1/agents/register/` and `/api/v1/organizations/me/members/` (KI‑032).
+
+## 8. Session‑5 changes (M1: transactional outbox, ADR‑014; KI‑033)
+- [ ] Migration `core 0002_outbox_message` creates `outbox_messages` (schema only).
+- [ ] **Beat** must be running: `relay-outbox` (30 s) and `purge-outbox` (daily) come from `CELERY_BEAT_SCHEDULE`, which `django_celery_beat` syncs on start. Check that both show in the admin's periodic tasks.
+- [ ] Keep `OUTBOX_CELERY_QUEUE=default` (the default) unless **every** environment has a worker consuming `outbound`. The prod compose `worker` now consumes `default,outbound`; ECS task definitions outside this repo must be checked before switching.
+- [ ] **Behaviour change:** WhatsApp OTPs, notifications, hot‑lead alerts, verification/listing alerts and deal notices will now actually be **sent** (KI‑033: they all failed silently before). Confirm the WhatsApp templates and credentials, and warn support about the sudden increase in outbound messages.
+- [ ] Purge or restrict historical logs containing `[OTP FALLBACK]`: they hold plaintext OTP codes.
+- [ ] Monitor: `outbox_messages` rows with `status='pending'` and `available_at` older than 5 min (relay not running), and `status='failed'` growth. Log lines: `outbox.dead`, `outbox.failed_permanent`.

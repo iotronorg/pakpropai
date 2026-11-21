@@ -126,7 +126,7 @@ services:
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.prod
       CELERY_CONCURRENCY: "4"
-      CELERY_QUEUES: "default"
+      CELERY_QUEUES: "default,outbound"  # outbound = outbox dispatch when OUTBOX_CELERY_QUEUE=outbound
     volumes:
       - media_files:/app/media
     depends_on:

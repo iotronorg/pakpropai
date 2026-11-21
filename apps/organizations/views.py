@@ -546,8 +546,8 @@ class OrgRegistrationView(APIView):
 
         try:
             otp = OTPService.issue(d['phone'], purpose='org_registration')
-            from apps.notifications.tasks import send_otp_async
-            send_otp_async.delay(d['phone'], otp.code)
+            from apps.notifications.delivery import enqueue_otp
+            enqueue_otp(otp)
         except Exception:
             logger.warning("OTP dispatch failed for org registration phone %s", d['phone'])
 

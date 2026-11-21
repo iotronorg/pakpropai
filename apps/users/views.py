@@ -90,8 +90,8 @@ class SendOTPView(APIView):
         # Delivery errors (WhatsApp sandbox limits, network) must never crash this endpoint.
         # The OTP is already issued; the user can still receive it via the logged code in dev.
         try:
-            from apps.notifications.tasks import send_otp_async
-            send_otp_async.delay(phone, otp.code)
+            from apps.notifications.delivery import enqueue_otp
+            enqueue_otp(otp)  # outbox (ADR-014): the broker sees only the row id
         except Exception:
             logger.warning("OTP WhatsApp delivery failed for %s — OTP was issued but not sent.", phone)
 
@@ -387,8 +387,8 @@ class PasswordResetRequestView(APIView):
             try:
                 otp = OTPService.issue(phone, purpose='password_reset')
                 try:
-                    from apps.notifications.tasks import send_otp_async
-                    send_otp_async.delay(phone, otp.code)
+                    from apps.notifications.delivery import enqueue_otp
+                    enqueue_otp(otp)
                 except Exception:
                     logger.warning("OTP delivery failed for %s during password reset.", phone)
             except ValueError:

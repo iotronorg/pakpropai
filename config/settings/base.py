@@ -248,7 +248,15 @@ CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 # Queue separation: AI/PDF/vision tasks go to high-resource workers;
 # notifications, expiry, and bookkeeping stay on default workers.
 CELERY_TASK_DEFAULT_QUEUE = 'default'
+# Transactional outbox dispatch (ADR-014). Defaults to 'default' so existing workers
+# (CELERY_QUEUES=default) keep delivering; set to 'outbound' only once a worker
+# consumes that queue (see GO_LIVE_CHECKLIST §8).
+OUTBOX_CELERY_QUEUE = env('OUTBOX_CELERY_QUEUE', default='default')
 CELERY_TASK_ROUTES = {
+    # Outbound side effects
+    'apps.core.tasks.dispatch_outbox_message':            {'queue': OUTBOX_CELERY_QUEUE},
+    'apps.core.tasks.relay_outbox':                       {'queue': OUTBOX_CELERY_QUEUE},
+    'apps.core.tasks.purge_outbox':                       {'queue': OUTBOX_CELERY_QUEUE},
     # AI inference
     'apps.whatsapp.tasks.process_incoming_whatsapp_task': {'queue': 'high-resource'},
     'apps.whatsapp.tasks.transcribe_audio_task':          {'queue': 'high-resource'},
@@ -268,6 +276,14 @@ CELERY_TASK_ROUTES = {
 }
 
 CELERY_BEAT_SCHEDULE = {
+    'relay-outbox': {
+        'task':     'apps.core.tasks.relay_outbox',
+        'schedule': 30.0,  # safety net for lost on-commit enqueues / dead workers
+    },
+    'purge-outbox': {
+        'task':     'apps.core.tasks.purge_outbox',
+        'schedule': 86400,  # daily
+    },
     'expire-deal-locks': {
         'task':     'apps.escrow.tasks.expire_deal_locks',
         'schedule': 1800,  # every 30 minutes

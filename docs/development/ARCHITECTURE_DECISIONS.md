@@ -171,3 +171,34 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - A pending (self‑registered) agent gets an active membership, the same access the legacy path gave. Their user is inactive until approval.
   - Report‑only categories (`extra_owner`, `orphan_agent`, `collaboration_without_membership`) need a human decision and are never auto‑revoked.
 - **Rejected:** Deactivating "orphan" agent memberships automatically. They can be legitimate invites to a second org.
+
+## ADR‑014 — Transactional outbox for outbound side effects
+- **Date:** 2026-11-21 (session 5) · Task T‑1021 · GAP‑043, TR‑09, KI‑029
+- **Context:** Outbound WhatsApp sends were queued with `.delay()` beside the DB write (dual write). A broker outage after commit lost the message; a `.delay()` before commit could run before the row existed. OTP tasks also carried the plaintext code in the Redis broker (KI‑029). While tracing these paths, KI‑033 was found: since commit `8cee1dd`, 12 call sites called `WhatsAppClient` instance methods on the class. They raised `TypeError`, which was swallowed, so **no OTP, notification, hot‑lead alert, verification, listing‑alert or deal message was ever delivered**. Tests hid it by patching the method at class level.
+- **Decision:**
+  - **Model:** `apps.core.models.OutboxMessage`. Fields:
+    - `kind`, `idempotency_key` (unique);
+    - `payload` (JSON in an `EncryptedTextField`, ADR‑008);
+    - `status` (pending/sending/sent/failed/expired), `attempts`/`max_attempts`;
+    - `available_at`, lease `locked_until`, `expires_at`, `last_error`, `provider_ref`.
+  - **Enqueue:** `apps.core.outbox.enqueue(kind, payload, key=…)` writes the row in the caller's transaction and queues `dispatch_outbox_message(id)` **on commit**. The broker carries only the id. The same key twice returns the existing row.
+  - **Dispatch:** claiming is an atomic conditional `UPDATE` of a due row → `sending` with a 2‑minute lease and `attempts+1`. Outcomes:
+    - handler success → `sent`;
+    - `PermanentDeliveryError` → `failed`;
+    - any other error → exponential backoff (15 s doubling, capped at 15 min) until `max_attempts`, then `failed`;
+    - past `expires_at` → `expired`, not sent.
+  - **Relay:** `relay_outbox` (beat, every 30 s) re‑queues due rows and expired leases, covering a lost on‑commit enqueue or a dead worker. `purge_outbox` (daily) deletes sent/expired rows after 7 days and failed rows after 30.
+  - **Handlers:** an explicit registry `outbox.HANDLERS` maps kind → dotted path:
+    - `whatsapp.otp` (expires with the OTP; payload wiped once terminal);
+    - `notification.whatsapp` (idempotent on `Notification.status`; marks the notification failed on a closed 24 h window or on the final attempt).
+  - **Queue:** the `OUTBOX_CELERY_QUEUE` setting defaults to `default`, because deployed workers are pinned with `CELERY_QUEUES`. The prod/dev default workers now also consume `outbound`, so operators can switch to a dedicated queue with one env change.
+  - **KI‑033:** every call site now uses `get_wa_client(org)` with the relevant tenant (lead/property/deal org, otherwise global). A static test blocks class‑level calls.
+- **Semantics:** at‑least‑once. A crash after Meta accepts a message but before the row is marked sent gives one duplicate after the lease expires (Meta has no idempotency key). The circuit‑breaker fallback (`MetaLocalBuffer`) returns `{}` and counts as sent. That buffer has its own replay path; unchanged.
+- **Adopted now:** OTP delivery (all 4 issue sites) and `notify_user` / `retry_failed_notifications`. `send_otp_async` and `send_whatsapp_async` stay as shims for messages already in the broker at deploy time, and no longer log codes.
+- **Not yet adopted (T‑1022):**
+  - signal‑time sends (hot‑lead alert, verification status), listing alerts, escrow notices, the agent `send-message` action;
+  - replies sent during inbound processing, which stay synchronous and are protected by ADR‑012.
+- **Rejected:**
+  - a new app or library (django‑outbox etc.): `apps/core` already hosts cross‑cutting models;
+  - `select_for_update(skip_locked)` claiming: a conditional `UPDATE` gives the same exclusivity without holding a transaction open across the HTTP call;
+  - routing to a new `outbound` queue by default: workers pinned to `default` would never deliver OTPs.

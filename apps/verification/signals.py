@@ -43,8 +43,8 @@ def notify_verification_status_change(sender, instance, created, **kwargs):
                 "Please ensure your documents are ready for verification."
             )
 
-        from apps.whatsapp.client import WhatsAppClient
-        WhatsAppClient.send_text(phone, msg)
+        from apps.whatsapp.client import get_wa_client
+        get_wa_client(instance.property.organization).send_text(phone, msg)
         logger.info(f"Verification notify sent to {phone} — status={instance.status} property={instance.property_id}")
 
     except Exception as exc:

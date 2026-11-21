@@ -104,3 +104,23 @@
   - Command `organizations/management/commands/reconcile_memberships.py` (`--apply`, `--show`, `--fail-on-drift`).
 - **KI‑032:** `config/settings/base.py` `PRIVACY_MASK_EXEMPT_PATHS` += `/api/v1/organizations/me/members/`, `/api/v1/agents/register/`.
 - **Tests:** new `tests/test_membership_consolidation.py` (25). `tests/test_org_membership.py` and `tests/test_lead_scoring.py` now seed owner rows with `get_or_create`.
+- **T‑1021 transactional outbox (ADR‑014):**
+  - `apps/core/models.py`: `OutboxMessage`; migration `core 0002_outbox_message`.
+  - New `apps/core/outbox.py` (`enqueue`, `dispatch`, `relay_due`, `purge`, `HANDLERS`, `PermanentDeliveryError`) and `apps/core/tasks.py` (`dispatch_outbox_message`, `relay_outbox`, `purge_outbox`).
+  - New `apps/notifications/delivery.py`: `enqueue_otp`, `deliver_otp`, `enqueue_notification`, `deliver_notification`.
+  - OTP issue sites (`users/views.py` ×2, `organizations/views.py`, `agents/serializers.py`) → `enqueue_otp(otp)`.
+  - `notifications/services.notify_user`: the Notification row and outbox row are written in one transaction.
+  - `notifications/tasks.py`: `retry_failed_notifications` goes through the outbox; `send_otp_async`/`send_whatsapp_async` are kept as legacy shims.
+  - Settings: `OUTBOX_CELERY_QUEUE` (default `default`), routes, beat `relay-outbox` (30 s) and `purge-outbox` (daily). `.env.example` documents it; the prod compose worker consumes `default,outbound`; the dev compose worker adds `outbound`.
+- **KI‑033:** `WhatsAppClient.<method>(…)` → `get_wa_client(org).<method>(…)` in:
+  - `leads/views.py`, `leads/signals.py`;
+  - `verification/signals.py`;
+  - `properties/tasks.py` (×2);
+  - `escrow/tasks.py` (×3, via the `_wa(deal)` helper), `escrow/views.py`;
+  - `notifications/services.py` (×2), `notifications/tasks.py` (×2).
+
+  The `[OTP FALLBACK]` code logging was removed.
+- **Tests:**
+  - New `tests/test_outbox.py` (26).
+  - Updated to outbox semantics: `test_celery_tasks.py` (2), `test_otp_hashing.py` (1), `test_service_layer.py` (1), `test_org_registration.py` (1).
+  - Flaky `test_api_key_security.py::test_raw_token_not_stored` fixed (KI‑034).
