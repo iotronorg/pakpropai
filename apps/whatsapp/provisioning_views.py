@@ -29,9 +29,9 @@ class ProvisioningStatusView(APIView):
 
     def get(self, request):
         from apps.organizations.models import OrgProvisioningRecord
-        try:
-            org = request.user.owned_organization
-        except Exception:
+        from apps.core.permissions import get_admin_org
+        org = get_admin_org(request.user)
+        if org is None:
             return Response({'detail': 'No organization found.'}, status=status.HTTP_404_NOT_FOUND)
 
         try:
@@ -49,9 +49,9 @@ class ProvisioningStartView(APIView):
         from apps.organizations.models import OrgProvisioningRecord
         from apps.whatsapp.tasks import provision_organization_live
 
-        try:
-            org = request.user.owned_organization
-        except Exception:
+        from apps.core.permissions import get_admin_org
+        org = get_admin_org(request.user)
+        if org is None:
             return Response({'detail': 'No organization found.'}, status=status.HTTP_404_NOT_FOUND)
 
         if org.operational_mode == 'production':
@@ -92,9 +92,9 @@ class ProvisioningRetryView(APIView):
         from apps.organizations.models import OrgProvisioningRecord
         from apps.whatsapp.tasks import provision_organization_live
 
-        try:
-            org = request.user.owned_organization
-        except Exception:
+        from apps.core.permissions import get_admin_org
+        org = get_admin_org(request.user)
+        if org is None:
             return Response({'detail': 'No organization found.'}, status=status.HTTP_404_NOT_FOUND)
 
         try:

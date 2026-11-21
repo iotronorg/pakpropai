@@ -36,7 +36,8 @@ def execute_rtbf_erasure(self, request_id: str):
             req.save(update_fields=['status'])
             try:
                 from apps.notifications.models import Notification
-                org = getattr(req.user, 'owned_organization', None)
+                from apps.core.permissions import primary_org
+                org = primary_org(req.user)
                 if org and hasattr(org, 'admin_user') and org.admin_user:
                     Notification.objects.create(
                         user=org.admin_user,

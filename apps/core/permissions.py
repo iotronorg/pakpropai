@@ -161,6 +161,31 @@ def active_org_role(user) -> str | None:
     return membership.role if membership else None
 
 
+def get_admin_org(user):
+    """
+    The active organization if the user administers it (``owner``/``org_admin``),
+    else ``None``. Use for org‑management actions (billing, API keys,
+    provisioning, team management) that the legacy code tied to
+    ``owned_organization``: the selector can never raise a user's privileges.
+    """
+    membership = get_active_membership(user)
+    if membership is not None and membership.role in _ORG_ADMIN_ROLES:
+        return membership.organization
+    return None
+
+
+def primary_org(user):
+    """Primary organization of a *subject* user (tasks, audit records) — ignores the request selector."""
+    if user is None:
+        return None
+    try:
+        from apps.organizations.membership import primary_membership
+        membership = primary_membership(user)
+    except Exception:
+        return None
+    return membership.organization if membership else None
+
+
 # ── Platform-level permissions ────────────────────────────────────────────────
 
 class IsSuperAdmin(BasePermission):

@@ -11,11 +11,9 @@ def get_request_org(request):
     user = request.user
     if user.role == 'admin':
         return None
+    from apps.core.permissions import get_admin_org, get_user_org
     if user.role == 'developer':
-        return getattr(user, 'owned_organization', None)
+        return get_admin_org(user)
     if user.role == 'agent':
-        try:
-            return user.agent_profile.organization
-        except Exception:
-            return None
+        return get_user_org(user)
     return None

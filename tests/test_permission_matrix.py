@@ -214,3 +214,54 @@ class OtpPurposeTest(TestCase):
                     body['purpose'] = purpose
                 resp = api.post('/api/v1/auth/otp/send/', body, format='json', REMOTE_ADDR=f'10.60.0.{i + 1}')
                 self.assertEqual(resp.status_code, code, resp.content)
+
+
+class MigratedReadersTest(_World):
+    """
+    T-1031b: endpoints that used owned_organization now use the administered
+    active org. A developer who owns D and is only a *viewer* of A must not
+    reach A's management endpoints by selecting A; an org_admin of A may.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.dev_d, cls.org_d = make_developer(org_name='Org D')
+        make_membership(cls.dev_d, cls.org, role=ROLE.VIEWER)
+        cls.dev_admin, cls.org_e = make_developer(org_name='Org E')
+        make_membership(cls.dev_admin, cls.org, role=ROLE.ORG_ADMIN)
+
+    ENDPOINTS = {
+        'org dashboard': '/api/v1/organizations/me/dashboard/',
+        'billing usage': '/api/v1/billing/usage/',
+        'provisioning status': '/api/v1/provisioning/status/',
+    }
+
+    def test_viewer_selection_cannot_reach_management_endpoints(self):
+        for name, url in self.ENDPOINTS.items():
+            with self.subTest(endpoint=name):
+                resp = self.api(self.dev_d, str(self.org.pk)).get(url)
+                self.assertIn(resp.status_code, (403, 404), resp.content)
+
+    def test_admin_roles_reach_management_endpoints_of_the_selected_org(self):
+        for actor, header in ((self.owner, None), (self.dev_admin, str(self.org.pk))):
+            with self.subTest(actor=actor.phone):
+                resp = self.api(actor, header).get(self.ENDPOINTS['org dashboard'])
+                self.assertEqual(resp.status_code, 200, resp.content)
+                resp = self.api(actor, header).get(self.ENDPOINTS['billing usage'])
+                self.assertEqual(resp.status_code, 200, resp.content)
+
+    def test_own_org_still_works_without_header(self):
+        self.assertEqual(self.api(self.dev_d).get(self.ENDPOINTS['org dashboard']).status_code, 200)
+
+    def test_helpers(self):
+        from apps.core.permissions import get_admin_org, primary_org
+        self.assertEqual(get_admin_org(self.dev_d), self.org_d)
+        try:
+            set_requested_org_id(str(self.org.pk))
+            self.assertIsNone(get_admin_org(self.dev_d))           # viewer there
+            self.assertEqual(get_admin_org(self.dev_admin), self.org)
+            self.assertEqual(primary_org(self.dev_d), self.org_d)  # subject lookups ignore the selector
+        finally:
+            set_requested_org_id('')
+        self.assertIsNone(primary_org(self.client_user))

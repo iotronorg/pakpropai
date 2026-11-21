@@ -85,12 +85,6 @@ class AppointmentSerializer(serializers.ModelSerializer):
 
         from apps.core.permissions import get_user_org
         org = get_user_org(request.user)
-        if org is None:
-            # Agents not yet assigned to an org — fall back to agent profile org
-            try:
-                org = request.user.agent_profile.organization
-            except Exception:
-                pass
 
         if org is None:
             return attrs

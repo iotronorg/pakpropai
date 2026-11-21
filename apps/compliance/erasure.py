@@ -149,7 +149,7 @@ class RTBFOrchestrator:
         # 8 — Audit log
         try:
             PrivacyAuditLog.objects.create(
-                org=getattr(request.user, 'owned_organization', None),
+                org=_primary_org(request.user),
                 action=PrivacyAuditLog.Action.ERASURE_COMPLETED,
                 actor=request.requested_by,
                 subject_identifier=_sha256(user.phone),
@@ -159,3 +159,8 @@ class RTBFOrchestrator:
             )
         except Exception:
             logger.error("RTBF: PrivacyAuditLog write failed", exc_info=True)
+
+
+def _primary_org(user):
+    from apps.core.permissions import primary_org
+    return primary_org(user)

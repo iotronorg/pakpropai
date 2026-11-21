@@ -43,9 +43,8 @@ class BillingUsageView(APIView):
         if user.role == 'admin':
             return Response({'plan': 'enterprise', 'usage': {}})
 
-        try:
-            org = user.owned_organization
-        except Exception:
+        org = _admin_org(user)
+        if org is None:
             return Response({'detail': 'No organization linked to this account.'}, status=404)
 
         plan = getattr(org, 'plan', 'trial')
@@ -86,9 +85,8 @@ class BillingCheckoutView(APIView):
         if plan not in _UPGRADEABLE_PLANS:
             return Response({'detail': f"Invalid plan '{plan}'."}, status=400)
 
-        try:
-            org = user.owned_organization
-        except Exception:
+        org = _admin_org(user)
+        if org is None:
             return Response({'detail': 'No organization linked to this account.'}, status=404)
 
         origin = _safe_origin(request)
@@ -178,10 +176,10 @@ class OrgPaymentSettingsView(APIView):
     def _get_org(self, request):
         if request.user.role != 'developer':
             return None, Response({'detail': 'Forbidden.'}, status=403)
-        try:
-            return request.user.owned_organization, None
-        except Exception:
+        org = _admin_org(request.user)
+        if org is None:
             return None, Response({'detail': 'No organization linked to this account.'}, status=404)
+        return org, None
 
     def get(self, request):
         from apps.organizations.models import OrgPaymentSettings
@@ -327,9 +325,8 @@ class BillingPortalView(APIView):
         from .models import OrgSubscription
         from .gateway import _cfg
 
-        try:
-            org = request.user.owned_organization
-        except Exception:
+        org = _admin_org(request.user)
+        if org is None:
             return Response({'detail': 'No organization linked to this account.'}, status=400)
 
         secret_key = _cfg('stripe_secret_key') or getattr(_settings, 'STRIPE_SECRET_KEY', '')
@@ -366,9 +363,8 @@ class BillingInvoiceView(APIView):
         from .models import OrgSubscription
         from .gateway import _cfg
 
-        try:
-            org = request.user.owned_organization
-        except Exception:
+        org = _admin_org(request.user)
+        if org is None:
             return Response({'invoices': []})
 
         secret_key = _cfg('stripe_secret_key') or getattr(_settings, 'STRIPE_SECRET_KEY', '')
@@ -402,3 +398,8 @@ class BillingInvoiceView(APIView):
                 for inv in invoices.data
             ]
         })
+
+
+def _admin_org(user):
+    from apps.core.permissions import get_admin_org
+    return get_admin_org(user)

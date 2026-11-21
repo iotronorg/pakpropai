@@ -213,7 +213,10 @@ class NotificationListView(APIView):
         elif role == 'developer':
             try:
                 from apps.leads.models import Lead
-                org = request.user.owned_organization
+                from apps.core.permissions import get_admin_org
+                org = get_admin_org(request.user)
+                if org is None:
+                    raise LookupError('no administered org')
                 org_lead_phones = Lead.objects.filter(
                     organization=org
                 ).values_list('user__phone', flat=True)
@@ -286,7 +289,10 @@ class NotificationDetailView(APIView):
         elif role == 'developer':
             try:
                 from apps.leads.models import Lead
-                org = request.user.owned_organization
+                from apps.core.permissions import get_admin_org
+                org = get_admin_org(request.user)
+                if org is None:
+                    raise LookupError('no administered org')
                 org_phones = list(
                     Lead.objects.filter(organization=org)
                     .values_list('user__phone', flat=True)

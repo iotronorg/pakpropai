@@ -366,7 +366,14 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - users with an `org_admin` membership but `user.role='agent'` now pass org‑admin checks;
   - a `developer` without an owner/org_admin membership no longer does (phase A backfill + `reconcile_memberships` make that set empty);
   - a DB row `use_membership_rbac=false` is now ignored.
-- **Not yet (T‑1031b):** ~55 direct legacy reads in ~20 modules (billing, verification, provisioning, inventory, agents, compliance, security‑middleware auth context, `config/models.py`…) still use `owned_organization`/`agent_profile.organization`. They are correct for single‑org users (projections are synced) but ignore the selector.
+- **Addendum — T‑1031b (same day):** all request‑time readers moved.
+  - **`get_admin_org(user)`** returns the active org only when the user is its `owner`/`org_admin`. Management actions that legacy code tied to `owned_organization` use it, so selecting an org where you are only a viewer gives no management access.
+  - **`get_user_org`** scopes member data, the seat‑limit check and the security engine's auth context.
+  - **`primary_org(user)`** is for *subject* users in tasks/audit records and ignores the request selector.
+  - **`RTBFStatusView`** keeps the legacy rule (subject must own the requester's org), now via membership.
+  - The leads serializer fallback and the `use_membership_rbac` default are removed.
+  - Only `organizations/membership.py` (`primary_membership` preference) and the model definition still touch the legacy links.
+- **Was pending (T‑1031b):** ~55 direct legacy reads in ~20 modules (billing, verification, provisioning, inventory, agents, compliance, security‑middleware auth context, `config/models.py`…) still use `owned_organization`/`agent_profile.organization`. They are correct for single‑org users (projections are synced) but ignore the selector.
 - **Rejected:**
   - a request attribute set in Django middleware: JWT authentication happens later, inside DRF;
   - falling back to the primary org on an invalid selector: it would silently act on the wrong tenant;

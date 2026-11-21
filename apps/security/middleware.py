@@ -48,17 +48,13 @@ def _get_auth_context(request) -> tuple:
     if not user or not user.is_authenticated:
         return '', ''
     user_id = str(getattr(user, 'id', '') or '')
-    org = getattr(user, 'owned_organization', None)
-    org_id = str(org.id) if org else ''
-    if not org_id:
-        membership = getattr(user, 'org_memberships', None)
-        if membership is not None:
-            try:
-                m = membership.filter(is_active=True).select_related('organization').first()
-                if m:
-                    org_id = str(m.organization_id)
-            except Exception:
-                pass
+    org_id = ''
+    try:
+        from apps.core.permissions import get_user_org
+        org = get_user_org(user)          # active org (ADR-020)
+        org_id = str(org.id) if org else ''
+    except Exception:
+        pass
     return user_id, org_id
 
 

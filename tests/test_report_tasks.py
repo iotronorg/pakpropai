@@ -93,9 +93,12 @@ class ResolveOrgCountryTests(TestCase):
 
     def test_falls_back_to_user_org_when_no_property(self):
         from apps.reports.tasks import _resolve_org_country
+        from unittest.mock import patch
         report = _make_report(country='GB')
         report.property = None
-        self.assertEqual(_resolve_org_country(report), 'GB')
+        # T-1031b: the subject's org comes from its primary membership.
+        with patch('apps.core.permissions.primary_org', return_value=report.user.owned_organization):
+            self.assertEqual(_resolve_org_country(report), 'GB')
 
     def test_returns_empty_when_no_org(self):
         from apps.reports.tasks import _resolve_org_country

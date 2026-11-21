@@ -82,9 +82,8 @@ class _IsOrgAdminOrAdmin(IsOrgAdmin):
     def has_object_permission(self, request, view, obj):
         if IsAdminUser().has_permission(request, view):
             return True
-        try:
-            user_org = request.user.owned_organization
-        except Exception:
+        user_org = _get_org(request.user)
+        if user_org is None:
             return False
         obj_org = getattr(obj, 'org', None) or getattr(obj, 'org_id', None)
         if obj_org is None:
@@ -94,9 +93,8 @@ class _IsOrgAdminOrAdmin(IsOrgAdmin):
 
 
 def _get_org(user):
-    if hasattr(user, 'owned_organization'):
-        return user.owned_organization
-    return None
+    from apps.core.permissions import get_admin_org
+    return get_admin_org(user)
 
 
 class ExternalPlatformConnectionViewSet(viewsets.ModelViewSet):

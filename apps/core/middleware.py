@@ -113,8 +113,9 @@ class TenantIsolationMiddleware:
     Sets:
       request.agent_profile  — the user's Agent record (or None)
       request.organization   — the Organization this user controls or belongs to:
-                               • developer → user.owned_organization
-                               • agent     → agent_profile.organization (None if freelance)
+                               the active membership's org (ADR-020: the
+                               X-Organization-ID selection or the primary one;
+                               None for freelancers without a membership)
 
     Non-blocking: never raises. Misconfigurations are logged as warnings so admins
     can detect users with role=agent|developer but no linked record.

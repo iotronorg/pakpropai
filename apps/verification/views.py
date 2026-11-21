@@ -68,11 +68,8 @@ class VerificationQueueView(APIView):
             except Exception:
                 qs = qs.none()
         elif role == 'developer':
-            try:
-                org = request.user.owned_organization
-                qs = qs.filter(property__organization=org)
-            except Exception:
-                qs = qs.none()
+            org = _admin_org(request.user)
+            qs = qs.filter(property__organization=org) if org else qs.none()
         # admin: no additional filter
 
         s = request.query_params.get('status')
@@ -154,11 +151,8 @@ class DocumentScanListView(APIView):
             except Exception:
                 qs = qs.none()
         elif role == 'developer':
-            try:
-                org = request.user.owned_organization
-                qs = qs.filter(verification__property__organization=org)
-            except Exception:
-                qs = qs.none()
+            org = _admin_org(request.user)
+            qs = qs.filter(verification__property__organization=org) if org else qs.none()
 
         # Filters
         if verification_id := request.query_params.get('verification'):
@@ -192,9 +186,8 @@ class DocumentScanDetailView(APIView):
             ).exists():
                 return Response({'error': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
         elif role == 'developer':
-            try:
-                org = request.user.owned_organization
-            except Exception:
+            org = _admin_org(request.user)
+            if org is None:
                 return Response({'error': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
             if not DocumentScan.objects.filter(
                 pk=pk, verification__property__organization=org
@@ -560,9 +553,8 @@ class TrustCertificateView(APIView):
             return Response({'detail': 'Property not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         if role == 'developer':
-            try:
-                org = request.user.owned_organization
-            except Exception:
+            org = _admin_org(request.user)
+            if org is None:
                 return Response({'detail': 'Forbidden.'}, status=status.HTTP_403_FORBIDDEN)
             if prop.organization_id != org.pk:
                 return Response({'detail': 'Forbidden.'}, status=status.HTTP_403_FORBIDDEN)
@@ -769,3 +761,8 @@ class StripeIdentityWebhookView(APIView):
         found = _apply_verification_result(session_id, result) if session_id else False
         logger.info('StripeIdentityWebhookView: session=%s status=%s found=%s', session_id, result.status, found)
         return Response({'received': True, 'activated': found})
+
+
+def _admin_org(user):
+    from apps.core.permissions import get_admin_org
+    return get_admin_org(user)

@@ -112,7 +112,6 @@ class SystemConfig(models.Model):
         'feature_syndication':          'false',
         # Third-party portal scraping — off by default (ToS/IP risk, DEC-02).
         'scraper_search_enabled':     'false',
-        'use_membership_rbac':        'true',
         # Semantic response cache for LLM replies — off by default (cross-user
         # leakage risk; see apps/ai/service.py semantic_cache_scope).
         'semantic_cache_enabled':     'false',

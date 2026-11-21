@@ -188,7 +188,8 @@ class DeveloperApiKeyListCreateView(APIView):
     def _get_org(self, user):
         role = getattr(user, 'role', None)
         if role == 'developer':
-            return getattr(user, 'owned_organization', None)
+            from apps.core.permissions import get_admin_org
+            return get_admin_org(user)
         if role == 'admin':
             return None  # admins can't own an org; deny
         return None
@@ -242,7 +243,8 @@ class DeveloperApiKeyRevokeView(APIView):
 
         qs = DeveloperApiKey.objects.filter(pk=key_id, is_active=True)
         if role == 'developer':
-            org = getattr(request.user, 'owned_organization', None)
+            from apps.core.permissions import get_admin_org
+            org = get_admin_org(request.user)
             if not org:
                 return Response(status=status.HTTP_403_FORBIDDEN)
             qs = qs.filter(organization=org)

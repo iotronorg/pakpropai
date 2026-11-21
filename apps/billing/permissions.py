@@ -36,12 +36,12 @@ class WithinAgentSeatLimit(permissions.BasePermission):
         if user.role == 'admin':
             return True  # platform admin is unrestricted
 
-        try:
-            org  = user.owned_organization
-            plan = getattr(org, 'plan', 'trial')
-            org_id = str(org.id)
-        except Exception:
+        from apps.core.permissions import get_user_org
+        org = get_user_org(user)   # active org (ADR-020)
+        if org is None:
             return True  # no org linked — let view handle it
+        plan = getattr(org, 'plan', 'trial')
+        org_id = str(org.id)
 
         if not UsageLedger.within_limit(org_id, plan, 'agents'):
             raise PlanLimitExceeded(

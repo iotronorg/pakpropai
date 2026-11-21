@@ -274,7 +274,9 @@ def _resolve_org_country(report) -> str:
     except Exception:
         pass
     try:
-        return report.user.owned_organization.country or ''
+        from apps.core.permissions import primary_org
+        org = primary_org(report.user)
+        return (org.country or '') if org else ''
     except Exception:
         return ''
 

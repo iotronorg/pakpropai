@@ -190,7 +190,8 @@ class OrgConfigView(APIView):
     def _get_org(self, user):
         if user.role not in ('admin', 'developer'):
             return None, Response(status=status.HTTP_403_FORBIDDEN)
-        org = getattr(user, 'owned_organization', None)
+        from apps.core.permissions import get_admin_org
+        org = get_admin_org(user)
         if org is None:
             return None, Response(
                 {'detail': 'No organization linked to your account.'},
@@ -313,9 +314,9 @@ class OrgDashboardView(APIView):
         if request.user.role not in ('admin', 'developer'):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
-        try:
-            org = request.user.owned_organization
-        except Organization.DoesNotExist:
+        from apps.core.permissions import get_admin_org
+        org = get_admin_org(request.user)
+        if org is None:
             return Response({'detail': 'No organization linked.'}, status=status.HTTP_404_NOT_FOUND)
 
         from apps.leads.models import Lead
@@ -383,9 +384,9 @@ class OrgAIStatsView(APIView):
         if request.user.role not in ('admin', 'developer'):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
-        try:
-            org = request.user.owned_organization
-        except Organization.DoesNotExist:
+        from apps.core.permissions import get_admin_org
+        org = get_admin_org(request.user)
+        if org is None:
             return Response({'detail': 'No organization linked.'}, status=status.HTTP_404_NOT_FOUND)
 
         from apps.leads.models import Lead, ConversationMessage

@@ -7,10 +7,10 @@ _Last updated: 2026-11-21 (session 7)_
 | Branch | `development`. The owner committed through session 6 + T‑1090d (`db23c9a`). **Session 7 (T‑1050a) is uncommitted** |
 | Current milestone | **M1 — Core foundation** ([MILESTONE_01](milestones/MILESTONE_01_CORE_FOUNDATION.md)); M0 code‑complete, awaiting first GitHub Actions run |
 | M0 progress | All 17 tasks complete. Remaining exit criterion: CI green on GitHub Actions (owner pushes) |
-| M1 progress | 6 of 18 tasks done (T‑1010, T‑1020, T‑1030, T‑1021, T‑1100, T‑1090) plus T‑1050a and T‑1031a. Exit criteria met: OpenAPI published; no literal PK defaults (CI) T‑1060 blocked on a vendor decision; T‑1033 needs an owner policy sign‑off |
-| Test suite | **1661 passed, 1 skipped, 0 failed** (session 7; session 6 ended 1617/1/0) — see [TESTING_STATUS](TESTING_STATUS.md) |
-| Last completed task | T‑1031a membership‑based permissions + active org context + grant policy (ADR‑020); earlier this session T‑1050a (ADR‑019) |
-| Next task | **T‑1031b** move the remaining legacy org reads to memberships, then T‑1032 |
+| M1 progress | 7 of 18 tasks done (T‑1010, T‑1020, T‑1030, T‑1021, T‑1100, T‑1090, T‑1031) plus T‑1050a. Exit criteria met: OpenAPI published; no literal PK defaults (CI) T‑1060 blocked on a vendor decision; T‑1033 needs an owner policy sign‑off |
+| Test suite | **1665 passed, 1 skipped, 0 failed** (session 7; session 6 ended 1617/1/0). One earlier run hung once (KI‑039) — see [TESTING_STATUS](TESTING_STATUS.md) |
+| Last completed task | T‑1031 (a+b) membership‑based RBAC, active org selector, grant policy, all legacy readers moved (ADR‑020) |
+| Next task | **T‑1032** membership contract (invite/accept/role change/transfer as one service + audit), then T‑1022 |
 
 ## Owner decisions (2026-11-21)
 - **No commits by the agent.** Session 6 work is uncommitted on `development`.

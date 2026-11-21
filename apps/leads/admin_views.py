@@ -153,7 +153,10 @@ class BulkAssignLeadsView(APIView):
 
         if request.user.role == 'developer':
             try:
-                org = request.user.owned_organization
+                from apps.core.permissions import get_admin_org
+                org = get_admin_org(request.user)
+                if org is None:
+                    raise LookupError('no administered org')
                 from django.db.models import Q as Qfilter
                 qs = qs.filter(
                     Qfilter(organization=org) |

@@ -156,8 +156,9 @@ class RTBFStatusView(APIView):
 
         if request.user.role == 'developer':
             org = get_user_org(request.user)
-            user_org = getattr(req.user, 'owned_organization', None)
-            if user_org != org:
+            from apps.core.permissions import _membership_role_by_id
+            # Legacy rule kept: only the subject org's owner (ADR-020: via membership).
+            if org is None or _membership_role_by_id(req.user, org.pk) != 'owner':
                 return Response({'detail': 'Forbidden.'}, status=status.HTTP_403_FORBIDDEN)
 
         return Response({

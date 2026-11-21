@@ -185,3 +185,8 @@
   - `apps/users/views.py` `SendOTPView`: purpose whitelist (KI‑030).
   - Settings: middleware entry; CORS `x-organization-id`.
 - **Tests:** new `tests/test_permission_matrix.py` (22).
+- **T‑1031b legacy readers (ADR‑020 addendum):**
+  - `apps/core/permissions.py`: `get_admin_org`, `primary_org`.
+  - Switched: organizations (external_api, views), security/middleware, leads (serializers, admin_views), agents/views, compliance (utils, views, tasks, erasure), verification/views, inventory/views, billing (views, permissions), whatsapp (provisioning_views, views), reports/tasks.
+  - `config/models.py`: `use_membership_rbac` default removed.
+- **Tests:** `tests/test_permission_matrix.py` +4 (`MigratedReadersTest`). `tests/test_report_tasks.py::test_falls_back_to_user_org_when_no_property` modified: it now patches `primary_org` instead of mocking `owned_organization`.

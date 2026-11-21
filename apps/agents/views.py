@@ -16,11 +16,12 @@ logger = logging.getLogger(__name__)
 
 
 def _get_developer_org(user) -> Organization:
-    """Return the Organization owned by this developer user, or raise NotFound."""
-    try:
-        return user.owned_organization
-    except Organization.DoesNotExist:
+    """Return the organization this user administers (active org, ADR-020), or raise NotFound."""
+    from apps.core.permissions import get_admin_org
+    org = get_admin_org(user)
+    if org is None:
         raise NotFound("No organization linked to this account.")
+    return org
 
 
 class AgentMeView(generics.RetrieveUpdateAPIView):
@@ -441,18 +442,16 @@ class AgentAvailableListView(generics.ListAPIView):
 
         role = self.request.user.role
         if role == 'developer':
-            try:
-                org = self.request.user.owned_organization
-                qs = qs.filter(organization=org)
-            except Exception:
+            from apps.core.permissions import get_admin_org
+            org = get_admin_org(self.request.user)
+            if org is None:
                 return Agent.objects.none()
+            qs = qs.filter(organization=org)
         elif role == 'agent':
-            try:
-                org = self.request.user.agent_profile.organization
-                if org:
-                    qs = qs.filter(organization=org)
-            except Exception:
-                return Agent.objects.none()
+            from apps.core.permissions import get_user_org
+            org = get_user_org(self.request.user)   # None for freelancers: platform-wide
+            if org:
+                qs = qs.filter(organization=org)
         # admin: sees all available agents platform-wide
 
         city = self.request.query_params.get('city', '').strip()
