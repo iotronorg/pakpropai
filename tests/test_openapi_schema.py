@@ -56,6 +56,10 @@ class SchemaGenerationTest(TestCase):
         self.assertEqual(schemes['jwtCookie']['in'], 'cookie')
         self.assertEqual(schemes['orgApiKey']['name'], 'X-API-Key')
 
+    def test_error_envelope_component_is_documented(self):
+        env = self.schema['components']['schemas']['ErrorEnvelope']
+        self.assertEqual(set(env['properties']), {'error_info', 'request_id'})
+
     def test_property_search_params_are_documented(self):
         # The list endpoint's OrderingFilter is picked up from filter_backends.
         params = {p['name'] for p in self.schema['paths']['/api/v1/properties/']['get']['parameters']}

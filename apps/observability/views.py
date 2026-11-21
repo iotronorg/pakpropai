@@ -37,10 +37,8 @@ class TraceSearchView(APIView):
 
     def get(self, request):
         route = request.query_params.get("route", "whatsapp.webhook")
-        try:
-            hours = int(request.query_params.get("hours", 24))
-        except (ValueError, TypeError):
-            hours = 24
+        from apps.core.query_params import int_param
+        hours = int_param(request.query_params, "hours", 24, min_value=1, max_value=24 * 30)
         stats = MetricsCollector.get_percentiles(route, hours)
         return Response({"route": route, **stats})
 

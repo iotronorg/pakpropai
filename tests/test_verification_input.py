@@ -19,7 +19,9 @@ class FraudAlertsInputTest(TestCase):
     def test_bad_limit_returns_400(self):
         r = self.client.get('/api/v1/verification/fraud/alerts/', {'limit': 'abc'})
         self.assertEqual(r.status_code, 400)
-        self.assertIn('limit', r.data.get('detail', ''))
+        # T-1090c: standard field-level validation error (was an ad-hoc detail string).
+        self.assertEqual(r.data['limit'], 'Must be a whole number.')
+        self.assertEqual(r.data['error_info']['fields'], {'limit': 'Must be a whole number.'})
 
     def test_valid_limit_returns_200(self):
         r = self.client.get('/api/v1/verification/fraud/alerts/', {'limit': '10'})

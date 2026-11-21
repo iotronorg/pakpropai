@@ -45,9 +45,10 @@ Priority: P0 (blocker) → P3.
 | T‑1080 | [ ] | P2 | Listing lifecycle + transitions + expiry | after T‑1070 |
 | T‑1090 | [~] | P2 | API standards: OpenAPI, error envelope, filter validation, idempotency keys | Split into a–d below |
 | T‑1090a | [x] | P2 | OpenAPI 3.1 schema | ADR‑016. `drf-spectacular==0.29.0`; `GET /api/v1/schema/` (staff/admin unless `OPENAPI_SCHEMA_PUBLIC`); JWT header/cookie + org API‑key schemes; CI `spectacular --validate` + `openapi-schema` artefact; error/warning budget ratchet (154/32 unique). 11 tests |
-| T‑1090b | [ ] | P2 | Consistent error envelope | **Next.** Must stay backward‑compatible for the separate frontend (additive `error {code, message, fields}` alongside DRF's existing keys); see ADR‑016 |
-| T‑1090c | [ ] | P2 | Query‑param filter validation (filtersets/serializers) for list endpoints | Generalise `_int_param`; KI‑036 (`?ref_no=` exact); documents params in the schema |
-| T‑1090d | [ ] | P2 | `Idempotency-Key` for enquiry/payment/booking POSTs | GAP‑032; reuse the outbox‑style unique key store |
+| T‑1090b | [x] | P2 | Consistent error envelope | ADR‑017. `RequestIdMiddleware` (header, log field, CORS); additive `error_info {status, code, message, fields}` + `request_id` on every `/api/` JSON error via the exception handler + `ErrorEnvelopeMiddleware`; JSON `handler404/500` for `/api/`; schema component. 20 tests |
+| T‑1090c | [x] | P2 | Query‑param filter validation | `apps/core/query_params.py` (`int_param`, `limit_offset`, `choice_param`); 9 bare `int()` casts in 7 views replaced (negative limits were 500s; chain‑verify `limit` now capped at 10 000); property list: enum `type`/`legal_status`, `min_price ≤ max_price`, `min_score ≤ 100`, `ref_no` exact upper‑case (KI‑036), parameters in OpenAPI. 18 tests |
+| T‑1090d | [ ] | P2 | `Idempotency-Key` for enquiry/payment/booking POSTs | **Next.** GAP‑032; reuse the outbox‑style unique key store |
+| T‑1092 | [ ] | P3 | Replace hand‑built `Response({'error': …}, status=4xx)` with raised DRF exceptions carrying codes | KI‑038; `error` string stays for compatibility |
 | T‑1091 | [ ] | P3 | Annotate the 154 schema‑less `APIView`s (`serializer_class`/`@extend_schema`); fix 13 operationId collisions | KI‑037; lower the budgets in `tests/test_openapi_schema.py` as they go |
 | T‑1100 | [x] | P2 | Search indexes (composite, GIN, trigram) | ADR‑015. `pg_trgm`; 4 concurrent indexes (FTS GIN, trigram on `UPPER(city)`/`UPPER(location)`, partial rank B‑tree); index‑backed `?search=` (prefix/AND, `simple` config, ref‑no exact). 200k‑row EXPLAIN: no seq scans; selective FTS 631 → 3 ms. 28 tests. GiST/geo stays with T‑1060 |
 | T‑1110 | [ ] | P2 | Media pipeline hardening for images | |

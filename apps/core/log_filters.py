@@ -1,5 +1,5 @@
 import logging
-from apps.core.context import get_organization_id, get_lead_id
+from apps.core.context import get_lead_id, get_organization_id, get_request_id
 
 
 class TraceContextFilter(logging.Filter):
@@ -15,4 +15,5 @@ class TraceContextFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         record.organization_id = get_organization_id() or '-'
         record.lead_id = get_lead_id() or '-'
+        record.request_id = get_request_id() or '-'
         return True

@@ -42,6 +42,11 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | 2026-11-21 | `HEAD` 63c3cd6, session 6 start | `pytest tests/ apps/` | **1528 passed, 1 skipped, 0 failed** (matches handoff) | 4m53s |
 | 2026-11-21 | Working tree, after T‑1100 | `pytest tests/ apps/` | **1556 passed, 1 skipped, 0 failed**, 108 subtests | 4m48s |
 | 2026-11-21 | Working tree, session 6 end (after T‑1090a; image rebuilt with drf‑spectacular) | `pytest tests/ apps/` | **1567 passed, 1 skipped, 0 failed**, 111 subtests | 4m37s |
+| 2026-11-21 | Working tree, after T‑1090b | `pytest tests/ apps/` | **1587 passed, 1 skipped, 0 failed**, 116 subtests | 4m45s |
+| 2026-11-21 | Working tree, after T‑1090b | `check` / `makemigrations --check` / `spectacular --validate` / `bandit -ll` | no issues / no changes / valid (154/32 unchanged) / 0 HIGH | — |
+| 2026-11-21 | Working tree, after T‑1090c (first run) | `pytest tests/ apps/` | 1601 passed, 1 skipped, **1 failed**: `test_verification_input::test_bad_limit_returns_400` asserted the old ad‑hoc `detail` string; updated to the standard field error (see below) | 4m39s |
+| 2026-11-21 | Working tree, session 6 end (after T‑1090c) | `pytest tests/ apps/` | **1602 passed, 1 skipped, 0 failed**, 126 subtests | 5m19s |
+| 2026-11-21 | Working tree, after T‑1090c | `check` / `makemigrations --check` / `spectacular --validate` / `bandit -ll` | no issues / no changes / valid (154/32 unchanged) / 0 HIGH | — |
 | 2026-11-21 | Working tree, session 6 | `manage.py spectacular --validate --file openapi.yaml` | exit 0; valid OpenAPI 3.1; 220 paths; 154 unique errors / 32 unique warnings (KI‑037) | — |
 | 2026-11-21 | Working tree, session 6 end | `makemigrations --check` / `manage.py check` / `bandit -r apps/ -ll` / CI YAML parse | No changes / no issues / 8 Medium, **0 HIGH** / OK | — |
 | 2026-11-21 | Scratch DB `bench` | `migrate` → `migrate properties 0020` → `migrate` | OK both ways; indexes dropped on reverse, `pg_trgm` kept | — |
@@ -64,9 +69,13 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | `tests/test_membership_consolidation.py` | 25 | T‑1030: agent/owner projection sync (join, move, unlink, rejoin, owner kept, unrelated saves), admin transfer, API writer paths (team add/remove revokes access, members delete, JSON registration + invite — KI‑032), primary org choice, drift report/repair/command, backfill migration idempotency |
 | `tests/test_outbox.py` | 26 | T‑1021: rollback leaves no row, on‑commit dispatch with id only, idempotent key, encrypted at rest, broker‑down fallback to relay, sent/permanent/transient/backoff/exhausted/expired, lease skip + stale‑lease reclaim, payload wipe, relay/purge; end‑to‑end OTP endpoint and `notify_user` through the real client (HTTP patched), notification idempotency/24 h window/final attempt/preferences; KI‑033 static guard + hot‑lead alert |
 | `tests/test_search_indexes.py` | 28 | T‑1100: indexes + `pg_trgm` exist and are valid; planner uses each index for the exact SQL the code emits (`enable_seqscan=off`); tsquery builder (prefix/AND, operator stripping, unicode, caps, always‑valid tsquery); API `?search=` (plural prefix, AND, fields, ref‑no exact + partial, sandbox hidden, city combo, junk → empty); migration is non‑atomic + concurrent |
-| `tests/test_openapi_schema.py` | 11 | T‑1090a: valid 3.1 schema, core paths, auth schemes, list params, error/warning budget ratchet, access (anon/user refused, admin/staff allowed, public flag) |
+| `tests/test_openapi_schema.py` | 11 | T‑1090a: valid 3.1 schema, core paths, auth schemes, list params, error/warning budget ratchet, access (anon/user refused, admin/staff allowed, public flag), `ErrorEnvelope` component (+1) |
+| `tests/test_error_envelope.py` | 20 | T‑1090b: request id generated/kept/replaced (injection), header on success, context cleared, log field, CORS; DRF exceptions (401 code, validation fields, 404, custom code, list body, key collision); hand‑built `error` string kept; security‑middleware 403; unrouted `/api/` 404 JSON; unhandled 500 JSON without internals; non‑`/api/` untouched |
+| `tests/test_query_param_validation.py` | 18 | T‑1090c: helpers (int/clamp/bounds/limit‑offset/choice); audit‑log, chain‑verify, notifications, fraud‑alerts bad input → field 400 (negative limit was a 500); property enums, price range, `min_score` bound, `ref_no` exact (no `UPPER`), list params + enums in OpenAPI |
 
 ## Modified existing tests (behaviour change, not weakening)
+
+- Session 6 (T‑1090c): `test_verification_input.py::test_bad_limit_returns_400` asserts the standard field‑level error (`limit` key + `error_info.fields`) instead of the old ad‑hoc `detail` string. Stricter than before.
 
 - `test_compliance.py::test_export_endpoint_queues_task`: it now patches `.delay` and asserts the task is enqueued with a real `DataExportRequest` id. This is stricter than before, and it no longer calls Cloudinary.
 - Deal‑creation test classes in `test_deal_lock.py`, `test_sepa_payments.py`, `test_stripe_deal_lock.py` and `test_compliance_views.py` now call `enable_feature('feature_deal_lock')` in `setUp`, because deal lock is frozen by default (ADR‑006). `DealLockBlockedEntityTest` previously could pass from any 403; it now reaches the sanctions check.

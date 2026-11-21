@@ -232,9 +232,34 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - **Serving:** `GET /api/v1/schema/` (YAML, `?format=json`). `SchemaAccessPermission` allows staff and platform admins only, unless `OPENAPI_SCHEMA_PUBLIC=True`. The schema is a map of every endpoint, so publishing it is an operator choice per environment. No Swagger UI: it loads assets from a CDN, which the CSP would have to allow.
   - **Publishing:** CI runs `manage.py spectacular --validate` and uploads `openapi.yaml` as the `openapi-schema` artefact. That is the published contract.
   - **Ratchet:** `tests/test_openapi_schema.py` fails when the number of unique generator errors (154) or warnings (32) grows. The 154 are `APIView`s with no serializer (KI‑037, T‑1091). Budgets are lowered as views are annotated.
-- **Error envelope (T‑1090b) direction, recorded here so the next session does not re‑decide it:** the frontend is a separate repo and reads DRF's current shapes (`detail`, field‑keyed lists). The envelope must be **additive**: keep the existing keys and add `error: {code, message, fields}` plus `request_id`. A breaking replacement needs a versioned API or frontend sign‑off.
+- **Error envelope (T‑1090b) direction:** additive, keeping DRF's current shapes for the separate frontend. *Superseded in detail by ADR‑017:* the key is `error_info`, not `error`, because ~50 views already return `error` as a string.
 - **Rejected:**
   - `drf-yasg`: Swagger 2.0 only;
   - a hand‑written schema: drifts from the code;
   - a public schema by default;
   - failing CI on any generator warning: it would block every PR until all 154 views are annotated.
+
+## ADR‑017 — Request id and additive `error_info` envelope
+- **Date:** 2026-11-21 (session 6) · Task T‑1090b · GAP‑031, PRD D6
+- **Context:**
+  - Error bodies came in at least four shapes: DRF `{"detail"}`, field‑keyed validation dicts, hand‑built `{"error": "<string>"}` (~50 views), and middleware `JsonResponse`s. Unrouted `/api/` URLs and unhandled exceptions returned Django HTML.
+  - There was no request id, so support could not tie a user's error to a log line (only the security middleware read an inbound `X-Request-ID`).
+  - The frontend is a separate repo, so existing keys must not change.
+- **Decision:**
+  - **`RequestIdMiddleware`** (first app middleware):
+    - keeps a well‑formed inbound `X-Request-ID` (`[A-Za-z0-9._-]{8,64}`), otherwise generates a UUID hex, so no log injection is possible;
+    - sets `request.request_id` and `META`, plus a context var that `TraceContextFilter` adds to every log line (`request_id` in the JSON format);
+    - echoes the id in the response header. CORS allows and exposes the header.
+  - **Envelope:** every JSON error under `/api/` gains `error_info: {status, code, message, fields?}` and `request_id`. Nothing else in the body changes. Two layers fill it:
+    - `security_exception_handler` → `attach_envelope` for DRF exceptions: precise codes (`not_authenticated`, `throttled`, custom `code=` values) and `validation_error` with `fields`;
+    - `ErrorEnvelopeMiddleware` (right after the request‑id middleware) for every other JSON error: hand‑built responses (their string `error` is kept as `message`), security/PII/tenant middleware rejections, and the new `handler404`/`handler500`, which return JSON for `/api/` paths and never leak exception text.
+  - It is documented as the `ErrorEnvelope` schema component.
+- **Why `error_info` and not `error`:** clients that do `data.error || data.detail` would render an object where they render a string today.
+- **Limits:**
+  - non‑object bodies (a bare list) are not wrapped; the header still carries the id;
+  - the middleware skips streaming and > 256 KB bodies;
+  - hand‑built responses get only status‑derived codes until they raise DRF exceptions (KI‑038).
+- **Rejected:**
+  - replacing bodies with an RFC 7807 problem document: breaking for the frontend;
+  - envelope in the exception handler only: misses ~50 hand‑built responses and every middleware rejection;
+  - trusting any inbound request id.

@@ -74,6 +74,8 @@ INSTALLED_APPS = ['daphne'] + DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
 MIDDLEWARE = [
     'django_prometheus.middleware.PrometheusBeforeMiddleware',
+    'apps.core.middleware.RequestIdMiddleware',      # first app middleware: every log line + error carries it (ADR-017)
+    'apps.core.errors.ErrorEnvelopeMiddleware',      # adds error_info/request_id to /api/ JSON errors (ADR-017)
     'django.middleware.security.SecurityMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
@@ -176,6 +178,10 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTH_USER_MODEL = 'users.User'
 
+# ADR-017: browsers may send and read the request id cross-origin.
+from corsheaders.defaults import default_headers as _cors_default_headers  # noqa: E402
+CORS_ALLOW_HEADERS = (*_cors_default_headers, 'x-request-id')
+CORS_EXPOSE_HEADERS = ['X-Request-ID']
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:3000',
@@ -242,6 +248,25 @@ SPECTACULAR_SETTINGS = {
     'SERVE_AUTHENTICATION': None,   # REST_FRAMEWORK defaults (JWT header/cookie)
     'COMPONENT_SPLIT_REQUEST': True,
     'SORT_OPERATIONS': True,
+    # ADR-017 error envelope, added to every /api/ JSON error body.
+    'APPEND_COMPONENTS': {'schemas': {'ErrorEnvelope': {
+        'type': 'object',
+        'description': 'Keys present on every JSON error response, in addition to '
+                       'the endpoint-specific keys (detail, field errors, error).',
+        'properties': {
+            'error_info': {
+                'type': 'object',
+                'required': ['status', 'code', 'message'],
+                'properties': {
+                    'status': {'type': 'integer'},
+                    'code': {'type': 'string', 'examples': ['validation_error', 'not_authenticated', 'throttled']},
+                    'message': {'type': 'string'},
+                    'fields': {'type': 'object', 'additionalProperties': {'type': 'array', 'items': {}}},
+                },
+            },
+            'request_id': {'type': 'string', 'description': 'Same value as the X-Request-ID header.'},
+        },
+    }}},
 }
 
 from datetime import timedelta
@@ -519,12 +544,12 @@ LOGGING = {
             '()': 'pythonjsonlogger.jsonlogger.JsonFormatter',
             'format': (
                 '%(asctime)s %(name)s %(levelname)s '
-                '%(organization_id)s %(lead_id)s %(message)s'
+                '%(request_id)s %(organization_id)s %(lead_id)s %(message)s'
             ),
         },
         # Development: human-readable with trace fields visible
         'simple': {
-            'format': '[%(levelname)s] %(name)s org=%(organization_id)s lead=%(lead_id)s: %(message)s',
+            'format': '[%(levelname)s] %(name)s req=%(request_id)s org=%(organization_id)s lead=%(lead_id)s: %(message)s',
         },
     },
     'handlers': {

@@ -17,20 +17,24 @@ def _is_internal_ip(ip: str) -> bool:
 def security_exception_handler(exc, context):
     response = drf_default_handler(exc, context)
     if response is None:
-        return response
+        return response  # unhandled → Django handler500 (apps.core.errors.server_error)
 
-    if response.status_code not in (401, 403):
-        return response
+    if response.status_code in (401, 403):
+        _record_auth_failure(context.get('request'))
 
-    request = context.get('request')
+    from apps.core.errors import attach_envelope
+    return attach_envelope(response, exc)  # ADR-017
+
+
+def _record_auth_failure(request):
     if not request:
-        return response
+        return
 
     xff = request.META.get('HTTP_X_FORWARDED_FOR', '')
     ip = xff.split(',')[0].strip() if xff else request.META.get('REMOTE_ADDR', '')
 
     if not ip or _is_internal_ip(ip):
-        return response
+        return
 
     try:
         from apps.security.rate_limiter import ConsecutiveAuthFailureLimiter
@@ -39,5 +43,3 @@ def security_exception_handler(exc, context):
             logger.warning('security_exception_handler: %s auto-blocked after auth failures', ip)
     except Exception as exc_inner:
         logger.warning('security_exception_handler: rate limiter call failed: %s', exc_inner)
-
-    return response

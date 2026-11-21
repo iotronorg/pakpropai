@@ -18,6 +18,7 @@ from typing import Any
 
 _org_id: ContextVar[str] = ContextVar('organization_id', default='')
 _lead_id: ContextVar[str] = ContextVar('lead_id', default='')
+_request_id: ContextVar[str] = ContextVar('request_id', default='')  # RequestIdMiddleware (ADR-017)
 
 _UNSET: Any = object()  # sentinel — distinguishes "not provided" from "set to empty"
 
@@ -40,3 +41,11 @@ def get_organization_id() -> str:
 
 def get_lead_id() -> str:
     return _lead_id.get()
+
+
+def set_request_id(value: str) -> None:
+    _request_id.set(value or '')
+
+
+def get_request_id() -> str:
+    return _request_id.get()

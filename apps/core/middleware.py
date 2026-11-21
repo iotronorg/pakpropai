@@ -1,5 +1,7 @@
 import logging
+import re
 import time
+import uuid
 
 from django.core.cache import cache
 from django.http import JsonResponse
@@ -7,6 +9,40 @@ from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 audit_logger = logging.getLogger('api.audit')
+
+_REQUEST_ID_RE = re.compile(r'^[A-Za-z0-9._-]{8,64}$')
+
+
+class RequestIdMiddleware:
+    """
+    ADR-017: one id per request, for support tickets and log correlation.
+
+    A well-formed inbound ``X-Request-ID`` (8–64 chars of ``[A-Za-z0-9._-]``,
+    e.g. from the load balancer or the frontend) is kept; anything else is
+    replaced by a fresh UUID so a client cannot inject log content. The id is
+    set on ``request.request_id``, normalised into ``META`` (read by
+    ApiSecurityMiddleware), put in the log context and echoed in the
+    ``X-Request-ID`` response header. Error bodies carry it (exception handler).
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        from apps.core.context import set_request_id
+
+        inbound = request.META.get('HTTP_X_REQUEST_ID', '')
+        request_id = inbound if _REQUEST_ID_RE.match(inbound) else uuid.uuid4().hex
+        request.request_id = request_id
+        request.META['HTTP_X_REQUEST_ID'] = request_id
+        set_request_id(request_id)
+        try:
+            response = self.get_response(request)
+        finally:
+            set_request_id('')
+        response['X-Request-ID'] = request_id
+        return response
+
 
 _LAST_ACTIVE_TTL = 300  # seconds — throttle DB writes to once per 5 min per user
 

@@ -143,3 +143,17 @@
   - `.github/workflows/ci.yml`: generate + validate + upload `openapi-schema` artefact.
   - `.env.example`: `OPENAPI_SCHEMA_PUBLIC`; `.gitignore`: `/openapi.yaml`.
 - **Tests:** new `tests/test_openapi_schema.py` (11).
+- **T‑1090b request id + error envelope (ADR‑017):**
+  - `apps/core/middleware.py`: `RequestIdMiddleware`.
+  - `apps/core/context.py`: `set_request_id`/`get_request_id`.
+  - `apps/core/log_filters.py`: `record.request_id`.
+  - New `apps/core/errors.py`: `attach_envelope`, `ErrorEnvelopeMiddleware`, `page_not_found`, `server_error`, `status_code_name`.
+  - `apps/security/exception_handler.py`: auth‑failure logic moved to `_record_auth_failure`; the envelope is attached for every handled exception.
+  - `config/settings/base.py`: both middlewares at the top of `MIDDLEWARE`, `request_id` in both log formats, `CORS_ALLOW_HEADERS`/`CORS_EXPOSE_HEADERS`, `ErrorEnvelope` schema component.
+  - `config/urls.py`: `handler404`/`handler500`.
+- **Tests:** new `tests/test_error_envelope.py` (20); `tests/test_openapi_schema.py` +1.
+- **T‑1090c query‑param validation:**
+  - New `apps/core/query_params.py`.
+  - Replaced casts in `core/views.py` (audit log), `security/views.py` (chain verify, capped at 10 000), `observability/views.py` (hours 1–720), `verification/views.py` (fraud alerts), `notifications/views.py`, `whatsapp/views.py` ×2, `reports/bi_views.py` (top_n).
+  - `properties/views.py`: `_int_param` removed in favour of the shared helpers; enum validation; price‑range check; `min_score` ≤ 100; `ref_no` exact (KI‑036); `@extend_schema_view` documents the list params.
+- **Tests:** new `tests/test_query_param_validation.py` (18). `tests/test_verification_input.py::test_bad_limit_returns_400` now asserts the standard field error.

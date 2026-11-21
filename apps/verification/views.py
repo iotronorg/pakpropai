@@ -285,10 +285,8 @@ class FraudAlertsView(APIView):
     permission_classes = [IsAdmin]
 
     def get(self, request):
-        try:
-            limit = min(int(request.query_params.get('limit', 50)), 200)
-        except (ValueError, TypeError):
-            return Response({'detail': 'limit must be an integer.'}, status=400)
+        from apps.core.query_params import int_param
+        limit = int_param(request.query_params, 'limit', 50, min_value=1, max_value=200)
 
         # suspicious document scans
         sus_scans = (

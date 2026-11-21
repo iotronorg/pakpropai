@@ -137,8 +137,8 @@ class AuditLogView(APIView):
         if target_id := request.query_params.get('target_id'):
             qs = qs.filter(target_id=target_id)
 
-        limit  = min(int(request.query_params.get('limit',  50)), 200)
-        offset = max(int(request.query_params.get('offset', 0)),  0)
+        from apps.core.query_params import limit_offset
+        limit, offset = limit_offset(request.query_params, default=50, maximum=200)
         total  = qs.count()
         page   = qs[offset: offset + limit]
 

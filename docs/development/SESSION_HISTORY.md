@@ -102,12 +102,19 @@
 - **Tests:** 1567 passed, 1 skipped, 0 failed (start 1528). No migration drift; `check` clean; Bandit 0 HIGH. `properties 0021/0022` migrated forward → back → forward.
 - **Not committed.**
 
+- **Continued (owner said "continue"):**
+  - **T‑1090b** (ADR‑017): `RequestIdMiddleware` (sanitised `X-Request-ID`, log field, CORS); additive `error_info {status, code, message, fields}` + `request_id` on every `/api/` JSON error; JSON 404/500 for `/api/`. The key is `error_info` because ~50 views already return `error` as a string (KI‑038/T‑1092).
+  - **T‑1090c:** shared `apps/core/query_params.py`; 9 bare `int()` casts in 7 views fixed (negative `limit` was a 500); property list enums/ranges validated and documented in OpenAPI; KI‑036 resolved.
+- **Final tests:** 1602 passed, 1 skipped, 0 failed. `check`, migration drift and schema validation clean; Bandit 0 HIGH.
+
 ### Handoff → session 7
-1. `git status`: session‑6 changes are uncommitted. **Do not commit.** `requirements/base.txt` changed, so run `REBUILD=1 scripts/dev/test.sh` once (expect 1567 passed, 1 skipped).
-2. Next: **T‑1090b** consistent error envelope.
-   - Start in `apps/security/exception_handler.py` (`security_exception_handler`, the configured `EXCEPTION_HANDLER`). Keep its 401/403 auth‑failure logic.
-   - Wrap DRF's response **additively**: keep `detail` and field keys; add `error: {code, message, fields}` and `request_id`. There is no request‑id middleware yet: only `apps/security/middleware.py:126` reads the `X-Request-ID` header. Add a small middleware that echoes or generates it.
-   - Also cover Django 404/500 JSON for `/api/` paths.
-   - Document it as a shared component in the schema (`apps/core/openapi.py`).
-   - Grep tests for exact `resp.json() == {...}` error assertions before changing shapes.
-3. Then T‑1090c (filter validation + KI‑036) → T‑1090d (Idempotency‑Key) → T‑1050 (`Market` entity; `apps/markets` already exists, so inspect it first) → T‑1031.
+1. `git status`: session‑6 changes are uncommitted. **Do not commit.** `requirements/base.txt` changed, so run `REBUILD=1 scripts/dev/test.sh` once (expect 1602 passed, 1 skipped).
+2. Next: **T‑1090d** `Idempotency-Key` (GAP‑032) for the enquiry/lead create, payment and deal/booking POSTs.
+   - Inventory the endpoints first: `apps/leads/views.py` create, `apps/payments/views.py`, `apps/escrow/views.py`.
+   - Suggested design (write it as ADR‑018): a `core.IdempotencyRecord` keyed by `(key, user/org, method, path)` with a request‑body hash and the stored status + body, plus a TTL purge in beat.
+     - same key + same body → replay the stored response;
+     - same key + different body → 422 `idempotency_key_reused`;
+     - concurrent in‑flight → 409.
+   - Make it opt‑in per view (decorator or mixin), not global.
+   - Allow the `idempotency-key` CORS header (`CORS_ALLOW_HEADERS` in `config/settings/base.py`) and document it in the OpenAPI parameters.
+3. Then T‑1050 (`Market` entity; inspect the existing `apps/markets` first) → T‑1031 → T‑1032 → T‑1022 → T‑1091/T‑1092.

@@ -66,3 +66,6 @@ if settings.DEBUG:
     import debug_toolbar
     urlpatterns = [path('__debug__/', include(debug_toolbar.urls))] + urlpatterns
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+# ADR-017: JSON error envelope for unrouted /api/ URLs and unhandled exceptions.
+handler404 = 'apps.core.errors.page_not_found'
+handler500 = 'apps.core.errors.server_error'

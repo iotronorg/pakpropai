@@ -29,6 +29,7 @@ class ChainVerifyView(APIView):
     permission_classes = [IsAdminUser]
 
     def get(self, request):
-        limit = int(request.query_params.get('limit', 1000))
+        from apps.core.query_params import int_param
+        limit = int_param(request.query_params, 'limit', 1000, min_value=1, max_value=10_000)
         ok, msg = ApiSecurityEvent.verify_chain(limit=limit)
         return Response({'valid': ok, 'message': msg, 'records_checked': limit})

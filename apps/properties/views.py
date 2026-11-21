@@ -7,7 +7,10 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
+
 from apps.core.permissions import IsOwnerOrReadOnly, IsAgentOrAdmin, get_user_org
+from apps.core.query_params import choice_param, int_param
 from apps.core.throttles import PropertySearchThrottle, ScorePropertyThrottle
 from .models import Property, PropertyImage
 from .serializers import (PropertyCreateSerializer, PropertyDetailSerializer,
@@ -19,21 +22,21 @@ _MAX_IMAGES_PER_PROP = 10
 
 
 
-def _int_param(params, name):
-    """Parse an optional non-negative integer query param; 400 on bad input."""
-    raw = params.get(name)
-    if raw in (None, ''):
-        return None
-    try:
-        value = int(str(raw).replace(',', '').strip())
-    except (TypeError, ValueError):
-        from rest_framework.exceptions import ValidationError
-        raise ValidationError({name: 'Must be a whole number.'})
-    if value < 0:
-        from rest_framework.exceptions import ValidationError
-        raise ValidationError({name: 'Must not be negative.'})
-    return value
+_LIST_PARAMETERS = [
+    OpenApiParameter('search', str, description=(
+        'Full-text: every word must match, as a prefix (ADR-015). A full reference '
+        'number (RT-LHR-2026-000000001) matches exactly.')),
+    OpenApiParameter('ref_no', str, description='Exact reference number (case-insensitive).'),
+    OpenApiParameter('city', str, description='City name, case-insensitive exact match.'),
+    OpenApiParameter('type', str, enum=Property.PropertyType.values),
+    OpenApiParameter('legal_status', str, enum=Property.LegalStatus.values),
+    OpenApiParameter('min_price', int, description='Inclusive, in the listing currency.'),
+    OpenApiParameter('max_price', int, description='Inclusive, in the listing currency.'),
+    OpenApiParameter('min_score', int, description='Minimum AI score (0-100).'),
+]
 
+
+@extend_schema_view(list=extend_schema(parameters=_LIST_PARAMETERS))
 class PropertyViewSet(viewsets.ModelViewSet):
     queryset = Property.objects.filter(is_active=True)
     permission_classes = [IsAuthenticated, IsOwnerOrReadOnly]
@@ -81,19 +84,25 @@ class PropertyViewSet(viewsets.ModelViewSet):
             qs = qs.filter(Q(is_sandbox=False) | Q(owner=user))
 
         params = self.request.query_params
-        if (ref_no := params.get('ref_no')):
-            qs = qs.filter(ref_no__iexact=ref_no)
+        if (ref_no := params.get('ref_no', '').strip()):
+            # Generated refs are upper-case: exact match uses the unique index (KI-036).
+            qs = qs.filter(ref_no=ref_no.upper())
         if (city := params.get('city')):
             qs = qs.filter(city__iexact=city)
-        if (ptype := params.get('type')):
+        if (ptype := choice_param(params, 'type', Property.PropertyType.values)):
             qs = qs.filter(property_type=ptype)
-        if (legal := params.get('legal_status')):
+        if (legal := choice_param(params, 'legal_status', Property.LegalStatus.values)):
             qs = qs.filter(legal_status=legal)
-        if (min_price := _int_param(params, 'min_price')) is not None:
+        min_price = int_param(params, 'min_price')
+        max_price = int_param(params, 'max_price')
+        if min_price is not None and max_price is not None and min_price > max_price:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({'min_price': 'Must not exceed max_price.'})
+        if min_price is not None:
             qs = qs.filter(price__gte=min_price)
-        if (max_price := _int_param(params, 'max_price')) is not None:
+        if max_price is not None:
             qs = qs.filter(price__lte=max_price)
-        if (min_score := _int_param(params, 'min_score')) is not None:
+        if (min_score := int_param(params, 'min_score', max_value=100, clamp=False)) is not None:
             qs = qs.filter(ai_score__gte=min_score)
         if search_term := params.get('search', '').strip():
             # Index-backed (prop_fts_gin); see ADR-015.

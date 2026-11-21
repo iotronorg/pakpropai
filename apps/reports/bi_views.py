@@ -79,10 +79,8 @@ class AgentSpeedLeaderboardView(APIView):
         org, err = _org_or_403(request)
         if err:
             return err
-        try:
-            top_n = min(int(request.query_params.get('top_n', 10)), 50)
-        except (ValueError, TypeError):
-            top_n = 10
+        from apps.core.query_params import int_param
+        top_n = int_param(request.query_params, 'top_n', 10, min_value=1, max_value=50)
 
         refresh = request.query_params.get('refresh') == '1'
         if refresh:

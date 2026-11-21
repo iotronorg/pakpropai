@@ -228,8 +228,8 @@ class NotificationListView(APIView):
             qs = qs.filter(state=state)
 
         # Pagination
-        limit  = min(int(request.query_params.get('limit',  50)), 200)
-        offset = max(int(request.query_params.get('offset', 0)),  0)
+        from apps.core.query_params import limit_offset
+        limit, offset = limit_offset(request.query_params, default=50, maximum=200)
         total  = qs.count()
         page   = qs[offset: offset + limit]
 
@@ -301,8 +301,8 @@ class NotificationDetailView(APIView):
         if direction := request.query_params.get('direction'):
             msgs_qs = msgs_qs.filter(direction=direction)
 
-        limit  = min(int(request.query_params.get('limit',  100)), 500)
-        offset = max(int(request.query_params.get('offset', 0)),   0)
+        from apps.core.query_params import limit_offset
+        limit, offset = limit_offset(request.query_params, default=100, maximum=500)
         total  = msgs_qs.count()
         page   = msgs_qs[offset: offset + limit]
 
