@@ -29,10 +29,10 @@
 | T‑1060 | P1 | Location hierarchy + PostGIS point + geocoding backfill with a review queue | GAP‑013/041 | T‑1050; **owner:** geocoding vendor, PostGIS in all envs |
 | T‑1070 | P1 | Listing schema v2 (expand/contract) | GAP‑010/012/045 | T‑1050 |
 | T‑1080 | P2 | Listing lifecycle, transitions, audit, expiry | GAP‑011 | T‑1070 |
-| T‑1090 (a ✅, b ✅, c ✅, d) | P2 | API standards: OpenAPI ✅, error envelope, filter validation, idempotency keys | GAP‑030–032 | — |
+| T‑1090 ✅ (a–d) | P2 | API standards: OpenAPI ✅, error envelope, filter validation, idempotency keys | GAP‑030–032 | — |
 | T‑1100 ✅ | P2 | Search indexes (composite, GIN, trigram) | GAP‑040 | — |
 | T‑1110 | P2 | Media pipeline hardening for images | GAP‑083 | — |
 | T‑1120 | P2 | AI provider abstraction, prompt registry, market‑pack prompt fragments | GAP‑055/056/062 | — |
 
 ## Order
-T‑1010 ✅ → T‑1020 ✅ → T‑1030 ✅ → T‑1021 ✅ → T‑1100 ✅ → T‑1090 → T‑1050 → T‑1031 → T‑1032 → T‑1022 → T‑1070 → T‑1080 → T‑1011 → T‑1110 → T‑1120 → T‑1060 (this one waits on the vendor/PostGIS decision).
+T‑1010 ✅ → T‑1020 ✅ → T‑1030 ✅ → T‑1021 ✅ → T‑1100 ✅ → T‑1090 ✅ → T‑1050 → T‑1031 → T‑1032 → T‑1022 → T‑1070 → T‑1080 → T‑1011 → T‑1110 → T‑1120 → T‑1060 (this one waits on the vendor/PostGIS decision).

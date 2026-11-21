@@ -263,3 +263,39 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - replacing bodies with an RFC 7807 problem document: breaking for the frontend;
   - envelope in the exception handler only: misses ~50 hand‑built responses and every middleware rejection;
   - trusting any inbound request id.
+
+## ADR‑018 — Opt‑in `Idempotency-Key` for create POSTs
+- **Date:** 2026-11-21 (session 6) · Task T‑1090d · GAP‑032, PRD D6
+- **Context:**
+  - A client that times out on "book a viewing", "start checkout" or "create enquiry" cannot tell whether it worked; a retry creates a second appointment or checkout session.
+  - Only payment webhooks had idempotency (`billing` event table).
+  - Requests run in autocommit (`ATOMIC_REQUESTS` is off).
+- **Decision:**
+  - **Model:** `core.IdempotencyRecord`:
+    - unique `(scope, key)`, with `scope = user:<pk>`;
+    - `request_hash` = sha256 of method, path and canonical JSON body;
+    - `status` in_progress/completed and `response_status`;
+    - `response_body` encrypted (ADR‑008), because it can hold lead details or payment references;
+    - `locked_until` lease (5 min) and `expires_at` (`IDEMPOTENCY_TTL_HOURS`, default 24).
+  - **Opt in per handler** with `@idempotent` (`apps/core/idempotency.py`), applied to:
+    - lead create, appointment create;
+    - `payments/checkout/<deal>/`, `payments/sepa/<deal>/`;
+    - `deals/lock/` (the feature itself is frozen).
+  - **Semantics:**
+    - no header → unchanged;
+    - first use → the claim row is committed, then the view runs;
+    - a 2xx is stored; any error or exception deletes the row, so the client can correct the request and retry with the same key;
+    - same key + same request after completion → stored status/body replayed with `Idempotent-Replayed: true`;
+    - same key + different request → 422 `idempotency_key_reused`;
+    - still running → 409 `idempotency_request_in_progress`, unless the lease is stale (crashed worker), in which case the new request takes over;
+    - expired → the key is free again.
+  - The key must be 1–255 printable ASCII characters. Anonymous requests are not tracked; every target needs authentication.
+  - **Ops:** hourly beat `purge-idempotency-records`. CORS allows `Idempotency-Key` and exposes `Idempotent-Replayed`. The header is documented in OpenAPI for each target.
+- **Why opt‑in:** a global middleware would cache GET‑like POSTs (AI chat, search) and webhook bodies. Per‑handler wrapping runs after DRF's auth, permission and throttle checks.
+- **Limits:**
+  - at‑most‑once only among requests that carry the same key; clients must send one;
+  - the stale‑lease takeover can run the view twice if the first request is merely slow (more than 5 min);
+  - multipart bodies hash file names, not contents.
+- **Rejected:**
+  - Redis‑only storage: lost on eviction/restart, which is exactly the retry window that matters;
+  - storing 4xx outcomes: a failed request has no side effect to protect, and storing it would block a corrected retry.

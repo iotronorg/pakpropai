@@ -124,3 +124,36 @@ class OutboxMessage(models.Model):
 
     def __str__(self):
         return f'{self.kind} [{self.status}] {self.idempotency_key}'
+
+
+class IdempotencyRecord(models.Model):
+    """
+    Stored outcome of a POST sent with an ``Idempotency-Key`` header (ADR-018).
+
+    One row per (scope, key): a client may not reuse a key for a different
+    request. The response body is encrypted at rest because it can carry lead
+    contact details or payment references. Rows expire after
+    ``IDEMPOTENCY_TTL_HOURS`` and are purged daily.
+    """
+
+    class Status(models.TextChoices):
+        IN_PROGRESS = 'in_progress', 'In progress'
+        COMPLETED   = 'completed',   'Completed'
+
+    id              = models.BigAutoField(primary_key=True)
+    scope           = models.CharField(max_length=64, help_text='Who sent it, e.g. user:<uuid>')
+    key             = models.CharField(max_length=255)
+    request_hash    = models.CharField(max_length=64, help_text='sha256 of method, path and body')
+    status          = models.CharField(max_length=12, choices=Status.choices, default=Status.IN_PROGRESS)
+    response_status = models.PositiveSmallIntegerField(null=True, blank=True)
+    response_body   = EncryptedTextField(blank=True, default='', help_text='JSON, encrypted at rest')
+    created_at      = models.DateTimeField(auto_now_add=True)
+    locked_until    = models.DateTimeField(help_text='In-progress lease; a crashed request frees the key after it')
+    expires_at      = models.DateTimeField(db_index=True)
+
+    class Meta:
+        db_table    = 'idempotency_records'
+        constraints = [models.UniqueConstraint(fields=['scope', 'key'], name='idempotency_scope_key_uniq')]
+
+    def __str__(self):
+        return f'{self.scope} {self.key} [{self.status}]'

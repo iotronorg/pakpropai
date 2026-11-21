@@ -7,6 +7,9 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from drf_spectacular.utils import extend_schema
+
+from apps.core.idempotency import IDEMPOTENCY_PARAMETER, idempotent
 from apps.core.permissions import get_user_org
 from .models import Lead, LeadActivity, LeadScoreHistory, Appointment, ConversationMessage
 from .serializers import (AppointmentSerializer, ConversationMessageSerializer,
@@ -24,6 +27,11 @@ class LeadViewSet(viewsets.ModelViewSet):
     serializer_class   = LeadSerializer
     permission_classes = [IsDashboardUser]
     http_method_names  = ['get', 'post', 'patch', 'head', 'options']
+
+    @extend_schema(parameters=[IDEMPOTENCY_PARAMETER])
+    @idempotent
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
 
     def get_queryset(self):
         qs = Lead.objects.select_related('user', 'assigned_agent')
@@ -261,6 +269,11 @@ class LeadViewSet(viewsets.ModelViewSet):
 class AppointmentViewSet(viewsets.ModelViewSet):
     serializer_class   = AppointmentSerializer
     permission_classes = [IsDashboardUser]
+
+    @extend_schema(parameters=[IDEMPOTENCY_PARAMETER])
+    @idempotent
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
 
     def get_queryset(self):
         qs = Appointment.objects.select_related(

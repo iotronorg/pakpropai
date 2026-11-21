@@ -12,6 +12,8 @@ from apps.core.metrics import deal_locks_total
 from apps.core.permissions import get_user_org
 from .models import EscrowDeal
 from .serializers import EscrowDealSerializer, InitiateDealLockSerializer, ConfirmPaymentSerializer
+from drf_spectacular.utils import extend_schema
+from apps.core.idempotency import IDEMPOTENCY_PARAMETER, idempotent
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +93,8 @@ class DealLockInitiateView(APIView):
     """POST /deals/lock/ — buyer requests a 48h deal lock on a property."""
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(parameters=[IDEMPOTENCY_PARAMETER])
+    @idempotent
     def post(self, request):
         # Frozen for MVP (MVP_SCOPE §4.2): no *new* token payments. Existing deals
         # can still be confirmed, cancelled, released or disputed.

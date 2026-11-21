@@ -180,8 +180,10 @@ AUTH_USER_MODEL = 'users.User'
 
 # ADR-017: browsers may send and read the request id cross-origin.
 from corsheaders.defaults import default_headers as _cors_default_headers  # noqa: E402
-CORS_ALLOW_HEADERS = (*_cors_default_headers, 'x-request-id')
-CORS_EXPOSE_HEADERS = ['X-Request-ID']
+CORS_ALLOW_HEADERS = (*_cors_default_headers, 'x-request-id', 'idempotency-key')
+CORS_EXPOSE_HEADERS = ['X-Request-ID', 'Idempotent-Replayed']
+# ADR-018: how long a stored Idempotency-Key outcome is replayed.
+IDEMPOTENCY_TTL_HOURS = env.int('IDEMPOTENCY_TTL_HOURS', default=24)
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:3000',
@@ -330,6 +332,10 @@ CELERY_BEAT_SCHEDULE = {
     'purge-outbox': {
         'task':     'apps.core.tasks.purge_outbox',
         'schedule': 86400,  # daily
+    },
+    'purge-idempotency-records': {
+        'task':     'apps.core.tasks.purge_idempotency_records',
+        'schedule': 3600,   # hourly; rows live IDEMPOTENCY_TTL_HOURS (ADR-018)
     },
     'expire-deal-locks': {
         'task':     'apps.escrow.tasks.expire_deal_locks',

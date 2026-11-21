@@ -157,3 +157,10 @@
   - Replaced casts in `core/views.py` (audit log), `security/views.py` (chain verify, capped at 10 000), `observability/views.py` (hours 1–720), `verification/views.py` (fraud alerts), `notifications/views.py`, `whatsapp/views.py` ×2, `reports/bi_views.py` (top_n).
   - `properties/views.py`: `_int_param` removed in favour of the shared helpers; enum validation; price‑range check; `min_score` ≤ 100; `ref_no` exact (KI‑036); `@extend_schema_view` documents the list params.
 - **Tests:** new `tests/test_query_param_validation.py` (18). `tests/test_verification_input.py::test_bad_limit_returns_400` now asserts the standard field error.
+- **T‑1090d Idempotency‑Key (ADR‑018):**
+  - `apps/core/models.py`: `IdempotencyRecord`; migration `core 0003_idempotency_record`.
+  - New `apps/core/idempotency.py` (`idempotent`, `IDEMPOTENCY_PARAMETER`, `purge_expired`).
+  - `apps/core/tasks.py`: `purge_idempotency_records`.
+  - `@idempotent` + OpenAPI header on `leads/views.py` (`LeadViewSet.create`, `AppointmentViewSet.create`, both new thin overrides), `payments/views.py` (`CreateCheckoutView.post`, `SEPAPaymentView.post`) and `escrow/views.py` (`DealLockInitiateView.post`).
+  - Settings: beat `purge-idempotency-records`, `IDEMPOTENCY_TTL_HOURS`, CORS header `idempotency-key`, exposed `Idempotent-Replayed`.
+- **Tests:** new `tests/test_idempotency.py` (15).

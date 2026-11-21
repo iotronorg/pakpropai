@@ -18,3 +18,10 @@ def relay_outbox() -> int:
 def purge_outbox() -> int:
     from apps.core import outbox
     return outbox.purge()
+
+
+@shared_task(name='apps.core.tasks.purge_idempotency_records', ignore_result=True)
+def purge_idempotency_records() -> int:
+    """Delete expired Idempotency-Key records (ADR-018)."""
+    from apps.core.idempotency import purge_expired
+    return purge_expired()

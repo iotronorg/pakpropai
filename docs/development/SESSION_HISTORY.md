@@ -107,14 +107,13 @@
   - **T‑1090c:** shared `apps/core/query_params.py`; 9 bare `int()` casts in 7 views fixed (negative `limit` was a 500); property list enums/ranges validated and documented in OpenAPI; KI‑036 resolved.
 - **Final tests:** 1602 passed, 1 skipped, 0 failed. `check`, migration drift and schema validation clean; Bandit 0 HIGH.
 
+- **Continued again (owner said "continue"):** **T‑1090d** (ADR‑018): opt‑in `@idempotent` with `core.IdempotencyRecord` (encrypted body, lease, TTL, hourly purge) on lead/appointment create, checkout, SEPA and deal‑lock initiate. Only 2xx outcomes are stored. **T‑1090 is complete.**
+- **Final tests:** 1617 passed, 1 skipped, 0 failed. `check` and migration drift clean; Bandit 0 HIGH.
+
 ### Handoff → session 7
-1. `git status`: session‑6 changes are uncommitted. **Do not commit.** `requirements/base.txt` changed, so run `REBUILD=1 scripts/dev/test.sh` once (expect 1602 passed, 1 skipped).
-2. Next: **T‑1090d** `Idempotency-Key` (GAP‑032) for the enquiry/lead create, payment and deal/booking POSTs.
-   - Inventory the endpoints first: `apps/leads/views.py` create, `apps/payments/views.py`, `apps/escrow/views.py`.
-   - Suggested design (write it as ADR‑018): a `core.IdempotencyRecord` keyed by `(key, user/org, method, path)` with a request‑body hash and the stored status + body, plus a TTL purge in beat.
-     - same key + same body → replay the stored response;
-     - same key + different body → 422 `idempotency_key_reused`;
-     - concurrent in‑flight → 409.
-   - Make it opt‑in per view (decorator or mixin), not global.
-   - Allow the `idempotency-key` CORS header (`CORS_ALLOW_HEADERS` in `config/settings/base.py`) and document it in the OpenAPI parameters.
-3. Then T‑1050 (`Market` entity; inspect the existing `apps/markets` first) → T‑1031 → T‑1032 → T‑1022 → T‑1091/T‑1092.
+1. `git status`: the owner committed session 6 up to `591a5ea`; the T‑1090d files may still be uncommitted. **Do not commit.** If the image predates `drf-spectacular`, run `REBUILD=1 scripts/dev/test.sh` once (expect 1617 passed, 1 skipped).
+2. Next: **T‑1050** `Market` entity; remove hardcoded PK defaults; UTC + per‑entity TZ (TR‑04, GAP‑014/091).
+   - Start by reading `apps/markets/` (it already exists as an installed app, and has not been assessed in these sessions) and the PRD market‑pack sections (`docs/product/ai-real-estate-agent/PRD_MASTER.md`, `TECHNICAL_RECOMMENDATIONS.md` TR‑04).
+   - Then inventory the hardcoded defaults: `grep -rn "'PKR'\|'PK'\|marla" apps --include=*.py`. Known ones: `Property.currency`/`country`/`area_unit` defaults, `_DEFAULT_CITY_CODE_MAP`, `PropertySearchService._result_to_dict` "PKR" formatting.
+   - Plan expand/contract: add a `market` FK with a PK default, then backfill, then add the CI grep check required by the M1 exit criterion.
+3. Then T‑1031 (RBAC phase B, ADR‑013) → T‑1032 → T‑1022 → T‑1091/T‑1092 → T‑1070.

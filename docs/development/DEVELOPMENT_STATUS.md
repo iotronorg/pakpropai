@@ -4,13 +4,13 @@ _Last updated: 2026-11-21 (session 6)_
 
 | Item | Value |
 |---|---|
-| Branch | `development` (session 6 work uncommitted; sessions 1–5 committed by the owner up to `63c3cd6`) |
+| Branch | `development`. The owner committed sessions 1–6 up to `591a5ea` (T‑1100, T‑1090a–c). **T‑1090d is uncommitted** |
 | Current milestone | **M1 — Core foundation** ([MILESTONE_01](milestones/MILESTONE_01_CORE_FOUNDATION.md)); M0 code‑complete, awaiting first GitHub Actions run |
 | M0 progress | All 17 tasks complete. Remaining exit criterion: CI green on GitHub Actions (owner pushes) |
-| M1 progress | 5 of 18 tasks done (T‑1010, T‑1020, T‑1030, T‑1021, T‑1100) plus T‑1090a–c of 4 subtasks. T‑1060 blocked on a vendor decision; T‑1033 needs an owner policy sign‑off |
-| Test suite | **1602 passed, 1 skipped, 0 failed** (session start 1528/1/0) — see [TESTING_STATUS](TESTING_STATUS.md) |
-| Last completed task | T‑1090c query‑param validation; earlier this session T‑1100 (ADR‑015), T‑1090a (ADR‑016), T‑1090b (ADR‑017) |
-| Next task | **T‑1090d** `Idempotency-Key`, then T‑1050 `Market` entity |
+| M1 progress | 6 of 18 tasks done: T‑1010, T‑1020, T‑1030, T‑1021, T‑1100, T‑1090 (a–d). T‑1060 blocked on a vendor decision; T‑1033 needs an owner policy sign‑off |
+| Test suite | **1617 passed, 1 skipped, 0 failed** (session start 1528/1/0) — see [TESTING_STATUS](TESTING_STATUS.md) |
+| Last completed task | T‑1090d `Idempotency-Key` (ADR‑018); earlier this session T‑1100 (ADR‑015) and T‑1090a–c (ADR‑016/017) |
+| Next task | **T‑1050** `Market` entity + remove hardcoded PK defaults (inspect `apps/markets` first), then T‑1031 |
 
 ## Owner decisions (2026-11-21)
 - **No commits by the agent.** Session 6 work is uncommitted on `development`.
@@ -24,7 +24,7 @@ _Last updated: 2026-11-21 (session 6)_
 
 ## Operator actions before deploying these changes
 See **[GO_LIVE_CHECKLIST](GO_LIVE_CHECKLIST.md)**: DB backup, `FIELD_ENCRYPTION_KEYS`, config‑row check. Summary:
-- **Session 6** adds `properties 0021` (`CREATE EXTENSION pg_trgm`) and `properties 0022` (non‑atomic, 4 × `CREATE INDEX CONCURRENTLY`; run off‑peak on a direct DB connection). `?search=` semantics changed (prefix match, no stemming); see checklist §9. New dependency `drf-spectacular` (image rebuild) and optional `OPENAPI_SCHEMA_PUBLIC`. Every response now has an `X-Request-ID` header, and `/api/` JSON errors gain `error_info` + `request_id` (additive).
+- **Session 6** adds `properties 0021` (`CREATE EXTENSION pg_trgm`) and `properties 0022` (non‑atomic, 4 × `CREATE INDEX CONCURRENTLY`; run off‑peak on a direct DB connection). `?search=` semantics changed (prefix match, no stemming); see checklist §9. New dependency `drf-spectacular` (image rebuild) and optional `OPENAPI_SCHEMA_PUBLIC`. Every response now has an `X-Request-ID` header, and `/api/` JSON errors gain `error_info` + `request_id` (additive). Session 6 also adds `core 0003` (idempotency table) and the beat job `purge-idempotency-records`.
 - Session 4 adds `users 0013` (OTP hashing) and the worker command `replay_whatsapp_dead_letters`; see checklist §6.
 - **Session 5 makes outbound WhatsApp actually work (KI‑033).** OTPs, notifications and alerts were never delivered before. Expect a jump in outbound volume; see checklist §8. Session 5 also adds `core 0002` (outbox) and the beat jobs `relay-outbox`/`purge-outbox`.
 - Session 5 adds `organizations 0024` (membership backfill) and `reconcile_memberships`. Review `orphan_agent` rows by hand: ex‑team agents may still have org access. See checklist §7.

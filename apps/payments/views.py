@@ -15,6 +15,8 @@ from apps.escrow.models import EscrowDeal
 from apps.core.metrics import deal_locks_total, webhook_events_total
 from .models import Payment
 from .services import PaymentService
+from drf_spectacular.utils import extend_schema
+from apps.core.idempotency import IDEMPOTENCY_PARAMETER, idempotent
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +46,8 @@ class CreateCheckoutView(APIView):
     """
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(parameters=[IDEMPOTENCY_PARAMETER])
+    @idempotent
     def post(self, request, deal_id):
         deal = get_object_or_404(EscrowDeal, id=deal_id)
 
@@ -431,6 +435,8 @@ class SEPAPaymentView(APIView):
     """
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(parameters=[IDEMPOTENCY_PARAMETER])
+    @idempotent
     def post(self, request, deal_id):
         deal = get_object_or_404(EscrowDeal, id=deal_id)
 

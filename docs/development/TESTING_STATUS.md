@@ -47,6 +47,8 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | 2026-11-21 | Working tree, after T‑1090c (first run) | `pytest tests/ apps/` | 1601 passed, 1 skipped, **1 failed**: `test_verification_input::test_bad_limit_returns_400` asserted the old ad‑hoc `detail` string; updated to the standard field error (see below) | 4m39s |
 | 2026-11-21 | Working tree, session 6 end (after T‑1090c) | `pytest tests/ apps/` | **1602 passed, 1 skipped, 0 failed**, 126 subtests | 5m19s |
 | 2026-11-21 | Working tree, after T‑1090c | `check` / `makemigrations --check` / `spectacular --validate` / `bandit -ll` | no issues / no changes / valid (154/32 unchanged) / 0 HIGH | — |
+| 2026-11-21 | Working tree, session 6 end (after T‑1090d) | `pytest tests/ apps/` | **1617 passed, 1 skipped, 0 failed**, 143 subtests | 5m05s |
+| 2026-11-21 | Working tree, after T‑1090d | `check` / `makemigrations --check` / `bandit -ll` | no issues / no changes / 8 Medium, 0 HIGH | — |
 | 2026-11-21 | Working tree, session 6 | `manage.py spectacular --validate --file openapi.yaml` | exit 0; valid OpenAPI 3.1; 220 paths; 154 unique errors / 32 unique warnings (KI‑037) | — |
 | 2026-11-21 | Working tree, session 6 end | `makemigrations --check` / `manage.py check` / `bandit -r apps/ -ll` / CI YAML parse | No changes / no issues / 8 Medium, **0 HIGH** / OK | — |
 | 2026-11-21 | Scratch DB `bench` | `migrate` → `migrate properties 0020` → `migrate` | OK both ways; indexes dropped on reverse, `pg_trgm` kept | — |
@@ -72,6 +74,7 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | `tests/test_openapi_schema.py` | 11 | T‑1090a: valid 3.1 schema, core paths, auth schemes, list params, error/warning budget ratchet, access (anon/user refused, admin/staff allowed, public flag), `ErrorEnvelope` component (+1) |
 | `tests/test_error_envelope.py` | 20 | T‑1090b: request id generated/kept/replaced (injection), header on success, context cleared, log field, CORS; DRF exceptions (401 code, validation fields, 404, custom code, list body, key collision); hand‑built `error` string kept; security‑middleware 403; unrouted `/api/` 404 JSON; unhandled 500 JSON without internals; non‑`/api/` untouched |
 | `tests/test_query_param_validation.py` | 18 | T‑1090c: helpers (int/clamp/bounds/limit‑offset/choice); audit‑log, chain‑verify, notifications, fraud‑alerts bad input → field 400 (negative limit was a 500); property enums, price range, `min_score` bound, `ref_no` exact (no `UPPER`), list params + enums in OpenAPI |
+| `tests/test_idempotency.py` | 15 | T‑1090d: appointment booking replay (one row, same id, replay header), no key unchanged, 422 reuse, per‑user scope, bad key 400, failed request frees key for corrected retry, body encrypted at rest; probe view: 4xx/5xx/exceptions not stored, 409 in flight, stale lease takeover, expiry frees key, anonymous untracked, purge; OpenAPI header on all 5 targets |
 
 ## Modified existing tests (behaviour change, not weakening)
 
