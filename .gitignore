@@ -40,3 +40,8 @@ Thumbs.db
 # ML datasets (contain conversation data even after scrubbing — never commit)
 datasets/
 docs/ml/eval-reports/
+# Generated artifacts that may contain personal data — never commit (T-0011)
+media/
+ruvector.db
+agentdb.rvf*
+.claude-flow/

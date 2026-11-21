@@ -5,7 +5,9 @@ from .views import PropertyViewSet, PropertyCompareView, PropertyMarketTrendsVie
 router = DefaultRouter()
 router.register(r'', PropertyViewSet, basename='property')
 
-urlpatterns = router.urls + [
+# Explicit paths must precede the router: its detail route (^<pk>/$) would
+# otherwise capture 'compare/' and 'market-trends/'.
+urlpatterns = [
     path('compare/',       PropertyCompareView.as_view(),       name='property-compare'),
     path('market-trends/', PropertyMarketTrendsView.as_view(),  name='property-market-trends'),
-]
+] + router.urls

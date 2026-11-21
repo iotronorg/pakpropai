@@ -1,0 +1,58 @@
+# Testing Status
+
+## How to run
+
+```bash
+scripts/dev/test.sh                         # full suite: pytest tests/ apps/
+scripts/dev/test.sh tests/test_foo.py -x    # any pytest args
+REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements change
+```
+
+- Requires Docker. The script uses the project `Dockerfile` (image `pakpropai-test:dev`) plus throwaway `postgres:15-alpine` and `redis:7-alpine` on the network `pakpropai-test-net` (ADR‑001).
+- Env values in the script are CI‑only placeholders; no real secrets are used.
+- pytest, pytest‑django and pytest‑cov are installed only inside the throwaway container.
+- Migration drift check:
+  `docker run --rm --network pakpropai-test-net -v "$PWD:/app" -w /app -e DATABASE_URL=postgres://realtron:realtronpass@pakpropai-test-pg:5432/realtron_test -e SECRET_KEY=ci-only -e REDIS_URL=redis://pakpropai-test-redis:6379/0 -e DJANGO_SETTINGS_MODULE=config.settings.test pakpropai-test:dev python manage.py makemigrations --check --dry-run`
+- Clean up afterwards: `docker rm -f pakpropai-test-pg pakpropai-test-redis && docker network rm pakpropai-test-net`
+
+## Results (all executed — nothing estimated)
+
+| Date | Code state | Command | Result | Duration |
+|---|---|---|---|---|
+| 2026-11-21 | `HEAD` 0b574a7 (exported via `git archive`, no local changes) | `pytest tests/ apps/` | **1361 passed, 1 skipped, 1 failed** (`test_compliance.py::test_export_endpoint_queues_task` — Cloudinary API key required under eager Celery) | 4m45s |
+| 2026-11-21 | Working tree after T‑0004/5/6 | `pytest tests/ apps/` | 1395 passed, 1 skipped, 1 failed (same pre‑existing failure) | 4m37s |
+| 2026-11-21 | Working tree, end of session 2 | `pytest tests/ apps/` | **1425 passed, 1 skipped, 0 failed**, 98 subtests passed | 4m37s |
+| 2026-11-21 | Working tree, end of session 2 | `makemigrations --check --dry-run` | No changes detected | — |
+| 2026-11-21 | Working tree, end of session 2 | `bandit -r apps/ -ll` (CI gate) | 6 findings, **0 HIGH** (baseline had 1 HIGH: B324) | — |
+| 2026-11-21 | Working tree, session 3 | `pytest tests/ apps/` | **1452 passed, 1 skipped, 0 failed**, 98 subtests | 4m35s |
+| 2026-11-21 | Working tree, session 3 | `makemigrations --check` / `manage.py check` | No changes / no issues | — |
+| 2026-11-21 | Working tree, session 3 | `bandit -r apps/ -ll` | 8 findings, **0 HIGH** | — |
+| 2026-11-21 | Working tree, session 3 | Prod settings `manage.py check` without / with `FIELD_ENCRYPTION_KEYS` | `core.E002` error / no issues | — |
+| 2026-11-21 | Scratch DB `rehearsal` | `migrate users` forward → reverse → forward with a plaintext CNIC row | varchar plaintext → text `enc1:` → varchar plaintext → text `enc1:` | — |
+| 2026-11-21 | Container | `infra/scripts/health_check.py` against dead port / missing URL / local 200 server | exit 1 / exit 1 / exit 0 | — |
+
+## Tests added in sessions 2–3
+
+| File | Tests | Covers |
+|---|---|---|
+| `tests/test_sandbox_visibility.py` | 21 | T‑0004: derive‑on‑insert, `visible_to()`, search service, AI tool, client API, recommendations, backfill migrations |
+| `tests/test_ai_usage_and_cache_policy.py` | 13 | T‑0005 cache policy; T‑0006 usage capture and recording through `AIServiceManager.process` |
+| `tests/test_m0_stabilisation.py` | 19 | T‑0008 scraper default; T‑0012 routes/params; T‑0015 frozen voice/syndication |
+| `tests/test_ai_side_effect_guards.py` | 20 | T‑0007 confirmation guard, deal‑lock freeze (tool, tool list, endpoint); T‑0013/T‑0017 audit guard + disclaimer |
+| `tests/test_field_encryption.py` | 13 | T‑0010 primitives, rotation, at‑rest ciphertext, webhook lookup, legacy plaintext, config cache, migration helpers |
+| `tests/test_compliance_wiring.py` | 4 | T‑0009 end‑to‑end grounding check |
+
+## Modified existing tests (behaviour change, not weakening)
+
+- `test_compliance.py::test_export_endpoint_queues_task`: it now patches `.delay` and asserts the task is enqueued with a real `DataExportRequest` id. This is stricter than before, and it no longer calls Cloudinary.
+- Deal‑creation test classes in `test_deal_lock.py`, `test_sepa_payments.py`, `test_stripe_deal_lock.py` and `test_compliance_views.py` now call `enable_feature('feature_deal_lock')` in `setUp`, because deal lock is frozen by default (ADR‑006). `DealLockBlockedEntityTest` previously could pass from any 403; it now reaches the sanctions check.
+
+- Session 3: syndication isolation tests (8 classes) and `VoiceInboundWebhookTest` call `enable_feature(...)`, because those modules are frozen by default.
+
+## Coverage
+Not measured yet (no coverage run executed). CI is configured with `--cov=apps`.
+
+## Not covered / gaps
+- No test runs against a real LLM provider (all tests mock or use local backend paths).
+- Gemini AFC multi‑round token counting is not verifiable without the provider (KI‑006 residual).
+- CI workflow changes were validated as YAML and the health script locally; the workflow has not been run on GitHub Actions.

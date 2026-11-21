@@ -76,6 +76,8 @@ class StripeCheckoutCreationTests(TestCase):
     """Tests 1, 5, 6, 7 — checkout URL returned with correct gateway and currency."""
 
     def setUp(self):
+        from tests.factories import enable_feature
+        enable_feature('feature_deal_lock')  # frozen by default (MVP §4.2)
         self.client = APIClient()
         self.ae_org = make_org(name='Dubai Realty', country='AE')
         self.pk_org = make_org(name='Lahore Devs', country='PK')

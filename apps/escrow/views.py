@@ -92,6 +92,14 @@ class DealLockInitiateView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
+        # Frozen for MVP (MVP_SCOPE §4.2): no *new* token payments. Existing deals
+        # can still be confirmed, cancelled, released or disputed.
+        from apps.config.services import SystemConfigService
+        if not SystemConfigService.get_features().get('feature_deal_lock', False):
+            return Response(
+                {'error': 'Deal lock is not available.', 'code': 'feature_disabled'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         ser = InitiateDealLockSerializer(data=request.data, context={'request': request})
         ser.is_valid(raise_exception=True)
 

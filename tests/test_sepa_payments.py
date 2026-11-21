@@ -48,6 +48,8 @@ class AvailablePaymentMethodsTests(TestCase):
     """Tests 1 & 2 — SEPA offered to EU orgs, not to others."""
 
     def setUp(self):
+        from tests.factories import enable_feature
+        enable_feature('feature_deal_lock')  # frozen by default (MVP §4.2)
         self.client  = APIClient()
         self.buyer   = make_user(phone='+491234567890', role='client')
         self.client.force_authenticate(user=self.buyer)

@@ -1,6 +1,9 @@
 from .base import *
 
 DEBUG = True
+
+# Local/test only: derive the field-encryption key from SECRET_KEY when unset.
+FIELD_ENCRYPTION_ALLOW_DERIVED_KEY = True
 ALLOWED_HOSTS = ['*']
 
 INSTALLED_APPS += ['debug_toolbar']

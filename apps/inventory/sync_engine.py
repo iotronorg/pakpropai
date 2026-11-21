@@ -40,7 +40,7 @@ def _listing_key(mapped: dict) -> str:
         str(mapped.get('city', '')),
         str(mapped.get('location', '')),
     ]
-    return hashlib.md5('|'.join(parts).encode()).hexdigest()
+    return hashlib.md5('|'.join(parts).encode(), usedforsecurity=False).hexdigest()  # dedup key, not security
 
 
 class InventorySyncOrchestrator:

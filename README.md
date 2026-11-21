@@ -13,7 +13,7 @@ WhatsApp-first · AI-powered · Modular Django monolith
 - [Environment Variables Reference](#environment-variables-reference)
 - [Useful Commands](#useful-commands)
 - [Deploying to Production](#deploying-to-production)
-  - [Option A — Render (recommended, one-click)](#option-a--render-recommended)
+  - [Option A — Render](#option-a--render)
   - [Option B — Railway](#option-b--railway)
   - [Option C — Any VPS with Docker](#option-c--any-vps-with-docker)
 - [Post-Deployment Checklist](#post-deployment-checklist)
@@ -144,17 +144,27 @@ GEMINI_MODEL=gemini-2.5-flash-lite    # Keep this for free tier
 AI_BACKEND=gemini     # gemini (cloud) | local (Ollama, for fully offline dev)
 ```
 
-### Cloudflare R2 (file storage)
+### Cloudinary (file storage)
 
 ```env
-R2_ACCOUNT_ID=        # Cloudflare dashboard → Account ID (right sidebar)
-R2_ACCESS_KEY_ID=     # Cloudflare R2 → Manage API Tokens → Create Token
-R2_SECRET_ACCESS_KEY=
-R2_BUCKET_NAME=       # Name of your R2 bucket
-R2_PUBLIC_URL=        # https://pub-xxx.r2.dev (if bucket has public access enabled)
+CLOUDINARY_CLOUD_NAME=   # Cloudinary dashboard → Product Environment
+CLOUDINARY_API_KEY=
+CLOUDINARY_API_SECRET=
 ```
 
-> If not set, files are stored on local disk under `media/`. Fine for development.
+> If not set, files are stored on local disk under `media/` (git‑ignored). Fine for development.
+
+### Field encryption (required in production)
+
+Secrets (WhatsApp/payment/voice credentials, sensitive `system_config` values) and national ID numbers are encrypted at rest.
+
+```env
+FIELD_ENCRYPTION_KEYS=   # Fernet key(s), comma-separated, newest first (rotation)
+FIELD_HASH_KEY=          # optional; HMAC key for lookup indexes (defaults to one derived from the first key)
+```
+
+Generate a key: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
+Production refuses to start without it (system check `core.E002`). **Back the key up in your secret manager — losing it makes encrypted data unrecoverable.** Local/dev settings derive a key from `SECRET_KEY` automatically.
 
 ### Payment Gateways
 
@@ -189,8 +199,8 @@ docker compose exec web python manage.py migrate
 # Open the Django interactive shell
 docker compose exec web python manage.py shell
 
-# Run the test suite
-docker compose exec web python manage.py test
+# Run the test suite (Docker; throwaway Postgres + Redis — see docs/development/TESTING_STATUS.md)
+scripts/dev/test.sh
 
 # Check for configuration errors
 docker compose exec web python manage.py check
@@ -214,29 +224,22 @@ docker compose up --build
 
 ---
 
-### Option A — Render (recommended)
+### Option A — Render
 
-The repo includes `render.yaml` — a Blueprint file that provisions everything in one click: web service, Celery worker, Celery beat, PostgreSQL, and Redis.
+> The repo does **not** include a `render.yaml` Blueprint; create the services manually. (The GitHub Actions workflow targets AWS ECS — see `.github/workflows/ci.yml`.)
 
 #### Steps
 
 **1. Push your code to GitHub or GitLab.**
 
-**2. Go to Render → New → Blueprint → Connect your repository.**
+**2. In Render, create these services from the repository:**
 
-Render detects `render.yaml` automatically and shows a preview of what will be created:
+- Web service — Docker, `docker/Dockerfile.web`
+- Background worker — Docker, `docker/Dockerfile.worker` (Celery worker)
+- Background worker — Celery beat
+- PostgreSQL and Redis instances
 
-- `pakpropai-api` — Django web service (Docker)
-- `pakpropai-worker` — Celery worker (Docker)
-- `pakpropai-beat` — Celery beat scheduler (Docker)
-- `pakpropai-db` — PostgreSQL database (free tier)
-- Redis — (free tier)
-
-**3. Click Apply. Render builds and deploys all services.**
-
-**4. Set the secret environment variables.**
-
-Go to each service → Environment and fill in the values marked `sync: false` in `render.yaml`. These are the secrets not committed to the repo:
+**3. Set the secret environment variables** on each service (never commit them):
 
 ```
 WA_VERIFY_TOKEN
@@ -245,11 +248,10 @@ WA_ACCESS_TOKEN
 WA_PHONE_NUMBER_ID
 WA_OTP_TEMPLATE_NAME
 GEMINI_API_KEY
-R2_ACCOUNT_ID
-R2_ACCESS_KEY_ID
-R2_SECRET_ACCESS_KEY
-R2_BUCKET_NAME
-R2_PUBLIC_URL
+FIELD_ENCRYPTION_KEYS    (required)
+CLOUDINARY_CLOUD_NAME
+CLOUDINARY_API_KEY
+CLOUDINARY_API_SECRET
 SAFEPAY_MERCHANT_KEY
 SAFEPAY_SECRET_KEY
 BSECURE_CLIENT_ID
@@ -257,11 +259,11 @@ BSECURE_CLIENT_SECRET
 SENTRY_DSN               (optional)
 ```
 
-**5. Update `ALLOWED_HOSTS` and `FRONTEND_URL`** to your actual domain names in the web service environment.
+**4. Update `ALLOWED_HOSTS` and `FRONTEND_URL`** to your actual domain names in the web service environment.
 
-**6. Trigger a manual redeploy** from the Render dashboard after adding secrets.
+**5. Trigger a manual redeploy** after adding secrets.
 
-Migrations run automatically as part of the start command — no manual step needed.
+Migrations run automatically as part of the start command. **Take a database backup before the first deploy of a release that contains data migrations** (e.g. the field‑encryption migrations).
 
 #### Cost on Render
 
@@ -299,7 +301,7 @@ DATABASE_URL=${{Postgres.DATABASE_URL}}
 REDIS_URL=${{Redis.REDIS_URL}}
 BASE_URL=https://<your-project>.up.railway.app
 
-# Then add all WhatsApp, Gemini, R2, and payment variables
+# Then add all WhatsApp, Gemini, Cloudinary, FIELD_ENCRYPTION_KEYS and payment variables
 ```
 
 **5. Railway reads your `Procfile` and starts:**

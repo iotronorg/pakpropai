@@ -84,7 +84,7 @@ class RealTronAgent:
 
         from apps.ai import tools as tool_module
 
-        tool_module.set_context(user, phone, org=organization)
+        tool_module.set_context(user, phone, org=organization, message=message)
 
         # Greetings get an instant structured reply — no model call needed
         if self._is_greeting(message):
@@ -287,7 +287,7 @@ class RealTronAgent:
                           'assalamualaikum', 'assalam', 'as salam'}
 
         EN_LINES = {
-            'feature_property_search':       "🔍 *Property Search* — Live listings from Zameen, Graana & local DB",
+            'feature_property_search':       "🔍 *Property Search* — Search listings by city, area, size & budget",
             'feature_property_listing':      "📋 *List Your Property* — Sell or rent via WhatsApp",
             'feature_tax_advice':            "💰 *Tax Advice* — Section 7E, CGT, rental & withholding tax",
             'feature_loan_eligibility':      "🏦 *Loan Eligibility* — Apna Ghar scheme & bank financing",
@@ -298,7 +298,7 @@ class RealTronAgent:
             'feature_property_audit':        "📊 *Property Audit* — Full risk & investment report (PDF)",
         }
         UR_LINES = {
-            'feature_property_search':       "🔍 *Property Search* — Zameen, Graana aur local listings se",
+            'feature_property_search':       "🔍 *Property Search* — City, area, size aur budget ke mutabiq listings",
             'feature_property_listing':      "📋 *Property Listing* — Apni property list karein buyers ke liye",
             'feature_tax_advice':            "💰 *Tax Advice* — Section 7E, CGT, rental tax",
             'feature_loan_eligibility':      "🏦 *Loan Eligibility* — Apna Ghar scheme aur bank financing",
@@ -382,6 +382,10 @@ class RealTronAgent:
         agent names and phone numbers.
         """
         import re
+
+        from apps.ai.confirmation import mark_explicit_request
+        # The user literally asked for an agent; that request is the consent.
+        mark_explicit_request()
         msg = message.lower()
 
         # ── City extraction ────────────────────────────────────────────────────
@@ -460,10 +464,14 @@ class RealTronAgent:
     def _log(self, user, message: str, reply: str, response_ms: int):
         try:
             from apps.ai.models import AIInteraction
+            from apps.ai.usage import current_usage
+            usage = current_usage()
             AIInteraction.objects.create(
                 user=user,
                 interaction_type='intent_classify',
                 model_used=self._backend.label if self._backend else 'unknown',
+                prompt_tokens=usage.tokens_in,
+                response_tokens=usage.tokens_out,
                 response_ms=response_ms,
                 input_data={'message': message[:300]},
                 output_data={'reply': reply[:300]},

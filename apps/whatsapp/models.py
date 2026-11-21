@@ -1,5 +1,7 @@
 import uuid
 from django.db import models
+
+from apps.core.crypto import EncryptedTextField
 from django.conf import settings
 
 
@@ -47,6 +49,13 @@ class WhatsAppSession(models.Model):
     class Meta:
         db_table = 'whatsapp_sessions'
         ordering = ['-last_message_at']
+
+    def save(self, *args, **kwargs):
+        # ADR-002: sessions on a production org's number are live data.
+        if self._state.adding and self.organization_id:
+            from apps.organizations.sandbox import org_is_sandbox
+            self.is_sandbox = org_is_sandbox(self.organization)
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"WA Session: {self.phone} — {self.state}"
@@ -100,14 +109,16 @@ class OrgWhatsAppConfig(models.Model):
                             help_text="Meta phone_number_id for this org's WA number")
     display_phone     = models.CharField(max_length=20, blank=True,
                             help_text="Human-readable E.164 phone number, e.g. +923001234567")
-    access_token      = models.CharField(max_length=500, blank=True,
+    access_token      = EncryptedTextField(blank=True,
                             help_text="Meta System User token — never returned by API")
     app_id            = models.CharField(max_length=50, blank=True,
                             help_text="Meta App ID")
-    app_secret        = models.CharField(max_length=200, blank=True,
+    app_secret        = EncryptedTextField(blank=True,
                             help_text="Meta App Secret for HMAC-SHA256 webhook verification — never returned by API")
-    verify_token      = models.CharField(max_length=200, blank=True,
+    verify_token      = EncryptedTextField(blank=True,
                             help_text="Custom webhook verify token — never returned by API")
+    verify_token_hash = models.CharField(max_length=64, blank=True, db_index=True, editable=False,
+                            help_text="HMAC blind index of verify_token for webhook lookup (ADR-008)")
     is_active         = models.BooleanField(default=False,
                             help_text="Enable/disable this integration")
     webhook_verified_at = models.DateTimeField(null=True, blank=True,
@@ -145,6 +156,22 @@ class OrgWhatsAppConfig(models.Model):
 
     class Meta:
         db_table = 'org_whatsapp_configs'
+
+    def save(self, *args, **kwargs):
+        from apps.core.crypto import blind_index
+        self.verify_token_hash = blind_index(self.verify_token)
+        update_fields = kwargs.get('update_fields')
+        if update_fields is not None and 'verify_token' in update_fields:
+            kwargs['update_fields'] = set(update_fields) | {'verify_token_hash'}
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def find_by_verify_token(cls, token: str, **filters):
+        """Webhook lookup by verify token (encrypted column → blind index)."""
+        from apps.core.crypto import blind_index
+        if not token:
+            return None
+        return cls.objects.filter(verify_token_hash=blind_index(token), **filters).first()
 
     def __str__(self):
         return f"WA Config: {self.organization.name} ({self.display_phone or self.phone_number_id or 'unconfigured'})"

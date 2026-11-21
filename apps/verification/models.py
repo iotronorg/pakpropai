@@ -1,5 +1,7 @@
 import uuid
 from django.db import models
+
+from apps.core.crypto import EncryptedTextField
 from django.conf import settings
 from django.utils import timezone
 
@@ -53,7 +55,7 @@ class DocumentScan(models.Model):
 
     # Extracted fields
     owner_name          = models.CharField(max_length=200, blank=True)
-    cnic_number         = models.CharField(max_length=20,  blank=True)
+    cnic_number         = EncryptedTextField(blank=True)
     property_address    = models.TextField(blank=True)
     area                = models.CharField(max_length=100, blank=True)
     registration_number = models.CharField(max_length=100, blank=True)
@@ -64,7 +66,7 @@ class DocumentScan(models.Model):
     extracted_fields  = models.JSONField(default=dict)   # all key-value pairs from OCR
     red_flags         = models.JSONField(default=list)   # suspicious items found
     confidence        = models.CharField(max_length=10, default='LOW')  # HIGH/MEDIUM/LOW
-    raw_ocr           = models.TextField(blank=True)
+    raw_ocr           = EncryptedTextField(blank=True)
     whatsapp_summary  = models.TextField(blank=True)
     status            = models.CharField(max_length=20, choices=Status.choices,
                                          default=Status.UNREADABLE)

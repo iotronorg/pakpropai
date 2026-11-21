@@ -35,6 +35,8 @@ def _make_org_with_voice(phone='+15550000001', org_name='Voice Org'):
 class VoiceInboundWebhookTest(TestCase):
 
     def setUp(self):
+        from tests.factories import enable_feature
+        enable_feature('feature_voice_calls')  # frozen by default (MVP §4.2)
         self.client = APIClient()
         self.admin, self.org, self.cfg = _make_org_with_voice()
         self.url = '/api/v1/voice/webhook/inbound/'

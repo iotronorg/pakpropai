@@ -6,6 +6,8 @@ import logging
 
 from django.conf import settings
 
+from apps.ai.usage import record_gemini_response
+
 from .base import AIBackend
 
 logger = logging.getLogger(__name__)
@@ -45,6 +47,9 @@ class GeminiBackend(AIBackend):
             history=self._to_contents(history),
         )
         response = chat_session.send_message(message)
+        # With Automatic Function Calling, usage_metadata covers the final model
+        # call only (intermediate tool rounds are not reported) — KNOWN_ISSUES KI-006.
+        record_gemini_response(settings.GEMINI_MODEL, response)
         return (response.text or '').strip()
 
     def analyze_image(self, image_bytes: bytes, mime_type: str,
@@ -62,6 +67,7 @@ class GeminiBackend(AIBackend):
                 max_output_tokens=800, temperature=0.1,
             ),
         )
+        record_gemini_response(settings.GEMINI_MODEL, response)
         return (response.text or '').strip()
 
     def transcribe_audio(self, audio_bytes: bytes, mime_type: str) -> str:
@@ -81,6 +87,7 @@ class GeminiBackend(AIBackend):
                 max_output_tokens=512, temperature=0.1,
             ),
         )
+        record_gemini_response(settings.GEMINI_MODEL, response)
         return (response.text or '').strip()
 
     @property

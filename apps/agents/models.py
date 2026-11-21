@@ -1,6 +1,8 @@
 import uuid
 from django.core.exceptions import ValidationError
 from django.db import models
+
+from apps.core.crypto import EncryptedTextField
 from django.conf import settings
 
 
@@ -56,15 +58,15 @@ class Agent(models.Model):
     whatsapp_number = models.CharField(max_length=20, blank=True,
                           help_text='WhatsApp number if different from phone')
     email           = models.EmailField(blank=True)
-    national_id_number = models.CharField(
-                             max_length=50, blank=True,
+    national_id_number = EncryptedTextField(
+                             blank=True,
                              help_text=(
                                  'National identity document number. '
                                  'Format varies by country: CNIC (PK), Emirates ID (AE), '
                                  'National Insurance (GB), SSN last-4 (US), etc.'
                              ),
                          )
-    cnic_number     = models.CharField(max_length=20, blank=True,
+    cnic_number     = EncryptedTextField(blank=True,
                           help_text='[Deprecated — use national_id_number] Pakistan CNIC (format: 12345-1234567-1)')
     profile_photo   = models.ImageField(upload_to='agents/photos/', blank=True, null=True)
 

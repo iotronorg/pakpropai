@@ -33,6 +33,24 @@ class PropertyRefCounter(models.Model):
         unique_together = ('city_code', 'year')
 
 
+class PropertyQuerySet(models.QuerySet):
+
+    def visible_to(self, viewer_org=None):
+        """
+        Listings a consumer-facing surface (search, AI tools, recommendations,
+        client API) may show. See ADR-002.
+
+        Active listings that are live (``is_sandbox=False``) are always visible.
+        Sandbox listings are visible only to their own organization's context, so
+        an org can test its bot on its own inventory before go-live.
+        """
+        live = models.Q(is_sandbox=False)
+        viewer_org_id = getattr(viewer_org, 'pk', viewer_org)
+        if viewer_org_id:
+            live |= models.Q(organization_id=viewer_org_id)
+        return self.filter(live, is_active=True)
+
+
 def _property_image_path(instance, filename):
     ext = filename.rsplit('.', 1)[-1].lower()
     return f"property_images/{instance.property_id}/{uuid.uuid4().hex}.{ext}"
@@ -191,6 +209,8 @@ class Property(models.Model):
     created_at    = models.DateTimeField(auto_now_add=True)
     updated_at    = models.DateTimeField(auto_now=True)
 
+    objects = PropertyQuerySet.as_manager()
+
     class Meta:
         db_table  = 'properties'
         ordering  = ['-created_at']
@@ -265,7 +285,19 @@ class Property(models.Model):
         factor = self._SQM_FACTORS.get(self.area_unit or 'marla', 1.0)
         return round(float(self.area_marla) * factor, 4)
 
+    def derive_is_sandbox(self) -> bool:
+        """ADR-002: platform demo listings and non-production orgs are sandbox."""
+        if self.listing_owner_type == self.ListingOwnerType.PLATFORM:
+            return True
+        if self.organization_id:
+            from apps.organizations.sandbox import org_is_sandbox
+            return org_is_sandbox(self.organization)
+        # Private client and freelance-agent listings have no sandbox stage.
+        return False
+
     def save(self, *args, **kwargs):
+        if self._state.adding:
+            self.is_sandbox = self.derive_is_sandbox()
         if not self.ref_no:
             self.ref_no = self._build_ref_no()
         self.area_sqm = self._compute_area_sqm()

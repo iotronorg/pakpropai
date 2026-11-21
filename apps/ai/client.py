@@ -89,6 +89,8 @@ class GeminiClient:
         usage = getattr(response, 'usage_metadata', None)
         ptok = getattr(usage, 'prompt_token_count', 0) if usage else 0
         rtok = getattr(usage, 'candidates_token_count', 0) if usage else 0
+        from apps.ai.usage import record_gemini_response
+        record_gemini_response(model, response)
 
         if use_cache and text:
             cache.set(cache_key, text, cache_ttl)

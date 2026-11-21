@@ -2,9 +2,9 @@ name: RealTron AI — CI/CD
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, development]
   pull_request:
-    branches: [main]
+    branches: [main, development]
 
 env:
   REGISTRY: ghcr.io
@@ -30,14 +30,13 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: pakpropai/requirements/base.txt
+          cache-dependency-path: requirements/base.txt
 
       - name: Install Bandit
         run: pip install "bandit[toml]==1.8.*"
 
       - name: Bandit — static analysis (generate report)
         run: bandit -r apps/ -ll -f json -o /tmp/bandit-report.json
-        working-directory: pakpropai
         continue-on-error: true  # bandit exits 1 when issues found; we gate below
 
       - name: Bandit — fail on HIGH severity
@@ -108,15 +107,13 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: pakpropai/requirements/base.txt
+          cache-dependency-path: requirements/base.txt
 
       - name: Install dependencies
         run: pip install -r requirements/base.txt pytest pytest-django pytest-cov
-        working-directory: pakpropai
 
       - name: Check for unapplied model changes
         run: python manage.py makemigrations --check --dry-run
-        working-directory: pakpropai
 
       - name: Verify migration rollback safety (backwards compatibility)
         run: |
@@ -124,7 +121,6 @@ jobs:
           # Roll back to zero for every app to validate down() methods compile
           python manage.py migrate --noinput users zero 2>/dev/null || true
           python manage.py migrate --noinput
-        working-directory: pakpropai
 
       - name: Run full test suite
         run: |
@@ -135,7 +131,6 @@ jobs:
             --cov-report=term-missing \
             --cov-report=xml:/tmp/coverage.xml \
             -x
-        working-directory: pakpropai
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -177,8 +172,8 @@ jobs:
       - name: Build & push web image
         uses: docker/build-push-action@v5
         with:
-          context: pakpropai
-          file: pakpropai/docker/Dockerfile.web
+          context: .
+          file: docker/Dockerfile.web
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/web:${{ steps.tag.outputs.short_sha }}
@@ -189,8 +184,8 @@ jobs:
       - name: Build & push worker image
         uses: docker/build-push-action@v5
         with:
-          context: pakpropai
-          file: pakpropai/docker/Dockerfile.worker
+          context: .
+          file: docker/Dockerfile.worker
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/worker:${{ steps.tag.outputs.short_sha }}
@@ -236,7 +231,6 @@ jobs:
           STAGING_URL:           ${{ secrets.STAGING_URL }}
           SMOKE_WA_VERIFY_TOKEN: ${{ secrets.STAGING_WA_VERIFY_TOKEN }}
         run: python scripts/smoke_test.py
-        working-directory: pakpropai
 
   # ── 3b. Push to AWS ECR (main branch only) ──────────────────────────────
   push-ecr:
@@ -273,8 +267,8 @@ jobs:
       - name: Build & push API image to ECR
         uses: docker/build-push-action@v5
         with:
-          context: pakpropai
-          file:    pakpropai/docker/Dockerfile.web
+          context: .
+          file:    docker/Dockerfile.web
           push:    true
           tags: |
             ${{ secrets.ECR_API_REPO }}:${{ steps.tag.outputs.short_sha }}
@@ -285,8 +279,8 @@ jobs:
       - name: Build & push Worker image to ECR
         uses: docker/build-push-action@v5
         with:
-          context: pakpropai
-          file:    pakpropai/docker/Dockerfile.worker
+          context: .
+          file:    docker/Dockerfile.worker
           push:    true
           tags: |
             ${{ secrets.ECR_WORKER_REPO }}:${{ steps.tag.outputs.short_sha }}
@@ -294,19 +288,8 @@ jobs:
           cache-from: type=gha,scope=ecr-worker
           cache-to:   type=gha,mode=max,scope=ecr-worker
 
-      - name: Build & push Frontend image to ECR
-        uses: docker/build-push-action@v5
-        with:
-          context: pakpropaiweb
-          file:    pakpropaiweb/Dockerfile
-          push:    true
-          build-args: |
-            NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
-          tags: |
-            ${{ secrets.ECR_FRONTEND_REPO }}:${{ steps.tag.outputs.short_sha }}
-            ${{ secrets.ECR_FRONTEND_REPO }}:latest
-          cache-from: type=gha,scope=ecr-frontend
-          cache-to:   type=gha,mode=max,scope=ecr-frontend
+      # Frontend image is built by the frontend repository's own pipeline
+      # (pakpropaiweb is not part of this repo).
 
   # ── 4. Zero-downtime ECS deploy + health-check rollback ─────────────────
   deploy-prod:
@@ -354,7 +337,8 @@ jobs:
         env:
           CLUSTER: ${{ secrets.ECS_CLUSTER_NAME }}
         run: |
-          for SERVICE in api worker worker-hr beat frontend; do
+          # frontend service is deployed by the frontend repository's pipeline
+          for SERVICE in api worker worker-hr beat; do
             echo "Updating ${CLUSTER}-${SERVICE}..."
             aws ecs update-service \
               --cluster "$CLUSTER" \

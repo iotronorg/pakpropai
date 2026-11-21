@@ -8,6 +8,35 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+AUDIT_DISCLAIMER = (
+    "Not a valuation. This report is an automated, indicative estimate calculated "
+    "from benchmark price ranges and the details you provided. It has not been "
+    "prepared by a licensed valuer, has not inspected the property, and is not "
+    "legal, tax, financial or investment advice. Verify title, approvals and price "
+    "independently before any transaction."
+)
+
+_SOURCE_LABELS = {
+    'admin_configured': 'benchmark table maintained by the platform administrator',
+    'built_in_default': 'built-in default benchmark ranges (not market data)',
+    'unknown':          'benchmark ranges of unknown origin',
+}
+_MATCH_LABELS = {
+    'city_and_area': 'matched to this city and area',
+    'city':          'city-level average (no area-specific benchmark)',
+    'global':        'generic fallback (no benchmark for this city)',
+    'unknown':       'match level unknown',
+}
+
+
+def provenance_label(audit_data: dict) -> str:
+    """One-line, human-readable basis for the figures in an audit."""
+    prov = audit_data.get('provenance') or {}
+    src = _SOURCE_LABELS.get(prov.get('benchmark_source', 'unknown'), _SOURCE_LABELS['unknown'])
+    match = _MATCH_LABELS.get(prov.get('benchmark_match', 'unknown'), _MATCH_LABELS['unknown'])
+    return f"Figures are estimates from the {src}, {match}; property value as provided by you."
+
+
 # ─── Benchmarks ───────────────────────────────────────────────────────────────
 # Keys:  price_per_marla range (PKR min, max),
 #        rental yield %,
@@ -53,6 +82,13 @@ BENCHMARKS = {
 }
 
 
+def _tag(bench: dict, source: str, match: str) -> dict:
+    """Copy a benchmark entry and record where it came from (FR-VAL-004)."""
+    out = dict(bench)
+    out['_provenance'] = {'source': source, 'match': match}
+    return out
+
+
 def _get_benchmark(city: str, location: str) -> dict:
     """
     Return the best-matching benchmark entry for (city, location).
@@ -75,15 +111,15 @@ def _get_benchmark(city: str, location: str) -> dict:
             # Prefer city-specific location match
             for r in city_rows:
                 if r.location_key != 'default' and r.location_key in loc_key:
-                    return r.to_dict()
+                    return _tag(r.to_dict(), 'admin_configured', 'city_and_area')
             # City-level default
             for r in city_rows:
                 if r.location_key == 'default':
-                    return r.to_dict()
+                    return _tag(r.to_dict(), 'admin_configured', 'city')
             # Global default from DB
             for r in rows:
                 if r.city == 'default' and r.location_key == 'default':
-                    return r.to_dict()
+                    return _tag(r.to_dict(), 'admin_configured', 'global')
     except Exception:
         pass
 
@@ -93,10 +129,10 @@ def _get_benchmark(city: str, location: str) -> dict:
         if bench_key == 'default':
             continue
         if bench_key in loc_key:
-            return bench_val
-    if 'default' in city_data:
-        return city_data['default']
-    return BENCHMARKS['default']['default']
+            return _tag(bench_val, 'built_in_default', 'city_and_area')
+    if 'default' in city_data and city_key in BENCHMARKS:
+        return _tag(city_data['default'], 'built_in_default', 'city')
+    return _tag(BENCHMARKS['default']['default'], 'built_in_default', 'global')
 
 
 # ─── Fraud patterns (copied from apps/ai/tools.py to avoid circular imports) ──
@@ -491,6 +527,14 @@ class AuditEngine:
 
         # ── Final Assembly ────────────────────────────────────────────────────
         return {
+            'provenance': {
+                'engine': 'deterministic_benchmark_v1',   # no AI model involved
+                'benchmark_source': bench.get('_provenance', {}).get('source', 'unknown'),
+                'benchmark_match': bench.get('_provenance', {}).get('match', 'unknown'),
+                'value_basis': 'user_provided',
+                'is_valuation': False,
+                'disclaimer': AUDIT_DISCLAIMER,
+            },
             'overview': {
                 'city': city,
                 'location': location,

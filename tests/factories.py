@@ -28,6 +28,14 @@ def _seq():
     return next(_counter)
 
 
+# ── Config ────────────────────────────────────────────────────────────────────
+
+def enable_feature(key: str, value: str = 'true'):
+    """Explicitly turn on a SystemConfig feature flag (several are off by default)."""
+    from apps.config.services import SystemConfigService
+    SystemConfigService.set(key, value)
+
+
 # ── Users ─────────────────────────────────────────────────────────────────────
 
 def make_user(phone=None, role='client', **kwargs):

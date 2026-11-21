@@ -40,7 +40,7 @@ def recommend_for_lead(lead, limit: int = 5) -> list:
     from apps.properties.models import Property
 
     try:
-        qs = Property.objects.filter(is_active=True).select_related('organization')
+        qs = Property.objects.visible_to(lead.organization_id).select_related('organization')
 
         if lead.organization_id:
             qs = qs.filter(organization_id=lead.organization_id)
@@ -82,7 +82,8 @@ def similar_to(prop, limit: int = 5) -> list:
     try:
         qs = (
             Property.objects
-            .filter(is_active=True, city__iexact=prop.city, property_type=prop.property_type)
+            .visible_to(prop.organization_id)
+            .filter(city__iexact=prop.city, property_type=prop.property_type)
             .exclude(id=prop.id)
             .select_related('organization')
         )

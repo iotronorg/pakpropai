@@ -10,6 +10,11 @@ SECRET_KEY = env('SECRET_KEY')
 DEBUG = env('DEBUG')
 ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=[])
 
+# Field-level encryption (ADR-008). Comma-separated Fernet keys, newest first.
+FIELD_ENCRYPTION_KEYS = env.list('FIELD_ENCRYPTION_KEYS', default=[])
+FIELD_HASH_KEY = env('FIELD_HASH_KEY', default='')
+FIELD_ENCRYPTION_ALLOW_DERIVED_KEY = False   # dev/test only
+
 DJANGO_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',

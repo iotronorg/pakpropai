@@ -4,6 +4,8 @@ from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, Permis
 from django.core.exceptions import ValidationError
 from django.core.validators import RegexValidator
 from django.db import models
+
+from apps.core.crypto import EncryptedTextField
 from django.utils import timezone
 
 _phone_validator = RegexValidator(
@@ -65,7 +67,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     )
     is_filer  = models.BooleanField(default=False)
     ntn       = models.CharField(max_length=20, blank=True, null=True)
-    cnic      = models.CharField(max_length=30, blank=True, null=True,
+    cnic      = EncryptedTextField(blank=True, null=True,
                     help_text='National ID number (format varies by country)')
     is_active = models.BooleanField(default=True)
     is_staff  = models.BooleanField(default=False)

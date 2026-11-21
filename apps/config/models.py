@@ -1,5 +1,7 @@
 from django.db import models
 
+from apps.core.crypto import EncryptedTextField
+
 
 class SystemConfig(models.Model):
 
@@ -98,12 +100,22 @@ class SystemConfig(models.Model):
         'feature_document_verification': 'true',
         'feature_property_audit':     'true',
         'feature_talk_to_agent':      'true',
-        'feature_deal_lock':          'true',
+        # Frozen for MVP (regulated token payments — MVP_SCOPE §4.2). Do not enable
+        # without a licensed payment partner and legal sign-off.
+        'feature_deal_lock':          'false',
         'feature_voice_messages':     'true',
         'feature_follow_up_automation': 'false',
         'feature_auto_assign':          'false',
-        'scraper_search_enabled':     'true',
+        # Frozen for MVP (MVP_SCOPE §4.2): Twilio voice calling and the
+        # syndication marketplace. New activity blocked; history stays readable.
+        'feature_voice_calls':          'false',
+        'feature_syndication':          'false',
+        # Third-party portal scraping — off by default (ToS/IP risk, DEC-02).
+        'scraper_search_enabled':     'false',
         'use_membership_rbac':        'true',
+        # Semantic response cache for LLM replies — off by default (cross-user
+        # leakage risk; see apps/ai/service.py semantic_cache_scope).
+        'semantic_cache_enabled':     'false',
         # Deal lock token amount bounds (in the org's local currency).
         # Admins can override per market. 0 means no lower/upper bound.
         'deal_lock_min_amount':       '0',
@@ -111,7 +123,7 @@ class SystemConfig(models.Model):
     }
 
     key        = models.CharField(max_length=100, unique=True, db_index=True)
-    value      = models.TextField(blank=True, default='')
+    value      = EncryptedTextField(blank=True, default='')  # ADR-008
     updated_at = models.DateTimeField(auto_now=True)
     updated_by = models.ForeignKey(
         'users.User', null=True, blank=True, on_delete=models.SET_NULL,

@@ -76,6 +76,8 @@ class BrokerCannotSeeDraftListingTest(TestCase):
 
 class BrokerCannotSeeWithdrawnListingTest(TestCase):
     def setUp(self):
+        from tests.factories import enable_feature
+        enable_feature('feature_syndication')  # frozen by default (MVP §4.2)
         self.dev, self.dev_org = make_developer(phone='+10000000011')
         self.agent_user = make_user(phone='+10000000012', role='agent')
         prop = make_property(org=self.dev_org)
@@ -91,6 +93,8 @@ class BrokerCannotSeeWithdrawnListingTest(TestCase):
 
 class BrokerSeesSyndicatedPlatformWideListing(TestCase):
     def setUp(self):
+        from tests.factories import enable_feature
+        enable_feature('feature_syndication')  # frozen by default (MVP §4.2)
         self.dev, self.dev_org = make_developer(phone='+10000000021')
         self.agent_user = make_user(phone='+10000000022', role='agent')
         prop = make_property(org=self.dev_org)
@@ -106,6 +110,8 @@ class BrokerSeesSyndicatedPlatformWideListing(TestCase):
 
 class NoParntershipNoSelectedPartnersVisibility(TestCase):
     def setUp(self):
+        from tests.factories import enable_feature
+        enable_feature('feature_syndication')  # frozen by default (MVP §4.2)
         self.dev, self.dev_org = make_developer(phone='+10000000031')
         self.agent_user = make_user(phone='+10000000032', role='agent')
         prop = make_property(org=self.dev_org)
@@ -121,6 +127,8 @@ class NoParntershipNoSelectedPartnersVisibility(TestCase):
 
 class ActivePartnershipGrantsSelectedPartnersVisibility(TestCase):
     def setUp(self):
+        from tests.factories import enable_feature
+        enable_feature('feature_syndication')  # frozen by default (MVP §4.2)
         self.dev, self.dev_org = make_developer(phone='+10000000041')
         self.agent_user = make_user(phone='+10000000042', role='agent')
         prop = make_property(org=self.dev_org)
@@ -137,6 +145,8 @@ class ActivePartnershipGrantsSelectedPartnersVisibility(TestCase):
 
 class SuspendedPartnerLosesAccess(TestCase):
     def setUp(self):
+        from tests.factories import enable_feature
+        enable_feature('feature_syndication')  # frozen by default (MVP §4.2)
         self.dev, self.dev_org = make_developer(phone='+10000000051')
         self.agent_user = make_user(phone='+10000000052', role='agent')
         prop = make_property(org=self.dev_org)
@@ -153,6 +163,8 @@ class SuspendedPartnerLosesAccess(TestCase):
 
 class RevokedPartnerLosesAccess(TestCase):
     def setUp(self):
+        from tests.factories import enable_feature
+        enable_feature('feature_syndication')  # frozen by default (MVP §4.2)
         self.dev, self.dev_org = make_developer(phone='+10000000061')
         self.agent_user = make_user(phone='+10000000062', role='agent')
         prop = make_property(org=self.dev_org)
@@ -243,6 +255,8 @@ class CrossOrgSubmissionRejected(TestCase):
 
 class DuplicateSubmissionRejected(TestCase):
     def setUp(self):
+        from tests.factories import enable_feature
+        enable_feature('feature_syndication')  # frozen by default (MVP §4.2)
         self.dev, self.dev_org = make_developer(phone='+10000000121')
         self.broker, self.broker_org = make_developer(phone='+10000000122', org_name='Broker Co')
         prop = make_property(org=self.dev_org)
@@ -265,6 +279,8 @@ class DuplicateSubmissionRejected(TestCase):
 
 class LedgerEntryCreatedOnAccept(TestCase):
     def setUp(self):
+        from tests.factories import enable_feature
+        enable_feature('feature_syndication')  # frozen by default (MVP §4.2)
         self.dev, self.dev_org = make_developer(phone='+10000000131')
         self.broker, self.broker_org = make_developer(phone='+10000000132', org_name='Broker Co')
         prop = make_property(org=self.dev_org)

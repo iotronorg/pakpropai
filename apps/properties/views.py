@@ -18,6 +18,22 @@ _MAX_IMAGE_SIZE      = 5 * 1024 * 1024   # 5 MB
 _MAX_IMAGES_PER_PROP = 10
 
 
+
+def _int_param(params, name):
+    """Parse an optional non-negative integer query param; 400 on bad input."""
+    raw = params.get(name)
+    if raw in (None, ''):
+        return None
+    try:
+        value = int(str(raw).replace(',', '').strip())
+    except (TypeError, ValueError):
+        from rest_framework.exceptions import ValidationError
+        raise ValidationError({name: 'Must be a whole number.'})
+    if value < 0:
+        from rest_framework.exceptions import ValidationError
+        raise ValidationError({name: 'Must not be negative.'})
+    return value
+
 class PropertyViewSet(viewsets.ModelViewSet):
     queryset = Property.objects.filter(is_active=True)
     permission_classes = [IsAuthenticated, IsOwnerOrReadOnly]
@@ -59,6 +75,11 @@ class PropertyViewSet(viewsets.ModelViewSet):
             else:
                 return qs.none()
 
+        # Consumers never see other orgs' sandbox / demo inventory (ADR-002).
+        # A client's own private listings stay visible to them.
+        if user.is_authenticated and user.role not in ('admin', 'developer', 'agent'):
+            qs = qs.filter(Q(is_sandbox=False) | Q(owner=user))
+
         params = self.request.query_params
         if (ref_no := params.get('ref_no')):
             qs = qs.filter(ref_no__iexact=ref_no)
@@ -68,12 +89,12 @@ class PropertyViewSet(viewsets.ModelViewSet):
             qs = qs.filter(property_type=ptype)
         if (legal := params.get('legal_status')):
             qs = qs.filter(legal_status=legal)
-        if (min_price := params.get('min_price')):
-            qs = qs.filter(price__gte=int(min_price))
-        if (max_price := params.get('max_price')):
-            qs = qs.filter(price__lte=int(max_price))
-        if (min_score := params.get('min_score')):
-            qs = qs.filter(ai_score__gte=int(min_score))
+        if (min_price := _int_param(params, 'min_price')) is not None:
+            qs = qs.filter(price__gte=min_price)
+        if (max_price := _int_param(params, 'max_price')) is not None:
+            qs = qs.filter(price__lte=max_price)
+        if (min_score := _int_param(params, 'min_score')) is not None:
+            qs = qs.filter(ai_score__gte=min_score)
         if search_term := params.get('search', '').strip():
             from django.contrib.postgres.search import SearchVector, SearchQuery, SearchRank
             vector = SearchVector('title', 'city', 'location', 'description', 'ref_no')
@@ -313,6 +334,11 @@ class PropertyCompareView(APIView):
             return Response({'error': "Provide 'ids' as comma-separated UUIDs."}, status=400)
         if len(ids) > 4:
             return Response({'error': 'Maximum 4 properties can be compared at once.'}, status=400)
+        import uuid
+        try:
+            ids = [str(uuid.UUID(i)) for i in ids]
+        except ValueError:
+            return Response({'error': "'ids' must be valid UUIDs."}, status=400)
         props = Property.objects.filter(id__in=ids, is_active=True)
         user = request.user
         if user.role == 'developer':

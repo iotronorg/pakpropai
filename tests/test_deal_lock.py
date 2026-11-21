@@ -40,6 +40,8 @@ class DealLockConcurrencyTest(TransactionTestCase):
     """Two buyers race to lock the same property; exactly one must succeed."""
 
     def setUp(self):
+        from tests.factories import enable_feature
+        enable_feature('feature_deal_lock')  # frozen by default (MVP §4.2)
         self.buyer1 = _user(phone='+923001000001')
         self.buyer2 = _user(phone='+923001000002')
         self.prop   = _property()
@@ -85,6 +87,8 @@ class DealLockConcurrencyTest(TransactionTestCase):
 class DealLockInitiateViewTest(TestCase):
 
     def setUp(self):
+        from tests.factories import enable_feature
+        enable_feature('feature_deal_lock')  # frozen by default (MVP §4.2)
         self.client = APIClient()
         self.buyer  = _user()
         self.prop   = _property()
@@ -296,6 +300,8 @@ class OrgPaymentSettingsOverrideTest(TestCase):
     """Deal lock uses org-level payment config when available."""
 
     def setUp(self):
+        from tests.factories import enable_feature
+        enable_feature('feature_deal_lock')  # frozen by default (MVP §4.2)
         from apps.organizations.models import OrgPaymentSettings
         self.client = APIClient()
         self.buyer  = make_user(phone='+923008880001')
@@ -348,6 +354,12 @@ class OrgPaymentSettingsOverrideTest(TestCase):
 
 class DealLockAIToolCurrencyTest(TestCase):
     """initiate_deal_lock() AI tool must use the org's currency, not hard-coded PKR."""
+
+    def setUp(self):
+        # Deal lock is frozen by default (MVP §4.2); these tests cover the
+        # behaviour when an operator explicitly enables it.
+        from tests.factories import enable_feature
+        enable_feature('feature_deal_lock')
 
     def _make_org(self, country: str):
         from apps.organizations.models import Organization

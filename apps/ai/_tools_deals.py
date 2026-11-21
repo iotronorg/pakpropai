@@ -53,6 +53,17 @@ def initiate_deal_lock(
                         For other markets: 'bank', 'manual', 'safepay', 'bsecure'.
                         Leave blank to auto-select from org's configured gateway.
     """
+    from apps.config.services import SystemConfigService
+
+    # Hard freeze: the tool is never offered while the flag is off, but guard the
+    # function too so no other caller can create a payment intent (MVP §4.2).
+    if not SystemConfigService.get_features().get('feature_deal_lock', False):
+        return {
+            'success': False,
+            'error': 'Reserving a property with a token payment is not available. '
+                     'I can connect you with an agent to discuss next steps.',
+        }
+
     user  = _ctx_user.get()
     phone = _ctx_phone.get()
     org   = _ctx_org.get()

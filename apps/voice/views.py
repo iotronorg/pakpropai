@@ -10,7 +10,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.core.permissions import IsAdminOrOrgAdmin, IsAgentOrAdmin, get_user_org
+from apps.core.permissions import FeatureEnabled, IsAdminOrOrgAdmin, IsAgentOrAdmin, get_user_org
 from .models import VoiceCallSession, OrgVoiceConfig
 from .serializers import VoiceCallSessionSerializer, OrgVoiceConfigSerializer
 
@@ -37,6 +37,18 @@ class VoiceInboundWebhookView(APIView):
         if not self._validate_signature(request):
             logger.warning("VoiceInbound: invalid signature call_sid=%s", call_sid)
             return Response({'detail': 'Invalid signature.'}, status=403)
+
+        # Frozen for MVP: answer politely and hang up; no AI call session.
+        from apps.config.services import SystemConfigService
+        if not SystemConfigService.get_features().get('feature_voice_calls', False):
+            from django.http import HttpResponse as _TwimlResponse
+            logger.info("VoiceInbound: voice calls disabled — hanging up call_sid=%s", call_sid)
+            return _TwimlResponse(
+                '<?xml version="1.0" encoding="UTF-8"?><Response>'
+                '<Say>Sorry, phone support is not available. Please message us on WhatsApp.</Say>'
+                '<Hangup/></Response>',
+                content_type='text/xml',
+            )
 
         # Resolve org from the called number
         org = None
@@ -114,7 +126,8 @@ class VoiceInboundWebhookView(APIView):
 
 class VoiceOutboundInitiateView(APIView):
     """POST /api/v1/voice/calls/initiate/ — developer or admin initiates outbound call to a lead."""
-    permission_classes = [IsAuthenticated, IsAdminOrOrgAdmin]
+    # Frozen for MVP (MVP_SCOPE §4.2) unless feature_voice_calls is enabled.
+    permission_classes = [IsAuthenticated, IsAdminOrOrgAdmin, FeatureEnabled('feature_voice_calls')]
 
     def post(self, request):
         lead_id = request.data.get('lead_id')

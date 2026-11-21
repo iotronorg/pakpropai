@@ -1,5 +1,7 @@
 import uuid
 from django.db import models
+
+from apps.core.crypto import EncryptedTextField
 from django.conf import settings
 
 
@@ -63,7 +65,7 @@ class OrgVoiceConfig(models.Model):
         related_name='voice_config',
     )
     account_sid   = models.CharField(max_length=100, blank=True)
-    auth_token    = models.CharField(max_length=100, blank=True)
+    auth_token    = EncryptedTextField(blank=True)
     phone_number  = models.CharField(max_length=20, blank=True,
                         help_text='E.164 Twilio phone number, e.g. +15551234567')
     is_active     = models.BooleanField(default=False)

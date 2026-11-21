@@ -1,5 +1,5 @@
 import logging
-from ._tools_context import _ctx_phone
+from ._tools_context import _ctx_org, _ctx_phone
 
 logger = logging.getLogger(__name__)
 
@@ -38,19 +38,24 @@ def search_properties(
             furnished_status=furnished,
             construction_status=construction_status,
             phone=phone,
+            viewer_org=_ctx_org.get(),
         )
+        from apps.config.services import SystemConfigService
+        scraping = SystemConfigService.scraper_enabled()
         if not results:
             return {
                 'count': 0,
                 'message': (
                     'No properties in our database match your criteria right now. '
-                    'Live listings from Zameen and Graana are being fetched — '
-                    'you will receive them in a follow-up message shortly.'
+                    + ('More listings are being fetched — you will receive them in a '
+                       'follow-up message shortly.' if scraping else
+                       'Suggest widening the area, budget or property type.')
                 ),
                 'properties': [],
-                'live_search_pending': True,
+                'live_search_pending': scraping,
             }
-        db_only = all(r.source == 'pakprop' for r in results)
+        db_only = scraping and all(r.source == 'pakprop' for r in results)
+        _register_compliance_context(results, phone)
         return {
             'count': len(results),
             'live_search_pending': db_only,
@@ -74,3 +79,24 @@ def search_properties(
     except Exception as exc:
         logger.error(f"search_properties tool failed: {exc}")
         return {'count': 0, 'error': 'Search temporarily unavailable.', 'properties': []}
+
+
+def _register_compliance_context(results, phone: str) -> None:
+    """
+    When exactly one own-DB listing is in focus, register it as ground truth for
+    ComplianceEngine so the LLM's reply about it is checked for price, currency,
+    installment and city claims (T-0009). Ambiguous result sets are not registered.
+    """
+    org = _ctx_org.get()
+    if not phone or org is None:
+        return
+    own = [r for r in results if r.source == 'pakprop' and r.source_id]
+    if len(results) != 1 or len(own) != 1:
+        return
+    try:
+        from apps.ai.compliance_filters import ComplianceEngine, _load_property_by_id
+        prop = _load_property_by_id(own[0].source_id)
+        if prop:
+            ComplianceEngine.set_active_property(phone, str(org.pk), prop)
+    except Exception as exc:
+        logger.warning("compliance context registration failed: %s", exc)

@@ -1,3 +1,4 @@
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import BasePermission, SAFE_METHODS
 
 
@@ -255,3 +256,28 @@ class IsViewerOrAbove(BasePermission):
         if request.user.role == 'admin':
             return True
         return _membership_role(request.user, org) in _ALL_ORG_ROLES
+
+class FeatureFlagDisabled(PermissionDenied):
+    default_code = 'feature_disabled'
+    default_detail = 'This feature is not available.'
+
+
+def FeatureEnabled(flag: str, methods=None):
+    """
+    Permission factory: deny with 403 ``feature_disabled`` while SystemConfig
+    ``flag`` is off. ``methods`` limits the gate to those HTTP methods (e.g. only
+    creation), so existing records stay readable/manageable when a module is frozen.
+    """
+    gated = {m.upper() for m in methods} if methods else None
+
+    class _FeatureEnabled(BasePermission):
+        def has_permission(self, request, view):
+            if gated is not None and request.method.upper() not in gated:
+                return True
+            from apps.config.services import SystemConfigService
+            if SystemConfigService.get_features().get(flag, False):
+                return True
+            raise FeatureFlagDisabled()
+
+    _FeatureEnabled.__name__ = f'FeatureEnabled[{flag}]'
+    return _FeatureEnabled

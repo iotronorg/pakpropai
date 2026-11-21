@@ -36,17 +36,18 @@ class WhatsAppWebhookView(APIView):
             return HttpResponse(status=403)
 
         # Try per-org verify_token first
-        try:
-            cfg = OrgWhatsAppConfig.objects.get(verify_token=token, is_active=True)
+        cfg = OrgWhatsAppConfig.find_by_verify_token(token, is_active=True)
+        if cfg is not None:
+            import hmac as _hmac
             from django.utils import timezone as _tz
-            cfg.webhook_verified_at = _tz.now()
-            cfg.save(update_fields=['webhook_verified_at'])
-            return HttpResponse(challenge, content_type='text/plain')
-        except OrgWhatsAppConfig.DoesNotExist:
-            pass
+            if _hmac.compare_digest(cfg.verify_token or '', token):
+                cfg.webhook_verified_at = _tz.now()
+                cfg.save(update_fields=['webhook_verified_at'])
+                return HttpResponse(challenge, content_type='text/plain')
 
         # Fallback to global platform token
-        if token == settings.WA_VERIFY_TOKEN:
+        import hmac as _hmac
+        if settings.WA_VERIFY_TOKEN and _hmac.compare_digest(token, settings.WA_VERIFY_TOKEN):
             return HttpResponse(challenge, content_type='text/plain')
 
         return HttpResponse(status=403)

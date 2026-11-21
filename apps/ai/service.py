@@ -546,6 +546,39 @@ class IntentClassifier:
 
 # ── AI Service Manager ────────────────────────────────────────────────────────
 
+# ── Semantic response cache policy ────────────────────────────────────────────
+#
+# The cache is keyed by message similarity only, so any reply stored in it can be
+# served to a *different* user of the same organization. Replies are generated
+# with the lead/user context injected by DynamicContextBuilder and may contain
+# personal data, live inventory or deal status. Caching is therefore:
+#   * disabled unless SystemConfig `semantic_cache_enabled` == 'true'
+#   * limited to intents in _SEMANTIC_CACHE_INTENTS (no inventory/deal/personal flows)
+#   * skipped for messages containing digits (amounts, sizes, IDs, phone numbers:
+#     embeddings are insensitive to numbers, so "5 crore" ≈ "6 crore")
+#   * namespaced by org + detected language
+# See KNOWN_ISSUES KI-005 for the residual risk when the flag is enabled.
+_SEMANTIC_CACHE_INTENTS = frozenset({'general_query'})
+_DIGIT_RE = re.compile(r'\d')
+
+
+def semantic_cache_scope(org_id: Optional[str], intent, message: str) -> Optional[str]:
+    """Return the cache namespace for this message, or None when caching is not allowed."""
+    if not org_id or not message:
+        return None
+    if getattr(intent, 'intent', None) not in _SEMANTIC_CACHE_INTENTS:
+        return None
+    if _DIGIT_RE.search(message):
+        return None
+    try:
+        from apps.config.services import SystemConfigService
+        if SystemConfigService.get('semantic_cache_enabled', 'false') != 'true':
+            return None
+    except Exception:
+        return None
+    return f"{org_id}:{getattr(intent, 'language', 'en')}"
+
+
 class AIServiceManager:
     """
     Orchestration layer between MessageRouter and RealTronAgent.
@@ -577,6 +610,8 @@ class AIServiceManager:
         Drop-in replacement for RealTronAgent.chat().
         """
         start = time.time()
+        from apps.ai.usage import current_usage, start_capture
+        start_capture()
 
         # ── 1. Guardrail: input check ──────────────────────────────────────────
         from apps.ai.guardrails import GuardrailEngine
@@ -593,22 +628,23 @@ class AIServiceManager:
             if throttle_reply:
                 return throttle_reply
 
-        # ── 1c. Semantic cache lookup ──────────────────────────────────────────
-        if org_id:
-            from apps.ai.token_governor import SemanticResponseCache
-            cached = SemanticResponseCache.lookup(message, org_id)
-            if cached:
-                from apps.ai.tasks import record_token_usage
-                record_token_usage.delay(
-                    org_id=org_id, tokens_in=0, tokens_out=0,
-                    model='cache', intent=None, cache_hit=True,
-                )
-                return cached
-
         # ── 2. Intent pre-classification (deterministic, no LLM) ──────────────
         agent   = self._get_agent()
         history = agent._load_history(phone, org=organization)
         intent  = IntentClassifier.classify(message, history)
+
+        # ── 2b. Semantic cache lookup (opt-in, non-personal intents only) ──────
+        cache_scope = semantic_cache_scope(org_id, intent, message)
+        if cache_scope:
+            from apps.ai.token_governor import SemanticResponseCache
+            cached = SemanticResponseCache.lookup(message, cache_scope)
+            if cached:
+                from apps.ai.tasks import record_token_usage
+                record_token_usage.delay(
+                    org_id=org_id, tokens_in=0, tokens_out=0,
+                    model='cache', intent=intent.intent, cache_hit=True,
+                )
+                return cached
 
         logger.debug(
             "Intent classified: %s confidence=%.2f lang=%s phone=%s",
@@ -653,21 +689,38 @@ class AIServiceManager:
             reply = _CANNED_FALLBACK
 
         # ── 5. Output guardrail ────────────────────────────────────────────────
-        if not GuardrailEngine.check_output(reply):
+        output_ok = GuardrailEngine.check_output(reply)
+        if not output_ok:
             logger.warning("LLM output failed guard — using fallback phone=%s", phone)
             reply = GuardrailEngine.fallback_error_reply(intent.language)
 
+        # ── 5b. Grounding check against the property in focus (T-0009) ─────────
+        if output_ok and reply != _CANNED_FALLBACK:
+            try:
+                from apps.ai.compliance_filters import ComplianceEngine
+                verdict = ComplianceEngine.check_output(reply, org=organization, phone=phone)
+                if not verdict.safe:
+                    logger.warning("ComplianceEngine blocked reply action=%s phone=%s",
+                                   verdict.action_taken, phone)
+                    reply = verdict.human_reply
+                    output_ok = False   # never cache a blocked reply
+            except Exception as exc:
+                logger.error("ComplianceEngine check failed: %s", exc)
+
         # ── 6. Store in semantic cache + record token usage ────────────────────
-        if org_id:
+        if cache_scope and output_ok and reply != _CANNED_FALLBACK:
             from apps.ai.token_governor import SemanticResponseCache
-            SemanticResponseCache.store(message, org_id, reply)
+            SemanticResponseCache.store(message, cache_scope, reply)
+        usage = current_usage()
+        if org_id:
             from apps.ai.tasks import record_token_usage
             record_token_usage.delay(
-                org_id=org_id, tokens_in=0, tokens_out=0,
-                model='llm', intent=intent.intent, cache_hit=False,
+                org_id=org_id, tokens_in=usage.tokens_in, tokens_out=usage.tokens_out,
+                model=usage.model or 'llm', intent=intent.intent, cache_hit=False,
             )
-            from apps.ai.token_governor import SlidingWindowTokenBudget
-            SlidingWindowTokenBudget.record_tokens(org_id, 0, 0)
+            if usage.total:
+                from apps.ai.token_governor import SlidingWindowTokenBudget
+                SlidingWindowTokenBudget.record_tokens(org_id, usage.tokens_in, usage.tokens_out)
 
         elapsed = time.time() - start
         ai_requests_total.labels(intent=intent.intent, route='llm').inc()
@@ -895,7 +948,10 @@ class AIServiceManager:
     def _direct_property_audit(audit_input, language: str) -> Optional[str]:
         if language and not language.startswith('en'):
             return None  # let LLM respond in user's language
+        from apps.ai.confirmation import mark_explicit_request
         from apps.ai.tools import generate_property_audit
+        # Deterministic route: the user's own message asked for the audit.
+        mark_explicit_request()
         result = generate_property_audit(**audit_input.to_tool_kwargs())
         if not result.get('success'):
             return None

@@ -117,6 +117,14 @@ class Lead(models.Model):
             models.Index(fields=['user', '-created_at']),
         ]
 
+    def save(self, *args, **kwargs):
+        # ADR-002: leads of a production org are live data. Unscoped (AI-queue)
+        # leads keep the caller-provided flag.
+        if self._state.adding and self.organization_id:
+            from apps.organizations.sandbox import org_is_sandbox
+            self.is_sandbox = org_is_sandbox(self.organization)
+        super().save(*args, **kwargs)
+
     def clean(self):
         if self.budget_min is not None and self.budget_max is not None:
             if self.budget_min > self.budget_max:

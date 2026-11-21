@@ -1,5 +1,7 @@
 import uuid
 from django.db import models
+
+from apps.core.crypto import EncryptedTextField
 from django.conf import settings
 from django.core.validators import RegexValidator
 from django.utils.text import slugify
@@ -311,7 +313,7 @@ class OrgPaymentSettings(models.Model):
 
     # Safepay merchant credentials
     safepay_merchant_key = models.CharField(max_length=200, blank=True)
-    safepay_secret_key   = models.CharField(max_length=200, blank=True)
+    safepay_secret_key   = EncryptedTextField(blank=True)
     safepay_environment  = models.CharField(
         max_length=20,
         choices=[('sandbox', 'Sandbox'), ('production', 'Production')],
@@ -320,7 +322,7 @@ class OrgPaymentSettings(models.Model):
 
     # bSecure credentials
     bsecure_client_id     = models.CharField(max_length=200, blank=True)
-    bsecure_client_secret = models.CharField(max_length=200, blank=True)
+    bsecure_client_secret = EncryptedTextField(blank=True)
     bsecure_environment   = models.CharField(
         max_length=20,
         choices=[('sandbox', 'Sandbox'), ('production', 'Production')],

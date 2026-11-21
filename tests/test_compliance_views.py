@@ -164,6 +164,10 @@ class CrossOrgSanctionIsolationTest(TestCase):
 class DealLockBlockedEntityTest(TestCase):
     """i — deal-lock initiate with blocked entity → 403."""
 
+    def setUp(self):
+        from tests.factories import enable_feature
+        enable_feature('feature_deal_lock')  # frozen by default (MVP §4.2)
+
     def test_i_deal_lock_blocked_returns_403(self):
         buyer = make_user(role='client', name='Sanctioned Buyer')
         _, org = make_developer()

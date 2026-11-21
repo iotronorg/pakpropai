@@ -19,6 +19,8 @@ import logging
 
 from django.conf import settings
 
+from apps.ai.usage import record_openai_response
+
 from .base import AIBackend, func_to_openai_schema
 
 logger = logging.getLogger(__name__)
@@ -67,6 +69,7 @@ class OllamaBackend(AIBackend):
             except Exception as exc:
                 logger.error(f"Ollama chat failed (round {round_num}): {exc}")
                 raise
+            record_openai_response(settings.LOCAL_MODEL, response)
 
             choice = response.choices[0]
 
@@ -137,6 +140,7 @@ class OllamaBackend(AIBackend):
                 }],
                 max_tokens=800,
             )
+            record_openai_response(vision_model, response)
             return (response.choices[0].message.content or '').strip()
         except Exception as exc:
             logger.warning(f"Ollama vision failed ({vision_model}): {exc}")

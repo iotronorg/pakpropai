@@ -38,12 +38,26 @@ def generate_property_audit(
     try:
         import os
         from django.conf import settings as django_settings
-        from apps.audit.services import AuditEngine
+        from apps.audit.services import AUDIT_DISCLAIMER, AuditEngine, provenance_label
         from apps.audit.pdf import generate_audit_pdf
         from apps.audit.models import PropertyAudit
 
         phone = _ctx_phone.get() or ''
         user  = _ctx_user.get()
+
+        from apps.ai.confirmation import check as confirm_check
+        pending = confirm_check(
+            'generate_property_audit',
+            {'city': city, 'location': location, 'estimated_value_pkr': estimated_value_pkr,
+             'property_type': property_type},
+            summary=(f"📊 Audit report for {property_type} — {location}, {city}\n"
+                     f"💰 Value you provided: PKR {int(estimated_value_pkr or 0):,}\n"
+                     "Indicative estimate only — not a valuation."),
+            question='Shall I generate this property audit report?',
+        )
+        if pending:
+            pending['whatsapp_summary'] = pending['message']
+            return pending
 
         audit_data = AuditEngine.run(
             city=city,
@@ -67,8 +81,10 @@ def generate_property_audit(
             city=city,
             location=location,
             property_type=property_type,
-            area_marla=area_marla if area_marla > 0 else None,
-            estimated_value_pkr=estimated_value_pkr,
+            area_size=area_marla if area_marla > 0 else None,
+            area_unit='marla',
+            estimated_value=estimated_value_pkr,
+            currency='PKR',
             owner_name=owner_name,
             description=description,
             risk_score=scores['risk_score'],
@@ -124,7 +140,7 @@ def generate_property_audit(
             summary_lines.append(f"Market Difference: {'+' if pct > 0 else ''}{pct:.1f}%")
 
         summary_lines += [
-            f"Fair Value Range: PKR {mkt['estimated_fair_value_min']:,} – PKR {mkt['estimated_fair_value_max']:,}",
+            f"Indicative Range (not a valuation): PKR {mkt['estimated_fair_value_min']:,} – PKR {mkt['estimated_fair_value_max']:,}",
             "",
             "💰 *TAX OBLIGATIONS*",
         ]
@@ -143,7 +159,7 @@ def generate_property_audit(
             "",
             f"🏦 *FOR BUYER* — Total cost incl. fees: *PKR {true_cost:,}*",
             f"💼 *FOR SELLER* — Net in hand: *PKR {net_seller:,}*",
-            f"📈 *5-YR PROJECTION* — PKR {fin['roi_projections']['5_year']['value']:,}",
+            f"📈 *Illustrative 5-yr projection* — PKR {fin['roi_projections']['5_year']['value']:,} (assumed growth rate, not a forecast)",
             "",
             "⚠️ *TOP ACTIONS*",
         ]
@@ -159,6 +175,8 @@ def generate_property_audit(
             "",
             pdf_line,
             "",
+            f"_{AUDIT_DISCLAIMER}_",
+            f"_{provenance_label(audit_data)}_",
             "_Consult a registered property lawyer and CA for final decisions._",
         ]
 
@@ -217,7 +235,24 @@ def list_property(
         area_str = f"{area_marla}M " if area_marla else ""
         title = f"{area_str}{property_type.title()} — {location}, {city}"
 
+        if user is None:
+            return {'success': False,
+                    'error': 'Please register on WhatsApp first so the listing can be linked to you.'}
+
+        from apps.ai.confirmation import check as confirm_check
+        pending = confirm_check(
+            'list_property',
+            {'city': city, 'location': location, 'area_marla': area_marla,
+             'price': price, 'property_type': property_type},
+            summary=(f"📋 {title}\n💰 PKR {int(price or 0):,}"
+                     + (f"\n📝 {description[:200]}" if description else '')),
+            question='Please confirm you want to publish this listing:',
+        )
+        if pending:
+            return pending
+
         prop = Property.objects.create(
+            listing_owner_type=Property.ListingOwnerType.CLIENT,
             owner=user,
             title=title,
             city=city,
@@ -304,6 +339,19 @@ def connect_to_agent(
 
         phone = _ctx_phone.get() or ''
         user  = _ctx_user.get()
+
+        # Sharing the user's number with an agent needs their confirmation.
+        from apps.ai.confirmation import check as confirm_check
+        pending = confirm_check(
+            'connect_to_agent',
+            {'city': city, 'intent': intent},
+            summary=(f"🤝 {intent.title()} enquiry"
+                     + (f" in {specific_area + ', ' if specific_area else ''}{city}" if city else '')
+                     + "\nYour WhatsApp number will be shared with the matched agent."),
+            question='Shall I connect you with a verified agent?',
+        )
+        if pending:
+            return pending
 
         # Build queryset — verified + active + available agents only
         qs = Agent.objects.filter(

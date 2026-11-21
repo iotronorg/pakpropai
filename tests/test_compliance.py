@@ -57,8 +57,16 @@ class ComplianceModuleTest(TestCase):
         self.assertIn(response.status_code, [200, 201])
 
     def test_export_endpoint_queues_task(self):
-        response = self.api_client.get('/api/v1/compliance/export/')
+        # Assert the export is enqueued; the task itself uploads to Cloudinary and
+        # must not run against the real service in tests (CELERY_TASK_ALWAYS_EAGER).
+        from unittest.mock import patch
+        from apps.compliance.models import DataExportRequest
+        with patch('apps.compliance.tasks.generate_data_export.delay') as delay:
+            response = self.api_client.get('/api/v1/compliance/export/')
         self.assertIn(response.status_code, [200, 202])
+        delay.assert_called_once()
+        req_id = delay.call_args.args[0]
+        self.assertTrue(DataExportRequest.objects.filter(id=req_id).exists())
 
     def test_compliance_endpoints_404_for_non_gdpr_org(self):
         from apps.organizations.models import Organization

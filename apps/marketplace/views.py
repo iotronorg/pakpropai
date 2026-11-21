@@ -8,7 +8,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
 
-from apps.core.permissions import IsAdminUser, get_user_org
+from apps.core.permissions import FeatureEnabled, IsAdminUser, get_user_org
 
 from .broker_network import BrokerNetworkService
 from .commission_ledger import CommissionLedger
@@ -43,7 +43,8 @@ def _is_admin(user):
 
 class SyndicationListingViewSet(ModelViewSet):
     """Developer manages own syndication listings. Admin sees all."""
-    permission_classes = [permissions.IsAuthenticated]
+    # Frozen for MVP: no new syndication (existing records stay manageable).
+    permission_classes = [permissions.IsAuthenticated, FeatureEnabled('feature_syndication', methods=['POST'])]
     serializer_class = SyndicationListingSerializer
 
     def get_queryset(self):
@@ -58,7 +59,11 @@ class SyndicationListingViewSet(ModelViewSet):
 
     def get_permissions(self):
         if self.action in ('syndicate', 'withdraw', 'create', 'update', 'partial_update', 'destroy'):
-            return [permissions.IsAuthenticated()]
+            perms = [permissions.IsAuthenticated()]
+            if self.action in ('create', 'syndicate'):
+                # Frozen for MVP: no new syndication; withdraw/edit stay available.
+                perms.append(FeatureEnabled('feature_syndication')())
+            return perms
         return super().get_permissions()
 
     def perform_create(self, serializer):
@@ -101,7 +106,7 @@ class BrokerNetworkPartnershipViewSet(
     mixins.UpdateModelMixin,
     GenericViewSet,
 ):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, FeatureEnabled('feature_syndication', methods=['POST'])]
     serializer_class = BrokerNetworkPartnershipSerializer
 
     def get_queryset(self):
@@ -204,7 +209,7 @@ class CommissionLedgerView(
 
 class SyndicationBrowseView(APIView):
     """GET /marketplace/browse/ — visible syndicated listings for broker/agent."""
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, FeatureEnabled('feature_syndication')]
 
     def get(self, request):
         user = request.user
@@ -223,7 +228,7 @@ class SyndicationLeadSubmissionViewSet(
     mixins.UpdateModelMixin,
     GenericViewSet,
 ):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, FeatureEnabled('feature_syndication', methods=['POST'])]
     serializer_class = SyndicationLeadSubmissionSerializer
 
     def get_queryset(self):

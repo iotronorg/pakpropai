@@ -2,6 +2,8 @@ import logging
 
 from django.core.cache import cache
 
+from apps.core.crypto import decrypt_str, encrypt_str
+
 from .models import SystemConfig
 
 logger = logging.getLogger(__name__)
@@ -21,12 +23,12 @@ class SystemConfigService:
         """
         cached = cache.get(f'{CACHE_PREFIX}{key}')
         if cached is not None:
-            return cached
+            return decrypt_str(cached)
 
         try:
             obj = SystemConfig.objects.get(key=key)
             value = obj.value
-            cache.set(f'{CACHE_PREFIX}{key}', value, CACHE_TTL)
+            cls._cache_value(key, value)
             return value
         except SystemConfig.DoesNotExist:
             pass
@@ -37,12 +39,18 @@ class SystemConfigService:
                 from django.conf import settings as _s
                 value = getattr(_s, env_attr, '') or ''
                 if value:
-                    cache.set(f'{CACHE_PREFIX}{key}', value, CACHE_TTL)
+                    cls._cache_value(key, value)
                     return value
             except Exception:
                 pass
 
         return SystemConfig.DEFAULTS.get(key, default)
+
+    @staticmethod
+    def _cache_value(key: str, value: str):
+        # Secrets never sit in Redis as plaintext (ADR-008).
+        stored = encrypt_str(value) if key in SystemConfig.SENSITIVE_KEYS else value
+        cache.set(f'{CACHE_PREFIX}{key}', stored, CACHE_TTL)
 
     @classmethod
     def is_set(cls, key: str) -> bool:
@@ -105,7 +113,7 @@ class SystemConfigService:
 
     @classmethod
     def scraper_enabled(cls) -> bool:
-        return cls.get('scraper_search_enabled', 'true') == 'true'
+        return cls.get('scraper_search_enabled', 'false') == 'true'
 
     @classmethod
     def get_active_gateway(cls) -> str:

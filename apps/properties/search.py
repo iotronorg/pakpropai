@@ -35,6 +35,7 @@ class SearchParams:
     installments: bool = False       # True → only installment-available listings
     legal_status: str = ''           # '' | 'verified' | 'pending' | ...
     organization_id: str = ''        # restrict results to one org's inventory
+    viewer_org_id: str = ''          # org context of the requester (sandbox visibility, ADR-002)
     page: int = 0
     page_size: int = PAGE_SIZE
     phone: str = ''                  # forwarded to background scrape task
@@ -59,6 +60,7 @@ class SearchParams:
             installments=bool(params.get('installments', False)),
             legal_status=str(params.get('legal_status', '')),
             organization_id=str(params.get('organization_id', '')),
+            viewer_org_id=str(params.get('viewer_org_id', '') or ''),
             page=int(params.get('page', 0) or 0),
             page_size=int(params.get('page_size', PAGE_SIZE) or PAGE_SIZE),
             phone=str(params.get('phone', '')),
@@ -86,6 +88,7 @@ class PropertySearchService:
             installments=params.installments or None,
             legal_status=params.legal_status,
             organization_id=params.organization_id,
+            viewer_org=params.viewer_org_id or None,
         )
         scraped_results = cls._from_scrapers(
             city=params.city,
@@ -104,6 +107,10 @@ class PropertySearchService:
         offset = params.page * params.page_size
         page_slice = all_results[offset: offset + params.page_size]
 
+        from apps.config.services import SystemConfigService
+        live_pending = SystemConfigService.scraper_enabled() and (
+            total == 0 or all(r.source == 'pakprop' for r in all_results)
+        )
         return {
             'query': {
                 'city': params.city,
@@ -120,13 +127,16 @@ class PropertySearchService:
                 'has_next': (offset + params.page_size) < total,
             },
             'results': [cls._result_to_dict(r) for r in page_slice],
-            'live_search_pending': total == 0 or all(r.source == 'pakprop' for r in all_results),
+            'live_search_pending': live_pending,
             'whatsapp_message': (
                 cls.format_page(all_results, offset, total)
                 if all_results
                 else (
-                    'No properties found right now. Live results from Zameen/Graana are '
-                    'being fetched — you will receive them in a follow-up message shortly.'
+                    'No properties found right now. More listings are being fetched — '
+                    'you will receive them in a follow-up message shortly.'
+                    if live_pending else
+                    'No listings match these criteria right now. Try widening the area, '
+                    'budget or property type.'
                 )
             ),
         }
@@ -153,7 +163,8 @@ class PropertySearchService:
     @classmethod
     def search(cls, city='', location='', area_marla=None, max_price=None,
                property_type='', furnished_status='',
-               construction_status='', phone: str = '') -> list[PropertyResult]:
+               construction_status='', phone: str = '',
+               viewer_org=None) -> list[PropertyResult]:
         """
         Returns merged + AI-scored results (DB first, then scraped).
         `phone` is forwarded to the background task so a follow-up WA message
@@ -163,6 +174,7 @@ class PropertySearchService:
             city=city, location=location, area_marla=area_marla,
             max_price=max_price, property_type=property_type,
             furnished_status=furnished_status, construction_status=construction_status,
+            viewer_org=viewer_org,
         )
         scraped_results = cls._from_scrapers(
             city=city, location=location, area_marla=area_marla,
@@ -191,10 +203,11 @@ class PropertySearchService:
         cls, city='', location='', area_marla=None, max_price=None,
         property_type='', furnished_status='', construction_status='',
         min_price=None, installments=None, legal_status='', organization_id='',
+        viewer_org=None,
     ) -> list[PropertyResult]:
         qs = (
             Property.objects
-            .filter(is_active=True)
+            .visible_to(viewer_org)
             .select_related('organization', 'listed_by_agent')
             .only(
                 'id', 'title', 'city', 'location', 'area_marla', 'price',
