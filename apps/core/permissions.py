@@ -1,5 +1,11 @@
+import logging
+from contextvars import ContextVar
+
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import BasePermission, SAFE_METHODS
+
+logger = logging.getLogger(__name__)
+_last_foreign_selector: ContextVar[tuple | None] = ContextVar('last_foreign_selector', default=None)
 
 
 class IsAdminUser(BasePermission):
@@ -26,49 +32,53 @@ class IsAgentOrAdmin(BasePermission):
         )
 
 
+def _object_org_id(obj):
+    """Organization id an object belongs to: the org itself, or obj.organization_id."""
+    from apps.organizations.models import Organization
+    if isinstance(obj, Organization):
+        return obj.pk
+    return getattr(obj, 'organization_id', None)
+
+
 class IsAdminOrOrgAdmin(BasePermission):
-    """Platform admin or organization admin (role=developer)."""
+    """
+    Platform admin, or ``owner``/``org_admin`` of the active organization
+    (ADR-020; membership-based — ``user.role`` no longer decides).
+    Object check: the object's organization must be one the user administers.
+    """
     def has_permission(self, request, view):
-        return (
-            request.user.is_authenticated
-            and request.user.role in ('admin', 'developer')
-        )
+        user = request.user
+        if not user.is_authenticated:
+            return False
+        if user.role == 'admin':
+            return True
+        return active_org_role(user) in _ORG_ADMIN_ROLES
 
     def has_object_permission(self, request, view, obj):
-        if not request.user.is_authenticated:
+        user = request.user
+        if not user.is_authenticated:
             return False
-        if request.user.role == 'admin':
+        if user.role == 'admin':
             return True
-        return getattr(obj, 'admin_user_id', None) == request.user.id
+        org_id = _object_org_id(obj)
+        return org_id is not None and _membership_role_by_id(user, org_id) in _ORG_ADMIN_ROLES
 
 
 class IsOrgAdmin(BasePermission):
-    """User is the admin of an organization (role=developer with owned_organization)."""
+    """``owner``/``org_admin`` of the active organization (platform admins excluded)."""
     def has_permission(self, request, view):
-        if not request.user.is_authenticated or request.user.role != 'developer':
-            return False
-        return hasattr(request.user, 'owned_organization')
+        return request.user.is_authenticated and active_org_role(request.user) in _ORG_ADMIN_ROLES
 
     def has_object_permission(self, request, view, obj):
-        return request.user.is_authenticated and getattr(obj, 'admin_user_id', None) == request.user.id
+        org_id = _object_org_id(obj)
+        return (request.user.is_authenticated and org_id is not None
+                and _membership_role_by_id(request.user, org_id) in _ORG_ADMIN_ROLES)
 
 
 class IsOrgMember(BasePermission):
-    """
-    User belongs to an organization — either as its admin (developer) or
-    as an agent whose agent_profile.organization is set.
-    """
+    """Any active membership in the active organization."""
     def has_permission(self, request, view):
-        if not request.user.is_authenticated:
-            return False
-        if request.user.role == 'developer':
-            return hasattr(request.user, 'owned_organization')
-        if request.user.role == 'agent':
-            try:
-                return request.user.agent_profile.organization_id is not None
-            except Exception:
-                return False
-        return False
+        return request.user.is_authenticated and active_org_role(request.user) in _ALL_ORG_ROLES
 
 
 # Backward-compat alias — prefer IsAdminOrOrgAdmin in new code.
@@ -90,30 +100,65 @@ def get_org_membership(user, organization):
         return None
 
 
+def get_active_membership(user):
+    """
+    The membership that defines the user's organization for this request
+    (ADR-020): the one named by the ``X-Organization-ID`` header when present,
+    otherwise the primary membership. A header naming an org the user is not
+    an active member of yields ``None`` (no access), never the primary org.
+    """
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return None
+    from apps.core.context import INVALID_ORG, get_requested_org_id
+    from apps.organizations.models import OrganizationMembership
+
+    requested = get_requested_org_id()
+    if requested == INVALID_ORG:
+        return None
+    if requested:
+        membership = (OrganizationMembership.objects
+                      .filter(user=user, organization_id=requested, is_active=True)
+                      .select_related('organization').first())
+        if membership is None:
+            _record_foreign_org_selector(user, requested)
+        return membership
+    from apps.organizations.membership import primary_membership
+    return primary_membership(user)
+
+
+def _record_foreign_org_selector(user, org_id):
+    """Security event for X-Organization-ID naming an org the user is not in (once per request)."""
+    from apps.core.context import get_request_id
+    key = (str(user.pk), org_id, get_request_id())
+    if _last_foreign_selector.get() == key:
+        return
+    _last_foreign_selector.set(key)
+    try:
+        from apps.security.models import ApiSecurityEvent
+        ApiSecurityEvent.objects.create(
+            event_type='cross_tenant', severity=4, user_id=str(user.pk), organization_id='',
+            endpoint='', http_method='',
+            threat_detail=f'X-Organization-ID {org_id} is not an active membership of the user',
+            request_id=get_request_id()[:64],
+        )
+    except Exception:  # never turn a denial into a 500
+        logger.exception('permissions: could not record cross-tenant selector')
+
+
 def get_user_org(user):
     """
-    Return the Organization for a non-admin user.
-    Reads the user's primary active OrganizationMembership when use_membership_rbac
-    is enabled (ADR-013), otherwise falls back to the legacy projections
-    (owned_organization / agent_profile.organization).
+    The Organization a non-admin user is acting for: the active membership's
+    org (ADR-020). Membership is the only source; the legacy projections
+    (``owned_organization``, ``agent_profile.organization``) are kept in sync by
+    ADR-013 phase A but are no longer read here.
     """
-    from apps.config.services import SystemConfigService
-    use_membership = SystemConfigService.get('use_membership_rbac', 'false') == 'true'
+    membership = get_active_membership(user)
+    return membership.organization if membership else None
 
-    if use_membership:
-        from apps.organizations.membership import primary_membership
-        membership = primary_membership(user)
-        return membership.organization if membership else None
 
-    # Legacy path
-    if user.role == 'developer':
-        return getattr(user, 'owned_organization', None)
-    if user.role == 'agent':
-        try:
-            return user.agent_profile.organization
-        except Exception:
-            return None
-    return None
+def active_org_role(user) -> str | None:
+    membership = get_active_membership(user)
+    return membership.role if membership else None
 
 
 # ── Platform-level permissions ────────────────────────────────────────────────
@@ -191,6 +236,13 @@ _ALL_ORG_ROLES       = ('owner', 'org_admin', 'team_manager', 'sales_manager',
 def _membership_role(user, organization) -> str | None:
     m = get_org_membership(user, organization)
     return m.role if m else None
+
+
+def _membership_role_by_id(user, organization_id) -> str | None:
+    from apps.organizations.models import OrganizationMembership
+    return (OrganizationMembership.objects
+            .filter(user=user, organization_id=organization_id, is_active=True)
+            .values_list('role', flat=True).first())
 
 
 class IsOrgOwner(BasePermission):

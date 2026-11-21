@@ -39,10 +39,12 @@ def _check_sql_injection(value: str) -> Optional[ThreatResult]:
     return None
 
 
+# X-Organization-ID is NOT here: it is the supported active-org selector
+# (ADR-020), checked against the user's memberships where it is used; a
+# selector naming a foreign org is recorded by apps.core.permissions.
 _TENANT_OVERRIDE_HEADERS = frozenset({
     'HTTP_X_TENANT_ID',
     'HTTP_X_ORG_ID',
-    'HTTP_X_ORGANIZATION_ID',
     'HTTP_X_WORKSPACE_ID',
 })
 

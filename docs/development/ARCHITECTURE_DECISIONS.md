@@ -332,3 +332,42 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - DB‑read defaults: they are unsafe in migrations and add a query per instantiation;
   - a `market` FK on every money model now: currency belongs to the listing, deal or payment, not to a market; revisit with listing v2 (T‑1070);
   - deleting the registry: code packs (calculators, parsers, document types) stay in code, and the registry is their index.
+
+## ADR‑020 — Membership‑based permissions, active org context, grant policy (ADR‑013 phase B, part 1)
+- **Date:** 2026-11-21 (session 7) · Task T‑1031a · TR‑06, GAP‑015, KI‑010, KI‑030
+- **Context:**
+  - After ADR‑013 phase A the membership table was correct, but the core permission classes still decided on `user.role` and the legacy links:
+    - `IsAdminOrOrgAdmin` (34 uses) let in any `role='developer'`, and its object check passed only `Organization.admin_user`;
+    - `IsOrgAdmin`/`IsOrgMember` read `owned_organization`/`agent_profile.organization`;
+    - `get_user_org()` still had a legacy branch behind `use_membership_rbac`.
+  - A user in two orgs had no way to choose one.
+  - The members API accepted any role on invite (including `owner`), and an org admin could create or remove other org admins.
+- **Decision:**
+  - **Single source:** `get_active_membership(user)` → `get_user_org()`, `active_org_role()`. The legacy branch and the `use_membership_rbac` switch are removed; the config key is now unused.
+  - **Active org context:**
+    - `ActiveOrganizationMiddleware` copies `X-Organization-ID` into a context var (a UUID, otherwise "invalid");
+    - `get_active_membership` uses it only if the user has an **active** membership there. Otherwise the result is `None` (deny), never the primary org;
+    - no header → `primary_membership()` (ADR‑013);
+    - CORS allows the header.
+  - **Policies:**
+    - `IsAdminOrOrgAdmin`: platform admin, or `owner`/`org_admin` of the active org. The object check passes when the user administers the object's org (org itself or `obj.organization_id`);
+    - `IsOrgAdmin`: same, without platform admins;
+    - `IsOrgMember`: any active role in the active org.
+  - **Grant policy (members API):**
+    - `owner` is never grantable by invite (transfer is a separate flow);
+    - only the owner (or a platform admin) may grant or remove `org_admin`;
+    - the reactivation path follows the same rules.
+  - **Security engine:**
+    - `X-Organization-ID` is removed from the pre‑auth "tenant override" list, because JWT users are still anonymous at that point, so the header could never be valid there;
+    - a selector naming a foreign org is recorded as a `cross_tenant` `ApiSecurityEvent` (once per request) where it is checked;
+    - `X-Tenant-ID`/`X-Org-ID`/`X-Workspace-ID` stay forbidden.
+  - **KI‑030:** `/auth/otp/send/` accepts `purpose` ∈ {`otp_login` (default), `registration_verify`} only.
+- **Behaviour changes:**
+  - users with an `org_admin` membership but `user.role='agent'` now pass org‑admin checks;
+  - a `developer` without an owner/org_admin membership no longer does (phase A backfill + `reconcile_memberships` make that set empty);
+  - a DB row `use_membership_rbac=false` is now ignored.
+- **Not yet (T‑1031b):** ~55 direct legacy reads in ~20 modules (billing, verification, provisioning, inventory, agents, compliance, security‑middleware auth context, `config/models.py`…) still use `owned_organization`/`agent_profile.organization`. They are correct for single‑org users (projections are synced) but ignore the selector.
+- **Rejected:**
+  - a request attribute set in Django middleware: JWT authentication happens later, inside DRF;
+  - falling back to the primary org on an invalid selector: it would silently act on the wrong tenant;
+  - keeping the header in the threat list and authenticating JWT in the security middleware: it duplicates auth on every request.

@@ -131,10 +131,24 @@
 - **Tests:** 1641 passed, 1 skipped, 0 failed (session 6 ended 1617). Migration rehearsal forward → back → forward OK; drift/`check` clean; Bandit 0 HIGH.
 - **Not committed.**
 
+- **Continued (owner said "continue"):** T‑1031a (ADR‑020):
+  - core permissions and `get_user_org` are membership‑only;
+  - `X-Organization-ID` selects the active org, verified against active memberships (foreign org → 403 + `cross_tenant` event);
+  - members API grant policy: owner never grantable, org_admin owner‑only;
+  - KI‑030 fixed;
+  - 22‑test permission matrix.
+- **Found and fixed:**
+  - the invite API let any org admin create owners/org admins;
+  - the security engine treated `X-Organization-ID` as an attack before JWT auth, so the header could never be used.
+- **Final tests:** 1661 passed, 1 skipped, 0 failed.
+
 ### Handoff → session 8
-1. `git status`: session‑7 changes are uncommitted. **Do not commit.** `scripts/dev/test.sh` → expect 1641 passed, 1 skipped.
-2. Next (milestone order): **T‑1031** policy‑based RBAC + active org context + permission‑matrix tests (ADR‑013 phase B).
-   - Start from the ADR‑013 reader list: `grep -rn "owned_organization\|agent_profile.organization\|use_membership_rbac" apps`, `apps/core/permissions.py` (`get_user_org`, `IsOrgAdmin`, `IsOrgMember`), `apps/core/middleware.py` `TenantIsolationMiddleware`.
-   - Also fix KI‑030 (whitelist `purpose` on `/auth/otp/send/`) and restrict owner/org_admin grants in the members invite API.
-   - Write a permission‑matrix test (role × endpoint) first, then switch readers one by one.
-3. Then T‑1032 → T‑1022 → T‑1050b/c → T‑1091/T‑1092 → T‑1070.
+1. `git status`: session‑7 changes are uncommitted. **Do not commit.** `scripts/dev/test.sh` → expect 1661 passed, 1 skipped.
+2. Next: **T‑1031b**, moving the remaining legacy org reads.
+   - Run `grep -rnE "owned_organization|agent_profile\.organization" apps --include=*.py | grep -v tests` (~55 hits in ~20 modules). The largest are `billing/views.py`, `verification/views.py`, `whatsapp/provisioning_views.py`, `inventory/views.py`, `agents/views.py`, `organizations/views.py`, `compliance/*`.
+   - Replace each with `get_user_org(request.user)` (or `get_active_membership` for role checks).
+   - `security/middleware._get_auth_context` must keep working for session users.
+   - `organizations/membership.py` and `models.py` are the projection writers; leave them.
+   - Add matrix rows per module to `tests/test_permission_matrix.py`.
+   - Then retire the unused `use_membership_rbac` key in `config/models.py`.
+3. Then T‑1032 (membership contract) → T‑1022 → T‑1050b/c → T‑1091/T‑1092 → T‑1070.

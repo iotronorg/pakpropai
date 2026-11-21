@@ -19,6 +19,8 @@ from typing import Any
 _org_id: ContextVar[str] = ContextVar('organization_id', default='')
 _lead_id: ContextVar[str] = ContextVar('lead_id', default='')
 _request_id: ContextVar[str] = ContextVar('request_id', default='')  # RequestIdMiddleware (ADR-017)
+_requested_org: ContextVar[str] = ContextVar('requested_org', default='')  # X-Organization-ID (ADR-020)
+INVALID_ORG = '!invalid'
 
 _UNSET: Any = object()  # sentinel — distinguishes "not provided" from "set to empty"
 
@@ -49,3 +51,12 @@ def set_request_id(value: str) -> None:
 
 def get_request_id() -> str:
     return _request_id.get()
+
+
+def set_requested_org_id(value: str) -> None:
+    """Raw org id from X-Organization-ID (validated against memberships at use)."""
+    _requested_org.set(value or '')
+
+
+def get_requested_org_id() -> str:
+    return _requested_org.get()

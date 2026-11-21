@@ -79,3 +79,10 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - [ ] `DEFAULT_MARKET` (env, default `PK`) sets the default country, currency and area unit for new records. Leave it as `PK` until a second market launches; an unknown code fails at the first model instantiation.
 - [ ] Markets are edited in the admin (no delete; retire with `status`). Cached for 5 min, invalidated on save.
 - [ ] `TIME_ZONE` is still `Asia/Karachi`: the UTC switch is T‑1050c and ships separately.
+- [ ] **RBAC (ADR‑020):** org‑admin checks now read memberships only.
+  - **Before** deploying, run `python manage.py reconcile_memberships --show 100`. Every developer who owns an org needs an active `owner` membership (`missing_owner` must be 0), or that developer loses admin access.
+  - A `system_config` row `use_membership_rbac` is now ignored.
+  - Members with `org_admin` membership and `user.role=agent` gain org‑admin access (intended).
+  - The members API no longer grants `owner`, and only owners grant or remove `org_admin`.
+  - Clients may send `X-Organization-ID` to act for another org they belong to. A foreign org gives 403 and a `cross_tenant` security event; alert on those events.
+  - `/auth/otp/send/` rejects `purpose` other than `otp_login`/`registration_verify` (KI‑030).

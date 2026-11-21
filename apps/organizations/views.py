@@ -609,6 +609,25 @@ class OrgMembershipView(APIView):
     """
     permission_classes = [IsAuthenticated, IsAdminOrOrgAdmin]
 
+    # ADR-020 grant policy: ownership is never granted by invite (transfer is a
+    # separate flow) and only the owner may create or remove org admins.
+    _OWNER_ONLY_ROLES = (OrganizationMembership.Role.ORG_ADMIN,)
+
+    @staticmethod
+    def _caller_role(user, org):
+        if user.role == 'admin':
+            return 'platform_admin'
+        from apps.core.permissions import _membership_role_by_id
+        return _membership_role_by_id(user, org.pk)
+
+    def _check_grant(self, request, org, role):
+        if role == OrganizationMembership.Role.OWNER:
+            raise PermissionDenied('The owner role cannot be granted by invitation.')
+        if role in self._OWNER_ONLY_ROLES and self._caller_role(request.user, org) not in (
+            OrganizationMembership.Role.OWNER, 'platform_admin',
+        ):
+            raise PermissionDenied('Only the organization owner can grant this role.')
+
     def _get_org(self, user):
         from apps.core.permissions import get_user_org
         org = get_user_org(user)
@@ -649,6 +668,8 @@ class OrgMembershipView(APIView):
         if employment_type not in OrganizationMembership.EmploymentType.values:
             return Response({'detail': f'Invalid employment_type: {employment_type}'}, status=status.HTTP_400_BAD_REQUEST)
 
+        self._check_grant(request, org, role)
+
         user = User.objects.filter(phone=phone).first()
         if not user:
             return Response({'detail': 'No user found with this phone number.'}, status=status.HTTP_404_NOT_FOUND)
@@ -686,6 +707,10 @@ class OrgMembershipView(APIView):
             return Response({'detail': 'Membership not found.'}, status=status.HTTP_404_NOT_FOUND)
         if membership.role == OrganizationMembership.Role.OWNER:
             return Response({'detail': 'Cannot remove the organization owner.'}, status=status.HTTP_400_BAD_REQUEST)
+        if membership.role in self._OWNER_ONLY_ROLES and self._caller_role(request.user, org) not in (
+            OrganizationMembership.Role.OWNER, 'platform_admin',
+        ):
+            raise PermissionDenied('Only the organization owner can remove an org admin.')
         from .membership import remove_member
         remove_member(membership)
         return Response(status=status.HTTP_204_NO_CONTENT)

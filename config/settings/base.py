@@ -76,6 +76,7 @@ MIDDLEWARE = [
     'django_prometheus.middleware.PrometheusBeforeMiddleware',
     'apps.core.middleware.RequestIdMiddleware',      # first app middleware: every log line + error carries it (ADR-017)
     'apps.core.errors.ErrorEnvelopeMiddleware',      # adds error_info/request_id to /api/ JSON errors (ADR-017)
+    'apps.core.middleware.ActiveOrganizationMiddleware',  # X-Organization-ID → active org context (ADR-020)
     'django.middleware.security.SecurityMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
@@ -183,7 +184,7 @@ AUTH_USER_MODEL = 'users.User'
 
 # ADR-017: browsers may send and read the request id cross-origin.
 from corsheaders.defaults import default_headers as _cors_default_headers  # noqa: E402
-CORS_ALLOW_HEADERS = (*_cors_default_headers, 'x-request-id', 'idempotency-key')
+CORS_ALLOW_HEADERS = (*_cors_default_headers, 'x-request-id', 'idempotency-key', 'x-organization-id')
 CORS_EXPOSE_HEADERS = ['X-Request-ID', 'Idempotent-Replayed']
 # ADR-018: how long a stored Idempotency-Key outcome is replayed.
 IDEMPOTENCY_TTL_HOURS = env.int('IDEMPOTENCY_TTL_HOURS', default=24)

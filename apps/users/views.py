@@ -70,6 +70,7 @@ logger = logging.getLogger(__name__)
 
 class SendOTPView(APIView):
     permission_classes = [AllowAny]
+    ALLOWED_PURPOSES = ('otp_login', 'registration_verify')
     throttle_classes = [OtpSendThrottle, OtpDailyThrottle]
 
     def post(self, request):
@@ -77,7 +78,12 @@ class SendOTPView(APIView):
         serializer.is_valid(raise_exception=True)
         phone = serializer.validated_data['phone']
 
-        purpose = request.data.get('purpose', 'otp_login')
+        # KI-030: other purposes (password_reset, org_registration) are issued only
+        # by their own endpoints, with their own checks.
+        purpose = request.data.get('purpose') or 'otp_login'
+        if purpose not in self.ALLOWED_PURPOSES:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({'purpose': f"Must be one of: {', '.join(self.ALLOWED_PURPOSES)}."})
         try:
             otp = OTPService.issue(phone, purpose=purpose)
         except ValueError as exc:

@@ -44,6 +44,35 @@ class RequestIdMiddleware:
         return response
 
 
+class ActiveOrganizationMiddleware:
+    """
+    ADR-020: ``X-Organization-ID`` selects which of the caller's organizations a
+    request acts for (multi-org freelancers, owners of several orgs). The raw
+    value goes into a context var; ``get_user_org()`` checks it against the
+    user's active memberships when it is used (authentication happens later,
+    inside DRF). A malformed value means "no organization", never the default.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        from apps.core.context import INVALID_ORG, set_requested_org_id
+
+        raw = request.META.get('HTTP_X_ORGANIZATION_ID', '').strip()
+        value = ''
+        if raw:
+            try:
+                value = str(uuid.UUID(raw))
+            except ValueError:
+                value = INVALID_ORG
+        set_requested_org_id(value)
+        try:
+            return self.get_response(request)
+        finally:
+            set_requested_org_id('')
+
+
 _LAST_ACTIVE_TTL = 300  # seconds — throttle DB writes to once per 5 min per user
 
 
@@ -124,21 +153,14 @@ class TenantIsolationMiddleware:
         if role not in ('agent', 'developer'):
             return
 
+        from apps.core.permissions import get_user_org
+        request.organization = get_user_org(user)   # active membership (ADR-020)
         if role == 'developer':
-            try:
-                request.organization = user.owned_organization
-            except Exception:
-                logger.warning(
-                    "TenantIsolationMiddleware: user %s has role=developer but no owned_organization.",
-                    user.id,
-                )
             return
 
         # role == 'agent'
         try:
-            profile = user.agent_profile
-            request.agent_profile = profile
-            request.organization  = profile.organization   # None if freelance — valid
+            request.agent_profile = user.agent_profile
         except Exception:
             logger.warning(
                 "TenantIsolationMiddleware: user %s has role=agent but no agent_profile. "

@@ -176,3 +176,12 @@
   - `Property.market` + `Organization.market` (`properties 0023/0024`, `organizations 0025/0026`), derived on create.
   - Settings: `DEFAULT_MARKET`.
 - **Tests:** new `tests/test_markets.py` (24).
+- **T‑1031a RBAC on memberships (ADR‑020):**
+  - `apps/core/permissions.py`: `get_active_membership`, `get_user_org` (membership‑only), `active_org_role`, `_membership_role_by_id`, `_record_foreign_org_selector`; `IsAdminOrOrgAdmin`/`IsOrgAdmin`/`IsOrgMember` rewritten.
+  - `apps/core/context.py`: requested‑org context var.
+  - `apps/core/middleware.py`: `ActiveOrganizationMiddleware`; `TenantIsolationMiddleware` → `get_user_org`.
+  - `apps/security/threat_detection.py`: `X-Organization-ID` removed from the override list.
+  - `apps/organizations/views.py` `OrgMembershipView`: grant/removal policy.
+  - `apps/users/views.py` `SendOTPView`: purpose whitelist (KI‑030).
+  - Settings: middleware entry; CORS `x-organization-id`.
+- **Tests:** new `tests/test_permission_matrix.py` (22).
