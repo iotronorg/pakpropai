@@ -1,5 +1,6 @@
 import uuid
 from django.db import models
+from apps.markets.services import default_currency  # ADR-019
 from django.conf import settings
 
 
@@ -39,7 +40,7 @@ class Payment(models.Model):
                    help_text='Amount in the currency specified by the currency field',
                )
     currency = models.CharField(
-                   max_length=3, default='PKR',
+                   max_length=3, default=default_currency,
                    help_text='ISO 4217 currency code for amount, e.g. PKR, AED, USD',
                )
     purpose  = models.CharField(max_length=30, choices=Purpose.choices)

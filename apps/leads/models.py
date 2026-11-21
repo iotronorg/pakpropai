@@ -1,6 +1,7 @@
 import uuid
 from django.core.exceptions import ValidationError
 from django.db import models
+from apps.markets.services import default_currency  # ADR-019
 from django.conf import settings
 
 
@@ -91,7 +92,7 @@ class Lead(models.Model):
     budget_min      = models.BigIntegerField(null=True, blank=True)
     budget_max      = models.BigIntegerField(null=True, blank=True)
     budget_currency = models.CharField(
-                          max_length=3, default='PKR',
+                          max_length=3, default=default_currency,
                           help_text='ISO 4217 currency code for budget_min/max, e.g. PKR, AED, USD',
                       )
 

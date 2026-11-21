@@ -117,3 +117,24 @@
    - Then inventory the hardcoded defaults: `grep -rn "'PKR'\|'PK'\|marla" apps --include=*.py`. Known ones: `Property.currency`/`country`/`area_unit` defaults, `_DEFAULT_CITY_CODE_MAP`, `PropertySearchService._result_to_dict` "PKR" formatting.
    - Plan expand/contract: add a `market` FK with a PK default, then backfill, then add the CI grep check required by the M1 exit criterion.
 3. Then T‑1031 (RBAC phase B, ADR‑013) → T‑1032 → T‑1022 → T‑1091/T‑1092 → T‑1070.
+
+## Session 7 — 2026-11-21 — M1: Market entity
+- **Start state:** the owner had committed through T‑1090d (`db23c9a`); the tree was clean.
+- **Completed:** T‑1050a (ADR‑019):
+  - DB‑backed `Market` (seeded from the registry; PK active), with a cached `get_market()` and a registry fallback;
+  - `DEFAULT_MARKET` drives all 11 former literal defaults through DB‑free callables;
+  - nullable `market` FK on `Property` and `Organization`, backfilled from country and derived on create;
+  - `market_backfill_report`; admin;
+  - CI test for the M1 "no hardcoded PK defaults" criterion, plus a ratchet on the remaining literals.
+- **Split:** T‑1050 into a–c. The UTC switch (c) is separate because it shifts every beat crontab and report bucket.
+- **Checked, no issue:** `get_financing_calculator` imports `apps.markets.<cc>.financing`; those modules exist.
+- **Tests:** 1641 passed, 1 skipped, 0 failed (session 6 ended 1617). Migration rehearsal forward → back → forward OK; drift/`check` clean; Bandit 0 HIGH.
+- **Not committed.**
+
+### Handoff → session 8
+1. `git status`: session‑7 changes are uncommitted. **Do not commit.** `scripts/dev/test.sh` → expect 1641 passed, 1 skipped.
+2. Next (milestone order): **T‑1031** policy‑based RBAC + active org context + permission‑matrix tests (ADR‑013 phase B).
+   - Start from the ADR‑013 reader list: `grep -rn "owned_organization\|agent_profile.organization\|use_membership_rbac" apps`, `apps/core/permissions.py` (`get_user_org`, `IsOrgAdmin`, `IsOrgMember`), `apps/core/middleware.py` `TenantIsolationMiddleware`.
+   - Also fix KI‑030 (whitelist `purpose` on `/auth/otp/send/`) and restrict owner/org_admin grants in the members invite API.
+   - Write a permission‑matrix test (role × endpoint) first, then switch readers one by one.
+3. Then T‑1032 → T‑1022 → T‑1050b/c → T‑1091/T‑1092 → T‑1070.

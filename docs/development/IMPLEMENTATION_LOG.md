@@ -164,3 +164,15 @@
   - `@idempotent` + OpenAPI header on `leads/views.py` (`LeadViewSet.create`, `AppointmentViewSet.create`, both new thin overrides), `payments/views.py` (`CreateCheckoutView.post`, `SEPAPaymentView.post`) and `escrow/views.py` (`DealLockInitiateView.post`).
   - Settings: beat `purge-idempotency-records`, `IDEMPOTENCY_TTL_HOURS`, CORS header `idempotency-key`, exposed `Idempotent-Replayed`.
 - **Tests:** new `tests/test_idempotency.py` (15).
+
+## 2026-11-21 — Session 7 (M1; no commits)
+
+- **T‑1050a Market entity (ADR‑019):**
+  - New `apps/markets/models.py` (`Market`), `services.py` (`get_market`, `registry_info`, `market_code_for_country`, `invalidate`, `default_country/currency/area_unit`), `admin.py`, cache‑invalidation signals in `apps.py`.
+  - New migrations: `markets 0001_market`, `0002_seed_markets`.
+  - New command `markets/management/commands/market_backfill_report.py`.
+  - `registry.py`: `MarketConfig.timezone`, `name`.
+  - Literal defaults → callables: `properties`, `organizations`, `leads`, `payments`, `escrow`, `audit` models (state‑only migrations `audit 0012`, `escrow 0008`, `leads 0020`, `payments 0005`).
+  - `Property.market` + `Organization.market` (`properties 0023/0024`, `organizations 0025/0026`), derived on create.
+  - Settings: `DEFAULT_MARKET`.
+- **Tests:** new `tests/test_markets.py` (24).

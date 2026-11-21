@@ -1,0 +1,65 @@
+"""
+Market entity (T-1050a, ADR-019).
+
+A market is a country the product operates in, with its own currency, area
+units, language, time zone and formats. Rows are seeded from the code
+registry (``apps/markets/registry.py``) by migration ``markets 0002``; market
+behaviour that is code (calculators, parsers, document types, prompts) stays
+in the ``apps/markets/<cc>/`` packs. Read through ``apps.markets.services``,
+not directly, so the cache and the registry fallback apply.
+"""
+from django.core.exceptions import ValidationError
+from django.db import models
+
+
+class Market(models.Model):
+
+    class Status(models.TextChoices):
+        ACTIVE   = 'active',   'Active (launched)'
+        BETA     = 'beta',     'Beta (configured, not launched)'
+        INACTIVE = 'inactive', 'Inactive'
+
+    code              = models.CharField(max_length=2, primary_key=True,
+                            help_text='ISO 3166-1 alpha-2, upper-case, e.g. PK')
+    name              = models.CharField(max_length=100)
+    status            = models.CharField(max_length=10, choices=Status.choices, default=Status.BETA)
+    default_currency  = models.CharField(max_length=3, help_text='ISO 4217')
+    currencies        = models.JSONField(default=list, help_text='Accepted ISO 4217 codes')
+    currency_symbol   = models.CharField(max_length=8, blank=True)
+    default_area_unit = models.CharField(max_length=10, help_text='Property.AreaUnit value')
+    area_units        = models.JSONField(default=list)
+    default_language  = models.CharField(max_length=10, help_text='BCP-47')
+    languages         = models.JSONField(default=list)
+    timezone          = models.CharField(max_length=64, help_text='IANA, e.g. Asia/Karachi')
+    price_format      = models.CharField(max_length=200, blank=True,
+                            help_text='How locals express prices (LLM context)')
+    tax_system        = models.CharField(max_length=300, blank=True)
+    settings          = models.JSONField(default=dict, blank=True,
+                            help_text='Market-specific flags and overrides')
+    created_at        = models.DateTimeField(auto_now_add=True)
+    updated_at        = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'markets'
+        ordering = ['code']
+
+    def clean(self):
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+        errors = {}
+        if self.code != (self.code or '').upper() or len(self.code or '') != 2:
+            errors['code'] = 'Two upper-case letters (ISO 3166-1 alpha-2).'
+        if self.default_currency not in (self.currencies or []):
+            errors['default_currency'] = 'Must be one of currencies.'
+        if self.default_area_unit not in (self.area_units or []):
+            errors['default_area_unit'] = 'Must be one of area_units.'
+        if self.default_language not in (self.languages or []):
+            errors['default_language'] = 'Must be one of languages.'
+        try:
+            ZoneInfo(self.timezone or '')
+        except (ZoneInfoNotFoundError, ValueError):
+            errors['timezone'] = 'Unknown IANA time zone.'
+        if errors:
+            raise ValidationError(errors)
+
+    def __str__(self):
+        return f'{self.code} — {self.name} [{self.status}]'

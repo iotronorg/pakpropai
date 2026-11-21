@@ -1,5 +1,6 @@
 import uuid
 from django.db import models
+from apps.markets.services import default_area_unit, default_country, default_currency  # ADR-019
 
 
 class AuditBenchmark(models.Model):
@@ -17,7 +18,7 @@ class AuditBenchmark(models.Model):
         ACRE  = 'acre',  'Acre'
 
     country      = models.CharField(
-                       max_length=2, default='PK',
+                       max_length=2, default=default_country,
                        help_text='ISO 3166-1 alpha-2 country code, e.g. PK, AE, UK',
                    )
     city         = models.CharField(max_length=100, help_text='e.g. lahore, islamabad, dubai, default')
@@ -37,7 +38,7 @@ class AuditBenchmark(models.Model):
                        help_text='Unit that price_per_unit_min/max is denominated in',
                    )
     currency     = models.CharField(
-                       max_length=3, default='PKR',
+                       max_length=3, default=default_currency,
                        help_text='ISO 4217 currency code for all price fields in this row',
                    )
 
@@ -112,7 +113,7 @@ class PropertyAudit(models.Model):
                             ('marla', 'Marla'), ('kanal', 'Kanal'), ('sqft', 'Sq Ft'),
                             ('sqm', 'Sq Metre'), ('acre', 'Acre'),
                         ],
-                        default='marla',
+                        default=default_area_unit,
                     )
 
     # ── Estimated value — currency stored alongside ────────────────────────────
@@ -120,7 +121,7 @@ class PropertyAudit(models.Model):
                           help_text='Estimated property value in the currency specified by currency',
                       )
     currency        = models.CharField(
-                          max_length=3, default='PKR',
+                          max_length=3, default=default_currency,
                           help_text='ISO 4217 currency code for estimated_value',
                       )
 

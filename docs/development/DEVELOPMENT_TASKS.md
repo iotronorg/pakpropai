@@ -39,7 +39,10 @@ Priority: P0 (blocker) → P3.
 | T‑1033 | [ ] | P1 | PII‑masking middleware endpoint audit (KI‑032) | Decide per endpoint which JSON writes legitimately carry PII (lead/agent create, profile PATCH…); owner sign‑off on the policy |
 | T‑1040 | [ ] | P2 | `is_sandbox` for unscoped leads (KI‑017) | after T‑1030 |
 | T‑1011 | [ ] | P1 | MFA (TOTP) for staff and org admins | GAP‑082 |
-| T‑1050 | [ ] | P1 | `Market` entity; remove hardcoded PK defaults; UTC + per‑entity TZ | TR‑04. **Next** — inspect existing `apps/markets` first |
+| T‑1050 | [~] | P1 | `Market` entity; remove hardcoded PK defaults; UTC + per‑entity TZ | TR‑04. Split a–c |
+| T‑1050a | [x] | P1 | `Market` entity + market‑driven defaults + `market` FK expand/backfill + CI check | ADR‑019. `markets 0001/0002`, `properties 0023/0024`, `organizations 0025/0026`; `DEFAULT_MARKET`; 11 literal defaults → callables; `market_backfill_report`; admin; static check + ratchet (PKR 34 / PK fallback 20). 24 tests |
+| T‑1050b | [ ] | P2 | Move remaining PK logic literals to the market pack | 34 `'PKR'` literals (audit PDF/services, AI tools/schemas/filters, billing, payments…) and 20 `or 'PK'` fallbacks → `get_market()` / record currency; lower the ratchet in `tests/test_markets.py` |
+| T‑1050c | [ ] | P1 | UTC + per‑entity time zone | `TIME_ZONE`/`CELERY_TIMEZONE` → UTC; convert crontab beat entries; reports bucket in the org/market TZ (`Market.timezone`); needs a schedule review before deploy |
 | T‑1060 | [!] | P1 | Location hierarchy + PostGIS + geocoding backfill | Blocked: owner picks geocoding vendor; PostGIS in all envs |
 | T‑1070 | [ ] | P1 | Listing schema v2 (expand/contract) | after T‑1050 |
 | T‑1080 | [ ] | P2 | Listing lifecycle + transitions + expiry | after T‑1070 |

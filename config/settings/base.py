@@ -166,6 +166,9 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 LANGUAGE_CODE = 'en-us'
+# Market used for model defaults (currency, country, area unit) when a record
+# names none (ADR-019). Must be a key of apps/markets/registry.py.
+DEFAULT_MARKET = env('DEFAULT_MARKET', default='PK')
 TIME_ZONE = 'Asia/Karachi'
 USE_I18N = True
 USE_TZ = True
@@ -290,7 +293,7 @@ CELERY_RESULT_BACKEND = 'django-db'
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
-CELERY_TIMEZONE = 'Asia/Karachi'
+CELERY_TIMEZONE = 'Asia/Karachi'  # UTC switch is T-1050c (ADR-019)
 
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 

@@ -1,5 +1,6 @@
 import uuid
 from django.db import models
+from apps.markets.services import default_country  # ADR-019
 
 from apps.core.crypto import EncryptedTextField
 from django.conf import settings
@@ -79,8 +80,13 @@ class Organization(models.Model):
         METRIC         = 'metric',         'Metric (Square Metres)'
 
     # Location (globally extensible)
-    country  = models.CharField(max_length=2, default='PK',
+    country  = models.CharField(max_length=2, default=default_country,
                    help_text='ISO 3166-1 alpha-2 country code, e.g. PK, AE, GB, US')
+    market   = models.ForeignKey(
+                        'markets.Market', on_delete=models.PROTECT,
+                        null=True, blank=True, related_name='organizations',
+                        help_text='Derived from country on create (ADR-019); NULL = no configured market',
+                    )
     language = models.CharField(
                    max_length=5, choices=Language.choices, default=Language.ENGLISH,
                    help_text='Preferred AI response language for this org\'s clients',
@@ -162,6 +168,10 @@ class Organization(models.Model):
             self.slug = slug
 
         country = (self.country or '').upper()
+
+        if self.market_id is None:   # ADR-019; an explicit market is never overridden
+            from apps.markets.services import market_code_for_country
+            self.market_id = market_code_for_country(country)
 
         if not self.data_residency_region or self.data_residency_region == 'global':
             if country == 'GB':

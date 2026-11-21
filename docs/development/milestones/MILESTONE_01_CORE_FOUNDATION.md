@@ -10,7 +10,7 @@
 | All existing listings migrated to schema v2, with a backfill report and < X % unmatched locations | Not started (T‑1060, T‑1070) |
 | Permission matrix tests pass for every role | Not started (T‑1030/T‑1031) |
 | OpenAPI published | **Met in CI** (T‑1090a): validated 3.1 schema published as a CI artefact and at `/api/v1/schema/` for staff. Coverage debt: KI‑037 |
-| No hardcoded `PKR`/`PK`/`marla` defaults outside the PK market pack (grep check in CI) | Not started (T‑1050) |
+| No hardcoded `PKR`/`PK`/`marla` defaults outside the PK market pack (grep check in CI) | **Met for defaults** (T‑1050a): CI test rejects literal market defaults; logic literals ratcheted (T‑1050b) |
 
 ## Tasks
 | ID | P | Deliverable | PRD ref | Depends on |
@@ -25,7 +25,7 @@
 | T‑1032 | P2 | Membership contract (ADR‑013 phase C) | KI‑010 | T‑1031 |
 | T‑1033 | P1 | PII‑masking endpoint audit | KI‑032 | owner policy sign‑off |
 | T‑1040 | P2 | `is_sandbox` semantics for unscoped leads | KI‑017 | T‑1030 |
-| T‑1050 | P1 | `Market` entity from the registry; remove hardcoded PK defaults; UTC + per‑entity TZ | TR‑04, GAP‑014/091 | — |
+| T‑1050 (a ✅, b, c) | P1 | `Market` entity from the registry; remove hardcoded PK defaults; UTC + per‑entity TZ | TR‑04, GAP‑014/091 | — |
 | T‑1060 | P1 | Location hierarchy + PostGIS point + geocoding backfill with a review queue | GAP‑013/041 | T‑1050; **owner:** geocoding vendor, PostGIS in all envs |
 | T‑1070 | P1 | Listing schema v2 (expand/contract) | GAP‑010/012/045 | T‑1050 |
 | T‑1080 | P2 | Listing lifecycle, transitions, audit, expiry | GAP‑011 | T‑1070 |

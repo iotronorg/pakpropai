@@ -2,6 +2,7 @@ import uuid
 from django.contrib.postgres.indexes import GinIndex, OpClass
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
+from apps.markets.services import default_area_unit, default_country, default_currency  # ADR-019
 from django.db.models.functions import Upper
 from django.conf import settings
 from django.utils import timezone
@@ -162,7 +163,7 @@ class Property(models.Model):
     area_unit     = models.CharField(
                         max_length=10,
                         choices=AreaUnit.choices,
-                        default=AreaUnit.MARLA,
+                        default=default_area_unit,
                         help_text='Unit for area_marla — marla, kanal, sqft, sqm, acre, etc.',
                     )
     area_sqm      = models.DecimalField(
@@ -186,7 +187,7 @@ class Property(models.Model):
                         help_text='Price in the currency specified by the currency field',
                     )
     currency      = models.CharField(
-                        max_length=3, default='PKR',
+                        max_length=3, default=default_currency,
                         help_text='ISO 4217 currency code, e.g. PKR, AED, USD, GBP',
                     )
 
@@ -201,8 +202,13 @@ class Property(models.Model):
                          related_name='assigned_properties',
                          help_text='Agent responsible for selling/renting this property',
                      )
-    country       = models.CharField(max_length=2, default='PK',
+    country       = models.CharField(max_length=2, default=default_country,
                         help_text='ISO 3166-1 alpha-2 country code — used for tax/legal rules')
+    market        = models.ForeignKey(
+                        'markets.Market', on_delete=models.PROTECT,
+                        null=True, blank=True, related_name='properties',
+                        help_text='Derived from country on create (ADR-019); NULL = no configured market',
+                    )
     installment_available = models.BooleanField(default=False)
     ai_score      = models.SmallIntegerField(null=True, blank=True)
     risk_level    = models.CharField(max_length=20, choices=RiskLevel.choices, null=True, blank=True)
@@ -315,6 +321,9 @@ class Property(models.Model):
     def save(self, *args, **kwargs):
         if self._state.adding:
             self.is_sandbox = self.derive_is_sandbox()
+            if self.market_id is None:
+                from apps.markets.services import market_code_for_country
+                self.market_id = market_code_for_country(self.country)
         if not self.ref_no:
             self.ref_no = self._build_ref_no()
         self.area_sqm = self._compute_area_sqm()

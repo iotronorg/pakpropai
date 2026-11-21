@@ -1,5 +1,6 @@
 import uuid
 from django.db import models
+from apps.markets.services import default_currency  # ADR-019
 from django.conf import settings
 from django.utils import timezone
 from datetime import timedelta
@@ -61,7 +62,7 @@ class EscrowDeal(models.Model):
                )
     token_amount = models.BigIntegerField(help_text='Token amount in the currency specified by currency field')
     currency     = models.CharField(
-                       max_length=3, default='PKR',
+                       max_length=3, default=default_currency,
                        help_text='ISO 4217 currency code for token_amount, e.g. PKR, AED, USD',
                    )
     status       = models.CharField(max_length=20, choices=Status.choices, default=Status.INITIATED)

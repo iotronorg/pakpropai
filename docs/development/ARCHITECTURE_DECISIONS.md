@@ -299,3 +299,36 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
 - **Rejected:**
   - Redis‑only storage: lost on eviction/restart, which is exactly the retry window that matters;
   - storing 4xx outcomes: a failed request has no side effect to protect, and storing it would block a corrected retry.
+
+## ADR‑019 — `Market` entity; market‑driven defaults; expand step for `market` links
+- **Date:** 2026-11-21 (session 7) · Task T‑1050a · TR‑04, GAP‑014
+- **Context:**
+  - Markets existed only as a code dataclass (`apps/markets/registry.py`: PK, AE, GB, US, CA) plus scattered literals: 11 model defaults (`'PKR'`, `'PK'`, `'marla'`/`AreaUnit.MARLA`), about 34 `'PKR'` literals in logic, about 20 `or 'PK'` fallbacks, and `TIME_ZONE='Asia/Karachi'`.
+  - Every record silently became Pakistani. The M1 exit criterion asks for no hardcoded PK defaults outside the market pack, checked in CI.
+- **Decision:**
+  - **`markets.Market`** (primary key = ISO code):
+    - status (active/beta/inactive);
+    - currencies + default, area units + default, languages + default;
+    - IANA time zone, price format, tax system, `settings` JSON;
+    - `clean()` checks that each default is in its list and that the time zone exists.
+  - **Seed:** `markets 0002` with values frozen in the migration (create‑only, so operator edits survive). PK is `active`, AE/GB/US `beta`, CA `inactive`. A test keeps the seed equal to the registry.
+  - **Two read paths** (`apps/markets/services.py`):
+    - **model defaults** `default_country/default_currency/default_area_unit()` read the code registry for `settings.DEFAULT_MARKET` (env, default `PK`). They never touch the DB, because Django evaluates defaults inside migrations, where a query against a missing table would abort the transaction. An unknown `DEFAULT_MARKET` raises.
+    - **runtime** `get_market(code)` reads the row, caches it for 5 min (invalidated by `post_save`/`post_delete`) and falls back to the registry.
+  - **Literal defaults replaced** by the callables in `Property`, `Organization`, `Lead`, `Payment`, `EscrowDeal`, `AuditBenchmark` and `PropertyAudit`. This changes migration state only; there is no SQL.
+  - **Expand step:**
+    - nullable `market` FK (`PROTECT`) on `Property` (`properties 0023/0024`) and `Organization` (`organizations 0025/0026`);
+    - backfill from `UPPER(country)` where a market row exists;
+    - new rows derive it on create; an explicit market is kept, and it is not recomputed on update;
+    - `country` columns stay;
+    - `manage.py market_backfill_report [--apply] [--max-unmatched-pct N]` reports the result.
+  - **Admin:** editable, not deletable (retire a market with `status`).
+  - **CI check (exit criterion):** `tests/test_markets.py::HardcodedMarketDefaultsTest`. Literal market defaults outside `apps/markets/` and migrations fail the build. The remaining logic literals are a ratchet: `'PKR'` ≤ 34, `or 'PK'` fallbacks ≤ 20, `'Asia/Karachi'` in `apps/` = 0.
+- **Not in this step:**
+  - moving the logic/formatting literals to the market pack (T‑1050b);
+  - UTC + per‑entity time zone (T‑1050c). Switching `TIME_ZONE`/`CELERY_TIMEZONE` moves every crontab beat job and report bucket by 5 hours, so it ships on its own with a schedule review;
+  - the contract step (making `market` required, retiring `country` as the source) after `market_backfill_report` is clean in prod.
+- **Rejected:**
+  - DB‑read defaults: they are unsafe in migrations and add a query per instantiation;
+  - a `market` FK on every money model now: currency belongs to the listing, deal or payment, not to a market; revisit with listing v2 (T‑1070);
+  - deleting the registry: code packs (calculators, parsers, document types) stay in code, and the registry is their index.

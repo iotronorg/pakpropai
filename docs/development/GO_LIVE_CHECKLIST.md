@@ -69,3 +69,13 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - [ ] Every response now carries `X-Request-ID` (an inbound id from the load balancer is kept when it is 8–64 chars of `[A-Za-z0-9._-]`). JSON log lines gain a `request_id` field; update log‑pipeline parsers or dashboards if they use a fixed field list. `/api/` JSON errors gain `error_info` and `request_id` (existing keys unchanged), and unrouted `/api/` URLs and 500s now return JSON instead of HTML (ADR‑017). Tell the frontend team.
 - [ ] **Stricter query params (T‑1090c):** malformed or negative `limit`/`offset`/`top_n`/`hours` now return 400 with a field error. Before, they gave a 500 or a silent default. Unknown `type`/`legal_status` on `/api/v1/properties/` return 400 (before: an empty list); `min_price > max_price` and `min_score > 100` return 400; `?ref_no=` matches only a full reference number. The notifications and fraud‑alerts 400 bodies changed from `{"detail": "limit … must be integers."}` to the standard `{"limit": "Must be a whole number.", "error_info": …}`. Tell the frontend team.
 - [ ] Migration `core 0003_idempotency_record` creates `idempotency_records` (schema only). Beat must run `purge-idempotency-records` (hourly). Optional `IDEMPOTENCY_TTL_HOURS` (default 24). Clients may now send `Idempotency-Key` on lead/appointment create, checkout, SEPA and deal‑lock initiate; a replay carries `Idempotent-Replayed: true` (ADR‑018). Tell the frontend team that retries of these POSTs should reuse the key.
+
+## 10. Session‑7 changes (M1: Market entity, ADR‑019)
+- [ ] Migrations:
+  - `markets 0001/0002` create and seed `markets` (PK active; AE/GB/US beta; CA inactive). Existing rows are not overwritten.
+  - `properties 0023` and `organizations 0025` add a nullable `market_id` column with two indexes. Index builds take a short write lock on large tables, so run off‑peak.
+  - `properties 0024` and `organizations 0026` backfill `market_id` from `UPPER(country)`, in one `UPDATE` per market.
+- [ ] After migrating, run `python manage.py market_backfill_report`. Investigate any `unmatched country` lines (typos, or countries without a market). `--apply` re‑fills NULLs after fixing countries; `--max-unmatched-pct 1` can gate a pipeline.
+- [ ] `DEFAULT_MARKET` (env, default `PK`) sets the default country, currency and area unit for new records. Leave it as `PK` until a second market launches; an unknown code fails at the first model instantiation.
+- [ ] Markets are edited in the admin (no delete; retire with `status`). Cached for 5 min, invalidated on save.
+- [ ] `TIME_ZONE` is still `Asia/Karachi`: the UTC switch is T‑1050c and ships separately.

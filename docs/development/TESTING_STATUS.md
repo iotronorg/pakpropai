@@ -49,13 +49,17 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | 2026-11-21 | Working tree, after T‑1090c | `check` / `makemigrations --check` / `spectacular --validate` / `bandit -ll` | no issues / no changes / valid (154/32 unchanged) / 0 HIGH | — |
 | 2026-11-21 | Working tree, session 6 end (after T‑1090d) | `pytest tests/ apps/` | **1617 passed, 1 skipped, 0 failed**, 143 subtests | 5m05s |
 | 2026-11-21 | Working tree, after T‑1090d | `check` / `makemigrations --check` / `bandit -ll` | no issues / no changes / 8 Medium, 0 HIGH | — |
+| 2026-11-21 | `HEAD` db23c9a, session 7 start | — | Tree clean; the owner had committed T‑1090d. Session‑6 end state 1617/1/0 | — |
+| 2026-11-21 | Working tree, session 7 (after T‑1050a) | `pytest tests/ apps/` | **1641 passed, 1 skipped, 0 failed**, 156 subtests | 4m50s |
+| 2026-11-21 | Scratch DB `rehearse` | `migrate` (properties ≤0022, organizations ≤0024) + 2 raw rows (`ae`, `ZZ`) → `migrate` → report → back to `properties 0022`/`organizations 0024`/`markets zero` → `migrate` | Backfill `ae`→AE, `ZZ` unmatched (reported); reverse and re‑forward OK; `makemigrations --check` clean; `check` clean | — |
+| 2026-11-21 | Working tree, session 7 | `bandit -r apps/ -ll` | 8 Medium, **0 HIGH** | — |
 | 2026-11-21 | Working tree, session 6 | `manage.py spectacular --validate --file openapi.yaml` | exit 0; valid OpenAPI 3.1; 220 paths; 154 unique errors / 32 unique warnings (KI‑037) | — |
 | 2026-11-21 | Working tree, session 6 end | `makemigrations --check` / `manage.py check` / `bandit -r apps/ -ll` / CI YAML parse | No changes / no issues / 8 Medium, **0 HIGH** / OK | — |
 | 2026-11-21 | Scratch DB `bench` | `migrate` → `migrate properties 0020` → `migrate` | OK both ways; indexes dropped on reverse, `pg_trgm` kept | — |
 | 2026-11-21 | Scratch DB `bench`, 200k synthetic listings, `ANALYZE` | `EXPLAIN ANALYZE` of 7 hot query shapes (scratchpad script) | No seq scans. City icontains + rank 2.7 ms; city+location 4.7 ms; price band 0.3 ms; viewer‑org OR 1.6 ms; API city iexact 0.07 ms; FTS old→new: selective 631→3 ms, common 757→238 ms, "penthouse" 720→92 ms | — |
 | 2026-11-21 | Container | `infra/scripts/health_check.py` against dead port / missing URL / local 200 server | exit 1 / exit 1 / exit 0 | — |
 
-## Tests added in sessions 2–6
+## Tests added in sessions 2–7
 
 | File | Tests | Covers |
 |---|---|---|
@@ -75,6 +79,7 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | `tests/test_error_envelope.py` | 20 | T‑1090b: request id generated/kept/replaced (injection), header on success, context cleared, log field, CORS; DRF exceptions (401 code, validation fields, 404, custom code, list body, key collision); hand‑built `error` string kept; security‑middleware 403; unrouted `/api/` 404 JSON; unhandled 500 JSON without internals; non‑`/api/` untouched |
 | `tests/test_query_param_validation.py` | 18 | T‑1090c: helpers (int/clamp/bounds/limit‑offset/choice); audit‑log, chain‑verify, notifications, fraud‑alerts bad input → field 400 (negative limit was a 500); property enums, price range, `min_score` bound, `ref_no` exact (no `UPPER`), list params + enums in OpenAPI |
 | `tests/test_idempotency.py` | 15 | T‑1090d: appointment booking replay (one row, same id, replay header), no key unchanged, 422 reuse, per‑user scope, bad key 400, failed request frees key for corrected retry, body encrypted at rest; probe view: 4xx/5xx/exceptions not stored, 409 in flight, stale lease takeover, expiry frees key, anonymous untracked, purge; OpenAPI header on all 5 targets |
+| `tests/test_markets.py` | 24 | T‑1050a: seed = registry, only PK active, seed idempotent/keeps edits; `Market.clean`; PROTECT; admin no delete; `get_market` row/cache invalidation/registry fallback/unknown; defaults follow `DEFAULT_MARKET` (PK, AE override, unknown raises); market derived on create (explicit kept, not recomputed); backfill migrations; report + `--apply` + `--max-unmatched-pct`; static check of literal defaults + ratchet |
 
 ## Modified existing tests (behaviour change, not weakening)
 
