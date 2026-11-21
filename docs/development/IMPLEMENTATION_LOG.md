@@ -86,3 +86,21 @@
   - `apps/whatsapp/tasks.py`: task is bound, `acks_late`, `max_retries=6`; `_retry_inbound`.
   - `apps/whatsapp/client.py`, `router.py`: side‑effect markers.
   - `apps/whatsapp/views.py`: idempotency key released on dispatch failure.
+
+## 2026-11-21 — Session 5 (M1; no commits)
+
+- **T‑1030 membership consolidation (ADR‑013 phase A):**
+  - New `apps/organizations/membership.py`:
+    - `ensure_membership`, `deactivate_membership`;
+    - `sync_agent_membership`, `sync_owner_membership`;
+    - `remove_member`, `primary_membership`;
+    - `find_drift`, `repair_drift`.
+  - `apps/organizations/signals.py`: `post_init` snapshot plus `post_save` sync for `agents.Agent` (organization/user) and `organizations.Organization` (admin_user). It honours `update_fields` and `raw`, and reads `__dict__` so deferred fields cause no query.
+  - `apps/organizations/views.py`:
+    - org registration no longer creates the owner row itself (it would duplicate‑key against the hook);
+    - members delete → `remove_member()`.
+  - `apps/core/permissions.get_user_org` and `apps/whatsapp/middleware._get_org_id` → `primary_membership()`.
+  - Migration `organizations 0024_backfill_missing_memberships` (create‑only, reverse no‑op).
+  - Command `organizations/management/commands/reconcile_memberships.py` (`--apply`, `--show`, `--fail-on-drift`).
+- **KI‑032:** `config/settings/base.py` `PRIVACY_MASK_EXEMPT_PATHS` += `/api/v1/organizations/me/members/`, `/api/v1/agents/register/`.
+- **Tests:** new `tests/test_membership_consolidation.py` (25). `tests/test_org_membership.py` and `tests/test_lead_scoring.py` now seed owner rows with `get_or_create`.

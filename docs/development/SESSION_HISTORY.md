@@ -47,3 +47,31 @@
 1. `git status`: session‑4 changes are uncommitted. **Do not commit.**
 2. `scripts/dev/test.sh` → expect 1477 passed, 1 skipped.
 3. Next: **T‑1030**. Write the membership consolidation ADR: inventory `OrganizationMembership`, `AgentOrgMembership`, `AgentOrganizationMembership`, `Agent.organization`, `Organization.admin_user`, and every reader of each (`get_user_org`, permissions, the `use_membership_rbac` flag). Choose the canonical model and a dual‑read/backfill plan. Then T‑1031 with permission‑matrix tests. KI‑030 can be fixed alongside.
+
+## Session 5 — 2026-11-21 — M1: membership consolidation
+- **Start state:**
+  - The owner had committed session 4 (`b9ac8a7`); the tree was clean.
+  - The baseline re‑run gave **1477 passed, 1 skipped**, matching the handoff.
+- **Completed:** T‑1030 (ADR‑013 phase A):
+  - inventory of all five user↔org links and their readers/writers;
+  - `OrganizationMembership` made canonical, with save hooks that sync `Agent.organization`/`Agent.user`/`Organization.admin_user`;
+  - `organizations 0024` backfill;
+  - `reconcile_memberships` command;
+  - deterministic `get_user_org()`.
+- **Found and fixed:**
+  - An agent removed from a team kept org access through a stale active membership.
+  - Agents registered or added to a team after migration 0010, and the owners of admin‑created orgs, resolved to no org.
+  - The members‑API delete left `Agent.organization` set.
+  - KI‑032: `PIIMaskingMiddleware` masked the phone in JSON agent registration and member invites (400). The two endpoints are now exempt; a wider audit is T‑1033.
+- **New tasks:** T‑1032 (membership contract), T‑1033 (masking endpoint audit).
+- **Tests:** 1502 passed, 1 skipped, 0 failed. No migration drift; `manage.py check` clean; Bandit 0 HIGH; `organizations 0024` migrated forward → 0023 → forward.
+- **Not committed.**
+
+### Handoff → session 6
+1. `git status`: session‑5 changes are uncommitted. **Do not commit.**
+2. `scripts/dev/test.sh` → expect 1502 passed, 1 skipped.
+3. Next: **T‑1021** transactional outbox.
+   - Start in `apps/whatsapp/client.py` (`send_text/send_template/send_document`), `apps/notifications/tasks.py` and `apps/whatsapp/inbound_resilience.py` (side‑effect markers from ADR‑012).
+   - Add an `OutboxMessage` model (new app or `apps/core`), written inside the business transaction, plus a relay task with idempotency keys and named Celery queues.
+   - Use it first for WhatsApp replies sent from inbound processing.
+4. Then T‑1100 → T‑1090 → T‑1050 → T‑1031. T‑1031 starts from ADR‑013 phase B: the `owned_organization` reader list in the ADR table.

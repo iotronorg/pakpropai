@@ -78,11 +78,10 @@ class LeadSerializerTest(TestCase):
             phone='+923004444444', password='pw', role='developer'
         )
         self.org = Organization.objects.create(name='Test Org', admin_user=self.dev)
-        OrganizationMembership.objects.create(
+        OrganizationMembership.objects.get_or_create(
             user=self.dev,
             organization=self.org,
-            role=OrganizationMembership.Role.OWNER,
-            is_active=True,
+            defaults={'role': OrganizationMembership.Role.OWNER, 'is_active': True},
         )
         self.lead = Lead.objects.create(
             user=self.client_user,

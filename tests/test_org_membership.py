@@ -29,11 +29,11 @@ class OrgMembershipListTest(TestCase):
         self.owner = _user('+923001111111', role='developer', name='Owner')
         self.org = _org(self.owner)
         self.client.force_authenticate(user=self.owner)
-        # seed an owner membership (created at org registration normally)
-        OrganizationMembership.objects.create(
+        # owner membership is created by the admin_user sync (ADR-013)
+        OrganizationMembership.objects.get_or_create(
             user=self.owner,
             organization=self.org,
-            role=OrganizationMembership.Role.OWNER,
+            defaults={'role': OrganizationMembership.Role.OWNER},
         )
 
     def test_get_members_returns_list(self):
@@ -61,10 +61,10 @@ class OrgMembershipInviteTest(TestCase):
         self.owner = _user('+923003333333', role='developer', name='Owner')
         self.org = _org(self.owner)
         self.client.force_authenticate(user=self.owner)
-        OrganizationMembership.objects.create(
+        OrganizationMembership.objects.get_or_create(
             user=self.owner,
             organization=self.org,
-            role=OrganizationMembership.Role.OWNER,
+            defaults={'role': OrganizationMembership.Role.OWNER},
         )
         self.invited = _user('+923004444444', role='agent', name='Invited')
 
@@ -111,10 +111,10 @@ class OrgMembershipInviteTest(TestCase):
     def test_cross_org_isolation(self):
         other_owner = _user('+923005555555', role='developer', name='Other Owner')
         other_org = _org(other_owner, name='Other Org')
-        OrganizationMembership.objects.create(
+        OrganizationMembership.objects.get_or_create(
             user=other_owner,
             organization=other_org,
-            role=OrganizationMembership.Role.OWNER,
+            defaults={'role': OrganizationMembership.Role.OWNER},
         )
         self.client.force_authenticate(user=other_owner)
         r = self.client.get('/api/v1/organizations/me/members/')
@@ -129,10 +129,10 @@ class OrgMembershipRemoveTest(TestCase):
         self.owner = _user('+923006666666', role='developer', name='Owner')
         self.org = _org(self.owner)
         self.client.force_authenticate(user=self.owner)
-        self.owner_membership = OrganizationMembership.objects.create(
+        self.owner_membership, _ = OrganizationMembership.objects.get_or_create(
             user=self.owner,
             organization=self.org,
-            role=OrganizationMembership.Role.OWNER,
+            defaults={'role': OrganizationMembership.Role.OWNER},
         )
         self.member = _user('+923007777777', role='agent', name='Member')
         self.membership = OrganizationMembership.objects.create(

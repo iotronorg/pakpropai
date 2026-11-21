@@ -523,6 +523,8 @@ PRIVACY_MASK_EXEMPT_PATHS = [
     '/api/v1/compliance/',
     '/api/v1/auth/',
     '/api/v1/organizations/register/',
+    '/api/v1/organizations/me/members/',  # invite looks the user up by phone (KI-032)
+    '/api/v1/agents/register/',           # self-registration submits the agent's own phone (KI-032)
     '/api/v1/whatsapp/webhook/',
     '/public/',  # viral referral endpoints — user voluntarily submits phone for WA deep-link
 ]

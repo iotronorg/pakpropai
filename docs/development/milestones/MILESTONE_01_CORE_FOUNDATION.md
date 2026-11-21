@@ -19,8 +19,10 @@
 | T‑1011 | P1 | MFA (TOTP) for staff and org admins | GAP‑082 | T‑1010 |
 | T‑1020 ✅ | P1 | Inbound WhatsApp retry + dead‑letter under DB starvation | KI‑019 | — |
 | T‑1021 | P1 | Transactional outbox for outbound side effects + named queues | GAP‑043, TR‑09 | T‑1020 |
-| T‑1030 | P1 | Membership consolidation plan (ADR) | GAP‑015, KI‑010 | — |
-| T‑1031 | P1 | Policy‑based RBAC + active org context + permission‑matrix tests | TR‑06 | T‑1030 |
+| T‑1030 ✅ | P1 | Membership consolidation plan (ADR‑013) + phase A sync/backfill | GAP‑015, KI‑010 | — |
+| T‑1031 | P1 | Policy‑based RBAC + active org context + permission‑matrix tests (ADR‑013 phase B) | TR‑06 | T‑1030 |
+| T‑1032 | P2 | Membership contract (ADR‑013 phase C) | KI‑010 | T‑1031 |
+| T‑1033 | P1 | PII‑masking endpoint audit | KI‑032 | owner policy sign‑off |
 | T‑1040 | P2 | `is_sandbox` semantics for unscoped leads | KI‑017 | T‑1030 |
 | T‑1050 | P1 | `Market` entity from the registry; remove hardcoded PK defaults; UTC + per‑entity TZ | TR‑04, GAP‑014/091 | — |
 | T‑1060 | P1 | Location hierarchy + PostGIS point + geocoding backfill with a review queue | GAP‑013/041 | T‑1050; **owner:** geocoding vendor, PostGIS in all envs |
@@ -32,4 +34,4 @@
 | T‑1120 | P2 | AI provider abstraction, prompt registry, market‑pack prompt fragments | GAP‑055/056/062 | — |
 
 ## Order
-T‑1010 ✅ → T‑1020 ✅ → T‑1030 → T‑1021 → T‑1100 → T‑1090 → T‑1050 → T‑1031 → T‑1070 → T‑1080 → T‑1011 → T‑1110 → T‑1120 → T‑1060 (this one waits on the vendor/PostGIS decision).
+T‑1010 ✅ → T‑1020 ✅ → T‑1030 ✅ → T‑1021 → T‑1100 → T‑1090 → T‑1050 → T‑1031 → T‑1032 → T‑1070 → T‑1080 → T‑1011 → T‑1110 → T‑1120 → T‑1060 (this one waits on the vendor/PostGIS decision).

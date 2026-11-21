@@ -31,9 +31,11 @@ Priority: P0 (blocker) → P3.
 |---|---|---|---|---|
 | T‑1010 | [x] | P1 | OTP hashing (KI‑016) | ADR‑011. `OTPCode.code_hash` (keyed HMAC bound to phone+purpose), constant‑time check, `users 0013` hashes existing rows; admin no longer lists codes. 9 tests |
 | T‑1020 | [x] | P1 | Inbound WhatsApp retry/dead‑letter under DB starvation (KI‑019) | ADR‑012. Retries with backoff on transient DB errors only when nothing was sent; `acks_late`; Redis dead‑letter + `replay_whatsapp_dead_letters`; webhook releases idempotency key on enqueue failure. 16 tests. Outbound outbox split to T‑1021 |
-| T‑1021 | [ ] | P1 | Transactional outbox for outbound side effects (WhatsApp sends/notifications written in the DB transaction, dispatched by a relay) | GAP‑043, TR‑09 |
-| T‑1030 | [ ] | P1 | Membership model consolidation plan (KI‑010) | **Next** |
-| T‑1031 | [ ] | P1 | Policy‑based RBAC + active org context + permission‑matrix tests | after T‑1030 |
+| T‑1021 | [ ] | P1 | Transactional outbox for outbound side effects (WhatsApp sends/notifications written in the DB transaction, dispatched by a relay) | GAP‑043, TR‑09. **Next** |
+| T‑1030 | [x] | P1 | Membership model consolidation plan (KI‑010) | ADR‑013 phase A: inventory, canonical `OrganizationMembership`, projection sync hooks, `organizations 0024` backfill, `reconcile_memberships`, deterministic primary org. Fixed stale access after team removal. Also KI‑032 (2 masking exemptions). 25 tests |
+| T‑1031 | [ ] | P1 | Policy‑based RBAC + active org context + permission‑matrix tests | ADR‑013 phase B: move `owned_organization`/`agent_profile.organization` readers to memberships; restrict owner/org_admin grants in invite API; KI‑030 |
+| T‑1032 | [ ] | P2 | Membership contract (ADR‑013 phase C) | after T‑1031 and a clean `reconcile_memberships` in prod: drop `AgentOrganizationMembership`, re‑key `AgentOrgMembership`, retire `admin_user` one‑to‑one |
+| T‑1033 | [ ] | P1 | PII‑masking middleware endpoint audit (KI‑032) | Decide per endpoint which JSON writes legitimately carry PII (lead/agent create, profile PATCH…); owner sign‑off on the policy |
 | T‑1040 | [ ] | P2 | `is_sandbox` for unscoped leads (KI‑017) | after T‑1030 |
 | T‑1011 | [ ] | P1 | MFA (TOTP) for staff and org admins | GAP‑082 |
 | T‑1050 | [ ] | P1 | `Market` entity; remove hardcoded PK defaults; UTC + per‑entity TZ | TR‑04 |

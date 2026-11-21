@@ -93,17 +93,16 @@ def get_org_membership(user, organization):
 def get_user_org(user):
     """
     Return the Organization for a non-admin user.
-    Reads from OrganizationMembership when use_membership_rbac is enabled,
-    otherwise falls back to the legacy User.organization FK approach.
+    Reads the user's primary active OrganizationMembership when use_membership_rbac
+    is enabled (ADR-013), otherwise falls back to the legacy projections
+    (owned_organization / agent_profile.organization).
     """
     from apps.config.services import SystemConfigService
     use_membership = SystemConfigService.get('use_membership_rbac', 'false') == 'true'
 
     if use_membership:
-        from apps.organizations.models import OrganizationMembership
-        membership = OrganizationMembership.objects.filter(
-            user=user, is_active=True
-        ).select_related('organization').first()
+        from apps.organizations.membership import primary_membership
+        membership = primary_membership(user)
         return membership.organization if membership else None
 
     # Legacy path

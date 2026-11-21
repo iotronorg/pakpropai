@@ -64,11 +64,6 @@ class JWTAuthMiddleware(BaseMiddleware):
             return None, None
 
     def _get_org_id(self, user):
-        from apps.organizations.models import OrganizationMembership
-        membership = (
-            OrganizationMembership.objects
-            .filter(user=user, is_active=True)
-            .select_related("organization")
-            .first()
-        )
-        return membership.organization.id if membership else None
+        from apps.organizations.membership import primary_membership
+        membership = primary_membership(user)
+        return membership.organization_id if membership else None

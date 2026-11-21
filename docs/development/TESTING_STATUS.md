@@ -32,9 +32,13 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | 2026-11-21 | Working tree, session 4 start | `pytest tests/ apps/` | **1452 passed, 1 skipped, 0 failed** (matches handoff) | 4m44s |
 | 2026-11-21 | Working tree, session 4 end | `pytest tests/ apps/` | **1477 passed, 1 skipped, 0 failed**, 98 subtests | 4m41s |
 | 2026-11-21 | Working tree, session 4 | `makemigrations --check` / `manage.py check` / `bandit -r apps/ -ll` | No changes / no issues / 8 findings, 0 HIGH | — |
+| 2026-11-21 | `HEAD` b9ac8a7, session 5 start | `pytest tests/ apps/` | **1477 passed, 1 skipped, 0 failed** (matches handoff) | 4m35s |
+| 2026-11-21 | Working tree, session 5 end | `pytest tests/ apps/` | **1502 passed, 1 skipped, 0 failed**, 98 subtests | 4m35s |
+| 2026-11-21 | Working tree, session 5 | `makemigrations --check` / `manage.py check` / `bandit -r apps/ -ll` | No changes / no issues / 8 findings, 0 HIGH | — |
+| 2026-11-21 | Working tree, session 5 | `migrate` → `migrate organizations 0023` → `migrate`; `reconcile_memberships [--fail-on-drift]` | OK both ways; all categories 0, exit 0 | — |
 | 2026-11-21 | Container | `infra/scripts/health_check.py` against dead port / missing URL / local 200 server | exit 1 / exit 1 / exit 0 | — |
 
-## Tests added in sessions 2–4
+## Tests added in sessions 2–5
 
 | File | Tests | Covers |
 |---|---|---|
@@ -47,12 +51,14 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 
 | `tests/test_otp_hashing.py` | 9 | T‑1010: no plaintext column/value, keyed + bound hash, API send→verify, migration forward/reverse (`MigrationExecutor`) |
 | `tests/test_whatsapp_inbound_resilience.py` | 16 | T‑1020: retry on transient DB errors, backoff, dead‑letter, no retry after a send, org‑lookup retry, replay + command, webhook key release |
+| `tests/test_membership_consolidation.py` | 25 | T‑1030: agent/owner projection sync (join, move, unlink, rejoin, owner kept, unrelated saves), admin transfer, API writer paths (team add/remove revokes access, members delete, JSON registration + invite — KI‑032), primary org choice, drift report/repair/command, backfill migration idempotency |
 
 ## Modified existing tests (behaviour change, not weakening)
 
 - `test_compliance.py::test_export_endpoint_queues_task`: it now patches `.delay` and asserts the task is enqueued with a real `DataExportRequest` id. This is stricter than before, and it no longer calls Cloudinary.
 - Deal‑creation test classes in `test_deal_lock.py`, `test_sepa_payments.py`, `test_stripe_deal_lock.py` and `test_compliance_views.py` now call `enable_feature('feature_deal_lock')` in `setUp`, because deal lock is frozen by default (ADR‑006). `DealLockBlockedEntityTest` previously could pass from any 403; it now reaches the sanctions check.
 
+- Session 5: `test_org_membership.py` (4 setUps) and `test_lead_scoring.py` seed the owner membership with `get_or_create`, because creating an org with `admin_user` now creates it (ADR‑013). Assertions unchanged.
 - Session 4: `test_celery_tasks.py::CleanupExpiredOTPsTest` creates rows with `code_hash` (the `code` column no longer exists).
 - Session 3: syndication isolation tests (8 classes) and `VoiceInboundWebhookTest` call `enable_feature(...)`, because those modules are frozen by default.
 

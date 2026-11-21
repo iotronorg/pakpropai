@@ -541,12 +541,8 @@ class OrgRegistrationView(APIView):
                 plan=Organization.Plan.TRIAL,
                 is_verified=True,
             )
-            OrganizationMembership.objects.create(
-                user=user,
-                organization=org,
-                role=OrganizationMembership.Role.OWNER,
-                is_active=True,
-            )
+            # The owner membership is created by the admin_user projection sync
+            # (apps.organizations.membership, ADR-013) inside this transaction.
 
         try:
             otp = OTPService.issue(d['phone'], purpose='org_registration')
@@ -690,5 +686,6 @@ class OrgMembershipView(APIView):
             return Response({'detail': 'Membership not found.'}, status=status.HTTP_404_NOT_FOUND)
         if membership.role == OrganizationMembership.Role.OWNER:
             return Response({'detail': 'Cannot remove the organization owner.'}, status=status.HTTP_400_BAD_REQUEST)
-        membership.deactivate()
+        from .membership import remove_member
+        remove_member(membership)
         return Response(status=status.HTTP_204_NO_CONTENT)

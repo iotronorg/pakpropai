@@ -129,3 +129,45 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - The webhook releases its idempotency key when `.delay()` fails and returns 500, so Meta's re‑delivery is processed.
 - **Rejected:** persisting inbound messages to a DB inbox table first (the DB is what fails in this scenario); retrying on any exception (non‑transient bugs would loop and could repeat LLM cost).
 - **Follow‑up:** T‑1021 transactional outbox for outbound side effects.
+
+## ADR‑013 — `OrganizationMembership` is the canonical user ↔ org link; legacy links are projections
+- **Date:** 2026-11-21 (session 5) · Task T‑1030 · KI‑010
+- **Context (inventory):**
+
+  | Link | Shape | Writers | Readers |
+  |---|---|---|---|
+  | `OrganizationMembership` (user, org, role, employment_type, is_active) | many‑to‑many, 8 roles | org registration, `/organizations/me/members/` invite/remove, migration 0010 | `get_user_org()` (flag `use_membership_rbac`, default on, ~17 modules), the `IsOrg*` role permissions, WhatsApp WS consumers + JWT middleware |
+  | `Organization.admin_user` | one‑to‑one | org registration, admin org create/PATCH | `owned_organization` in ~19 modules (tenant middleware, `IsOrgAdmin`, `IsOrgMember`, billing, compliance, verification, inventory…) |
+  | `Agent.organization` (+ `Agent.user`) | FK, "primary org" | agent registration, developer agent create, `/agents/team/` add/remove, admin | tenant middleware, `IsOrgMember`, agent/lead querysets, lead routing |
+  | `AgentOrgMembership` (agent, org, commission, `can_receive_leads`…) | collaboration terms for freelancers | **none in code** (admin only) | `leads.services.suggest_agents_for_lead` |
+  | `AgentOrganizationMembership` (FreelanceAgentProfile, org, commission) | duplicate of the above | none | none (tests only) |
+
+- **Problem:** The writers of `Agent.organization` and `admin_user` never wrote `OrganizationMembership`, yet `get_user_org()` reads it by default. Consequences found:
+  - agents registered or added to a team after migration 0010 resolved to **no org**;
+  - an agent **removed** from a team kept an active membership, so `get_user_org()` and the WS consumers still granted org access;
+  - an org created by a platform admin left its developer without an org;
+  - removing a member via the members API left `Agent.organization` set, so the legacy readers kept access.
+- **Options:** (a) make `Agent.organization`/`admin_user` canonical and drop the table; (b) make the table canonical and keep the columns as projections maintained by one write path; (c) big‑bang rewrite of all ~35 readers now.
+- **Decision:** (b), contracted in phases:
+  - **Phase A (done, session 5):**
+    - `apps/organizations/membership.py` is the single write path. `post_save` hooks on `Agent` and `Organization` (snapshot taken at `post_init`, `update_fields`‑aware) mirror every projection change:
+      - agent joins → `agent`/`freelance_agent` membership ensured (reactivated if inactive);
+      - agent leaves or is unlinked → its membership is deactivated, **except owner**;
+      - `admin_user` changes → the new admin gets owner (created or promoted) and the previous admin's membership is deactivated, matching legacy `owned_organization` semantics.
+    - The members‑API delete goes through `remove_member()`, which also clears `Agent.organization` and decrements the seat ledger.
+    - `primary_membership()` makes `get_user_org()` deterministic. Preference order: owned org, then `Agent.organization`, then earliest joined. It used to be an unordered `.first()`.
+    - Migration `organizations 0024` backfills missing rows (create‑only, idempotent).
+    - `manage.py reconcile_memberships [--apply] [--fail-on-drift]` reports drift. It repairs only missing owner and agent rows.
+  - **Phase B (T‑1031):** move every `owned_organization`/`agent_profile.organization` reader (tenant middleware, `IsOrgAdmin`, `IsOrgMember`, the ~19 modules) to membership‑based policies with an explicit active‑org context, then remove the `use_membership_rbac` legacy branch. Also restrict which roles may grant `owner`/`org_admin` through the invite API, which today accepts any role.
+  - **Phase C (contract, after B, `reconcile` clean in prod):**
+    - Drop `AgentOrganizationMembership`, which has no readers.
+    - Re‑key `AgentOrgMembership` as collaboration terms on a membership.
+    - Replace `Organization.admin_user` one‑to‑one by the owner membership, so one user can own several orgs.
+    - Keep `Agent.organization` only as a primary‑org pointer, or drop it.
+- **Why not (a):** one FK cannot express multi‑org freelancers, roles or history; the role permissions and WS auth already use the table. **Why not (c):** too large to verify in one step; phase A makes both read paths agree first, so phase B can switch readers one by one with no behaviour change.
+- **Consequences:**
+  - Creating an `Agent` with an org, or an `Organization` with `admin_user`, now creates the membership automatically. Code or tests that `create()` the same row afterwards must use `get_or_create`; three test files were updated.
+  - Bulk `QuerySet.update()` of these columns bypasses the hooks. No such code exists; `reconcile_memberships` detects it.
+  - A pending (self‑registered) agent gets an active membership, the same access the legacy path gave. Their user is inactive until approval.
+  - Report‑only categories (`extra_owner`, `orphan_agent`, `collaboration_without_membership`) need a human decision and are never auto‑revoked.
+- **Rejected:** Deactivating "orphan" agent memberships automatically. They can be legitimate invites to a second org.
