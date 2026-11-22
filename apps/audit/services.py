@@ -6,6 +6,8 @@ No AI calls — pure deterministic scoring; fast and free.
 import math
 import logging
 
+from apps.markets.pk import CURRENCY as PK_CURRENCY
+
 logger = logging.getLogger(__name__)
 
 AUDIT_DISCLAIMER = (
@@ -181,7 +183,7 @@ class AuditEngine:
         location: str,
         property_type: str,
         estimated_value: int = None,
-        value_currency: str = 'PKR',
+        value_currency: str = PK_CURRENCY,  # the engine is PK market-pack logic (KI-045)
         area_sqm: float = None,
         area_marla: float = None,
         owner_name: str = '',
@@ -210,6 +212,10 @@ class AuditEngine:
             area_sqm = float(area_sqm)
 
         bench = _get_benchmark(city, location)
+        # Label money in the unit it is in: value-derived figures in value_currency,
+        # benchmark-derived ones in the benchmark's currency (T-1050b).
+        cur = (value_currency or PK_CURRENCY).upper()
+        bench_cur = (bench.get('currency') or PK_CURRENCY).upper()
         loc_lower = location.lower()
         city_lower = city.lower()
         desc_lower = description.lower()
@@ -455,8 +461,8 @@ class AuditEngine:
         buyer_action_items = [
             f"Get Fard from {reg_authority} before paying any token",
             'Verify seller CNIC matches all property documents',
-            f"True cost including all taxes and fees: PKR {true_cost_total:,}",
-            f"Plan for 30% down payment: PKR {down_pmt:,}",
+            f"True cost including all taxes and fees: {cur} {true_cost_total:,}",
+            f"Plan for 30% down payment: {cur} {down_pmt:,}",
         ]
 
         if verdict == 'BUY':
@@ -468,7 +474,7 @@ class AuditEngine:
             'Collect all original documents: Fard, allotment letter, chain of title',
             'Get utility clearance certificates before listing',
             'Register with FBR as filer to reduce withholding tax from 6% to 3%',
-            f"List at PKR {fair_max:,} based on area benchmark",
+            f"List at {bench_cur} {fair_max:,} based on area benchmark",
         ]
 
         best_time_to_sell = (
@@ -500,7 +506,7 @@ class AuditEngine:
         elif area_approved is None:
             third_action = 'Verify area approval status with local development authority (LDA/CDA/RDA)'
         else:
-            third_action = f"Check ROI: expected {appr_pct}% annual appreciation — 5-year projection PKR {roi_5yr['value']:,}"
+            third_action = f"Check ROI: expected {appr_pct}% annual appreciation — 5-year projection {cur} {roi_5yr['value']:,}"
 
         green_flags = []
         red_flags = []
@@ -544,7 +550,7 @@ class AuditEngine:
                 'estimated_value': estimated_value,
                 'value_currency': value_currency,
                 # Legacy field — kept for backward compat; None for non-PKR audits
-                'estimated_value_pkr': estimated_value if value_currency == 'PKR' else None,
+                'estimated_value_pkr': estimated_value if cur == PK_CURRENCY else None,
                 'owner_name': owner_name,
                 'price_per_marla': price_per_marla,
             },
@@ -570,6 +576,7 @@ class AuditEngine:
                 'comparable_listings': [],
                 'estimated_fair_value_min': fair_min,
                 'estimated_fair_value_max': fair_max,
+                'benchmark_currency': bench_cur,
             },
             'financial_analysis': {
                 'estimated_value': val,
@@ -632,18 +639,18 @@ class AuditEngine:
             'role_insights': {
                 'buyer': {
                     'summary': (
-                        f"This {property_type} in {location}, {city} is priced at PKR {val:,}. "
-                        f"True cost including taxes and fees is PKR {true_cost_total:,}."
+                        f"This {property_type} in {location}, {city} is priced at {cur} {val:,}. "
+                        f"True cost including taxes and fees is {cur} {true_cost_total:,}."
                     ),
                     'action_items': buyer_action_items,
                     'negotiation_tip': negotiation_tip,
                 },
                 'seller': {
                     'summary': (
-                        f"Your {property_type} in {location}, {city} is valued at PKR {val:,}. "
-                        f"After WHT and fees, net-in-hand is PKR {net_seller:,}."
+                        f"Your {property_type} in {location}, {city} is valued at {cur} {val:,}. "
+                        f"After WHT and fees, net-in-hand is {cur} {net_seller:,}."
                     ),
-                    'optimal_asking_price': f"PKR {fair_max:,} (based on {location} market rates)",
+                    'optimal_asking_price': f"{bench_cur} {fair_max:,} (based on {location} market rates)",
                     'best_time_to_sell': best_time_to_sell,
                     'action_items': seller_action_items,
                 },
@@ -651,13 +658,13 @@ class AuditEngine:
                     'commission_pkr': agent_comm,
                     'pitch': (
                         f"{area_marla}M {property_type} in {location}, {city}. "
-                        f"PKR {val:,}. Grade {grade} investment. {verdict}."
+                        f"{cur} {val:,}. Grade {grade} investment. {verdict}."
                         if area_marla
                         else f"{property_type} in {location}, {city}. "
-                             f"PKR {val:,}. Grade {grade} investment. {verdict}."
+                             f"{cur} {val:,}. Grade {grade} investment. {verdict}."
                     ),
                     'deal_readiness': 'HIGH' if risk <= 3 else 'MEDIUM' if risk <= 6 else 'LOW',
-                    'buyer_income_needed': f"Min PKR {min_income:,}/month for 70% financing",
+                    'buyer_income_needed': f"Min {cur} {min_income:,}/month for 70% financing",
                 },
                 'developer': {
                     'development_potential': dev_potential,

@@ -212,8 +212,10 @@ def send_appointment_reminders():
             if not client or not client.phone:
                 continue
 
-            time_str   = appt.scheduled_at.strftime('%I:%M %p')
-            date_str   = appt.scheduled_at.strftime('%A, %d %B %Y')
+            # KI-047: in the market's local time (scheduled_at is stored in UTC)
+            from apps.markets.services import format_local
+            time_str   = format_local(appt.scheduled_at, appt.lead.organization, '%I:%M %p')
+            date_str   = format_local(appt.scheduled_at, appt.lead.organization, '%A, %d %B %Y')
             prop_title = appt.property.title if appt.property else 'the property'
             agent_name = appt.agent.display_name if appt.agent else 'your agent'
 

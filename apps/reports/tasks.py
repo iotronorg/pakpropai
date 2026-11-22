@@ -1,7 +1,7 @@
 import io
 import logging
 import os
-from datetime import date, timedelta
+from datetime import datetime, time, timedelta
 
 from celery import shared_task
 from django.utils import timezone
@@ -9,36 +9,56 @@ from django.utils import timezone
 logger = logging.getLogger(__name__)
 
 
+def _local_date_str(org) -> str:
+    from apps.markets.services import format_local
+    return format_local(timezone.now(), org, '%d %B %Y')
+
+
+def _subject_org(user):
+    from apps.core.permissions import primary_org
+    try:
+        return primary_org(user)
+    except Exception:
+        return None
+
+
+def _last_complete_month(local_now):
+    """(first day, last day, first day of next month) of the last fully elapsed local month."""
+    first_of_this_month = local_now.date().replace(day=1)
+    last_month_end      = first_of_this_month - timedelta(days=1)
+    return last_month_end.replace(day=1), last_month_end, first_of_this_month
+
+
 @shared_task
-def generate_monthly_reports():
+def generate_monthly_reports(now=None):
     """
-    Runs on the 1st of each month. Generates a branded PDF report for each
-    active organization covering the previous calendar month.
+    Generate a branded PDF report per active organization for its last complete
+    calendar month **in the organization's market time zone** (T-1050c).
+
+    Scheduled hourly on UTC day 1, so each market gets its report shortly after
+    its own month ends. Idempotent per (org, month): reruns and catch-up are safe.
     """
+    from apps.markets.services import market_timezone, org_timezone
     from apps.organizations.models import Organization
     from .models import MonthlyReport
     from .generator import generate_monthly_report_content
 
-    today                = date.today()
-    first_of_this_month  = today.replace(day=1)
-    last_month_end       = first_of_this_month - timedelta(days=1)
-    last_month_start     = last_month_end.replace(day=1)
-
-    start_dt    = timezone.make_aware(
-        timezone.datetime(last_month_start.year, last_month_start.month, 1)
-    )
-    end_dt      = timezone.make_aware(
-        timezone.datetime(first_of_this_month.year, first_of_this_month.month, 1)
-    )
-    month_label = last_month_start.strftime('%B %Y')
+    now = now or timezone.now()
+    # Summary label: the default market's month (orgs in other zones may differ).
+    month_label = _last_complete_month(now.astimezone(market_timezone(None)))[0].strftime('%B %Y')
 
     orgs      = Organization.objects.filter(is_active=True)
     succeeded = 0
     failed    = 0
 
     for org in orgs:
+        tz = org_timezone(org)
+        last_month_start, last_month_end, first_of_this_month = _last_complete_month(now.astimezone(tz))
+        start_dt  = datetime.combine(last_month_start, time.min, tzinfo=tz)
+        end_dt    = datetime.combine(first_of_this_month, time.min, tzinfo=tz)
+        org_label = last_month_start.strftime('%B %Y')
         if MonthlyReport.objects.filter(organization=org, period_start=last_month_start).exists():
-            logger.info(f"generate_monthly_reports: skipping {org} — report already exists for {month_label}")
+            logger.info(f"generate_monthly_reports: skipping {org} — report already exists for {org_label}")
             continue
 
         report = MonthlyReport.objects.create(
@@ -49,7 +69,7 @@ def generate_monthly_reports():
         )
         try:
             content   = generate_monthly_report_content(org, start_dt, end_dt)
-            pdf_bytes = _build_monthly_pdf(org, content, month_label)
+            pdf_bytes = _build_monthly_pdf(org, content, org_label)
             pdf_url   = _upload_monthly_pdf(report, pdf_bytes)
 
             report.content    = content
@@ -58,9 +78,9 @@ def generate_monthly_reports():
             report.ready_at   = timezone.now()
             report.save(update_fields=['content', 'pdf_url', 'status', 'ready_at'])
             succeeded += 1
-            logger.info(f"generate_monthly_reports: {org} — {month_label} ready")
+            logger.info(f"generate_monthly_reports: {org} — {org_label} ready")
         except Exception as exc:
-            logger.warning(f"generate_monthly_reports: {org} — {month_label} failed: {exc}")
+            logger.warning(f"generate_monthly_reports: {org} — {org_label} failed: {exc}")
             report.status = MonthlyReport.Status.FAILED
             report.save(update_fields=['status'])
             failed += 1
@@ -479,7 +499,7 @@ def _build_pdf(report, content: dict) -> bytes:
         HRFlowable(width='100%', color=BRAND_BLUE, thickness=1.5),
         Spacer(1, 0.15 * inch),
         Paragraph(f"Prepared for: {report.user.phone}", BODY),
-        Paragraph(f"Date: {date.today().strftime('%d %B %Y')}", BODY),
+        Paragraph(f"Date: {_local_date_str(_subject_org(report.user))}", BODY),
         Spacer(1, 0.25 * inch),
     ]
 

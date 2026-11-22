@@ -208,7 +208,9 @@ STRICT = re.compile(r"""default\s*=\s*(?:['"](?:PKR|PK|marla)['"]|(?:\w+\.)?Area
 RATCHET = {
     # Remaining literals in logic/formatting (T-1050b). Lower as they move to
     # the market pack; never raise.
-    'pkr_literal': (re.compile(r"""['"]PKR\b"""), 27),   # T-1050b-1: 34 → 27
+    # T-1050b: 34 → 27 → 5. The 5 left are the multi-currency alias table in
+    # ai/compliance_filters.py (PKR next to AED/USD/GBP…), not PK defaults.
+    'pkr_literal': (re.compile(r"""['"]PKR\b"""), 5),
     'pk_fallback': (re.compile(r"""\bor\s+['"]PK['"]|,\s*['"]PK['"]\s*\)"""), 0),  # 20 → 0
     'karachi_tz': (re.compile(r"""['"]Asia/Karachi['"]"""), 0),
 }
@@ -295,3 +297,57 @@ class SearchCurrencyDbTest(TestCase):
             results = PropertySearchService._from_db(city='Lahore', viewer_org=org)
             formatted = sorted(PropertySearchService._result_to_dict(r)['price_formatted'] for r in results)
         self.assertEqual(formatted, ['AED 900,000', 'PKR 700,000'])
+
+
+class AuditCurrencyLabelsTest(TestCase):
+    """T-1050b-2: audit money is labelled in the unit it is in (KI-045 residual: PK-only engine)."""
+
+    def _run(self, currency):
+        from apps.audit.services import AuditEngine
+        return AuditEngine.run(city='Lahore', location='DHA Phase 5', property_type='house',
+                               estimated_value=50_000_000, value_currency=currency, area_marla=10)
+
+    def test_value_figures_use_value_currency_and_benchmarks_their_own(self):
+        r = self._run('AED')
+        self.assertEqual(r['market_analysis']['benchmark_currency'], 'PKR')
+        buyer = r['role_insights']['buyer']['summary']
+        self.assertIn('AED 50,000,000', buyer)
+        self.assertNotIn('PKR', buyer)
+        self.assertTrue(r['role_insights']['seller']['optimal_asking_price'].startswith('PKR '))
+        self.assertIsNone(r['overview']['estimated_value_pkr'])
+
+    def test_pkr_audit_unchanged(self):
+        r = self._run('PKR')
+        self.assertIn('PKR 50,000,000', r['role_insights']['buyer']['summary'])
+        self.assertEqual(r['overview']['estimated_value_pkr'], 50_000_000)
+
+    def test_pdf_money_follows_report_currency(self):
+        from unittest import mock
+        from apps.audit import pdf
+        seen = {}
+
+        def capture(audit, s):
+            seen['value'] = pdf._money(5)
+            seen['explicit'] = pdf._money(5, 'gbp')
+            return []
+
+        with mock.patch.object(pdf, '_page7_recommendations', side_effect=capture):
+            pdf.generate_audit_pdf_bytes(self._run('AED'))
+        self.assertEqual(seen, {'value': 'AED 5', 'explicit': 'GBP 5'})
+        self.assertEqual(pdf._money(5), 'PKR 5')  # context reset after rendering
+
+    def test_projection_today_row_shows_the_value(self):
+        """KI-046: the 'Today (Year 0)' row read a key the engine never emits (always 0)."""
+        from apps.audit import pdf
+        elements = pdf._page5_investment(self._run('PKR'), pdf._styles())
+        rows = [row for el in elements if hasattr(el, '_cellvalues') for row in el._cellvalues]
+        today = next(row for row in rows if row and row[0] == 'Today (Year 0)')
+        self.assertEqual(today[1], 'PKR 50,000,000')
+
+
+class PkPackConstantsTest(SimpleTestCase):
+    def test_constants_match_registry(self):
+        from apps.markets import pk
+        from apps.markets.registry import MARKET_REGISTRY
+        cfg = MARKET_REGISTRY['PK']
+        self.assertEqual((pk.COUNTRY, pk.CURRENCY, pk.AREA_UNIT), (cfg.country, cfg.currency, cfg.size_unit))

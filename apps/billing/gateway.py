@@ -10,6 +10,8 @@ billing_gateway (SystemConfig):
 import logging
 import uuid
 
+from apps.markets.pk import CURRENCY as PK_CURRENCY
+
 logger = logging.getLogger(__name__)
 
 # PKR plan prices (monthly) — configurable via SystemConfig
@@ -113,7 +115,7 @@ class BillingGatewayDispatcher:
         checkout_base = 'https://getsafepay.com' if env == 'production' else 'https://sandbox.getsafepay.com'
 
         amount   = _plan_pkr(plan)
-        currency = getattr(org, 'currency', 'PKR')
+        currency = PK_CURRENCY  # Safepay/bSecure plans are priced in PKR (_plan_pkr); Organization has no currency field
         order_id = f"billing-{org.id}-{plan}-{uuid.uuid4().hex[:8]}"
 
         payload = {
@@ -161,7 +163,7 @@ class BillingGatewayDispatcher:
         access_token = tok.json().get('access_token', '')
 
         amount   = _plan_pkr(plan)
-        currency = getattr(org, 'currency', 'PKR')
+        currency = PK_CURRENCY  # Safepay/bSecure plans are priced in PKR (_plan_pkr); Organization has no currency field
         order_id = f"billing-{org.id}-{plan}-{uuid.uuid4().hex[:8]}"
 
         payload = {

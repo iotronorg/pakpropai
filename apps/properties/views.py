@@ -1,5 +1,7 @@
 from django.db.models import Avg, Count, Q
 from django.db.models.functions import TruncMonth, TruncWeek
+
+from apps.markets.services import user_timezone
 from rest_framework import filters, status, viewsets
 from rest_framework.views import APIView
 from rest_framework.decorators import action
@@ -390,7 +392,7 @@ class PropertyMarketTrendsView(APIView):
 
         data = list(
             qs
-            .annotate(period=trunc_fn('created_at'))
+            .annotate(period=trunc_fn('created_at', tzinfo=user_timezone(user)))
             .values('period', 'city', 'property_type')
             .annotate(avg_price=Avg('price'), count=Count('id'))
             .order_by('city', 'period')

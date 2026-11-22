@@ -4,13 +4,13 @@ _Last updated: 2026-11-22 (session 8)_
 
 | Item | Value |
 |---|---|
-| Branch | `development`. The owner committed through session 7 (`2fd8ee0`). **Session 8 (T‑1032a, T‑1022, T‑1050b‑1) is uncommitted** |
+| Branch | `development`. The owner committed through session 7 (`2fd8ee0`). **Session 8 (continued): T‑1050b‑2 and T‑1050c are uncommitted** (the owner committed the earlier session‑8 work) |
 | Current milestone | **M1 — Core foundation** ([MILESTONE_01](milestones/MILESTONE_01_CORE_FOUNDATION.md)); M0 code‑complete, awaiting first GitHub Actions run |
 | M0 progress | All 17 tasks complete. Remaining exit criterion: CI green on GitHub Actions (owner pushes) |
-| M1 progress | 8 of 18 tasks done (T‑1010, T‑1020, T‑1030, T‑1021, T‑1022, T‑1100, T‑1090, T‑1031) plus subtasks T‑1050a, T‑1050b‑1, T‑1032a. Exit criteria met: OpenAPI published; no literal PK defaults (CI). T‑1060 blocked on a vendor decision; T‑1033 needs an owner policy sign‑off |
-| Test suite | **1723 passed, 1 skipped, 0 failed** (session 8; session 7 ended 1665/1/0). See [TESTING_STATUS](TESTING_STATUS.md) |
-| Last completed task | T‑1050b‑1 market‑neutral country fallbacks + listing‑currency price formatting (after T‑1032a membership contract and T‑1022 outbox adoption) |
-| Next task | **T‑1050b‑2**: move the remaining 27 `'PKR'` literals into the PK market pack. Start with `apps/audit/services.py` + `apps/audit/pdf.py` (tax rows, `_pkr`) and `apps/ai/tools.py::generate_property_audit`; lower `RATCHET['pkr_literal']` in `tests/test_markets.py` |
+| M1 progress | 9 of 18 tasks done (T‑1010, T‑1020, T‑1021, T‑1022, T‑1030, T‑1031, T‑1050, T‑1090, T‑1100) plus subtask T‑1032a. Exit criteria met: OpenAPI published; no literal PK defaults (CI). T‑1060 blocked on a vendor decision; T‑1033 needs an owner policy sign‑off |
+| Test suite | **1738 passed, 1 skipped, 0 failed** (session 8 end; session 7 ended 1665/1/0). See [TESTING_STATUS](TESTING_STATUS.md) |
+| Last completed task | T‑1050c UTC + market‑local time (ADR‑022), after T‑1050b‑2 (PK pack constants, audit currency labels) |
+| Next task | **T‑1070** listing schema v2 (expand/contract, GAP‑010/012/045). Start with a design ADR: inventory `apps/properties/models.py::Property` (area_marla/area_sqm/area_size, price/currency, `listing_owner_type`, location text), the PRD listing fields (`docs/product/ai-real-estate-agent/API_AND_DATA_REQUIREMENTS.md`, `PRD_MASTER.md`), and readers (search, AI tools, serializers). KI‑035 (stored `tsvector`) belongs here |
 
 ## Owner decisions (2026-11-21)
 - **No commits by the agent.**
@@ -25,7 +25,7 @@ _Last updated: 2026-11-22 (session 8)_
 
 ## Operator actions before deploying these changes
 See **[GO_LIVE_CHECKLIST](GO_LIVE_CHECKLIST.md)**: DB backup, `FIELD_ENCRYPTION_KEYS`, config‑row check. Summary:
-- **Session 8** (checklist §11): no migrations.
+- **Session 8** (checklist §11 and **§12 UTC switch**): no migrations. Restart celery beat after deploy and review the periodic‑task rows (§12).
   - New member role‑change and ownership‑transfer endpoints; every member change is audited.
   - Alerts, reminders, escrow notices and the audit companion text now go through the outbox, so the `relay-outbox` beat job and an outbox worker must be running.
   - Listing prices are shown in the listing's own currency (KI‑044), and the seller deal‑lock code is sent only after AML screening (KI‑043).

@@ -14,7 +14,7 @@ from .models import EscrowDeal
 from .serializers import EscrowDealSerializer, InitiateDealLockSerializer, ConfirmPaymentSerializer
 from drf_spectacular.utils import extend_schema
 from apps.core.idempotency import IDEMPOTENCY_PARAMETER, idempotent
-from apps.markets.services import currency_for_country, org_country
+from apps.markets.services import currency_for_country, format_local, org_country
 
 logger = logging.getLogger(__name__)
 
@@ -445,7 +445,7 @@ def _notify_buyer_lock_active(deal: EscrowDeal):
             f"🏠 *Property:* {deal.property.title}\n"
             f"💰 *Token Amount:* {deal.currency} {deal.token_amount:,}\n"
             f"⏳ *Exclusivity:* {hrs:.0f} hours remaining\n"
-            f"📅 *Expires:* {deal.lock_expires_at.strftime('%d %b %Y, %I:%M %p')}\n\n"
+            f"📅 *Expires:* {format_local(deal.lock_expires_at, deal.property.organization, '%d %b %Y, %I:%M %p')}\n\n"
             "This property is now exclusively reserved for you. "
             "Contact your agent to proceed with the full transaction."
         )
@@ -485,7 +485,8 @@ def _notify_seller_deal_locked(deal: EscrowDeal):
         seller_user = deal.property.owner
         if not seller_user or not seller_user.phone:
             return
-        expires = deal.lock_expires_at.strftime('%d %b %Y, %I:%M %p') if deal.lock_expires_at else 'N/A'
+        expires = (format_local(deal.lock_expires_at, deal.property.organization, '%d %b %Y, %I:%M %p')
+                   if deal.lock_expires_at else 'N/A')
         msg = (
             f"🔒 *Deal Lock Activated*\n\n"
             f"Online payment confirmed for your property:\n"

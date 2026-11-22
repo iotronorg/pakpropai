@@ -16,6 +16,8 @@ from __future__ import annotations
 from typing import Literal, Optional
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from apps.markets.pk import CURRENCY as PK_CURRENCY
+
 # ── Unit constants ─────────────────────────────────────────────────────────────
 
 MARLA_PER_KANAL  = 20
@@ -35,7 +37,7 @@ class PropertySearchFilter(BaseModel):
         "city": "Lahore", "location": "DHA",
         "property_type": "residential",
         "area_marla": 5.0, "area_sqft": 1361.25,
-        "price_max_pkr": 30000000, "currency": "PKR"
+        "price_max_pkr": 30000000, "currency": <PK_CURRENCY>
     }
     """
     city:          str            = Field(..., description="City name, title-cased")
@@ -48,7 +50,7 @@ class PropertySearchFilter(BaseModel):
     price_min_pkr: Optional[int]  = Field(None, ge=0)
     price_max_pkr: Optional[int]  = Field(None, gt=0,
                        description="Max budget in PKR. 1 crore = 10,000,000.")
-    currency:      str            = 'PKR'
+    currency:      str            = PK_CURRENCY  # PK natural-language extractor (crore/marla)
     furnished:     Optional[Literal['furnished', 'semi_furnished', 'unfurnished']] = None
     purpose:       Literal['buy', 'rent', ''] = ''
 

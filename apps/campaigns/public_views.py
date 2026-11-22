@@ -168,7 +168,8 @@ def _compute_stats() -> dict:
     from apps.leads.models import Lead
     from apps.organizations.models import Organization
 
-    today = timezone.now().date()
+    from apps.markets.services import local_day_bounds, market_timezone
+    day_start, day_end = local_day_bounds(market_timezone(None))  # platform-wide: default market day
     return {
         'total_verifications':  PropertyAudit.objects.count(),
         'scams_caught':         SanctionScreeningResult.objects.filter(
@@ -176,6 +177,6 @@ def _compute_stats() -> dict:
                                 ).count(),
         'active_orgs':          Organization.objects.filter(is_active=True).count(),
         'leads_generated_today': Lead.objects.filter(
-                                    created_at__date=today
+                                    created_at__gte=day_start, created_at__lt=day_end,
                                 ).count(),
     }

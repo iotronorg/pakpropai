@@ -11,17 +11,18 @@ from rest_framework.views import APIView
 
 from apps.core.throttles import ReportGenerateThrottle
 from apps.core.permissions import IsAdminUser, IsAdminOrOrgAdmin, IsAgentOrAdmin, get_user_org
+from apps.markets.services import user_timezone
 from .models import Report, MonthlyReport
 
 
-def _get_trend(qs, created_field='created_at', period='weekly'):
-    """Return [{period, count}] for the last 8 weeks or 6 months."""
+def _get_trend(qs, created_field='created_at', period='weekly', tz=None):
+    """Return [{period, count}] for the last 8 weeks or 6 months, bucketed in ``tz`` (T-1050c)."""
     now = timezone.now()
     if period == 'monthly':
         cutoff = now - datetime.timedelta(days=182)
         rows = (
             qs.filter(**{f'{created_field}__gte': cutoff})
-              .annotate(bucket=TruncMonth(created_field))
+              .annotate(bucket=TruncMonth(created_field, tzinfo=tz))
               .values('bucket')
               .annotate(count=Count('id'))
               .order_by('bucket')
@@ -31,7 +32,7 @@ def _get_trend(qs, created_field='created_at', period='weekly'):
         cutoff = now - datetime.timedelta(weeks=8)
         rows = (
             qs.filter(**{f'{created_field}__gte': cutoff})
-              .annotate(bucket=TruncWeek(created_field))
+              .annotate(bucket=TruncWeek(created_field, tzinfo=tz))
               .values('bucket')
               .annotate(count=Count('id'))
               .order_by('bucket')
@@ -200,7 +201,7 @@ class AgentPersonalReportView(APIView):
 
         period = request.query_params.get('period')
         if period in ('weekly', 'monthly'):
-            result['trend'] = _get_trend(leads, 'created_at', period)
+            result['trend'] = _get_trend(leads, 'created_at', period, user_timezone(request.user))
 
         return Response(result)
 
@@ -239,7 +240,7 @@ class LeadReportView(APIView):
         }
         period = request.query_params.get('period')
         if period in ('weekly', 'monthly'):
-            result['trend'] = _get_trend(qs, 'created_at', period)
+            result['trend'] = _get_trend(qs, 'created_at', period, user_timezone(request.user))
         return Response(result)
 
 
@@ -313,7 +314,7 @@ class PropertyReportView(APIView):
         }
         period = request.query_params.get('period')
         if period in ('weekly', 'monthly'):
-            result['trend'] = _get_trend(qs, 'created_at', period)
+            result['trend'] = _get_trend(qs, 'created_at', period, user_timezone(request.user))
         return Response(result)
 
 
@@ -419,8 +420,8 @@ class RevenueReportView(APIView):
 
         period = request.query_params.get('period')
         if period in ('weekly', 'monthly'):
-            result['deals']['trend']    = _get_trend(deals, 'lock_started_at', period)
-            result['payments']['trend'] = _get_trend(completed_payments, 'created_at', period)
+            result['deals']['trend']    = _get_trend(deals, 'lock_started_at', period, user_timezone(request.user))
+            result['payments']['trend'] = _get_trend(completed_payments, 'created_at', period, user_timezone(request.user))
 
         return Response(result)
 
@@ -450,7 +451,7 @@ class BotReportView(APIView):
         cutoff_14d = now - datetime.timedelta(days=14)
         daily_rows = (
             msgs.filter(created_at__gte=cutoff_14d)
-                .annotate(day=TruncDay('created_at'))
+                .annotate(day=TruncDay('created_at', tzinfo=user_timezone(request.user)))
                 .values('day')
                 .annotate(count=Count('id'))
                 .order_by('day')
@@ -479,7 +480,7 @@ class BotReportView(APIView):
 
         period = request.query_params.get('period')
         if period in ('weekly', 'monthly'):
-            result['trend'] = _get_trend(msgs, 'created_at', period)
+            result['trend'] = _get_trend(msgs, 'created_at', period, user_timezone(request.user))
 
         return Response(result)
 

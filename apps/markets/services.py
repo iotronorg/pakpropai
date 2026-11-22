@@ -163,3 +163,55 @@ def format_price(amount, currency: str | None = None, *, missing: str = 'Price n
     if not amount:
         return missing
     return f"{(currency or default_currency()).upper()} {amount:,}"
+
+
+# ── Time zones (T-1050c) ─────────────────────────────────────────────────────
+# Storage, cron and logs are UTC. Anything a person reads, and any "per day /
+# week / month" bucket, uses the market's local zone.
+
+def market_timezone(code: str | None = None):
+    """``ZoneInfo`` of a market (default market for ``None``; UTC if unknown/invalid)."""
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+    info = get_market(code)
+    name = info.timezone if info is not None else 'UTC'
+    try:
+        return ZoneInfo(name or 'UTC')
+    except (ZoneInfoNotFoundError, ValueError):
+        logger.warning('markets: invalid time zone %r for %s; using UTC', name, code)
+        return ZoneInfo('UTC')
+
+
+def org_timezone(org):
+    """Local zone of an organization: its market, else its country's market, else the default."""
+    if org is None:
+        return market_timezone(None)
+    code = getattr(org, 'market_id', None) or org_country(org)
+    if get_market(code) is None:
+        code = None
+    return market_timezone(code)
+
+
+def user_timezone(user):
+    """Zone for a request user: the active org's market (default market when none)."""
+    org = None
+    if user is not None and getattr(user, 'is_authenticated', False) and getattr(user, 'role', '') != 'admin':
+        from apps.core.permissions import get_user_org
+        org = get_user_org(user)
+    return org_timezone(org)
+
+
+def local_day_bounds(tz, day=None):
+    """``(start, end)`` aware datetimes of a local calendar day (today when ``day`` is None)."""
+    from datetime import datetime, time, timedelta
+    from django.utils import timezone as dj_tz
+    day = day or dj_tz.now().astimezone(tz).date()
+    start = datetime.combine(day, time.min, tzinfo=tz)
+    end = datetime.combine(day + timedelta(days=1), time.min, tzinfo=tz)  # next local midnight (23/25 h on DST days)
+    return start, end
+
+
+def format_local(dt, org, fmt: str) -> str:
+    """Format an aware datetime in the organization's local zone ('' for None)."""
+    if dt is None:
+        return ''
+    return dt.astimezone(org_timezone(org)).strftime(fmt)

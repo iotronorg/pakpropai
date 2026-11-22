@@ -4,8 +4,11 @@ Uses ReportLab to produce a multi-page branded PDF.
 """
 import io
 import os
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import date
+
+from apps.markets.pk import CURRENCY as PK_CURRENCY
 
 from reportlab.lib import colors
 from reportlab.lib.colors import HexColor
@@ -204,9 +207,20 @@ def _audit_provenance(audit: dict) -> str:
     return provenance_label(audit)
 
 
-def _pkr(n):
+# Currency of the report being rendered (set by the public entry points).
+_REPORT_CURRENCY: ContextVar[str] = ContextVar('audit_pdf_currency', default=PK_CURRENCY)
+
+
+def _report_currency(audit: dict) -> str:
+    ov = audit.get('overview', {}) or {}
+    fa = audit.get('financial_analysis', {}) or {}
+    return (ov.get('value_currency') or fa.get('value_currency') or PK_CURRENCY).upper()
+
+
+def _money(n, currency: str | None = None):
+    """Amount in the report's currency (or ``currency``), e.g. ``PKR 1,500,000``."""
     try:
-        return f"PKR {int(n):,}"
+        return f"{(currency or _REPORT_CURRENCY.get()).upper()} {int(n):,}"
     except (TypeError, ValueError):
         return str(n)
 
@@ -297,10 +311,9 @@ def _page1_executive_summary(audit: dict, s: dict, measurement_system: str = 'pk
 
     # Property overview table
     area = _format_area_display(ov.get('area_sqm'), measurement_system)
-    currency = ov.get('value_currency', 'PKR')
     est_val = ov.get('estimated_value') or ov.get('estimated_value_pkr') or 0
-    val_display = f"{currency} {int(est_val):,}" if currency != 'PKR' else _pkr(est_val)
-    ppm = _pkr(ov.get('price_per_marla')) if ov.get('price_per_marla') else 'N/A'
+    val_display = _money(est_val)
+    ppm = _money(ov.get('price_per_marla')) if ov.get('price_per_marla') else 'N/A'
     prop_data = [
         ['Property Details', ''],
         ['City',            ov.get('city', 'N/A')],
@@ -384,12 +397,12 @@ def _page2_financial(audit: dict, s: dict) -> list:
     tcb = fa.get('true_cost_buyer', {})
     cost_data = [
         ['Item',              'Amount'],
-        ['Asking Price',      _pkr(tcb.get('asking_price', 0))],
-        ['Stamp Duty (3%)',   _pkr(tcb.get('stamp_duty', 0))],
-        ['Registration (1%)', _pkr(tcb.get('registration_fee', 0))],
-        ['Legal Fees',        _pkr(tcb.get('legal_fees', 0))],
-        ['Agent Commission',  _pkr(tcb.get('agent_commission', 0))],
-        ['TOTAL COST',        _pkr(tcb.get('total', 0))],
+        ['Asking Price',      _money(tcb.get('asking_price', 0))],
+        ['Stamp Duty (3%)',   _money(tcb.get('stamp_duty', 0))],
+        ['Registration (1%)', _money(tcb.get('registration_fee', 0))],
+        ['Legal Fees',        _money(tcb.get('legal_fees', 0))],
+        ['Agent Commission',  _money(tcb.get('agent_commission', 0))],
+        ['TOTAL COST',        _money(tcb.get('total', 0))],
     ]
     cost_tbl = Table(cost_data, colWidths=[9 * cm, 6 * cm])
     cost_tbl.setStyle(_table_style())
@@ -407,11 +420,11 @@ def _page2_financial(audit: dict, s: dict) -> list:
     nis = fa.get('net_in_hand_seller', {})
     seller_data = [
         ['Item',                    'Amount'],
-        ['Asking Price',             _pkr(nis.get('asking_price', 0))],
-        ['Less: WHT (3%)',          f"-{_pkr(nis.get('withholding_tax', 0))}"],
-        ['Less: Agent Commission',  f"-{_pkr(nis.get('agent_commission', 0))}"],
-        ['Less: Legal Fees',        f"-{_pkr(nis.get('legal_fees', 0))}"],
-        ['NET RECEIVED',             _pkr(nis.get('net', 0))],
+        ['Asking Price',             _money(nis.get('asking_price', 0))],
+        ['Less: WHT (3%)',          f"-{_money(nis.get('withholding_tax', 0))}"],
+        ['Less: Agent Commission',  f"-{_money(nis.get('agent_commission', 0))}"],
+        ['Less: Legal Fees',        f"-{_money(nis.get('legal_fees', 0))}"],
+        ['NET RECEIVED',             _money(nis.get('net', 0))],
     ]
     seller_tbl = Table(seller_data, colWidths=[9 * cm, 6 * cm])
     seller_tbl.setStyle(_table_style())
@@ -428,13 +441,13 @@ def _page2_financial(audit: dict, s: dict) -> list:
     tt = fa.get('tax_table', {})
     tax_data = [
         ['Tax Type',              'Filer',                     'Non-Filer'],
-        ['7E Annual Tax',         _pkr(tt.get('7e_annual_filer', 0)),     _pkr(tt.get('7e_annual_nonfiler', 0))],
-        ['CGT (1 year hold)',     _pkr(tt.get('cgt_1yr_filer', 0)),       'Higher rate'],
-        ['CGT (2 years)',         _pkr(tt.get('cgt_2yr_filer', 0)),       'Higher rate'],
-        ['CGT (3 years)',         _pkr(tt.get('cgt_3yr_filer', 0)),       'Higher rate'],
-        ['CGT (4+ years)',        'PKR 0 (exempt)',                        'Varies'],
-        ['WHT on Sale',           _pkr(tt.get('wht_filer', 0)),           _pkr(tt.get('wht_nonfiler', 0))],
-        ['Stamp Duty (est.)',     _pkr(tt.get('stamp_duty_estimate', 0)), _pkr(tt.get('stamp_duty_estimate', 0))],
+        ['7E Annual Tax',         _money(tt.get('7e_annual_filer', 0)),     _money(tt.get('7e_annual_nonfiler', 0))],
+        ['CGT (1 year hold)',     _money(tt.get('cgt_1yr_filer', 0)),       'Higher rate'],
+        ['CGT (2 years)',         _money(tt.get('cgt_2yr_filer', 0)),       'Higher rate'],
+        ['CGT (3 years)',         _money(tt.get('cgt_3yr_filer', 0)),       'Higher rate'],
+        ['CGT (4+ years)',        f"{_money(0)} (exempt)",                 'Varies'],
+        ['WHT on Sale',           _money(tt.get('wht_filer', 0)),           _money(tt.get('wht_nonfiler', 0))],
+        ['Stamp Duty (est.)',     _money(tt.get('stamp_duty_estimate', 0)), _money(tt.get('stamp_duty_estimate', 0))],
     ]
     tax_tbl = Table(tax_data, colWidths=[6 * cm, 4.5 * cm, 4.5 * cm])
     tax_tbl.setStyle(_table_style())
@@ -446,8 +459,8 @@ def _page2_financial(audit: dict, s: dict) -> list:
     ra = fa.get('rental_analysis', {})
     rental_data = [
         ['Metric',                      'Value'],
-        ['Estimated Monthly Rent',       _pkr(ra.get('estimated_monthly_rent', 0))],
-        ['Annual Rental Income',         _pkr(ra.get('annual_rental_income', 0))],
+        ['Estimated Monthly Rent',       _money(ra.get('estimated_monthly_rent', 0))],
+        ['Annual Rental Income',         _money(ra.get('annual_rental_income', 0))],
         ['Gross Yield',                  _pct(ra.get('gross_yield_pct', 0))],
         ['Rental Tax (15%)',             _pct(ra.get('rental_tax_pct', 15))],
         ['Net Yield (after tax)',        _pct(ra.get('net_yield_pct', 0))],
@@ -471,16 +484,17 @@ def _page3_market(audit: dict, s: dict, measurement_system: str = 'pk_traditiona
     pct_label = f"+{pct_diff:.1f}%" if pct_diff >= 0 else f"{pct_diff:.1f}%"
     pvs = ma.get('price_vs_market', 'N/A')
     pvs_color = GREEN if pvs == 'BELOW MARKET' else RED if pvs == 'ABOVE MARKET' else BRAND_BLUE
+    bench_cur = ma.get('benchmark_currency') or PK_CURRENCY
 
     mkt_data = [
         ['Metric',                  'Value'],
-        ['Benchmark PPM (Min)',      _pkr(ma.get('benchmark_ppm_min', 0))],
-        ['Benchmark PPM (Max)',      _pkr(ma.get('benchmark_ppm_max', 0))],
-        ['Market Average PPM',       _pkr(ma.get('market_avg_ppm', 0))],
-        ['Your Price / Marla',       _pkr(ma.get('your_ppm')) if ma.get('your_ppm') else 'N/A (area unknown)'],
+        ['Benchmark PPM (Min)',      _money(ma.get('benchmark_ppm_min', 0), bench_cur)],
+        ['Benchmark PPM (Max)',      _money(ma.get('benchmark_ppm_max', 0), bench_cur)],
+        ['Market Average PPM',       _money(ma.get('market_avg_ppm', 0), bench_cur)],
+        ['Your Price / Marla',       _money(ma.get('your_ppm')) if ma.get('your_ppm') else 'N/A (area unknown)'],
         ['Price vs Market',          f"{pvs} ({pct_label})"],
-        ['Est. Fair Value (Min)',     _pkr(ma.get('estimated_fair_value_min', 0))],
-        ['Est. Fair Value (Max)',     _pkr(ma.get('estimated_fair_value_max', 0))],
+        ['Est. Fair Value (Min)',     _money(ma.get('estimated_fair_value_min', 0), bench_cur)],
+        ['Est. Fair Value (Max)',     _money(ma.get('estimated_fair_value_max', 0), bench_cur)],
         ['Area Approved',            'Yes' if ma.get('area_approved') is True
                                      else 'No' if ma.get('area_approved') is False
                                      else 'Unverified'],
@@ -504,8 +518,8 @@ def _page3_market(audit: dict, s: dict, measurement_system: str = 'pk_traditiona
         r = roi.get(key, {})
         roi_data.append([
             label,
-            _pkr(r.get('value', 0)),
-            _pkr(r.get('gain', 0)),
+            _money(r.get('value', 0)),
+            _money(r.get('gain', 0)),
             _pct(r.get('gain_pct', 0)),
         ])
     roi_tbl = Table(roi_data, colWidths=[4 * cm, 5 * cm, 4 * cm, 2 * cm])
@@ -521,7 +535,7 @@ def _page3_market(audit: dict, s: dict, measurement_system: str = 'pk_traditiona
         for c in comps[:5]:
             comp_data.append([
                 c.get('title', 'N/A')[:50],
-                _pkr(c.get('price', 0)),
+                _money(c.get('price', 0)),
                 _format_area_display(c.get('area_sqm'), measurement_system),
                 c.get('source', 'N/A'),
             ])
@@ -608,8 +622,8 @@ def _page5_investment(audit: dict, s: dict) -> list:
         ['This Property — Net Yield',       _pct(net_y)],
         ['Pakistan National Avg Yield',     '3.0% – 5.0%'],
         ['Yield vs National Average',        vs_nat],
-        ['Monthly Rent Estimate',           _pkr(ra.get('estimated_monthly_rent', 0))],
-        ['Annual Rental Income',            _pkr(ra.get('annual_rental_income', 0))],
+        ['Monthly Rent Estimate',           _money(ra.get('estimated_monthly_rent', 0))],
+        ['Annual Rental Income',            _money(ra.get('annual_rental_income', 0))],
     ]
     yield_tbl = Table(yield_data, colWidths=[9 * cm, 6 * cm])
     yield_tbl.setStyle(_table_style())
@@ -635,14 +649,15 @@ def _page5_investment(audit: dict, s: dict) -> list:
     roi = fa.get('roi_projections', {})
     proj_data = [
         ['Year', 'Projected Value', 'Total Gain', 'Gain %'],
-        ['Today (Year 0)', _pkr(fa.get('estimated_value_pkr', 0)), 'PKR 0', '0.0%'],
+        # KI-046: the engine emits `estimated_value` here; `estimated_value_pkr` never existed in this section
+        ['Today (Year 0)', _money(fa.get('estimated_value', fa.get('estimated_value_pkr', 0))), _money(0), '0.0%'],
     ]
     for label, key in [('Year 1', '1_year'), ('Year 3', '3_year'), ('Year 5', '5_year')]:
         r = roi.get(key, {})
         proj_data.append([
             label,
-            _pkr(r.get('value', 0)),
-            _pkr(r.get('gain', 0)),
+            _money(r.get('value', 0)),
+            _money(r.get('gain', 0)),
             _pct(r.get('gain_pct', 0)),
         ])
     proj_tbl = Table(proj_data, colWidths=[3 * cm, 5 * cm, 4 * cm, 3 * cm])
@@ -705,7 +720,7 @@ def _page6_roles(audit: dict, s: dict) -> list:
 
         elif role_name == 'Agent':
             box_rows = [
-                ('Commission',           _pkr(data.get('commission_pkr', 0))),
+                ('Commission',           _money(data.get('commission_pkr', 0))),
                 ('Pitch',                data.get('pitch', '')),
                 ('Deal Readiness',       data.get('deal_readiness', '')),
                 ('Buyer Income Needed',  data.get('buyer_income_needed', '')),
@@ -844,16 +859,18 @@ def generate_audit_pdf(audit_data: dict, output_path: str, measurement_system: s
 
     s = _styles()
     story = []
-
-    story += _page1_executive_summary(audit_data, s, measurement_system)
-    story += _page2_financial(audit_data, s)
-    story += _page3_market(audit_data, s, measurement_system)
-    story += _page4_legal(audit_data, s)
-    story += _page5_investment(audit_data, s)
-    story += _page6_roles(audit_data, s)
-    story += _page7_recommendations(audit_data, s)
-
-    doc.build(story)
+    token = _REPORT_CURRENCY.set(_report_currency(audit_data))
+    try:
+        story += _page1_executive_summary(audit_data, s, measurement_system)
+        story += _page2_financial(audit_data, s)
+        story += _page3_market(audit_data, s, measurement_system)
+        story += _page4_legal(audit_data, s)
+        story += _page5_investment(audit_data, s)
+        story += _page6_roles(audit_data, s)
+        story += _page7_recommendations(audit_data, s)
+        doc.build(story)
+    finally:
+        _REPORT_CURRENCY.reset(token)
     return output_path
 
 
@@ -883,7 +900,9 @@ def generate_audit_pdf_bytes(
     )
     ms = brand_context.measurement_system if brand_context else measurement_system
     s = _styles()
-    story = (
+    token = _REPORT_CURRENCY.set(_report_currency(audit_data))
+    try:
+        story = (
         _page1_executive_summary(audit_data, s, ms, brand_context)
         + _page2_financial(audit_data, s)
         + _page3_market(audit_data, s, ms)
@@ -891,6 +910,8 @@ def generate_audit_pdf_bytes(
         + _page5_investment(audit_data, s)
         + _page6_roles(audit_data, s)
         + _page7_recommendations(audit_data, s)
-    )
-    doc.build(story)
+        )
+        doc.build(story)
+    finally:
+        _REPORT_CURRENCY.reset(token)
     return buf.getvalue()

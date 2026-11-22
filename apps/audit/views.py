@@ -88,7 +88,7 @@ class BenchmarkListView(APIView):
         if missing:
             return Response({'error': f"Missing fields: {missing}"}, status=status.HTTP_400_BAD_REQUEST)
 
-        from apps.markets.services import country_or_default
+        from apps.markets.services import country_or_default, currency_for_country
         country = country_or_default(str(data.get('country') or ''))
         if AuditBenchmark.objects.filter(
             country=country,
@@ -107,7 +107,7 @@ class BenchmarkListView(APIView):
             price_per_unit_min=data['price_per_unit_min'],
             price_per_unit_max=data['price_per_unit_max'],
             size_unit=data.get('size_unit', 'marla'),
-            currency=data.get('currency', 'PKR').upper(),
+            currency=str(data.get('currency') or currency_for_country(country)).upper(),
             yield_pct=data['yield_pct'],
             appr_pct=data['appr_pct'],
             liq_months=data['liq_months'],

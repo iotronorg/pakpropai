@@ -16,6 +16,8 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+from apps.markets.pk import COUNTRY as PK_COUNTRY, CURRENCY as PK_CURRENCY
+
 logger = logging.getLogger(__name__)
 
 _CONFIG_PREFIX = 'finance_'
@@ -28,8 +30,9 @@ class FinancialConfig:
     (e.g. 0.03 = 3 %).  Load via FinancialConfigLoader — never hard-code
     rates at call sites.
     """
-    country: str = 'PK'
-    currency: str = 'PKR'
+    # Defaults are the PK market pack; other markets come from FinancialConfigLoader
+    country: str = PK_COUNTRY
+    currency: str = PK_CURRENCY
 
     # ── Acquisition / transfer costs ─────────────────────────────────────────
     stamp_duty_rate:       float = 0.03   # buyer pays on property value

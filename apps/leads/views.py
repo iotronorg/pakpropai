@@ -58,11 +58,13 @@ class LeadViewSet(viewsets.ModelViewSet):
     def stats(self, request):
         """GET /leads/stats/ — KPI summary scoped to caller's org/role."""
         qs = self.get_queryset()
-        today = timezone.now().date()
+        # T-1050c: "today" is the active org's local day (was a UTC date vs PKT buckets)
+        from apps.markets.services import local_day_bounds, user_timezone
+        day_start, day_end = local_day_bounds(user_timezone(request.user))
         hot_leads   = qs.filter(score__gte=70).count()
         unassigned  = qs.filter(assigned_agent__isnull=True).count()
         avg_score   = qs.aggregate(v=Avg('score'))['v']
-        new_today   = qs.filter(created_at__date=today).count()
+        new_today   = qs.filter(created_at__gte=day_start, created_at__lt=day_end).count()
         return Response({
             'hot_leads':  hot_leads,
             'unassigned': unassigned,
@@ -326,7 +328,8 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         try:
             from apps.notifications.services import notify_user
             prop_title = appt.property.title if appt.property else "Property visit"
-            scheduled  = appt.scheduled_at.strftime('%d %b %Y %H:%M')
+            from apps.markets.services import format_local
+            scheduled  = format_local(appt.scheduled_at, appt.lead.organization, '%d %b %Y %H:%M')
             if new_status == 'confirmed':
                 notify_user(
                     appt.lead.user,

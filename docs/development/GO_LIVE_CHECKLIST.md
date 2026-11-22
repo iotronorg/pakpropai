@@ -98,3 +98,16 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - **Outbox (T‑1022a):** these now go through `outbox_messages` (kind `whatsapp.text`), so the `relay-outbox` beat job and a worker on `OUTBOX_CELERY_QUEUE` must be running: hot‑lead alerts, verification notices, new‑listing alerts, appointment reminders, stale‑lead reminders and client re‑engagement. `reminder_sent_at`/`follow_up_sent_at` now mean "queued". Failed rows show up as `status='failed'` with `last_error`.
 - Property owners no longer get a repeat “Verification Approved/Rejected” message whenever a reviewed verification is saved again (KI‑042).
 - **T‑1022b:** escrow expiry notices, the seller deal‑lock code (now only after AML screening, KI‑043), the audit companion text and the scraped‑listing follow‑up also go through the outbox. Campaigns and AI re‑engagement stay direct (rate‑limited).
+
+## 12. Session‑8 change: UTC switch (T‑1050c, ADR‑022)
+- `TIME_ZONE` and `CELERY_TIMEZONE` are now UTC. No migration.
+- **Restart celery beat after deploy**, so the settings schedule re‑syncs into UTC crontab rows.
+- In Django admin → Periodic tasks, check each crontab task:
+  - `monthly-report-generation`: minute 5, every hour, day 1, UTC;
+  - `run-reengagement-worker`: hours 1,7,13,19 UTC;
+  - `sync-aml-sanctions`: Sunday 21:00 UTC.
+
+  Delete stale duplicates only if beat created new rows alongside old PKT ones. Hand‑made tasks keep their stored zone.
+- Django admin timestamps now display in UTC.
+- Monthly reports are per‑org local months. Pakistan reports appear from about 05:05 PKT on the 1st (was 06:00).
+

@@ -173,13 +173,24 @@
   - Ratchet PKR 34 → 27, PK fallback 20 → 0.
 - **Final tests:** 1723 passed, 1 skipped, 0 failed. `check`/drift/schema clean; Bandit 0 HIGH.
 
-### Handoff → session 9
-1. `git status`: session‑8 changes are uncommitted. **Do not commit.** `scripts/dev/test.sh` should give 1723 passed, 1 skipped. Docker Desktop must be running; the first run can take a few extra minutes to start.
-2. Next: **T‑1050b‑2**, the remaining 27 `'PKR'` literals, which are mostly PK‑pack content:
-   - `apps/audit/services.py`, `apps/audit/pdf.py` (CGT/tax rows, `_pkr`, `estimated_value_pkr`);
-   - `apps/ai/tools.py::generate_property_audit` (`currency='PKR'`, `area_unit='marla'`);
-   - `apps/ai/schemas.py`, `apps/ai/compliance_filters.py` (PKR aliases: keep, but move into `apps/markets/pk/`);
-   - `apps/payments/services.py`, `apps/properties/financial.py`, `apps/billing/gateway.py` (Safepay PKR; say so explicitly).
+- **Continued (owner committed the earlier work, then said "continue"):**
+  - **T‑1050b‑2:** code that is PK by design now uses `apps.markets.pk` constants.
+    - Audit, PDF and WhatsApp audit money is labelled in its real currency; benchmark figures use the benchmark currency.
+    - Fixed KI‑046: the PDF "Today" projection row was always 0.
+    - Recorded KI‑045: the audit engine is PK‑only.
+    - Ratchet PKR 27 → 5. **T‑1050b complete.**
+  - **T‑1050c (ADR‑022):** UTC `TIME_ZONE`/`CELERY_TIMEZONE`; crontabs keep their former instants.
+    - Monthly reports are now per‑org local months, hourly on UTC day 1.
+    - Report and stat buckets and "today" counts use the org's market zone.
+    - Fixed KI‑047: messages showed UTC times.
+    - **T‑1050 complete.**
+- **Final tests:** 1738 passed, 1 skipped, 0 failed. `check`/drift/schema clean; Bandit 0 HIGH.
 
-   Use the `apps/markets/services.py` helpers (`format_price`, `currency_for_country`, `org_country`) and lower `RATCHET['pkr_literal']` in `tests/test_markets.py`.
-3. Then T‑1050c (UTC; needs a schedule review) → T‑1091/T‑1092 → T‑1070 (listing schema v2). T‑1032b waits for a clean prod `reconcile_memberships`.
+### Handoff → session 9
+1. `git status`: T‑1050b‑2 and T‑1050c are uncommitted. **Do not commit.** `scripts/dev/test.sh` should give 1738 passed, 1 skipped (Docker Desktop must be running).
+2. Next: **T‑1070**, listing schema v2 (P1). It is large, so start with a design ADR and a split into subtasks:
+   - **Fields:** inventory `Property` fields and their readers (search, AI tools `_tools_search`/`tools.list_property`, serializers, scoring, audit). Compare with the PRD listing model (`docs/product/ai-real-estate-agent/API_AND_DATA_REQUIREMENTS.md`, `PRD_MASTER.md`, GAP‑010/012/045 in `FEATURE_GAP_ANALYSIS.md`).
+   - **Expand/contract plan:** new columns nullable plus backfill, then readers, then contract (same pattern as ADR‑019).
+   - **Search:** a stored `tsvector` for KI‑035.
+   - Location hierarchy stays with T‑1060 (blocked).
+3. After that: T‑1080 (lifecycle) → T‑1011 (MFA) → T‑1091/T‑1092 (OpenAPI/error cleanup, P3).

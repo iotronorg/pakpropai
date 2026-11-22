@@ -41,7 +41,8 @@ def compute_agent_stats(agent, period=None):
     }
 
     if period in ('weekly', 'monthly'):
-        result['trend'] = _get_trend(leads_qs, period)
+        from apps.markets.services import org_timezone
+        result['trend'] = _get_trend(leads_qs, period, org_timezone(agent.organization))
 
     return result
 
@@ -156,20 +157,20 @@ def compute_leaderboard(agents_qs):
     return rows
 
 
-def _get_trend(qs, period):
+def _get_trend(qs, period, tz=None):
     now = timezone.now()
     if period == 'monthly':
         cutoff = now - datetime.timedelta(days=182)
         rows   = (
             qs.filter(created_at__gte=cutoff)
-              .annotate(bucket=TruncMonth('created_at'))
+              .annotate(bucket=TruncMonth('created_at', tzinfo=tz))
               .values('bucket').annotate(count=Count('id')).order_by('bucket')
         )
         return [{'period': r['bucket'].strftime('%Y-%m'), 'count': r['count']} for r in rows]
     cutoff = now - datetime.timedelta(weeks=8)
     rows   = (
         qs.filter(created_at__gte=cutoff)
-          .annotate(bucket=TruncWeek('created_at'))
+          .annotate(bucket=TruncWeek('created_at', tzinfo=tz))
           .values('bucket').annotate(count=Count('id')).order_by('bucket')
     )
     return [{'period': r['bucket'].strftime('%Y-%m-%d'), 'count': r['count']} for r in rows]

@@ -347,6 +347,12 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - a `market` FK on every money model now: currency belongs to the listing, deal or payment, not to a market; revisit with listing v2 (T‑1070);
   - deleting the registry: code packs (calculators, parsers, document types) stay in code, and the registry is their index.
 
+- **Addendum — T‑1050b (2026-11-22, session 8):**
+  - **Market‑neutral helpers** in `apps.markets.services`: `country_or_default`, `org_country`, `currency_for_country`, `format_price`. Use them for fallbacks and display.
+  - **Code that is Pakistan‑only by design** imports `apps.markets.pk.{COUNTRY, CURRENCY, AREA_UNIT}` instead of literals: the audit engine, the WhatsApp audit/listing tool contract, PK payment gateways, `FinancialConfig` defaults and the NL search schema. The coupling stays explicit and greppable until those features get per‑market implementations (KI‑045).
+  - **Money is labelled in the currency it is in**, never relabelled with the deployment default.
+  - **The ratchet keeps 5 literals:** the multi‑currency alias table in `ai/compliance_filters.py`.
+
 ## ADR‑020 — Membership‑based permissions, active org context, grant policy (ADR‑013 phase B, part 1)
 - **Date:** 2026-11-21 (session 7) · Task T‑1031a · TR‑06, GAP‑015, KI‑010, KI‑030
 - **Context:**
@@ -433,3 +439,28 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - keeping the policy in views: the service is the only place every writer passes;
   - letting the projection hook handle transfers: it would remove the previous owner from the org;
   - auto‑promoting the target to `org_admin` during transfer: it skips a deliberate step for an irreversible‑feeling action.
+
+## ADR‑022 — UTC for storage and scheduling; market‑local time for people and buckets
+- **Date:** 2026-11-22 (session 8) · Task T‑1050c · TR‑04, GAP‑091
+- **Context:**
+  - `TIME_ZONE` and `CELERY_TIMEZONE` were `Asia/Karachi`, so every day/week/month bucket, every crontab and the admin were in PKT. A global product needs per‑market local time.
+  - `strftime` on stored datetimes already produced UTC in messages (KI‑047), because `USE_TZ=True` returns UTC values.
+- **Decision:**
+  - **UTC everywhere internally:** `TIME_ZONE = CELERY_TIMEZONE = 'UTC'`.
+  - **The three crontabs keep their former instants:** re‑engagement at 01/07/13/19 UTC (= 00/06/12/18 PKT); AML sync Sunday 21:00 UTC (= Monday 02:00 PKT). Interval schedules are unaffected.
+  - **Monthly reports** run hourly on UTC day 1. Each org gets its **last complete month in its own zone**; the run is idempotent per (org, month) and catches up missed months. Pakistan reports appear from 05:05 PKT, previously 06:00. New York reports appear once New York reaches the 1st.
+  - **Local time comes from the market:** `apps.markets.services.market_timezone(code)` → `org_timezone(org)` (market, else country, else the default market) → `user_timezone(user)` (active org; platform admins get the default market). An invalid zone falls back to UTC with a warning.
+  - **Presentation:** `format_local(dt, org, fmt)` for anything a person reads.
+  - **Bucketing:** Trunc* with `tzinfo=` and `local_day_bounds(tz)` ranges, instead of `__date` (which depends on the server zone).
+- **Not converted (acceptable in UTC):**
+  - admin‑only filters (`compliance` `date_from`);
+  - internal ISO stamps (`date.today()` in metrics/ML, which uses the OS clock);
+  - LLM context dates;
+  - the audit PDF "generated" date.
+- **Consequences:**
+  - **django‑celery‑beat** is the scheduler (`DatabaseScheduler`). Settings entries are re‑synced into new UTC `CrontabSchedule` rows when beat starts. Admin‑created `PeriodicTask` rows keep their stored zone and still fire at the same instants, but should be reviewed.
+  - **Django admin** shows UTC.
+- **Rejected:**
+  - `timezone.activate()` per request: JWT auth happens inside DRF, so a middleware cannot know the org, and implicit global state is harder to test than explicit `tzinfo`;
+  - a single "06:00 UTC" monthly run: it would cut western markets' months early or deliver PK reports at 11:00 PKT.
+

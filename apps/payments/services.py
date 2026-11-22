@@ -16,6 +16,8 @@ from typing import Optional
 import requests
 from django.conf import settings
 
+from apps.markets.pk import CURRENCY as PK_CURRENCY
+
 logger = logging.getLogger(__name__)
 
 
@@ -59,7 +61,7 @@ class SafepayGateway:
         merchant_key: str = None,
         secret_key: str = None,
         environment: str = None,
-        currency: str = 'PKR',
+        currency: str = PK_CURRENCY,  # PK gateway
     ) -> dict:
         """
         Create a Safepay checkout session.
@@ -188,7 +190,7 @@ class bSecureGateway:
         client_id: str = None,
         client_secret: str = None,
         environment: str = None,
-        currency: str = 'PKR',
+        currency: str = PK_CURRENCY,  # PK gateway
     ) -> dict:
         from apps.config.services import SystemConfigService
         env   = environment or SystemConfigService.get('bsecure_environment') or getattr(settings, 'BSECURE_ENVIRONMENT', 'sandbox')

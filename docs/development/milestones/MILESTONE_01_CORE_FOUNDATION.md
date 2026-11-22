@@ -25,7 +25,7 @@
 | T‑1032 (a ✅, b) | P2 | Membership contract: audited service + ownership transfer (ADR‑021) ✅; phase‑C schema contraction (ADR‑013) | KI‑010 | T‑1031; b: clean `reconcile_memberships` in prod |
 | T‑1033 | P1 | PII‑masking endpoint audit | KI‑032 | owner policy sign‑off |
 | T‑1040 | P2 | `is_sandbox` semantics for unscoped leads | KI‑017 | T‑1030 |
-| T‑1050 (a ✅, b‑1 ✅, b‑2, c) | P1 | `Market` entity from the registry; remove hardcoded PK defaults; UTC + per‑entity TZ | TR‑04, GAP‑014/091 | — |
+| T‑1050 ✅ (a, b, c) | P1 | `Market` entity from the registry; remove hardcoded PK defaults; UTC + per‑entity TZ | TR‑04, GAP‑014/091 | — |
 | T‑1060 | P1 | Location hierarchy + PostGIS point + geocoding backfill with a review queue | GAP‑013/041 | T‑1050; **owner:** geocoding vendor, PostGIS in all envs |
 | T‑1070 | P1 | Listing schema v2 (expand/contract) | GAP‑010/012/045 | T‑1050 |
 | T‑1080 | P2 | Listing lifecycle, transitions, audit, expiry | GAP‑011 | T‑1070 |
@@ -35,4 +35,4 @@
 | T‑1120 | P2 | AI provider abstraction, prompt registry, market‑pack prompt fragments | GAP‑055/056/062 | — |
 
 ## Order
-T‑1010 ✅ → T‑1020 ✅ → T‑1030 ✅ → T‑1021 ✅ → T‑1100 ✅ → T‑1090 ✅ → T‑1050 → T‑1031 ✅ → T‑1032a ✅ → T‑1022 ✅ → T‑1070 → T‑1080 → T‑1011 → T‑1110 → T‑1120 → T‑1060 (this one waits on the vendor/PostGIS decision).
+T‑1010 ✅ → T‑1020 ✅ → T‑1030 ✅ → T‑1021 ✅ → T‑1100 ✅ → T‑1090 ✅ → T‑1050 ✅ → T‑1031 ✅ → T‑1032a ✅ → T‑1022 ✅ → T‑1070 → T‑1080 → T‑1011 → T‑1110 → T‑1120 → T‑1060 (this one waits on the vendor/PostGIS decision).

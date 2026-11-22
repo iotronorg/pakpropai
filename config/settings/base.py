@@ -170,7 +170,9 @@ LANGUAGE_CODE = 'en-us'
 # Market used for model defaults (currency, country, area unit) when a record
 # names none (ADR-019). Must be a key of apps/markets/registry.py.
 DEFAULT_MARKET = env('DEFAULT_MARKET', default='PK')
-TIME_ZONE = 'Asia/Karachi'
+# T-1050c: store, schedule and log in UTC; people see market-local time
+# (apps.markets.services.org_timezone / format_local / local_day_bounds).
+TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
 
@@ -299,7 +301,7 @@ CELERY_RESULT_BACKEND = 'django-db'
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
-CELERY_TIMEZONE = 'Asia/Karachi'  # UTC switch is T-1050c (ADR-019)
+CELERY_TIMEZONE = 'UTC'  # T-1050c; crontabs below are UTC and keep their former PKT instants
 
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 
@@ -380,7 +382,9 @@ CELERY_BEAT_SCHEDULE = {
     },
     'monthly-report-generation': {
         'task':     'apps.reports.tasks.generate_monthly_reports',
-        'schedule': crontab(hour=6, minute=0, day_of_month=1),  # 1st of each month at 06:00 PKT
+        # Hourly on UTC day 1: each org gets its last complete *local* month once it has ended
+        # (PK: from 05:05 PKT; formerly a single run at 06:00 PKT). Idempotent per org/month.
+        'schedule': crontab(minute=5, hour='*', day_of_month=1),
     },
     'dispatch-scheduled-campaigns': {
         'task':     'apps.campaigns.tasks.dispatch_scheduled_campaigns',
@@ -400,7 +404,7 @@ CELERY_BEAT_SCHEDULE = {
     },
     'run-reengagement-worker': {
         'task':     'apps.campaigns.tasks.run_reengagement_worker',
-        'schedule': crontab(minute=0, hour='*/6'),
+        'schedule': crontab(minute=0, hour='1,7,13,19'),  # = 00/06/12/18 PKT, as before the UTC switch
     },
     'sync-all-inventory-connections': {
         'task':     'apps.inventory.tasks.sync_all_active_connections',
@@ -417,7 +421,9 @@ CELERY_BEAT_SCHEDULE = {
     },
     'sync-aml-sanctions': {
         'task':     'apps.compliance.tasks.sync_aml_sanction_lists',
-        'schedule': crontab(hour=2, minute=0, day_of_week=1),  # Monday 02:00 UTC
+        # Sunday 21:00 UTC = Monday 02:00 PKT, the instant it actually ran under CELERY_TIMEZONE=PKT
+        # (the old comment said 02:00 UTC, but the schedule was interpreted in PKT).
+        'schedule': crontab(hour=21, minute=0, day_of_week=0),
     },
 }
 

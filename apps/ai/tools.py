@@ -3,6 +3,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+from apps.markets.pk import AREA_UNIT as PK_AREA_UNIT, CURRENCY as PK_CURRENCY
 from apps.markets.services import format_price
 from ._tools_context import _ctx_user, _ctx_phone, set_context  # noqa: F401
 from ._tools_search import search_properties                     # noqa: F401
@@ -52,7 +53,7 @@ def generate_property_audit(
             {'city': city, 'location': location, 'estimated_value_pkr': estimated_value_pkr,
              'property_type': property_type},
             summary=(f"📊 Audit report for {property_type} — {location}, {city}\n"
-                     f"💰 Value you provided: PKR {int(estimated_value_pkr or 0):,}\n"
+                     f"💰 Value you provided: {PK_CURRENCY} {int(estimated_value_pkr or 0):,}\n"
                      "Indicative estimate only — not a valuation."),
             question='Shall I generate this property audit report?',
         )
@@ -83,9 +84,10 @@ def generate_property_audit(
             location=location,
             property_type=property_type,
             area_size=area_marla if area_marla > 0 else None,
-            area_unit='marla',
+            # WhatsApp audit tool contract is PK (PKR/marla) — market pack constants
+            area_unit=PK_AREA_UNIT,
             estimated_value=estimated_value_pkr,
-            currency='PKR',
+            currency=PK_CURRENCY,
             owner_name=owner_name,
             description=description,
             risk_score=scores['risk_score'],
@@ -119,7 +121,8 @@ def generate_property_audit(
         rec = audit_data['recommendations']
 
         area_str  = f"{ov['area_marla']}M " if ov.get('area_marla') else ''
-        _cur = ov.get('value_currency', 'PKR')
+        _cur = ov.get('value_currency') or PK_CURRENCY
+        _bcur = mkt.get('benchmark_currency') or PK_CURRENCY
         _val = ov.get('estimated_value') or estimated_value_pkr or 0
         value_str = f"{_cur} {_val:,}"
 
@@ -141,26 +144,26 @@ def generate_property_audit(
             summary_lines.append(f"Market Difference: {'+' if pct > 0 else ''}{pct:.1f}%")
 
         summary_lines += [
-            f"Indicative Range (not a valuation): PKR {mkt['estimated_fair_value_min']:,} – PKR {mkt['estimated_fair_value_max']:,}",
+            f"Indicative Range (not a valuation): {_bcur} {mkt['estimated_fair_value_min']:,} – {_bcur} {mkt['estimated_fair_value_max']:,}",
             "",
             "💰 *TAX OBLIGATIONS*",
         ]
 
         tax = fin['tax_table']
         if tax['7e_annual_filer'] > 0:
-            summary_lines.append(f"7E Tax (filer): PKR {tax['7e_annual_filer']:,}/year")
+            summary_lines.append(f"7E Tax (filer): {_cur} {tax['7e_annual_filer']:,}/year")
         else:
-            summary_lines.append("7E Tax: Exempt (below PKR 25M threshold)")
-        summary_lines.append(f"WHT on sale (filer): PKR {tax['wht_filer']:,}")
-        summary_lines.append(f"Stamp Duty: PKR {tax['stamp_duty_estimate']:,}")
+            summary_lines.append(f"7E Tax: Exempt (below {PK_CURRENCY} 25M threshold)")
+        summary_lines.append(f"WHT on sale (filer): {_cur} {tax['wht_filer']:,}")
+        summary_lines.append(f"Stamp Duty: {_cur} {tax['stamp_duty_estimate']:,}")
 
         true_cost = fin['true_cost_buyer']['total']
         net_seller = fin['net_in_hand_seller']['net']
         summary_lines += [
             "",
-            f"🏦 *FOR BUYER* — Total cost incl. fees: *PKR {true_cost:,}*",
-            f"💼 *FOR SELLER* — Net in hand: *PKR {net_seller:,}*",
-            f"📈 *Illustrative 5-yr projection* — PKR {fin['roi_projections']['5_year']['value']:,} (assumed growth rate, not a forecast)",
+            f"🏦 *FOR BUYER* — Total cost incl. fees: *{_cur} {true_cost:,}*",
+            f"💼 *FOR SELLER* — Net in hand: *{_cur} {net_seller:,}*",
+            f"📈 *Illustrative 5-yr projection* — {_cur} {fin['roi_projections']['5_year']['value']:,} (assumed growth rate, not a forecast)",
             "",
             "⚠️ *TOP ACTIONS*",
         ]
@@ -245,7 +248,7 @@ def list_property(
             'list_property',
             {'city': city, 'location': location, 'area_marla': area_marla,
              'price': price, 'property_type': property_type},
-            summary=(f"📋 {title}\n💰 PKR {int(price or 0):,}"
+            summary=(f"📋 {title}\n💰 {PK_CURRENCY} {int(price or 0):,}"
                      + (f"\n📝 {description[:200]}" if description else '')),
             question='Please confirm you want to publish this listing:',
         )

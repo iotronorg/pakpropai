@@ -165,7 +165,8 @@ class DynamicContextBuilder:
                 lines.append(f'City interest: {lead.city_interest}')
 
             if lead.budget_max:
-                currency = getattr(lead, 'budget_currency', 'PKR') or 'PKR'
+                from apps.markets.services import default_currency
+                currency = getattr(lead, 'budget_currency', None) or default_currency()
                 lines.append(f'Budget: up to {currency} {lead.budget_max:,}')
 
             if lead.score:

@@ -218,3 +218,19 @@
   - Formatting: `ai/_tools_search.py`, `ai/tools.py`, `ai/scoring.py`.
   - Fallbacks: `compliance/compliance_service.py`, `verification/views.py`, `properties/scoring.py`, `ai/service.py`, `ai/_tools_deals.py`, `ai/knowledge.py`, `ai/context.py`, `ai/agent.py`, `escrow/views.py`, `audit/views.py`.
   - Tests: `tests/test_markets.py` +5 and ratchet lowered.
+- **T‑1050b‑2:**
+  - `apps/markets/pk/__init__.py`: constants.
+  - `apps/audit/services.py`: `cur`/`bench_cur`, `market_analysis.benchmark_currency`.
+  - `apps/audit/pdf.py`: `_pkr` → `_money` with a `_REPORT_CURRENCY` context var set and reset by both entry points; KI‑046.
+  - `apps/ai/tools.py`: PK constants and real currencies in the audit summary.
+  - PK constants in `ai/schemas.py`, `properties/financial.py`, `payments/services.py`, `billing/gateway.py`.
+  - Market‑neutral defaults in `ai/context.py` and `audit/views.py`.
+  - Tests: `tests/test_markets.py` +5; ratchet 27 → 5.
+- **T‑1050c (ADR‑022):**
+  - `config/settings/base.py`: UTC, 3 crontabs.
+  - `apps/markets/services.py`: time‑zone helpers.
+  - Messages: `leads/tasks.py` (reminder), `leads/views.py` (appointment notice), `escrow/views.py` (expiry ×2), `verification/certificate.py` (date).
+  - Buckets: `reports/views.py` (`_get_trend(tz)`, bot daily trend), `agents/stats.py`, `properties/views.py`, `leads/views.py` + `campaigns/public_views.py` (local day bounds).
+  - `reports/tasks.py`: per‑org local month; `now` parameter; local PDF date.
+  - Tests: new `tests/test_timezones.py` (10).
+

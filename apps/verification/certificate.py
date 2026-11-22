@@ -37,12 +37,13 @@ def generate_trust_certificate(verification, qr_url: str = '') -> bytes:
     GREEN_STYLE = ParagraphStyle('Green', parent=BODY, textColor=GREEN,
                                  fontName='Helvetica-Bold')
 
+    from apps.markets.services import format_local
     prop     = verification.property
     org      = getattr(prop, 'organization', None)
     org_name = org.name if org else 'RealTron AI'
 
     verified_date = (
-        verification.verified_at.strftime('%d %B %Y')
+        format_local(verification.verified_at, org, '%d %B %Y')  # market-local date (T-1050c)
         if verification.verified_at else 'N/A'
     )
     reviewer_name = (
