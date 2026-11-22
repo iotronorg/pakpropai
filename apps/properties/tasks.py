@@ -160,7 +160,7 @@ def _notify_matching_leads(prop) -> int:
             if not lead.user or not lead.user.phone:
                 continue
             try:
-                area_str  = f"{prop.area_marla} {prop.area_unit}" if prop.area_marla else ''
+                area_str  = prop.size_display()
                 price_str = f"{prop.currency} {prop.price:,}" if prop.price else 'Price on request'
                 area_line = f"📐 {area_str}\n" if area_str else ''
                 msg = (

@@ -187,6 +187,16 @@ class Property(models.Model):
                         max_digits=12, decimal_places=4, null=True, blank=True,
                         help_text='Canonical area in square metres — auto-computed from area_marla + area_unit on save',
                     )
+    # ── Size v2 (T-1070b, ADR-023 / GAP-045) ─────────────────────────────────
+    # Canonical names. Kept in sync with the deprecated area_marla/area_unit/area_sqm
+    # by save() until the contract step (T-1070g). Nullable: pre-v2 inserts omit them.
+    size_value    = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True,
+                        help_text='Size in size_unit')
+    size_unit     = models.CharField(max_length=10, choices=AreaUnit.choices, null=True, blank=True)
+    size_m2       = models.DecimalField(max_digits=12, decimal_places=4, null=True, blank=True,
+                        help_text='Canonical size in square metres (computed)')
+    plot_size_m2  = models.DecimalField(max_digits=12, decimal_places=4, null=True, blank=True,
+                        help_text='Plot/land area in m² when it differs from the built size')
     latitude      = models.DecimalField(
                         max_digits=9, decimal_places=6,
                         null=True, blank=True,
@@ -381,6 +391,64 @@ class Property(models.Model):
         factor = self._SQM_FACTORS.get(self.area_unit or 'marla', 1.0)
         return round(float(self.area_marla) * factor, 4)
 
+    # ── Size v2 sync (T-1070b) ──────────────────────────────────────────────
+    _SIZE_V1 = ('area_marla', 'area_unit', 'area_sqm')
+    _SIZE_V2 = ('size_value', 'size_unit', 'size_m2')
+
+    @classmethod
+    def from_db(cls, db, field_names, values):
+        inst = super().from_db(db, field_names, values)
+        names = ('area_marla', 'area_unit', 'size_value', 'size_unit')
+        # Deferred size fields (.only()): state unknown → the v1 pair wins on save.
+        inst._size_loaded = (inst._size_state() if all(n in inst.__dict__ for n in names)
+                             else 'deferred')
+        return inst
+
+    def _size_state(self):
+        d = self.__dict__                    # never triggers a deferred-field fetch
+        return (d.get('area_marla'), d.get('area_unit'), d.get('size_value'), d.get('size_unit'))
+
+    def _sync_size(self):
+        """
+        Keep (size_value, size_unit) and the deprecated (area_marla, area_unit) equal.
+        The v2 pair wins when it was changed since load (or set on a new object);
+        otherwise the v1 pair wins: it covers pre-v2 writers and un-backfilled rows.
+        """
+        loaded = getattr(self, '_size_loaded', None)
+        v1 = (self.area_marla, self.area_unit)
+        v2 = (self.size_value, self.size_unit)
+        if loaded == 'deferred':
+            v2_changed = False
+        elif loaded:
+            v2_changed = v2 != loaded[2:]
+        else:                                # new, unsaved object
+            v2_changed = self.size_value is not None
+        if v2_changed:
+            self.area_marla = self.size_value
+            if self.size_unit:
+                self.area_unit = self.size_unit
+        elif v2 != v1:
+            self.size_value, self.size_unit = v1
+        if self.size_unit is None:
+            self.size_unit = self.area_unit
+        self.area_sqm = self.size_m2 = self._compute_area_sqm()
+
+    def size_in(self, unit: str) -> float | None:
+        """Size converted to ``unit`` (an AreaUnit value) via the canonical m²."""
+        m2 = self.size_m2 if self.size_m2 is not None else self._compute_area_sqm()
+        factor = self._SQM_FACTORS.get(unit)
+        if m2 is None or not factor:
+            return None
+        return round(float(m2) / factor, 2)
+
+    def size_display(self) -> str:
+        """'5 marla', '1,200 sqft' — '' when unknown."""
+        if self.size_value is None:
+            return ''
+        v = float(self.size_value)
+        num = f"{v:,.0f}" if v.is_integer() else f"{v:,.2f}".rstrip('0').rstrip('.')
+        return f"{num} {self.size_unit or self.area_unit}"
+
     def derive_is_sandbox(self) -> bool:
         """ADR-002: platform demo listings and non-production orgs are sandbox."""
         if self.listing_owner_type == self.ListingOwnerType.PLATFORM:
@@ -399,8 +467,14 @@ class Property(models.Model):
                 self.market_id = market_code_for_country(self.country)
         if not self.ref_no:
             self.ref_no = self._build_ref_no()
-        self.area_sqm = self._compute_area_sqm()
+        self._sync_size()
+        update_fields = kwargs.get('update_fields')
+        if update_fields is not None:
+            touched = set(update_fields)
+            if touched & set(self._SIZE_V1 + self._SIZE_V2):
+                kwargs['update_fields'] = list(touched | set(self._SIZE_V1 + self._SIZE_V2))
         super().save(*args, **kwargs)
+        self._size_loaded = self._size_state()
 
     def __str__(self):
         return f"[{self.ref_no}] {self.title} — {self.city}"

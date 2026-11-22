@@ -12,7 +12,7 @@ Property details:
 - City: {city}
 - Location: {location}
 - Type: {property_type}
-- Area: {area_marla} marla
+- Area: {area}
 - Price: PKR {price}
 - Legal status: {legal_status}
 - Construction status: {construction_status}
@@ -54,7 +54,7 @@ def score_property(property_obj) -> dict:
         city=property_obj.city,
         location=property_obj.location,
         property_type=property_obj.property_type,
-        area_marla=property_obj.area_marla or 0,
+        area=property_obj.size_display() or 'unknown',
         price=property_obj.price or 0,
         legal_status=property_obj.legal_status,
         construction_status=signals['construction_status'],

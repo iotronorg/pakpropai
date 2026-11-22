@@ -244,3 +244,13 @@
   - `ai/schemas.py`: `bedrooms`, passed to the tool.
   - `ai/service.py`: bedroom regex.
   - Tests: `tests/test_listing_schema_v2.py` (16).
+- **T‑1070b (ADR‑023 addendum):**
+  - `apps/properties/models.py`: size v2 fields, `from_db` snapshot, `_sync_size`, `size_in`, `size_display`, `update_fields` extension.
+  - Migrations 0027 and 0028.
+  - New `apps/properties/size_sync.py` and `management/commands/sync_listing_size.py`.
+  - `serializers.py`: size fields, deprecated alias help text, conflict check, `size_m2` read‑only.
+  - `search.py`: m² band, result `size_value`/`size_unit`.
+  - `scrapers/base.py`: DTO size fields + unit display.
+  - Other readers: `scoring.py` (marla‑equivalent), `tasks.py` (alert size text), `ai/scoring.py` (prompt area), `whatsapp/copilot_stream.py` (`size_m2`, bedrooms), `seed_data.py`.
+  - `config/settings/base.py`: `AreaUnitEnum` override.
+  - Tests: `tests/test_size_v2.py` (16).

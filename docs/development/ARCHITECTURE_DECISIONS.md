@@ -480,7 +480,7 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
     | Subtask | Scope | Status |
     |---|---|---|
     | T‑1070a | Expand core fields and price terms (`purpose`, `bedrooms`, `bathrooms`, `floor`, `total_floors`, `year_built`, `parking_spaces`, `pets_allowed`, `price_type`, `price_negotiable`, `price_on_request`, `deposit`, `service_charge`, `attributes`). Wire them through the API, search and the AI search tool. Existing rows become `purpose='sale'`: scrapers fetch `/sale/` only and the seed data is all sale | done |
-    | T‑1070b | Size rename: `size_value`/`size_unit`/`size_m2` and a nullable `plot_size_m2`. Dual‑write with `area_marla`/`area_unit` via an instance snapshot; migrate readers; the API keeps `area_marla` as a deprecated alias | planned |
+    | T‑1070b | Size rename: `size_value`/`size_unit`/`size_m2` and a nullable `plot_size_m2`. Dual‑write with `area_marla`/`area_unit` via an instance snapshot; migrate readers; the API keeps `area_marla` as a deprecated alias | done |
     | T‑1070c | `PriceHistory` table, recorded on every price change (FR‑LST‑002, P1) | planned |
     | T‑1070d | Category/subtype taxonomy (adds land and hospitality) plus `Amenity`/`ListingAmenity` | planned |
     | T‑1070e | Market attribute schema: `Market.listing_schema` validates `attributes` (FR‑LST‑004) | planned |
@@ -503,3 +503,17 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - a new `Listing` table with a copy‑over: it duplicates every FK (leads, deals, audits, syndication) and needs a big‑bang cutover;
   - Django `RenameField` for `area_marla`: old code breaks during a rolling deploy;
   - a free JSON blob for the core fields: they are not indexable or filterable, and not typed in OpenAPI.
+
+### ADR‑023 addendum — T‑1070b size dual‑write (2026-11-22)
+- **Snapshot:** `Property.from_db` records the loaded (v1, v2) size pairs.
+- **On `save()`:**
+  - the v2 pair wins if it changed since load (or was set on a new object);
+  - otherwise the v1 pair wins, which covers pre‑v2 writers and un‑backfilled rows;
+  - a load with deferred size fields counts as "v1 wins";
+  - `size_m2` and `area_sqm` are both recomputed;
+  - `update_fields` that touch any size field are extended to cover all six.
+- **Bypass writes:** `QuerySet.update` and raw SQL skip the sync. No app code writes size that way. Old pods during a rollout write v1 only, so `manage.py sync_listing_size` (batched v1 → v2 where they differ) is run once after rollout.
+- **Readers:**
+  - match and score on the **canonical m²** (`size_in('marla')` for the marla‑based PK benchmarks);
+  - display the **listed unit** (`size_display()`);
+  - the AI/scraper `area_marla` parameters still mean "marla" (user intent in the PK market) and are converted at the DB boundary.

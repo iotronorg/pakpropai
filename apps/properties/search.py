@@ -181,6 +181,8 @@ class PropertySearchService:
             'city': r.city,
             'location': r.location,
             'area_marla': r.area_marla,
+            'size_value': r.size_value,
+            'size_unit': r.size_unit,
             'price': r.price,
             'price_formatted': format_price(r.price, r.currency),
             'currency': r.currency,
@@ -249,7 +251,8 @@ class PropertySearchService:
             .visible_to(viewer_org)
             .select_related('organization', 'listed_by_agent')
             .only(
-                'id', 'title', 'city', 'location', 'area_marla', 'price', 'currency',
+                'id', 'title', 'city', 'location', 'size_value', 'size_unit', 'size_m2',
+                'price', 'currency',
                 'property_type', 'furnished_status', 'construction_status',
                 'ai_score', 'installment_available', 'legal_status',
                 'organization_id', 'listed_by_agent_id',
@@ -266,10 +269,10 @@ class PropertySearchService:
         if max_price:
             qs = qs.filter(price__lte=max_price)
         if area_marla:
-            qs = qs.filter(
-                area_marla__gte=area_marla * 0.8,
-                area_marla__lte=area_marla * 1.2,
-            )
+            # ±20 % band on the canonical m² (T-1070b): a kanal or sqft listing is
+            # compared by real size, not by its raw number (KI-049).
+            target_m2 = float(area_marla) * Property._SQM_FACTORS['marla']
+            qs = qs.filter(size_m2__gte=target_m2 * 0.8, size_m2__lte=target_m2 * 1.2)
         if property_type:
             qs = qs.filter(property_type__icontains=property_type)
         if furnished_status:
@@ -296,7 +299,9 @@ class PropertySearchService:
                 title               = p.title,
                 city                = p.city,
                 location            = p.location,
-                area_marla          = float(p.area_marla) if p.area_marla else None,
+                area_marla          = p.size_in('marla'),    # marla-equivalent (dedup/matching)
+                size_value          = float(p.size_value) if p.size_value is not None else None,
+                size_unit           = p.size_unit,
                 price           = p.price,
                 property_type       = p.property_type,
                 furnished_status    = p.furnished_status,

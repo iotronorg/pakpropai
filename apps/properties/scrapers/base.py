@@ -36,6 +36,9 @@ class PropertyResult:
     bathrooms:            Optional[int]   = None
     price_type:           str             = 'total'
     price_on_request:     bool            = False
+    # Size as listed (T-1070b); area_marla stays the marla-equivalent used for matching.
+    size_value:           Optional[float] = None
+    size_unit:            Optional[str]   = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -53,7 +56,10 @@ class PropertyResult:
         else:
             price = format_price(self.price, self.currency, missing="Price TBD")
             price += _PERIOD_SUFFIX.get(self.price_type, '') if self.price else ''
-        area   = f"{self.area_marla}M" if self.area_marla else ""
+        if self.size_value and self.size_unit and self.size_unit != 'marla':
+            area = f"{self.size_value:g} {self.size_unit}"
+        else:
+            area = f"{self.area_marla}M" if self.area_marla else ""
         if self.bedrooms:
             area = f"{area} {self.bedrooms} bed".strip()
         score  = f" | Score {self.ai_score}/100" if self.ai_score else ""

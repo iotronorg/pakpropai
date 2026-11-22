@@ -23,11 +23,25 @@ V2_FIELDS = ('purpose', 'bedrooms', 'bathrooms', 'floor', 'total_floors', 'year_
              'price_on_request', 'deposit', 'service_charge', 'attributes')
 
 
+_DEPRECATED = 'Deprecated (T-1070b): use {0}. Kept in sync until removal (T-1070g).'
+_SIZE_EXTRA_KWARGS = {
+    'area_marla': {'help_text': _DEPRECATED.format('size_value')},
+    'area_unit':  {'help_text': _DEPRECATED.format('size_unit')},
+    'area_sqm':   {'help_text': _DEPRECATED.format('size_m2')},
+    'size_value': {'help_text': 'Size in size_unit.'},
+    'size_m2':    {'help_text': 'Canonical size in m², computed from size_value + size_unit.'},
+}
+
+
 class ListingV2ValidationMixin:
-    """Cross-field rules for listing schema v2 (T-1070a); partial updates merge the instance."""
+    """Cross-field rules for listing schema v2 (T-1070a/b); partial updates merge the instance."""
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
+        for new, old in (('size_value', 'area_marla'), ('size_unit', 'area_unit')):
+            if new in attrs and old in attrs and attrs[new] != attrs[old]:
+                raise serializers.ValidationError(
+                    {old: f'Conflicts with {new}; send only {new} ({old} is deprecated).'})
         merged = {f: getattr(self.instance, f, None) for f in V2_FIELDS} if self.instance else {}
         merged.update({k: v for k, v in attrs.items() if k in V2_FIELDS})
         errors = Property.v2_errors(merged)
@@ -43,11 +57,13 @@ class PropertyListSerializer(serializers.ModelSerializer):
     class Meta:
         model  = Property
         fields = ('id', 'ref_no', 'title', 'city', 'location',
+                  'size_value', 'size_unit', 'size_m2',
                   'area_marla', 'area_unit', 'area_sqm',
                   'price', 'country', 'currency',
                   'purpose', 'price_type', 'price_on_request', 'bedrooms', 'bathrooms',
                   'property_type', 'construction_status', 'furnished_status',
                   'legal_status', 'ai_score', 'risk_level', 'primary_image', 'created_at')
+        extra_kwargs = _SIZE_EXTRA_KWARGS
 
     def get_primary_image(self, obj):
         first = obj.images.first()
@@ -66,7 +82,8 @@ class PropertyDetailSerializer(ListingV2ValidationMixin, serializers.ModelSerial
     class Meta:
         model  = Property
         fields = ('id', 'ref_no', 'owner', 'owner_phone', 'title', 'description',
-                  'city', 'location', 'area_marla', 'area_unit', 'area_sqm',
+                  'city', 'location', 'size_value', 'size_unit', 'size_m2', 'plot_size_m2',
+                  'area_marla', 'area_unit', 'area_sqm',
                   'price', 'country', 'currency',
                   'property_type', 'furnished_status', 'construction_status',
                   'legal_status', 'ai_score', 'risk_level', 'assigned_agent',
@@ -76,7 +93,9 @@ class PropertyDetailSerializer(ListingV2ValidationMixin, serializers.ModelSerial
                   'price_on_request', 'deposit', 'service_charge', 'attributes',
                   'is_active', 'primary_image', 'images',
                   'created_at', 'updated_at')
+        extra_kwargs = _SIZE_EXTRA_KWARGS
         read_only_fields = ('id', 'ref_no', 'owner', 'owner_phone', 'ai_score', 'risk_level',
+                            'size_m2', 'area_sqm',
                             'ai_analysis', 'primary_image', 'images', 'created_at', 'updated_at')
 
     def get_primary_image(self, obj):
@@ -96,6 +115,7 @@ class PropertyCreateSerializer(ListingV2ValidationMixin, serializers.ModelSerial
     class Meta:
         model  = Property
         fields = ('title', 'description', 'city', 'location',
+                  'size_value', 'size_unit', 'plot_size_m2',
                   'area_marla', 'area_unit',
                   'price', 'country', 'currency',
                   'property_type', 'furnished_status',
@@ -103,6 +123,7 @@ class PropertyCreateSerializer(ListingV2ValidationMixin, serializers.ModelSerial
                   'purpose', 'bedrooms', 'bathrooms', 'floor', 'total_floors', 'year_built',
                   'parking_spaces', 'pets_allowed', 'price_type', 'price_negotiable',
                   'price_on_request', 'deposit', 'service_charge', 'attributes')
+        extra_kwargs = _SIZE_EXTRA_KWARGS
 
     def validate_owner(self, value):
         request = self.context.get('request')
@@ -115,6 +136,11 @@ class PropertyCreateSerializer(ListingV2ValidationMixin, serializers.ModelSerial
     def validate_price(self, v):
         if v is not None and v <= 0:
             raise serializers.ValidationError('Price must be positive.')
+        return v
+
+    def validate_size_value(self, v):
+        if v is not None and v <= 0:
+            raise serializers.ValidationError('Size must be positive.')
         return v
 
     def validate_area_marla(self, v):

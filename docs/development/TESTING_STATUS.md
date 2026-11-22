@@ -71,6 +71,7 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | 2026-11-22 | Working tree, session 8 continued, after T‑1050b‑2 | `pytest tests/ apps/ -q` + checks | **1728 passed, 1 skipped, 0 failed**; check/drift/schema clean; Bandit 0 HIGH | 6m31s |
 | 2026-11-22 | Working tree, session 8 continued, after T‑1050c | `pytest tests/ apps/ -q` + checks | **1738 passed, 1 skipped, 0 failed**, 178 subtests; check/drift/schema clean; Bandit 0 HIGH | 6m20s |
 | 2026-11-22 | Working tree, session 8 continued, after T‑1070a | `pytest tests/ apps/ -q` + checks | **1754 passed, 1 skipped, 0 failed**; check/drift/schema clean; Bandit 0 HIGH | 6m50s |
+| 2026-11-22 | Working tree, session 8 continued, after T‑1070b | `pytest tests/ apps/ -q` + checks | **1770 passed, 1 skipped, 0 failed**; check/drift/schema clean; Bandit 0 HIGH | 8m36s |
 | 2026-11-22 | Working tree, session 8 end | `check` / `makemigrations --check` / `spectacular --validate` / `bandit -r apps/ -ll` | no issues / no changes / exit 0 (153 errors / 28 warnings unique) / **0 HIGH** | — |
 
 ## Tests added in sessions 2–8
@@ -99,6 +100,7 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | `tests/test_outbox_adoption.py` | 16 | T‑1022a: `whatsapp.text` through the real client, payload wiped, encrypted at rest, org credentials at delivery, closed window permanent, skip‑window passthrough, transient retry, idempotent key / no recipient, rollback; hot‑lead once per crossing; verification once per status (KI‑042); listing alert once per (listing, lead). T‑1022b: seller code queued only after AML screening (blocked buyer → none; verified against the old ordering), deal expiry buyer/seller/agent once, audit companion once per audit, scraped follow‑up with expiry |
 | `tests/test_timezones.py` | 10 | T‑1050c: UTC settings and crontab instants; market/org zones, invalid zone → UTC, local day bounds (incl. a 25 h DST day), `format_local`; appointment reminder in PKT (KI‑047); "new today" uses the local day; monthly trend buckets locally; monthly report per‑org local month (PK vs New York at 03:00/05:00 UTC, no duplicates) |
 | `tests/test_listing_schema_v2.py` | 16 | T‑1070a: defaults and DB defaults for pre‑v2 inserts; cross‑field rules; API create/read/list, partial update validated against stored values, list filters + 400s; search purpose aliases, DB filters, rent skips scrapers and no live‑pending; WhatsApp line (period, beds, rent tag, price on request, old cached dicts); AI extractor bedrooms/purpose and tool forwarding |
+| `tests/test_size_v2.py` | 16 | T‑1070b: dual‑write both directions, changed pair wins, `update_fields` extension, deferred load keeps newer v1, backfill migration + `sync_listing_size` (dry‑run and repair); KI‑049 size helpers, kanal = 20 marla price signal, m² search band, listed unit in results; API v2 create, conflicting alias 400, deprecated alias still writes, `size_m2` read‑only, OpenAPI deprecation text |
 
 ## Modified existing tests (behaviour change, not weakening)
 

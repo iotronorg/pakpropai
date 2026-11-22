@@ -260,6 +260,7 @@ SPECTACULAR_SETTINGS = {
     'ENUM_NAME_OVERRIDES': {
         'AgentEmploymentTypeEnum': 'apps.agents.models.Agent.EmploymentType',
         'MembershipEmploymentTypeEnum': 'apps.organizations.models.OrganizationMembership.EmploymentType',
+        'AreaUnitEnum': 'apps.properties.models.Property.AreaUnit',   # size_unit + deprecated area_unit
     },
     # ADR-017 error envelope, added to every /api/ JSON error body.
     'APPEND_COMPONENTS': {'schemas': {'ErrorEnvelope': {

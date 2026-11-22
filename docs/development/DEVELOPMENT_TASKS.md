@@ -54,7 +54,7 @@ Priority: P0 (blocker) → P3.
 | T‑1060 | [!] | P1 | Location hierarchy + PostGIS + geocoding backfill | Blocked: owner picks geocoding vendor; PostGIS in all envs |
 | T‑1070 | [ ] | P1 | Listing schema v2 (expand/contract) | ADR‑023; subtasks a–g |
 | T‑1070a | [x] | P1 | Expand: purpose, rooms, floors, year built, parking, pets, price terms, `attributes` | Migrations 0025 (columns, `db_default`) + 0026 (concurrent index); API fields + list filters `purpose`/`min_bedrooms`/`min_bathrooms`; search + AI tool purpose/bedrooms; rent searches skip sale‑only scrapers (KI‑048). 16 tests |
-| T‑1070b | [ ] | P1 | Size rename `size_value`/`size_unit`/`size_m2` (+ `plot_size_m2`), dual‑write, migrate readers | GAP‑045 |
+| T‑1070b | [x] | P1 | Size rename `size_value`/`size_unit`/`size_m2` (+ `plot_size_m2`), dual‑write, migrate readers | Migrations 0027 (columns) + 0028 (batched backfill); `save()` dual‑write via load snapshot (`from_db`), changed pair wins, deferred loads → v1 wins, `update_fields` extended; `size_in()`/`size_display()`; `sync_listing_size` drift command; readers moved (search band on m², scoring, alerts, AI score prompt, copilot incl. bedrooms, seed); API `area_*` deprecated aliases, conflicts → 400 (KI‑049). 16 tests |
 | T‑1070c | [ ] | P1 | `PriceHistory` | FR‑LST‑002 |
 | T‑1070d | [ ] | P1 | Category/subtype taxonomy + amenities | FR‑LST‑001 |
 | T‑1070e | [ ] | P1 | `Market.listing_schema` validates `attributes` | FR‑LST‑004 |

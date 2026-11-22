@@ -119,3 +119,11 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
   Run `migrate` before or during the rollout.
 - Existing listings become `purpose=sale`, `price_type=total`. Agents should correct any rental listings that were stored as sales.
 - API additions are backward compatible: new optional fields, plus the list filters `purpose`, `min_bedrooms` and `min_bathrooms`.
+
+## 14. Session‑8 change: size rename (T‑1070b, ADR‑023)
+- **Migrations:**
+  - `properties.0027`: nullable columns.
+  - `properties.0028`: batched backfill, non‑atomic, reverse no‑op.
+- **After every pre‑v2 pod has stopped:** run `python manage.py sync_listing_size --dry-run`, then `python manage.py sync_listing_size`. This copies rows that old code wrote only to `area_*`.
+- **API:** `size_value`/`size_unit`/`size_m2`/`plot_size_m2` added. `area_marla`/`area_unit`/`area_sqm` still work, are marked deprecated, and are removed only in T‑1070g. Sending conflicting `size_value` and `area_marla` returns 400.
+- **Behaviour change:** search size matching and price verdicts now use real size. Kanal and sqft listings may get different `ai_score`/price verdicts on rescoring (they were wrong before, KI‑049).

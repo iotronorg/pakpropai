@@ -116,7 +116,7 @@ def _completeness(prop) -> int:
     """Returns 0–100 based on how many key fields are filled."""
     fields = [
         prop.title, prop.description, prop.city, prop.location,
-        prop.area_marla, prop.price, prop.property_type,
+        prop.size_value, prop.price, prop.property_type,
         prop.construction_status, prop.furnished_status,
     ]
     filled = sum(1 for f in fields if f not in (None, '', 0))
@@ -136,9 +136,10 @@ class PropertyScoringEngine:
         from apps.markets.services import org_country as _org_country
         org_country   = _org_country(getattr(prop, 'organization', None))
         price_signal  = _price_signal(
-            prop.price, prop.area_marla, tier, prop.property_type,
+            # marla-equivalent, not the raw number: a 1-kanal listing is 20 marla (KI-049)
+            prop.price, prop.size_in('marla'), tier, prop.property_type,
             city=prop.city or '', country=org_country,
-            area_sqm=float(prop.area_sqm) if prop.area_sqm else None,
+            area_sqm=float(prop.size_m2) if prop.size_m2 else None,
         )
         completeness  = _completeness(prop)
 

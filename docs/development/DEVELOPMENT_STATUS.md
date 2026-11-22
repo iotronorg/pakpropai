@@ -4,13 +4,13 @@ _Last updated: 2026-11-22 (session 8)_
 
 | Item | Value |
 |---|---|
-| Branch | `development`. The owner committed through session 7 (`2fd8ee0`). **Session 8 (continued): T‑1070a is uncommitted** (the owner committed T‑1050b‑2/T‑1050c as session 12) (the owner committed the earlier session‑8 work) |
+| Branch | `development`. The owner committed through session 7 (`2fd8ee0`). **Session 8 (continued): T‑1070b is uncommitted** (the owner committed T‑1070a and earlier work) (the owner committed the earlier session‑8 work) |
 | Current milestone | **M1 — Core foundation** ([MILESTONE_01](milestones/MILESTONE_01_CORE_FOUNDATION.md)); M0 code‑complete, awaiting first GitHub Actions run |
 | M0 progress | All 17 tasks complete. Remaining exit criterion: CI green on GitHub Actions (owner pushes) |
-| M1 progress | 9 of 18 tasks done (T‑1010, T‑1020, T‑1021, T‑1022, T‑1030, T‑1031, T‑1050, T‑1090, T‑1100) plus subtasks T‑1032a, T‑1070a. T‑1060 blocked on a vendor decision; T‑1033 needs an owner policy sign‑off |
-| Test suite | **1754 passed, 1 skipped, 0 failed** (session 8 end). See [TESTING_STATUS](TESTING_STATUS.md) |
-| Last completed task | T‑1070a listing schema v2 expand (ADR‑023): purpose/rooms/price terms, filters, AI search (KI‑048) |
-| Next task | **T‑1070b** size rename: add `size_value`/`size_unit`/`size_m2` + `plot_size_m2` (nullable, backfill from `area_marla`/`area_unit`/`area_sqm`), dual‑write in `Property.save()` with a post_init snapshot so whichever pair changed wins, then move the ~17 reader files (search, AI tools, scrapers, scoring, audit, serializers) to `size_*`; API keeps `area_marla` as a deprecated alias |
+| M1 progress | 9 of 18 tasks done (T‑1010, T‑1020, T‑1021, T‑1022, T‑1030, T‑1031, T‑1050, T‑1090, T‑1100) plus subtasks T‑1032a, T‑1070a, T‑1070b. T‑1060 blocked on a vendor decision; T‑1033 needs an owner policy sign‑off |
+| Test suite | **1770 passed, 1 skipped, 0 failed** (session 8 end). See [TESTING_STATUS](TESTING_STATUS.md) |
+| Last completed task | T‑1070b size rename + dual‑write (ADR‑023 addendum; KI‑049), after T‑1070a |
+| Next task | **T‑1070c** `PriceHistory`: model (property FK, amount, currency, price_type, changed_at, changed_by, source), written in the same transaction whenever `price`/`currency`/`price_type` changes (create + update, via the `from_db` snapshot pattern of T‑1070b), read endpoint `properties/{id}/price-history/` with the same visibility as the listing, OpenAPI documented |
 
 ## Owner decisions (2026-11-21)
 - **No commits by the agent.**
@@ -25,7 +25,7 @@ _Last updated: 2026-11-22 (session 8)_
 
 ## Operator actions before deploying these changes
 See **[GO_LIVE_CHECKLIST](GO_LIVE_CHECKLIST.md)**: DB backup, `FIELD_ENCRYPTION_KEYS`, config‑row check. Summary:
-- **Session 8** (checklist §11 and **§12 UTC switch**): no migrations. Restart celery beat after deploy and review the periodic‑task rows (§12). **New: migrations `properties.0025`/`0026` (§13), additive, rolling‑safe.**
+- **Session 8** (checklist §11 and **§12 UTC switch**): no migrations. Restart celery beat after deploy and review the periodic‑task rows (§12). **New: migrations `properties.0025`–`0028` (§13, §14), additive, rolling‑safe; run `sync_listing_size` after rollout (§14).**
   - New member role‑change and ownership‑transfer endpoints; every member change is audited.
   - Alerts, reminders, escrow notices and the audit companion text now go through the outbox, so the `relay-outbox` beat job and an outbox worker must be running.
   - Listing prices are shown in the listing's own currency (KI‑044), and the seller deal‑lock code is sent only after AML screening (KI‑043).

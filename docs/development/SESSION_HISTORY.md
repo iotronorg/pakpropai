@@ -193,9 +193,12 @@
     - **API:** the new fields, plus list filters for purpose and minimum bedrooms/bathrooms.
     - **Search and AI:** search and the AI search tool honour purpose and bedrooms. Rent searches skip the sale‑only scrapers (KI‑048).
     - **Migrations:** 0025 adds the columns with DB defaults; 0026 builds the index concurrently.
-- **Final tests:** 1754 passed, 1 skipped, 0 failed; `check`/drift/schema clean; Bandit 0 HIGH.
+  - **T‑1070b:** `size_value`/`size_unit`/`size_m2`/`plot_size_m2` added, backfilled, and kept in sync with the deprecated `area_*` fields by `save()`. A `sync_listing_size` command repairs rows written by old pods during a rollout.
+    - **Readers:** moved to the canonical size.
+    - **Fixed KI‑049:** kanal and sqft listings were scored and matched as if their number were marla. The copilot also now sends bedrooms.
+- **Final tests:** 1770 passed, 1 skipped, 0 failed; `check`/drift/schema clean; Bandit 0 HIGH.
 
 ### Handoff → session 9
-1. `git status`: T‑1070a is uncommitted. **Do not commit.** `scripts/dev/test.sh` should give 1754 passed, 1 skipped.
-2. Next: **T‑1070b**, the size rename (see the ADR‑023 table and the DEVELOPMENT_STATUS "Next task"). Then T‑1070c (PriceHistory), d (taxonomy/amenities), e (market attribute schema), f (tsvector). Hold g (contract) for owner approval.
+1. `git status`: T‑1070b is uncommitted (T‑1070a was committed by the owner). **Do not commit.** `scripts/dev/test.sh` should give 1770 passed, 1 skipped.
+2. Next: **T‑1070c** PriceHistory (see the DEVELOPMENT_STATUS "Next task"). Then d (taxonomy/amenities), e (market attribute schema), f (tsvector). Hold g (contract) for owner approval.
 3. After that: T‑1080 (lifecycle) → T‑1011 (MFA) → T‑1091/T‑1092 (OpenAPI/error cleanup, P3).

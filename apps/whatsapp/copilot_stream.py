@@ -160,10 +160,10 @@ class CopilotRecommendationEngine:
                 payload={
                     'property_id':   str(prop.id),
                     'title':         prop.title,
-                    'bedrooms':      None,
+                    'bedrooms':      prop.bedrooms,
                     'price':         prop.price,
                     'currency':      prop.currency,
-                    'area_sqm':      float(prop.area_sqm) if prop.area_sqm else None,
+                    'area_sqm':      float(prop.size_m2) if prop.size_m2 else None,
                     'thumbnail_url': thumbnail_url,
                 },
             ))
