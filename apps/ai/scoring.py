@@ -149,7 +149,8 @@ def batch_verdicts(results: list) -> dict:
     from .client import GeminiClient
     lines = []
     for i, r in enumerate(results[:5], 1):
-        price = f"PKR {r.price:,}" if r.price else "price unknown"
+        from apps.markets.services import format_price
+        price = format_price(r.price, getattr(r, 'currency', None), missing="price unknown")
         area  = f"{r.area_marla}M" if r.area_marla else ""
         lines.append(f"{i}. [{r.source_id}] {r.title} | {r.city}, {r.location} | {area} | {price}")
     raw = GeminiClient.generate(

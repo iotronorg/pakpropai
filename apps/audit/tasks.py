@@ -112,9 +112,11 @@ def send_audit_via_whatsapp_task(self, audit_id: int, phone: str, org_id: str) -
         # Companion text with viral footer
         try:
             from apps.campaigns.viral_hooks import VirtualHookInjector
-            from apps.whatsapp.client import get_wa_client
+            from apps.notifications.delivery import enqueue_whatsapp_text
             companion = VirtualHookInjector.inject_footer('📊 Your full property audit is attached.', org)
-            get_wa_client(org).send_text(phone, companion, skip_window_check=True)
+            # T-1022b: outbox; a retried task does not repeat the companion text
+            enqueue_whatsapp_text(phone, companion, key=f'audit_companion:{audit_id}',
+                                  organization=org, skip_window_check=True)
         except Exception as _footer_exc:
             logger.warning('send_audit_via_whatsapp_task: footer send failed: %s', _footer_exc)
 

@@ -1,5 +1,6 @@
 import logging
 from ._tools_context import _ctx_org, _ctx_phone
+from apps.markets.services import format_price
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +68,7 @@ def search_properties(
                     'location': r.location,
                     'area_marla': str(r.area_marla) if r.area_marla else 'N/A',
                     'price': r.price or 0,
-                    'price_formatted': f"PKR {r.price:,}" if r.price else 'Price not listed',
+                    'price_formatted': format_price(r.price, r.currency),
                     'property_type': r.property_type,
                     'source': r.source,
                     'url': r.url or '',

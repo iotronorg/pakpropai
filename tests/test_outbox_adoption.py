@@ -150,3 +150,100 @@ class ListingAlertTest(TestCase):
         self.assertEqual(_notify_matching_leads(prop), 1)
         (row,) = _rows(f'listing_alert:{prop.pk}:{lead.pk}')
         self.assertEqual(json.loads(row.payload)['phone'], buyer.phone.lstrip('+'))
+
+
+# ── T-1022b ───────────────────────────────────────────────────────────────────
+
+class DealLockNoticeTest(TestCase):
+    """Seller confirmation code: queued once, and only when AML did not block (KI-043)."""
+
+    def setUp(self):
+        from tests.factories import enable_feature
+        enable_feature('feature_deal_lock')  # frozen by default (ADR-006)
+        self.seller = make_user(role='client', name='Seller')
+        self.prop = make_property(owner=self.seller)
+
+    def _initiate(self, buyer):
+        from rest_framework.test import APIClient
+        c = APIClient()
+        c.force_authenticate(buyer)
+        return c.post('/api/v1/deals/lock/', {
+            'property_id': str(self.prop.id), 'token_amount': 25000, 'payment_gateway': 'manual',
+        }, format='json')
+
+    def test_seller_code_queued_after_screening(self):
+        from apps.escrow.models import EscrowDeal
+        r = self._initiate(make_user(role='client', name='Clean Buyer'))
+        self.assertIn(r.status_code, (200, 201), r.data)
+        deal = EscrowDeal.objects.get(property=self.prop)
+        (row,) = _rows(f'deal_lock_request:{deal.pk}')
+        data = json.loads(row.payload)
+        self.assertEqual(data['phone'], self.seller.phone.lstrip('+'))
+        self.assertIn(deal.seller_confirmation_token, data['text'])
+
+    def test_blocked_buyer_sends_no_code(self):
+        from apps.compliance.models import ComplianceSanctionRecord
+        ComplianceSanctionRecord.objects.create(name='Sanctioned Buyer', list_source='LOCAL')
+        r = self._initiate(make_user(role='client', name='Sanctioned Buyer'))
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(_rows('deal_lock_request:'), [])
+
+
+class DealExpiryNoticeTest(TestCase):
+    def test_expiry_queues_buyer_seller_and_agent_once(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from apps.escrow.models import EscrowDeal
+        from apps.escrow.tasks import expire_deal_locks
+        from tests.factories import make_deal
+        _, org = make_developer()
+        agent_user, agent = make_agent(org=org)
+        seller, buyer = make_user(role='client'), make_user(role='client')
+        prop = make_property(owner=seller)
+        deal = make_deal(buyer, prop, agent=agent)
+        EscrowDeal.objects.filter(pk=deal.pk).update(
+            status=EscrowDeal.Status.LOCKED, lock_expires_at=timezone.now() - timedelta(minutes=1))
+        self.assertEqual(expire_deal_locks(), 1)
+        keys = sorted(r.idempotency_key for r in _rows(f'deal_expired:{deal.pk}:'))
+        self.assertEqual(keys, [f'deal_expired:{deal.pk}:{w}' for w in ('agent', 'buyer', 'seller')])
+        deal.refresh_from_db()
+        self.assertEqual(deal.status, EscrowDeal.Status.EXPIRED)
+        self.assertEqual(expire_deal_locks(), 0)
+        self.assertEqual(len(_rows('deal_expired:')), 3)
+
+
+class AuditCompanionTest(TestCase):
+    @patch('urllib.request.urlopen')
+    @patch('apps.audit.gateway.AuditMediaGateway.register_with_meta', return_value='doc_1')
+    @patch('apps.audit.gateway.AuditMediaGateway.dispatch_to_chat',
+           return_value={'messages': [{'id': 'm1'}]})
+    def test_companion_queued_once_per_audit(self, _dispatch, _register, urlopen):
+        from apps.audit.models import PropertyAudit
+        from apps.audit.tasks import send_audit_via_whatsapp_task
+        from apps.organizations.models import Organization
+        urlopen.return_value.read.return_value = b'%PDF'
+        org = Organization.objects.create(name='Audit Org')
+        audit = PropertyAudit.objects.create(
+            city='lahore', location='dha', property_type='house', estimated_value=5_000_000,
+            currency='PKR', phone=PHONE, delivery_status='ready',
+            cloudinary_url='https://res.cloudinary.com/demo/raw/upload/a.pdf')
+        send_audit_via_whatsapp_task(audit.pk, PHONE, str(org.pk))
+        send_audit_via_whatsapp_task(audit.pk, PHONE, str(org.pk))  # task retry / rerun
+        (row,) = _rows(f'audit_companion:{audit.pk}')
+        self.assertTrue(json.loads(row.payload)['skip_window_check'])
+        self.assertEqual(row.organization_id, org.pk)
+
+
+class ScrapedFollowupTest(TestCase):
+    def test_followup_queued_with_expiry(self):
+        from apps.properties.tasks import _send_scraped_followup
+
+        class R:
+            def format_wa(self, index):
+                return f'{index}. listing'
+
+        _send_scraped_followup(PHONE, [R(), R()], 'search:abc')
+        _send_scraped_followup(PHONE, [R(), R()], 'search:abc')
+        (row,) = _rows('scrape_followup:search:abc:')
+        self.assertIsNotNone(row.expires_at)
+        self.assertIsNone(row.organization_id)

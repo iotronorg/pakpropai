@@ -6,12 +6,11 @@ logger = logging.getLogger(__name__)
 
 def _resolve_currency(org) -> str:
     """Return the ISO 4217 currency code for the org's market. Never raises."""
+    from apps.markets.services import currency_for_country, default_currency, org_country
     try:
-        from apps.markets.registry import get_market_config
-        country = getattr(org, 'country', 'PK') or 'PK'
-        return get_market_config(country).currency
+        return currency_for_country(org_country(org))
     except Exception:
-        return 'PKR'
+        return default_currency()
 
 
 def _get_org_payment_info(org):
@@ -73,8 +72,9 @@ def initiate_deal_lock(
 
     # ── Resolve market currency ────────────────────────────────────────────────
     currency = _resolve_currency(org)
-    country  = getattr(org, 'country', 'PK') or 'PK'
-    is_pk    = country.upper() == 'PK'
+    from apps.markets.services import org_country
+    country  = org_country(org)
+    is_pk    = country == 'PK'
 
     # ── Amount bounds (configurable; 0 = no bound) ────────────────────────────
     from apps.config.services import SystemConfigService

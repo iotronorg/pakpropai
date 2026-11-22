@@ -208,8 +208,8 @@ STRICT = re.compile(r"""default\s*=\s*(?:['"](?:PKR|PK|marla)['"]|(?:\w+\.)?Area
 RATCHET = {
     # Remaining literals in logic/formatting (T-1050b). Lower as they move to
     # the market pack; never raise.
-    'pkr_literal': (re.compile(r"""['"]PKR\b"""), 34),
-    'pk_fallback': (re.compile(r"""\bor\s+['"]PK['"]|,\s*['"]PK['"]\s*\)"""), 20),
+    'pkr_literal': (re.compile(r"""['"]PKR\b"""), 27),   # T-1050b-1: 34 → 27
+    'pk_fallback': (re.compile(r"""\bor\s+['"]PK['"]|,\s*['"]PK['"]\s*\)"""), 0),  # 20 → 0
     'karachi_tz': (re.compile(r"""['"]Asia/Karachi['"]"""), 0),
 }
 
@@ -240,3 +240,58 @@ class HardcodedMarketDefaultsTest(SimpleTestCase):
         self.assertTrue(STRICT.search("currency = models.CharField(max_length=3, default='PKR')"))
         self.assertTrue(STRICT.search("area_unit = models.CharField(default=AreaUnit.MARLA)"))
         self.assertFalse(STRICT.search("currency = models.CharField(default=default_currency)"))
+
+
+class MarketNeutralHelpersTest(SimpleTestCase):
+    """T-1050b-1: formatting and fallbacks follow the record / DEFAULT_MARKET."""
+
+    def test_format_price(self):
+        from apps.markets.services import format_price
+        self.assertEqual(format_price(1500000, 'aed'), 'AED 1,500,000')
+        self.assertEqual(format_price(1500000), 'PKR 1,500,000')
+        self.assertEqual(format_price(None), 'Price not listed')
+        self.assertEqual(format_price(0, 'GBP', missing='n/a'), 'n/a')
+
+    def test_country_helpers(self):
+        from types import SimpleNamespace
+        from apps.markets.services import country_or_default, currency_for_country, org_country
+        self.assertEqual(country_or_default(' ae '), 'AE')
+        self.assertEqual(country_or_default(''), 'PK')
+        self.assertEqual(org_country(None), 'PK')
+        self.assertEqual(org_country(SimpleNamespace(country='gb')), 'GB')
+        self.assertEqual(org_country(SimpleNamespace(country='')), 'PK')
+        self.assertEqual(currency_for_country('AE'), 'AED')
+        self.assertEqual(currency_for_country('ZZ'), 'PKR')  # unknown → default market
+
+    @override_settings(DEFAULT_MARKET='AE')
+    def test_fallbacks_follow_default_market(self):
+        from apps.markets.services import country_or_default, format_price, org_country
+        self.assertEqual(country_or_default(None), 'AE')
+        self.assertEqual(org_country(None), 'AE')
+        self.assertEqual(format_price(10), 'AED 10')
+
+    def test_search_result_keeps_listing_currency(self):
+        from apps.properties.scrapers.base import PropertyResult
+        from apps.properties.search import PropertySearchService
+        r = PropertyResult(source='pakprop', source_id='1', title='Villa', city='Dubai',
+                           location='Marina', price=2500000, currency='AED')
+        self.assertIn('AED 2,500,000', r.format_wa(1))
+        d = PropertySearchService._result_to_dict(r)
+        self.assertEqual((d['price_formatted'], d['currency']), ('AED 2,500,000', 'AED'))
+        legacy = PropertyResult.from_dict({'source': 'zameen', 'source_id': '2', 'title': 'H',
+                                           'city': 'Lahore', 'location': 'DHA', 'price': 10})
+        self.assertIsNone(legacy.currency)  # cached dicts without currency still load
+        self.assertIn('PKR 10', legacy.format_wa())
+
+
+class SearchCurrencyDbTest(TestCase):
+    def test_db_search_formats_in_listing_currency_without_extra_queries(self):
+        from apps.properties.search import PropertySearchService
+        from tests.factories import make_developer, make_property
+        _, org = make_developer()
+        make_property(org=org, city='Lahore', currency='AED', price=900000)
+        make_property(org=org, city='Lahore', currency='PKR', price=700000)
+        with self.assertNumQueries(1):
+            results = PropertySearchService._from_db(city='Lahore', viewer_org=org)
+            formatted = sorted(PropertySearchService._result_to_dict(r)['price_formatted'] for r in results)
+        self.assertEqual(formatted, ['AED 900,000', 'PKR 700,000'])

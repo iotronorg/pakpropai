@@ -14,6 +14,7 @@ from .models import EscrowDeal
 from .serializers import EscrowDealSerializer, InitiateDealLockSerializer, ConfirmPaymentSerializer
 from drf_spectacular.utils import extend_schema
 from apps.core.idempotency import IDEMPOTENCY_PARAMETER, idempotent
+from apps.markets.services import currency_for_country, org_country
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +127,7 @@ class DealLockInitiateView(APIView):
                         ps = org.payment_settings
                         if ps.gateway != 'manual':
                             gateway = ps.gateway
-                        elif getattr(org, 'country', 'PK') not in ('PK',):
+                        elif org_country(org) != 'PK':
                             # Non-PK org with no explicit gateway — default to Stripe
                             import django.conf
                             if getattr(django.conf.settings, 'STRIPE_SECRET_KEY', ''):
@@ -143,14 +144,8 @@ class DealLockInitiateView(APIView):
                         'Try again after it expires.'
                     )
                 seller_token = secrets.token_hex(4).upper()
-                # Resolve currency from org's market; fall back to PKR for PK orgs
-                currency = 'PKR'
-                if org is not None:
-                    try:
-                        from apps.markets.registry import get_market_config
-                        currency = get_market_config(getattr(org, 'country', 'PK') or 'PK').currency
-                    except Exception:
-                        pass
+                # Currency of the org's market (default market without an org)
+                currency = currency_for_country(org_country(org))
 
                 deal = EscrowDeal.objects.create(
                     property                  = prop,
@@ -169,7 +164,6 @@ class DealLockInitiateView(APIView):
             )
 
         deal_locks_total.labels(status='initiated').inc()
-        _notify_seller_lock_initiated(deal, seller_token)
         _check_high_risk_deal(prop, deal)
 
         # AML screening — synchronous before response
@@ -190,6 +184,10 @@ class DealLockInitiateView(APIView):
                 )
         except Exception as _exc:
             logger.warning('DealLockInitiateView: AML screening fail-open: %s', _exc)
+
+        # KI-043: only after AML screening did not block — the message carries the
+        # seller's confirmation code, which used to go out even for blocked deals.
+        _notify_seller_lock_initiated(deal, seller_token)
 
         payment_message = _get_payment_instructions(gateway, amount, deal.currency, org=org)
 
@@ -508,7 +506,7 @@ def _notify_seller_lock_initiated(deal: EscrowDeal, token: str):
         seller_user = deal.property.owner
         if not seller_user or not seller_user.phone:
             return
-        from apps.whatsapp.client import get_wa_client
+        from apps.notifications.delivery import enqueue_whatsapp_text
         phone = seller_user.phone.lstrip('+')
         msg = (
             f"🔒 *Deal Lock Request*\n\n"
@@ -519,9 +517,11 @@ def _notify_seller_lock_initiated(deal: EscrowDeal, token: str):
             "Please contact your agent or reply with your code to confirm. "
             "If you did not authorize this, contact support immediately."
         )
-        get_wa_client(getattr(deal.property, 'organization', None)).send_text(phone, msg)
+        # T-1022b: outbox (encrypted payload, wiped after delivery; code never logged)
+        enqueue_whatsapp_text(phone, msg, key=f'deal_lock_request:{deal.pk}',
+                              organization=getattr(deal.property, 'organization', None))
     except Exception as exc:
-        logger.warning(f"Seller deal lock notify failed: {exc}")
+        logger.warning('Seller deal lock notify failed deal=%s: %s', deal.pk, type(exc).__name__)
 
 
 def _notify_syndication_on_deal_lock(deal: EscrowDeal):

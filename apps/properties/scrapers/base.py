@@ -26,6 +26,7 @@ class PropertyResult:
     url:                  str             = ''
     ai_score:             Optional[int]   = None
     ai_verdict:           str             = ''
+    currency:             Optional[str]   = None   # ISO 4217; None → default market (T-1050b)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -37,7 +38,8 @@ class PropertyResult:
 
     def format_wa(self, index: int = None) -> str:
         prefix = f"{index}. " if index is not None else "• "
-        price  = f"PKR {self.price:,}" if self.price else "Price TBD"
+        from apps.markets.services import format_price
+        price  = format_price(self.price, self.currency, missing="Price TBD")
         area   = f"{self.area_marla}M" if self.area_marla else ""
         score  = f" | Score {self.ai_score}/100" if self.ai_score else ""
         badge  = " [verified]" if self.source == 'pakprop' else f" [{self.source}]"

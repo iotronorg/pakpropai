@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from .models import Property
 from .scrapers.base import PropertyResult, BaseScraper
 
+from apps.markets.services import format_price
 logger = logging.getLogger(__name__)
 
 PAGE_SIZE = 3  # listings per WhatsApp page
@@ -151,7 +152,8 @@ class PropertySearchService:
             'location': r.location,
             'area_marla': r.area_marla,
             'price': r.price,
-            'price_formatted': f"PKR {r.price:,}" if r.price else 'Price not listed',
+            'price_formatted': format_price(r.price, r.currency),
+            'currency': r.currency,
             'property_type': r.property_type,
             'furnished_status': r.furnished_status,
             'construction_status': r.construction_status,
@@ -210,7 +212,7 @@ class PropertySearchService:
             .visible_to(viewer_org)
             .select_related('organization', 'listed_by_agent')
             .only(
-                'id', 'title', 'city', 'location', 'area_marla', 'price',
+                'id', 'title', 'city', 'location', 'area_marla', 'price', 'currency',
                 'property_type', 'furnished_status', 'construction_status',
                 'ai_score', 'installment_available', 'legal_status',
                 'organization_id', 'listed_by_agent_id',
@@ -257,6 +259,7 @@ class PropertySearchService:
                 construction_status = p.construction_status,
                 url                 = '',
                 ai_score            = p.ai_score,
+                currency            = p.currency,
             )
             for p in qs.order_by('-ai_score', '-created_at')[:10]
         ]

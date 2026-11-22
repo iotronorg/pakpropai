@@ -109,7 +109,8 @@ class ComplianceService:
         """Returns FBRTaxResult for the deal based on org country. Fail-open."""
         try:
             from apps.markets.registry import get_tax_calculator
-            country = (getattr(org, 'country', '') or 'PK').strip() or 'PK'
+            from apps.markets.services import org_country
+            country = org_country(org)
             calc    = get_tax_calculator(country)
             amount  = int(getattr(deal, 'token_amount', 0) or 0)
             return calc.calculate_withholding_tax(amount=amount)

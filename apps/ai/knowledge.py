@@ -73,7 +73,8 @@ def get_market_knowledge(country: str) -> str:
     Falls back to an empty string for unknown markets (graceful degradation).
     Never raises.
     """
-    country = (country or 'PK').upper()
+    from apps.markets.services import country_or_default
+    country = country_or_default(country)
     try:
         if country == 'PK':
             from apps.markets.pk.knowledge import MARKET_KNOWLEDGE

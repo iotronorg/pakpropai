@@ -54,23 +54,28 @@ def warm_search_cache(
     logger.info(f"warm_search_cache: {len(results)} result(s) cached key={cache_key}")
 
     if phone and results:
-        _send_scraped_followup(phone, results[:5])
+        _send_scraped_followup(phone, results[:5], cache_key)
 
     return len(results)
 
 
-def _send_scraped_followup(phone: str, results: list):
+def _send_scraped_followup(phone: str, results: list, cache_key: str = ''):
     """Send a brief WhatsApp message with live scraped listings."""
     try:
-        from apps.whatsapp.client import get_wa_client
+        from datetime import timedelta
+        from django.utils import timezone
+        from apps.notifications.delivery import enqueue_whatsapp_text
         count = len(results)
         lines = [f"🔍 Found {count} live listing{'s' if count != 1 else ''} from Zameen/Graana:\n"]
         for i, r in enumerate(results, 1):
             lines.append(r.format_wa(index=i))
-        get_wa_client(None).send_text(phone, "\n\n".join(lines), skip_window_check=True)
-        logger.info(f"Sent scraped follow-up to phone={phone} ({count} results)")
+        # T-1022b: outbox; one follow-up per search, stale after the 30-min cache
+        enqueue_whatsapp_text(phone, "\n\n".join(lines), key=f'scrape_followup:{cache_key}:{phone}',
+                              skip_window_check=True,
+                              expires_at=timezone.now() + timedelta(minutes=30))
+        logger.info(f"Queued scraped follow-up ({count} results)")
     except Exception as exc:
-        logger.warning(f"_send_scraped_followup failed phone={phone}: {exc}")
+        logger.warning("_send_scraped_followup failed: %s", type(exc).__name__)
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)

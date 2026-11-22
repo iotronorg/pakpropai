@@ -205,3 +205,16 @@
   - `apps/core/outbox.py`: kind registered; payload is wiped after delivery.
   - Sites switched: `leads/signals.py` (hot lead), `verification/signals.py` (KI‑042), `properties/tasks.py` (listing alerts), `leads/tasks.py` (re‑engagement, stale reminders, appointment reminders; each in one transaction with its marker).
 - **Tests:** new `tests/test_membership_contract.py` (37) and `tests/test_outbox_adoption.py` (11). Updated `tests/test_follow_up_automation.py` (13 tests) and `tests/test_celery_tasks.py` (1): they now assert the queued outbox row (key, recipient, org, expiry) instead of a mocked `get_wa_client`. Delivery through the real client is covered in `test_outbox_adoption.py`.
+- **T‑1022b:**
+  - `apps/escrow/tasks.py` (`_send`; status change and notices in one transaction);
+  - `apps/escrow/views.py` (seller notice via the outbox, moved after AML screening — KI‑043; the exception log no longer includes message details);
+  - `apps/audit/tasks.py` (companion text);
+  - `apps/properties/tasks.py` (scraped follow‑up with `cache_key`; phone removed from the log);
+  - `apps/notifications/services.py`: unused `send_whatsapp_message` removed.
+  - Tests: `tests/test_outbox_adoption.py` +5.
+- **T‑1050b‑1:**
+  - `apps/markets/services.py`: helpers.
+  - `PropertyResult.currency`; `properties/search.py` (`only('currency')`, `price_formatted` + `currency` in result dicts).
+  - Formatting: `ai/_tools_search.py`, `ai/tools.py`, `ai/scoring.py`.
+  - Fallbacks: `compliance/compliance_service.py`, `verification/views.py`, `properties/scoring.py`, `ai/service.py`, `ai/_tools_deals.py`, `ai/knowledge.py`, `ai/context.py`, `ai/agent.py`, `escrow/views.py`, `audit/views.py`.
+  - Tests: `tests/test_markets.py` +5 and ratchet lowered.

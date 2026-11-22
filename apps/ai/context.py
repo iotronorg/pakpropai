@@ -91,7 +91,8 @@ class DynamicContextBuilder:
                 if not org_lang or org_lang == 'en':
                     # Derive from market config when org hasn't set an explicit preference
                     from apps.markets.registry import get_market_config
-                    mk_lang = get_market_config(org.country or 'PK').language
+                    from apps.markets.services import org_country
+                    mk_lang = get_market_config(org_country(org)).language
                     org_lang = mk_lang if mk_lang != 'en' else ''
                 if org_lang and org_lang != 'en':
                     lang_name = _LANG_NAMES.get(org_lang, org_lang.upper())
@@ -105,8 +106,8 @@ class DynamicContextBuilder:
             # Live inventory sample — top 5 active properties
             try:
                 from apps.properties.models import Property
-                from apps.markets.registry import get_market_config as _get_cfg
-                org_currency = _get_cfg(getattr(org, 'country', 'PK') or 'PK').currency
+                from apps.markets.services import currency_for_country, org_country
+                org_currency = currency_for_country(org_country(org))
                 sample = list(
                     Property.objects
                     .filter(organization=org, is_active=True)

@@ -211,6 +211,11 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - Batch tasks queue the message and set their `*_sent_at` marker in one transaction. The marker now means "queued", not "provider accepted".
   - Appointment reminders expire at the visit time.
   - Synchronous sends whose caller needs the provider result (lead `send-message`, chat replies) stay direct.
+- **Addendum — T‑1022b (same session):**
+  - Adopted for the escrow expiry notices (`deal_expired:<deal>:<buyer|seller|agent>`, in the same transaction as the status change), the seller deal‑lock code (`deal_lock_request:<deal>`), the audit companion text (`audit_companion:<audit>`) and the scraped‑listing follow‑up (`scrape_followup:<cache key>:<phone>`, expires after 30 min).
+  - **Stay direct, by decision:**
+    - campaigns and AI re‑engagement: they pace sends with `MetaTierRateLimiter` and retry Meta 429s at the task level, and campaigns keep per‑recipient delivery state. Outbox dispatch is not rate‑limited and would bypass that;
+    - the audit PDF chain (media upload → document send → fallback link): it has its own `AuditDeliveryFailure` records and fallback.
 
 ## ADR‑015 — Listing search indexes and index‑backed full‑text search
 - **Date:** 2026-11-21 (session 6) · Task T‑1100 · GAP‑040

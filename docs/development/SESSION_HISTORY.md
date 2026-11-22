@@ -166,13 +166,20 @@
 - **Tests:** 1713 passed, 1 skipped, 0 failed (session 7 ended 1665). `check`/drift/schema clean; Bandit 0 HIGH.
 - **Not committed.**
 
+- **Continued (owner said "continue"):** T‑1022b. The escrow expiry notices, the seller deal‑lock code, the audit companion text and the scraped follow‑up now go through the outbox. Campaigns and AI re‑engagement stay direct because they are rate‑limited. **T‑1022 complete.**
+  - **Found and fixed (KI‑043):** the seller's confirmation code was sent before AML screening, so it went out even for blocked buyers.
+- **Continued:** T‑1050b‑1. Market‑neutral helpers; all 20 `or 'PK'` fallbacks removed; prices are formatted in the listing's currency.
+  - **Found and fixed (KI‑044):** non‑PK listings were shown as "PKR …".
+  - Ratchet PKR 34 → 27, PK fallback 20 → 0.
+- **Final tests:** 1723 passed, 1 skipped, 0 failed. `check`/drift/schema clean; Bandit 0 HIGH.
+
 ### Handoff → session 9
-1. `git status`: session‑8 changes are uncommitted. **Do not commit.** `scripts/dev/test.sh` should give 1713 passed, 1 skipped. Docker Desktop must be running.
-2. Next: **T‑1022b**, the remaining direct WhatsApp sends, moved onto `enqueue_whatsapp_text` (`apps/notifications/delivery.py`):
-   - escrow notices in `apps/escrow/tasks.py` (`_wa(deal)` helpers) and `apps/escrow/views.py::_notify_seller_lock_initiated`. That message contains a confirmation code: keep it in `SENSITIVE_KINDS` (already true for `whatsapp.text`) and never log it;
-   - `apps/audit/gateway.py` + `apps/audit/tasks.py:117` (audit companion);
-   - `apps/properties/tasks.py:70` (saved‑search digest, global creds);
-   - `apps/campaigns/tasks.py`, `apps/campaigns/re_engagement.py`;
-   - `apps/notifications/services.py:20`.
-   Keep the lead `send-message` endpoint (`apps/leads/views.py:141`) and conversational replies synchronous. Update tests that patch `get_wa_client` the way `tests/test_follow_up_automation.py` was updated (`_queued()` helper).
-3. Then T‑1050b (PKR/PK literal ratchet) → T‑1050c (UTC, needs a schedule review) → T‑1091/T‑1092 → T‑1070.
+1. `git status`: session‑8 changes are uncommitted. **Do not commit.** `scripts/dev/test.sh` should give 1723 passed, 1 skipped. Docker Desktop must be running; the first run can take a few extra minutes to start.
+2. Next: **T‑1050b‑2**, the remaining 27 `'PKR'` literals, which are mostly PK‑pack content:
+   - `apps/audit/services.py`, `apps/audit/pdf.py` (CGT/tax rows, `_pkr`, `estimated_value_pkr`);
+   - `apps/ai/tools.py::generate_property_audit` (`currency='PKR'`, `area_unit='marla'`);
+   - `apps/ai/schemas.py`, `apps/ai/compliance_filters.py` (PKR aliases: keep, but move into `apps/markets/pk/`);
+   - `apps/payments/services.py`, `apps/properties/financial.py`, `apps/billing/gateway.py` (Safepay PKR; say so explicitly).
+
+   Use the `apps/markets/services.py` helpers (`format_price`, `currency_for_country`, `org_country`) and lower `RATCHET['pkr_literal']` in `tests/test_markets.py`.
+3. Then T‑1050c (UTC; needs a schedule review) → T‑1091/T‑1092 → T‑1070 (listing schema v2). T‑1032b waits for a clean prod `reconcile_memberships`.

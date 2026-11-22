@@ -3,6 +3,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+from apps.markets.services import format_price
 from ._tools_context import _ctx_user, _ctx_phone, set_context  # noqa: F401
 from ._tools_search import search_properties                     # noqa: F401
 from ._tools_financial import calculate_7e_tax, check_loan_eligibility  # noqa: F401
@@ -297,7 +298,7 @@ def list_property(
             'success':        True,
             'listing_id':     str(prop.id)[:8].upper(),
             'title':          title,
-            'price_formatted': f"PKR {price:,}",
+            'price_formatted': format_price(price, prop.currency),
             'message': (
                 'Property listed successfully. AI scoring is running in the background. '
                 'Your listing is now visible to buyers.\n\n'

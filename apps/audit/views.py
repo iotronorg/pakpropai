@@ -88,7 +88,8 @@ class BenchmarkListView(APIView):
         if missing:
             return Response({'error': f"Missing fields: {missing}"}, status=status.HTTP_400_BAD_REQUEST)
 
-        country = data.get('country', 'PK').upper().strip()
+        from apps.markets.services import country_or_default
+        country = country_or_default(str(data.get('country') or ''))
         if AuditBenchmark.objects.filter(
             country=country,
             city=data['city'].lower().strip(),

@@ -600,11 +600,12 @@ class IDVerificationSessionView(APIView):
         from apps.markets.registry import get_verification_provider
         from apps.core.permissions import get_user_org
 
-        org_country = 'PK'
+        from apps.markets.services import default_country, org_country as _org_country
+        org_country = default_country()
         try:
             org = get_user_org(request.user)
             if org:
-                org_country = (getattr(org, 'country', 'PK') or 'PK').upper()
+                org_country = _org_country(org)
         except Exception:
             pass
 

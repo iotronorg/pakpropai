@@ -137,3 +137,29 @@ def default_currency() -> str:
 
 def default_area_unit() -> str:
     return MARKET_REGISTRY[default_market_code()].size_unit
+
+
+# ── Market-neutral helpers for logic and formatting (T-1050b) ────────────────
+
+def country_or_default(country: str | None) -> str:
+    """Upper-cased ISO country, or the deployment's default market when blank."""
+    code = (country or '').strip().upper()
+    return code or default_country()
+
+
+def org_country(org) -> str:
+    """Country of an organization (or the default market for none / blank)."""
+    return country_or_default(getattr(org, 'country', None) if org is not None else None)
+
+
+def currency_for_country(country: str | None) -> str:
+    """ISO 4217 currency of a market; the default market's currency when unknown."""
+    cfg = MARKET_REGISTRY.get(country_or_default(country))
+    return cfg.currency if cfg is not None else default_currency()
+
+
+def format_price(amount, currency: str | None = None, *, missing: str = 'Price not listed') -> str:
+    """``"<CUR> 1,234,567"`` in the record's currency (default market when unknown)."""
+    if not amount:
+        return missing
+    return f"{(currency or default_currency()).upper()} {amount:,}"

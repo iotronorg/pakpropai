@@ -133,7 +133,8 @@ class PropertyScoringEngine:
         - Used directly to compute a deterministic score
         """
         tier          = _location_tier(prop.city or '', prop.location or '')
-        org_country   = getattr(getattr(prop, 'organization', None), 'country', 'PK')
+        from apps.markets.services import org_country as _org_country
+        org_country   = _org_country(getattr(prop, 'organization', None))
         price_signal  = _price_signal(
             prop.price, prop.area_marla, tier, prop.property_type,
             city=prop.city or '', country=org_country,

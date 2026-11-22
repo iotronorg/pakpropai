@@ -16,10 +16,6 @@ def send_whatsapp_otp(phone: str, code: str) -> None:
         raise
 
 
-def send_whatsapp_message(phone: str, body: str) -> None:
-    get_wa_client(None).send_text(phone, body)
-
-
 _EVENT_PREF_FIELD = {
     'lead_updates':          'lead_updates',
     'appointment_reminders': 'appointment_reminders',

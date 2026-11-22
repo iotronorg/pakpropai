@@ -1,13 +1,16 @@
 import logging
 from celery import shared_task
+from django.db import transaction
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
 
-def _wa(deal):
-    from apps.whatsapp.client import get_wa_client
-    return get_wa_client(getattr(deal.property, 'organization', None))
+def _send(deal, recipient: str, phone: str, text: str) -> None:
+    """T-1022b: queue through the outbox; one message per (deal, recipient) expiry."""
+    from apps.notifications.delivery import enqueue_whatsapp_text
+    enqueue_whatsapp_text(phone, text, key=f'deal_expired:{deal.pk}:{recipient}',
+                          organization=getattr(deal.property, 'organization', None))
 
 
 @shared_task
@@ -20,10 +23,11 @@ def expire_deal_locks():
     count   = expired.count()
 
     for deal in expired.select_related('buyer', 'seller', 'agent__user', 'property__owner'):
-        deal.status = EscrowDeal.Status.EXPIRED
-        deal.save(update_fields=['status', 'updated_at'])
-        _notify_buyer_expired(deal)
-        _notify_seller_expired(deal)
+        with transaction.atomic():  # status change and notices commit together
+            deal.status = EscrowDeal.Status.EXPIRED
+            deal.save(update_fields=['status', 'updated_at'])
+            _notify_buyer_expired(deal)
+            _notify_seller_expired(deal)
 
     if count:
         logger.info(f"Expired {count} deal lock(s).")
@@ -39,7 +43,7 @@ def _notify_buyer_expired(deal):
             "The property is now available to other buyers. "
             "Type *lock property* to start a new deal lock if you're still interested."
         )
-        _wa(deal).send_text(phone, msg)
+        _send(deal, 'buyer', phone, msg)
     except Exception as exc:
         logger.warning(f"Deal lock expiry buyer notify failed deal={deal.pk}: {exc}")
 
@@ -54,8 +58,8 @@ def _notify_seller_expired(deal):
         seller = deal.seller or getattr(deal.property, 'owner', None)
         if seller and seller.phone:
             phone = seller.phone.lstrip('+')
-            _wa(deal).send_text(
-                phone,
+            _send(
+                deal, 'seller', phone,
                 f"⏰ *Deal Lock Expired*\n\n"
                 f"The 48-hour deal lock on *{title}* has expired without completing payment.\n\n"
                 "The property is available again. Contact us if you have questions."
@@ -65,8 +69,8 @@ def _notify_seller_expired(deal):
         agent = deal.agent
         if agent and agent.user and agent.user.phone:
             phone = agent.user.phone.lstrip('+')
-            _wa(deal).send_text(
-                phone,
+            _send(
+                deal, 'agent', phone,
                 f"⏰ *Deal Lock Expired*\n\n"
                 f"The deal lock on *{title}* has expired.\n\n"
                 "Please follow up with the buyer and seller if needed."

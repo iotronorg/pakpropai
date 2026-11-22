@@ -163,7 +163,8 @@ class RealTronAgent:
         Detects document type, extracts fields, flags issues, saves to DocumentScan.
         """
         backend = self._get_backend()
-        org_country = getattr(organization, 'country', 'PK') or 'PK'
+        from apps.markets.services import org_country as _org_country
+        org_country = _org_country(organization)
         doc_type = detect_doc_type(caption, org_country=org_country)
         prompt   = ocr_prompt(doc_type, caption, org_country=org_country)
 

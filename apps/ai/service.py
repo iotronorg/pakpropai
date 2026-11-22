@@ -772,7 +772,8 @@ class AIServiceManager:
         from apps.ai._tools_context import set_context
         set_context(user, phone, org=organization)
 
-        org_country = getattr(organization, 'country', 'PK').upper() if organization else 'PK'
+        from apps.markets.services import org_country as _org_country
+        org_country = _org_country(organization)
         _SUPPORTED_TAX_COUNTRIES = {'PK', 'AE', 'GB', 'US'}
 
         if intent.intent == 'scam_check' and intent.scam_input:
