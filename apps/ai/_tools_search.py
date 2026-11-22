@@ -13,6 +13,8 @@ def search_properties(
     location: str = '',
     furnished: str = '',
     construction_status: str = '',
+    purpose: str = '',
+    bedrooms: int = 0,
 ) -> dict:
     """
     Search for available property listings in Pakistan (both database and live scraped results).
@@ -26,6 +28,8 @@ def search_properties(
         location: Specific area/society e.g. 'DHA Phase 6', 'Gulberg 3', 'Bahria Town Block D'
         furnished: One of 'furnished', 'semi_furnished', 'unfurnished'. Leave blank if not specified.
         construction_status: One of 'builder', 'ready', 'under_construction'. Leave blank if not specified.
+        purpose: 'buy' or 'rent' when the user says so (rent, kiraya, lease → 'rent'). Leave blank if unclear.
+        bedrooms: Minimum number of bedrooms the user asked for. Use 0 if not specified.
     """
     try:
         from apps.properties.search import PropertySearchService
@@ -40,9 +44,13 @@ def search_properties(
             construction_status=construction_status,
             phone=phone,
             viewer_org=_ctx_org.get(),
+            purpose=purpose,
+            min_bedrooms=bedrooms if bedrooms and bedrooms > 0 else None,
         )
         from apps.config.services import SystemConfigService
-        scraping = SystemConfigService.scraper_enabled()
+        from apps.properties.search import _scrapers_apply
+        # Scrapers only fetch sale listings (T-1070a): no follow-up for rent/lease searches.
+        scraping = SystemConfigService.scraper_enabled() and _scrapers_apply(purpose)
         if not results:
             return {
                 'count': 0,
@@ -68,7 +76,12 @@ def search_properties(
                     'location': r.location,
                     'area_marla': str(r.area_marla) if r.area_marla else 'N/A',
                     'price': r.price or 0,
-                    'price_formatted': format_price(r.price, r.currency),
+                    'price_formatted': ('Price on request' if r.price_on_request
+                                        else format_price(r.price, r.currency)),
+                    'price_type': r.price_type,
+                    'purpose': r.purpose,
+                    'bedrooms': r.bedrooms,
+                    'bathrooms': r.bathrooms,
                     'property_type': r.property_type,
                     'source': r.source,
                     'url': r.url or '',

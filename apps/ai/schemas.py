@@ -53,6 +53,7 @@ class PropertySearchFilter(BaseModel):
     currency:      str            = PK_CURRENCY  # PK natural-language extractor (crore/marla)
     furnished:     Optional[Literal['furnished', 'semi_furnished', 'unfurnished']] = None
     purpose:       Literal['buy', 'rent', ''] = ''
+    bedrooms:      Optional[int]  = Field(None, ge=0, le=50, description="Minimum bedrooms")
 
     @field_validator('city')
     @classmethod
@@ -74,6 +75,8 @@ class PropertySearchFilter(BaseModel):
             'area_marla':           self.area_marla or 0.0,
             'max_price':        self.price_max_pkr or 0,
             'furnished':            self.furnished or '',
+            'purpose':              self.purpose or '',
+            'bedrooms':             self.bedrooms or 0,
         }
 
 

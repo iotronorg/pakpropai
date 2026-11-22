@@ -99,6 +99,23 @@ class Property(models.Model):
         GUNTHA = 'guntha', 'Guntha'
         CENT   = 'cent',   'Cent'
 
+    class Purpose(models.TextChoices):            # FR-LST-001 (T-1070a)
+        SALE             = 'sale',             'For Sale'
+        RENT_LONG        = 'rent_long',        'For Rent (long term)'
+        RENT_SHORT       = 'rent_short',       'For Rent (short term)'
+        LEASE_COMMERCIAL = 'lease_commercial', 'Commercial Lease'
+
+    class PriceType(models.TextChoices):          # FR-LST-002 (T-1070a)
+        TOTAL     = 'total',     'Total'
+        PER_MONTH = 'per_month', 'Per Month'
+        PER_YEAR  = 'per_year',  'Per Year'
+        PER_SQM   = 'per_sqm',   'Per m²'
+
+    RENT_PURPOSES = frozenset({'rent_long', 'rent_short'})
+    PERIODIC_PRICE_TYPES = frozenset({'per_month', 'per_year'})
+    ATTRIBUTES_MAX_KEYS  = 50
+    ATTRIBUTES_MAX_BYTES = 8192
+
     class ListingOwnerType(models.TextChoices):
         ORGANIZATION    = 'organization',    'Organization'
         FREELANCE_AGENT = 'freelance_agent', 'Freelance Agent'
@@ -210,6 +227,29 @@ class Property(models.Model):
                         help_text='Derived from country on create (ADR-019); NULL = no configured market',
                     )
     installment_available = models.BooleanField(default=False)
+
+    # ── Listing schema v2, expand phase (T-1070a, ADR-023) ─────────────────────
+    # New NOT NULL columns carry a DB default so inserts from pre-v2 code keep working.
+    purpose        = models.CharField(max_length=20, choices=Purpose.choices,
+                         default=Purpose.SALE, db_default=Purpose.SALE)
+    bedrooms       = models.PositiveSmallIntegerField(null=True, blank=True)
+    bathrooms      = models.PositiveSmallIntegerField(null=True, blank=True)
+    floor          = models.SmallIntegerField(null=True, blank=True,
+                         help_text='Floor of the unit; 0 = ground, negative = basement')
+    total_floors   = models.PositiveSmallIntegerField(null=True, blank=True)
+    year_built     = models.PositiveSmallIntegerField(null=True, blank=True)
+    parking_spaces = models.PositiveSmallIntegerField(null=True, blank=True)
+    pets_allowed   = models.BooleanField(null=True, blank=True)
+    price_type     = models.CharField(max_length=20, choices=PriceType.choices,
+                         default=PriceType.TOTAL, db_default=PriceType.TOTAL)
+    price_negotiable = models.BooleanField(default=False, db_default=False)
+    price_on_request = models.BooleanField(default=False, db_default=False)
+    deposit        = models.BigIntegerField(null=True, blank=True,
+                         help_text='Security deposit, in `currency`')
+    service_charge = models.BigIntegerField(null=True, blank=True,
+                         help_text='Service/maintenance charge per year, in `currency`')
+    attributes     = models.JSONField(default=dict, db_default={}, blank=True,
+                         help_text='Market-specific attributes (validated by the market schema, T-1070f)')
     ai_score      = models.SmallIntegerField(null=True, blank=True)
     risk_level    = models.CharField(max_length=20, choices=RiskLevel.choices, null=True, blank=True)
     raw_docs      = models.JSONField(default=dict, blank=True)
@@ -232,6 +272,7 @@ class Property(models.Model):
             models.Index(fields=['organization', 'is_active']),
             models.Index(fields=['owner']),
             models.Index(fields=['property_type']),
+            models.Index(fields=['purpose', 'is_active'], name='prop_purpose_active_idx'),
             models.Index(fields=['price']),
             models.Index(fields=['is_active', 'city']),
             models.Index(fields=['is_active', 'created_at']),
@@ -274,6 +315,9 @@ class Property(models.Model):
     def clean(self):
         if self.price is not None and self.price <= 0:
             raise ValidationError({'price': 'Price must be a positive value.'})
+        errors = self.v2_errors(self.__dict__)
+        if errors:
+            raise ValidationError(errors)
 
         if self.pk:
             try:
@@ -289,6 +333,35 @@ class Property(models.Model):
                         })
             except Property.DoesNotExist:
                 pass
+
+    @classmethod
+    def v2_errors(cls, data: dict) -> dict:
+        """Cross-field rules for the v2 listing fields (shared by model.clean and the API)."""
+        errors = {}
+        purpose    = data.get('purpose') or cls.Purpose.SALE
+        price_type = data.get('price_type') or cls.PriceType.TOTAL
+        if purpose == cls.Purpose.SALE and price_type in cls.PERIODIC_PRICE_TYPES:
+            errors['price_type'] = 'A sale price cannot be per month or per year.'
+        if data.get('deposit') is not None and data['deposit'] < 0:
+            errors['deposit'] = 'Must not be negative.'
+        if data.get('service_charge') is not None and data['service_charge'] < 0:
+            errors['service_charge'] = 'Must not be negative.'
+        floor, total = data.get('floor'), data.get('total_floors')
+        if floor is not None and total is not None and floor > total:
+            errors['floor'] = 'Must not exceed total_floors.'
+        year = data.get('year_built')
+        if year is not None and not (1800 <= year <= timezone.now().year + 10):
+            errors['year_built'] = 'Must be between 1800 and ten years from now.'
+        attrs = data.get('attributes')
+        if attrs is not None:
+            import json
+            if not isinstance(attrs, dict):
+                errors['attributes'] = 'Must be an object.'
+            elif len(attrs) > cls.ATTRIBUTES_MAX_KEYS or \
+                    len(json.dumps(attrs, default=str)) > cls.ATTRIBUTES_MAX_BYTES:
+                errors['attributes'] = (f'At most {cls.ATTRIBUTES_MAX_KEYS} keys and '
+                                        f'{cls.ATTRIBUTES_MAX_BYTES} bytes.')
+        return errors
 
     def _build_ref_no(self):
         city_key  = self.city.strip().lower()

@@ -341,6 +341,10 @@ class IntentClassifier:
         # Purpose
         purpose = 'rent' if re.search(r'\b(rent|rental|kiraya|lease)\b', lower, re.I) else 'buy'
 
+        # Bedrooms (T-1070a): "3 bed", "4 bedroom", "2 BHK", "3br"
+        m = re.search(r'\b(\d{1,2})\s*-?\s*(?:bed(?:room)?s?|br|bhk)\b', lower)
+        bedrooms = int(m.group(1)) if m and int(m.group(1)) <= 50 else None
+
         return PropertySearchFilter(
             city=city or 'Unknown',
             location=location,
@@ -348,6 +352,7 @@ class IntentClassifier:
             area_marla=round(area_marla, 2) if area_marla else None,
             price_max_pkr=price_max,
             purpose=purpose,
+            bedrooms=bedrooms,
         )
 
     @staticmethod
@@ -541,6 +546,8 @@ class IntentClassifier:
             parts.append(f"max_price=PKR {sf.price_max_pkr:,}")
         if sf.purpose:
             parts.append(f"purpose={sf.purpose}")
+        if sf.bedrooms:
+            parts.append(f"bedrooms={sf.bedrooms}+")
         return '[Normalised search params: ' + ', '.join(parts) + ']'
 
 

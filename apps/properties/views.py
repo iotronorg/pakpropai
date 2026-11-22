@@ -32,6 +32,9 @@ _LIST_PARAMETERS = [
     OpenApiParameter('city', str, description='City name, case-insensitive exact match.'),
     OpenApiParameter('type', str, enum=Property.PropertyType.values),
     OpenApiParameter('legal_status', str, enum=Property.LegalStatus.values),
+    OpenApiParameter('purpose', str, enum=Property.Purpose.values),
+    OpenApiParameter('min_bedrooms', int, description='Inclusive (0-50).'),
+    OpenApiParameter('min_bathrooms', int, description='Inclusive (0-50).'),
     OpenApiParameter('min_price', int, description='Inclusive, in the listing currency.'),
     OpenApiParameter('max_price', int, description='Inclusive, in the listing currency.'),
     OpenApiParameter('min_score', int, description='Minimum AI score (0-100).'),
@@ -95,6 +98,12 @@ class PropertyViewSet(viewsets.ModelViewSet):
             qs = qs.filter(property_type=ptype)
         if (legal := choice_param(params, 'legal_status', Property.LegalStatus.values)):
             qs = qs.filter(legal_status=legal)
+        if (purpose := choice_param(params, 'purpose', Property.Purpose.values)):
+            qs = qs.filter(purpose=purpose)
+        if (beds := int_param(params, 'min_bedrooms', max_value=50, clamp=False)) is not None:
+            qs = qs.filter(bedrooms__gte=beds)
+        if (baths := int_param(params, 'min_bathrooms', max_value=50, clamp=False)) is not None:
+            qs = qs.filter(bathrooms__gte=baths)
         min_price = int_param(params, 'min_price')
         max_price = int_param(params, 'max_price')
         if min_price is not None and max_price is not None and min_price > max_price:

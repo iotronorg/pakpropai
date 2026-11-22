@@ -233,4 +233,14 @@
   - Buckets: `reports/views.py` (`_get_trend(tz)`, bot daily trend), `agents/stats.py`, `properties/views.py`, `leads/views.py` + `campaigns/public_views.py` (local day bounds).
   - `reports/tasks.py`: per‑org local month; `now` parameter; local PDF date.
   - Tests: new `tests/test_timezones.py` (10).
-
+- **T‑1070a (ADR‑023):**
+  - `apps/properties/models.py`: v2 fields, `Purpose`/`PriceType`, `v2_errors`, purpose index.
+  - Migrations `0025_listing_schema_v2_expand` and `0026_property_purpose_index`.
+  - `serializers.py`: `ListingV2ValidationMixin`; fields on list/detail/create.
+  - `views.py`: filters and OpenAPI params.
+  - `search.py`: `purpose_values`, `_scrapers_apply`, purpose/room filters, result fields.
+  - `scrapers/base.py`: `PropertyResult` v2 fields; WhatsApp line shows beds, period, rent tag, price on request.
+  - `ai/_tools_search.py`: `purpose`/`bedrooms` args, honest live‑pending.
+  - `ai/schemas.py`: `bedrooms`, passed to the tool.
+  - `ai/service.py`: bedroom regex.
+  - Tests: `tests/test_listing_schema_v2.py` (16).

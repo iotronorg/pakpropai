@@ -18,6 +18,24 @@ class PropertyImageSerializer(serializers.ModelSerializer):
         return request.build_absolute_uri(url) if request else url
 
 
+V2_FIELDS = ('purpose', 'bedrooms', 'bathrooms', 'floor', 'total_floors', 'year_built',
+             'parking_spaces', 'pets_allowed', 'price_type', 'price_negotiable',
+             'price_on_request', 'deposit', 'service_charge', 'attributes')
+
+
+class ListingV2ValidationMixin:
+    """Cross-field rules for listing schema v2 (T-1070a); partial updates merge the instance."""
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        merged = {f: getattr(self.instance, f, None) for f in V2_FIELDS} if self.instance else {}
+        merged.update({k: v for k, v in attrs.items() if k in V2_FIELDS})
+        errors = Property.v2_errors(merged)
+        if errors:
+            raise serializers.ValidationError(errors)
+        return attrs
+
+
 class PropertyListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for list views."""
     primary_image = serializers.SerializerMethodField()
@@ -27,6 +45,7 @@ class PropertyListSerializer(serializers.ModelSerializer):
         fields = ('id', 'ref_no', 'title', 'city', 'location',
                   'area_marla', 'area_unit', 'area_sqm',
                   'price', 'country', 'currency',
+                  'purpose', 'price_type', 'price_on_request', 'bedrooms', 'bathrooms',
                   'property_type', 'construction_status', 'furnished_status',
                   'legal_status', 'ai_score', 'risk_level', 'primary_image', 'created_at')
 
@@ -39,7 +58,7 @@ class PropertyListSerializer(serializers.ModelSerializer):
         return request.build_absolute_uri(url) if request else url
 
 
-class PropertyDetailSerializer(serializers.ModelSerializer):
+class PropertyDetailSerializer(ListingV2ValidationMixin, serializers.ModelSerializer):
     owner_phone   = serializers.CharField(source='owner.phone', read_only=True)
     images        = PropertyImageSerializer(many=True, read_only=True)
     primary_image = serializers.SerializerMethodField()
@@ -52,6 +71,9 @@ class PropertyDetailSerializer(serializers.ModelSerializer):
                   'property_type', 'furnished_status', 'construction_status',
                   'legal_status', 'ai_score', 'risk_level', 'assigned_agent',
                   'installment_available', 'raw_docs', 'ai_analysis',
+                  'purpose', 'bedrooms', 'bathrooms', 'floor', 'total_floors', 'year_built',
+                  'parking_spaces', 'pets_allowed', 'price_type', 'price_negotiable',
+                  'price_on_request', 'deposit', 'service_charge', 'attributes',
                   'is_active', 'primary_image', 'images',
                   'created_at', 'updated_at')
         read_only_fields = ('id', 'ref_no', 'owner', 'owner_phone', 'ai_score', 'risk_level',
@@ -66,7 +88,7 @@ class PropertyDetailSerializer(serializers.ModelSerializer):
         return request.build_absolute_uri(url) if request else url
 
 
-class PropertyCreateSerializer(serializers.ModelSerializer):
+class PropertyCreateSerializer(ListingV2ValidationMixin, serializers.ModelSerializer):
     owner = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.all(), required=False, allow_null=True
     )
@@ -77,7 +99,10 @@ class PropertyCreateSerializer(serializers.ModelSerializer):
                   'area_marla', 'area_unit',
                   'price', 'country', 'currency',
                   'property_type', 'furnished_status',
-                  'construction_status', 'legal_status', 'assigned_agent', 'owner')
+                  'construction_status', 'legal_status', 'assigned_agent', 'owner',
+                  'purpose', 'bedrooms', 'bathrooms', 'floor', 'total_floors', 'year_built',
+                  'parking_spaces', 'pets_allowed', 'price_type', 'price_negotiable',
+                  'price_on_request', 'deposit', 'service_charge', 'attributes')
 
     def validate_owner(self, value):
         request = self.context.get('request')

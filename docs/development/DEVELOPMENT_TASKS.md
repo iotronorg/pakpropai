@@ -52,7 +52,14 @@ Priority: P0 (blocker) → P3.
 | T‑1050b‑2 | [x] | P2 | Remaining `'PKR'` literals | `apps/markets/pk/__init__.py` constants (`COUNTRY`, `CURRENCY`, `AREA_UNIT`) for code that is PK by design (audit engine, WhatsApp audit/listing tool contract, Safepay/bSecure, `FinancialConfig` defaults, NL search schema). Audit engine, PDF and WhatsApp audit summary label value‑derived money in `value_currency` and benchmark‑derived money in the benchmark currency (`market_analysis.benchmark_currency`); PDF via a context var. Lead budget + benchmark admin defaults market‑neutral. Fixed KI‑046; recorded KI‑045. 5 tests |
 | T‑1050c | [x] | P1 | UTC + per‑entity time zone | ADR‑022. `TIME_ZONE`/`CELERY_TIMEZONE` = UTC; 3 crontabs converted to their former PKT instants (monthly report → hourly on UTC day 1 with per‑org local month); helpers `market_timezone`/`org_timezone`/`user_timezone`/`local_day_bounds`/`format_local`; report/stat trends bucket in the org's market zone (`tzinfo=`); "today" counts use local day bounds; user‑facing times local (KI‑047); report/certificate dates local. 10 tests. **Operator:** review DB `PeriodicTask` rows (checklist §12) |
 | T‑1060 | [!] | P1 | Location hierarchy + PostGIS + geocoding backfill | Blocked: owner picks geocoding vendor; PostGIS in all envs |
-| T‑1070 | [ ] | P1 | Listing schema v2 (expand/contract) | after T‑1050 |
+| T‑1070 | [ ] | P1 | Listing schema v2 (expand/contract) | ADR‑023; subtasks a–g |
+| T‑1070a | [x] | P1 | Expand: purpose, rooms, floors, year built, parking, pets, price terms, `attributes` | Migrations 0025 (columns, `db_default`) + 0026 (concurrent index); API fields + list filters `purpose`/`min_bedrooms`/`min_bathrooms`; search + AI tool purpose/bedrooms; rent searches skip sale‑only scrapers (KI‑048). 16 tests |
+| T‑1070b | [ ] | P1 | Size rename `size_value`/`size_unit`/`size_m2` (+ `plot_size_m2`), dual‑write, migrate readers | GAP‑045 |
+| T‑1070c | [ ] | P1 | `PriceHistory` | FR‑LST‑002 |
+| T‑1070d | [ ] | P1 | Category/subtype taxonomy + amenities | FR‑LST‑001 |
+| T‑1070e | [ ] | P1 | `Market.listing_schema` validates `attributes` | FR‑LST‑004 |
+| T‑1070f | [ ] | P2 | Stored `tsvector` + trigger | KI‑035 |
+| T‑1070g | [ ] | P1 | Contract: drop `area_marla`/`area_unit`; minor‑unit money decision | **Owner approval** (destructive) |
 | T‑1080 | [ ] | P2 | Listing lifecycle + transitions + expiry | after T‑1070 |
 | T‑1090 | [x] | P2 | API standards: OpenAPI, error envelope, filter validation, idempotency keys | All subtasks a–d done (ADR‑016/017/018). Follow‑ups T‑1091/T‑1092 |
 | T‑1090a | [x] | P2 | OpenAPI 3.1 schema | ADR‑016. `drf-spectacular==0.29.0`; `GET /api/v1/schema/` (staff/admin unless `OPENAPI_SCHEMA_PUBLIC`); JWT header/cookie + org API‑key schemes; CI `spectacular --validate` + `openapi-schema` artefact; error/warning budget ratchet (154/32 unique). 11 tests |

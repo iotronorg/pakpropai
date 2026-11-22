@@ -27,7 +27,9 @@ class SearchParams:
     city: str = ''
     location: str = ''
     property_type: str = ''
-    purpose: str = ''                # 'sale' | 'rent' | '' — reserved for future filter
+    purpose: str = ''                # 'buy'/'sale' | 'rent' | 'lease' | a Property.Purpose value | ''
+    min_bedrooms: int = 0
+    min_bathrooms: int = 0
     min_price: int = 0
     max_price: int = 0
     area_marla: float = 0.0          # target size; DB query uses ±20 % tolerance band
@@ -49,6 +51,8 @@ class SearchParams:
             location=str(params.get('location', '')),
             property_type=str(params.get('property_type', '')),
             purpose=str(params.get('purpose', '')),
+            min_bedrooms=int(params.get('min_bedrooms', 0) or params.get('bedrooms', 0) or 0),
+            min_bathrooms=int(params.get('min_bathrooms', 0) or params.get('bathrooms', 0) or 0),
             min_price=int(params.get('min_price', 0) or 0),
             max_price=int(
                 params.get('max_price', 0) or params.get('max_price', 0) or 0
@@ -66,6 +70,27 @@ class SearchParams:
             page_size=int(params.get('page_size', PAGE_SIZE) or PAGE_SIZE),
             phone=str(params.get('phone', '')),
         )
+
+
+_PURPOSE_ALIASES = {
+    'buy': ('sale',), 'sale': ('sale',), 'purchase': ('sale',),
+    'rent': ('rent_long', 'rent_short'), 'rental': ('rent_long', 'rent_short'),
+    'lease': ('lease_commercial',),
+}
+
+
+def purpose_values(purpose: str) -> tuple:
+    """Map a caller's purpose ('buy', 'rent', a Property.Purpose value) to stored values; () = any."""
+    p = (purpose or '').strip().lower()
+    if p in Property.Purpose.values:
+        return (p,)
+    return _PURPOSE_ALIASES.get(p, ())
+
+
+def _scrapers_apply(purpose: str) -> bool:
+    """Scrapers only fetch sale listings: skip them for a rent/lease search."""
+    values = purpose_values(purpose)
+    return not values or 'sale' in values
 
 
 class PropertySearchService:
@@ -90,6 +115,9 @@ class PropertySearchService:
             legal_status=params.legal_status,
             organization_id=params.organization_id,
             viewer_org=params.viewer_org_id or None,
+            purpose=params.purpose,
+            min_bedrooms=params.min_bedrooms or None,
+            min_bathrooms=params.min_bathrooms or None,
         )
         scraped_results = cls._from_scrapers(
             city=params.city,
@@ -98,7 +126,7 @@ class PropertySearchService:
             max_price=params.max_price or None,
             property_type=params.property_type,
             phone=params.phone,
-        )
+        ) if _scrapers_apply(params.purpose) else []
 
         all_results = cls._dedup(db_results + scraped_results)
         if all_results:
@@ -109,7 +137,7 @@ class PropertySearchService:
         page_slice = all_results[offset: offset + params.page_size]
 
         from apps.config.services import SystemConfigService
-        live_pending = SystemConfigService.scraper_enabled() and (
+        live_pending = SystemConfigService.scraper_enabled() and _scrapers_apply(params.purpose) and (
             total == 0 or all(r.source == 'pakprop' for r in all_results)
         )
         return {
@@ -117,6 +145,8 @@ class PropertySearchService:
                 'city': params.city,
                 'location': params.location,
                 'property_type': params.property_type,
+                'purpose': params.purpose,
+                'min_bedrooms': params.min_bedrooms,
                 'max_price': params.max_price,
                 'area_marla': params.area_marla,
                 'furnished_status': params.furnished_status,
@@ -154,6 +184,11 @@ class PropertySearchService:
             'price': r.price,
             'price_formatted': format_price(r.price, r.currency),
             'currency': r.currency,
+            'purpose': r.purpose,
+            'price_type': r.price_type,
+            'price_on_request': r.price_on_request,
+            'bedrooms': r.bedrooms,
+            'bathrooms': r.bathrooms,
             'property_type': r.property_type,
             'furnished_status': r.furnished_status,
             'construction_status': r.construction_status,
@@ -166,7 +201,8 @@ class PropertySearchService:
     def search(cls, city='', location='', area_marla=None, max_price=None,
                property_type='', furnished_status='',
                construction_status='', phone: str = '',
-               viewer_org=None) -> list[PropertyResult]:
+               viewer_org=None, purpose='', min_bedrooms=None,
+               min_bathrooms=None) -> list[PropertyResult]:
         """
         Returns merged + AI-scored results (DB first, then scraped).
         `phone` is forwarded to the background task so a follow-up WA message
@@ -176,12 +212,13 @@ class PropertySearchService:
             city=city, location=location, area_marla=area_marla,
             max_price=max_price, property_type=property_type,
             furnished_status=furnished_status, construction_status=construction_status,
-            viewer_org=viewer_org,
+            viewer_org=viewer_org, purpose=purpose,
+            min_bedrooms=min_bedrooms, min_bathrooms=min_bathrooms,
         )
         scraped_results = cls._from_scrapers(
             city=city, location=location, area_marla=area_marla,
             max_price=max_price, property_type=property_type, phone=phone,
-        )
+        ) if _scrapers_apply(purpose) else []
 
         all_results = cls._dedup(db_results + scraped_results)
         if not all_results:
@@ -205,7 +242,7 @@ class PropertySearchService:
         cls, city='', location='', area_marla=None, max_price=None,
         property_type='', furnished_status='', construction_status='',
         min_price=None, installments=None, legal_status='', organization_id='',
-        viewer_org=None,
+        viewer_org=None, purpose='', min_bedrooms=None, min_bathrooms=None,
     ) -> list[PropertyResult]:
         qs = (
             Property.objects
@@ -216,6 +253,7 @@ class PropertySearchService:
                 'property_type', 'furnished_status', 'construction_status',
                 'ai_score', 'installment_available', 'legal_status',
                 'organization_id', 'listed_by_agent_id',
+                'purpose', 'price_type', 'price_on_request', 'bedrooms', 'bathrooms',
             )
         )
 
@@ -244,6 +282,12 @@ class PropertySearchService:
             qs = qs.filter(legal_status=legal_status)
         if organization_id:
             qs = qs.filter(organization_id=organization_id)
+        if (purposes := purpose_values(purpose)):
+            qs = qs.filter(purpose__in=purposes)
+        if min_bedrooms:
+            qs = qs.filter(bedrooms__gte=min_bedrooms)
+        if min_bathrooms:
+            qs = qs.filter(bathrooms__gte=min_bathrooms)
 
         return [
             PropertyResult(
@@ -260,6 +304,11 @@ class PropertySearchService:
                 url                 = '',
                 ai_score            = p.ai_score,
                 currency            = p.currency,
+                purpose             = p.purpose,
+                price_type          = p.price_type,
+                price_on_request    = p.price_on_request,
+                bedrooms            = p.bedrooms,
+                bathrooms           = p.bathrooms,
             )
             for p in qs.order_by('-ai_score', '-created_at')[:10]
         ]

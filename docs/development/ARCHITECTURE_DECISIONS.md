@@ -464,3 +464,42 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - `timezone.activate()` per request: JWT auth happens inside DRF, so a middleware cannot know the org, and implicit global state is harder to test than explicit `tzinfo`;
   - a single "06:00 UTC" monthly run: it would cut western markets' months early or deliver PK reports at 11:00 PKT.
 
+## ADR‑023 — Listing schema v2: evolve `Property` in place, expand/contract in subtasks
+- **Date:** 2026-11-22 (session 8) · Task T‑1070 · FR‑LST‑001/002/004, GAP‑010/012/045, KI‑035
+- **Context:**
+  - `Property` has no purpose (sale/rent), rooms, floors, year built or price terms.
+  - The size field is misnamed (`area_marla` holds a value in `area_unit`).
+  - Price is a single integer in major units.
+  - Readers: about 17 app files touch `area_marla`, and about 40 touch `price`. Consumers include the AI tools, search, scrapers, audit, scoring, the partner API and syndication.
+- **Decision:**
+  - **Evolve `Property` in place.** The table stays `properties`; no new `Listing` model. "Listing" is the API vocabulary only.
+  - **Every step is expand → migrate readers → contract.** Each subtask is releasable on its own.
+  - **Expand migrations are rolling‑deploy safe:** new columns are nullable, or NOT NULL with a constant `db_default` (Django 5.2). Pre‑v2 code can still insert rows, and Postgres 11+ adds the column without a table rewrite. Indexes are added `CONCURRENTLY` in their own non‑atomic migration (pattern from 0022).
+  - **Subtasks:**
+
+    | Subtask | Scope | Status |
+    |---|---|---|
+    | T‑1070a | Expand core fields and price terms (`purpose`, `bedrooms`, `bathrooms`, `floor`, `total_floors`, `year_built`, `parking_spaces`, `pets_allowed`, `price_type`, `price_negotiable`, `price_on_request`, `deposit`, `service_charge`, `attributes`). Wire them through the API, search and the AI search tool. Existing rows become `purpose='sale'`: scrapers fetch `/sale/` only and the seed data is all sale | done |
+    | T‑1070b | Size rename: `size_value`/`size_unit`/`size_m2` and a nullable `plot_size_m2`. Dual‑write with `area_marla`/`area_unit` via an instance snapshot; migrate readers; the API keeps `area_marla` as a deprecated alias | planned |
+    | T‑1070c | `PriceHistory` table, recorded on every price change (FR‑LST‑002, P1) | planned |
+    | T‑1070d | Category/subtype taxonomy (adds land and hospitality) plus `Amenity`/`ListingAmenity` | planned |
+    | T‑1070e | Market attribute schema: `Market.listing_schema` validates `attributes` (FR‑LST‑004) | planned |
+    | T‑1070f | Stored `tsvector` column + trigger (KI‑035) | planned |
+    | T‑1070g | **Contract:** drop `area_marla`/`area_unit` and decide minor‑unit money. **Destructive; needs owner approval after one release with no old readers** | planned |
+  - **Cross‑field rules live in `Property.v2_errors()`,** shared by `Model.clean` and the API serializers. A partial update is validated against the stored values. The rules:
+    - a sale price cannot be per month or per year;
+    - `floor ≤ total_floors`;
+    - `year_built` is between 1800 and now + 10 years;
+    - `deposit` and `service_charge` are not negative;
+    - `attributes` is an object with at most 50 keys and 8 KB.
+  - **Search purpose semantics:**
+    - `buy`/`sale` → `sale`;
+    - `rent` → `rent_long` + `rent_short`;
+    - `lease` → `lease_commercial`;
+    - an unknown purpose → no filter;
+    - a rent or lease search skips the scrapers (they are sale‑only) and promises no follow‑up.
+- **Money stays in major units** (`BigInteger`, ISO currency) until T‑1070g. PKR, AED and GBP listing prices never use sub‑units in practice. The conversion touches payments and escrow, so it belongs in the contract step.
+- **Rejected:**
+  - a new `Listing` table with a copy‑over: it duplicates every FK (leads, deals, audits, syndication) and needs a big‑bang cutover;
+  - Django `RenameField` for `area_marla`: old code breaks during a rolling deploy;
+  - a free JSON blob for the core fields: they are not indexable or filterable, and not typed in OpenAPI.

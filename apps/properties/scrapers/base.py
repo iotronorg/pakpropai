@@ -11,6 +11,9 @@ from dataclasses import dataclass, asdict, field
 from typing import Optional
 
 
+_PERIOD_SUFFIX = {'per_month': '/month', 'per_year': '/year', 'per_sqm': '/m²'}
+
+
 @dataclass
 class PropertyResult:
     source:               str
@@ -27,6 +30,12 @@ class PropertyResult:
     ai_score:             Optional[int]   = None
     ai_verdict:           str             = ''
     currency:             Optional[str]   = None   # ISO 4217; None → default market (T-1050b)
+    # Listing schema v2 (T-1070a). Scrapers only fetch sale listings and no room counts.
+    purpose:              str             = 'sale'
+    bedrooms:             Optional[int]   = None
+    bathrooms:            Optional[int]   = None
+    price_type:           str             = 'total'
+    price_on_request:     bool            = False
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -39,12 +48,22 @@ class PropertyResult:
     def format_wa(self, index: int = None) -> str:
         prefix = f"{index}. " if index is not None else "• "
         from apps.markets.services import format_price
-        price  = format_price(self.price, self.currency, missing="Price TBD")
+        if self.price_on_request:
+            price = "Price on request"
+        else:
+            price = format_price(self.price, self.currency, missing="Price TBD")
+            price += _PERIOD_SUFFIX.get(self.price_type, '') if self.price else ''
         area   = f"{self.area_marla}M" if self.area_marla else ""
+        if self.bedrooms:
+            area = f"{area} {self.bedrooms} bed".strip()
         score  = f" | Score {self.ai_score}/100" if self.ai_score else ""
         badge  = " [verified]" if self.source == 'pakprop' else f" [{self.source}]"
 
         tags = []
+        if self.purpose in ('rent_long', 'rent_short'):
+            tags.append('for rent')
+        elif self.purpose == 'lease_commercial':
+            tags.append('for lease')
         if self.furnished_status:
             tags.append(self.furnished_status.replace('_', '-'))
         if self.construction_status:

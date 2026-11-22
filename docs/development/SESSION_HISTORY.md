@@ -186,11 +186,16 @@
     - **T‑1050 complete.**
 - **Final tests:** 1738 passed, 1 skipped, 0 failed. `check`/drift/schema clean; Bandit 0 HIGH.
 
+- **Continued again (owner committed session 12, said "continue"):**
+  - **T‑1070 design:** ADR‑023 splits T‑1070 into subtasks a–g. Evolve `Property` in place; rolling‑safe expand migrations; the contract step (T‑1070g) needs owner approval.
+  - **T‑1070a:** listings now have purpose, bedrooms, bathrooms, floor, total floors, year built, parking, pets and price terms (type, negotiable, on request, deposit, service charge), plus a size‑capped `attributes` object.
+    - **Validation:** shared cross‑field rules in `Property.v2_errors`.
+    - **API:** the new fields, plus list filters for purpose and minimum bedrooms/bathrooms.
+    - **Search and AI:** search and the AI search tool honour purpose and bedrooms. Rent searches skip the sale‑only scrapers (KI‑048).
+    - **Migrations:** 0025 adds the columns with DB defaults; 0026 builds the index concurrently.
+- **Final tests:** 1754 passed, 1 skipped, 0 failed; `check`/drift/schema clean; Bandit 0 HIGH.
+
 ### Handoff → session 9
-1. `git status`: T‑1050b‑2 and T‑1050c are uncommitted. **Do not commit.** `scripts/dev/test.sh` should give 1738 passed, 1 skipped (Docker Desktop must be running).
-2. Next: **T‑1070**, listing schema v2 (P1). It is large, so start with a design ADR and a split into subtasks:
-   - **Fields:** inventory `Property` fields and their readers (search, AI tools `_tools_search`/`tools.list_property`, serializers, scoring, audit). Compare with the PRD listing model (`docs/product/ai-real-estate-agent/API_AND_DATA_REQUIREMENTS.md`, `PRD_MASTER.md`, GAP‑010/012/045 in `FEATURE_GAP_ANALYSIS.md`).
-   - **Expand/contract plan:** new columns nullable plus backfill, then readers, then contract (same pattern as ADR‑019).
-   - **Search:** a stored `tsvector` for KI‑035.
-   - Location hierarchy stays with T‑1060 (blocked).
+1. `git status`: T‑1070a is uncommitted. **Do not commit.** `scripts/dev/test.sh` should give 1754 passed, 1 skipped.
+2. Next: **T‑1070b**, the size rename (see the ADR‑023 table and the DEVELOPMENT_STATUS "Next task"). Then T‑1070c (PriceHistory), d (taxonomy/amenities), e (market attribute schema), f (tsvector). Hold g (contract) for owner approval.
 3. After that: T‑1080 (lifecycle) → T‑1011 (MFA) → T‑1091/T‑1092 (OpenAPI/error cleanup, P3).

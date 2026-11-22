@@ -111,3 +111,11 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - Django admin timestamps now display in UTC.
 - Monthly reports are per‑org local months. Pakistan reports appear from about 05:05 PKT on the 1st (was 06:00).
 
+## 13. Session‑8 change: listing schema v2 expand (T‑1070a, ADR‑023)
+- **Migrations:**
+  - `properties.0025`: additive columns. The NOT NULL ones have DB defaults, so there is no table rewrite and old code keeps inserting during a rolling deploy.
+  - `properties.0026`: index built `CONCURRENTLY`, non‑atomic.
+
+  Run `migrate` before or during the rollout.
+- Existing listings become `purpose=sale`, `price_type=total`. Agents should correct any rental listings that were stored as sales.
+- API additions are backward compatible: new optional fields, plus the list filters `purpose`, `min_bedrooms` and `min_bathrooms`.
