@@ -203,6 +203,15 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - `select_for_update(skip_locked)` claiming: a conditional `UPDATE` gives the same exclusivity without holding a transaction open across the HTTP call;
   - routing to a new `outbound` queue by default: workers pinned to `default` would never deliver OTPs.
 
+- **Addendum — T‑1022a (2026-11-22, session 8):** generic kind `whatsapp.text`.
+  - `apps.notifications.delivery.enqueue_whatsapp_text(phone, text, key=…, organization=…, skip_window_check=…, expires_at=…)`. The org's WhatsApp credentials are resolved **at delivery** from `organization_id`.
+  - A closed 24 h window is a permanent failure.
+  - The kind is in `SENSITIVE_KINDS`: the text can contain client phone numbers, so the payload is wiped after delivery.
+  - **Keys name the business event** (`hot_lead:<lead>:<last_scored_at>`, `verification:<id>:<status>`, `listing_alert:<property>:<lead>`, `appt_reminder:<appt>:<scheduled_at>`, `stale_reminder:<agent>:<date>`, `reengage:<lead>:<date>`). A rerun task or re‑fired signal therefore sends nothing new.
+  - Batch tasks queue the message and set their `*_sent_at` marker in one transaction. The marker now means "queued", not "provider accepted".
+  - Appointment reminders expire at the visit time.
+  - Synchronous sends whose caller needs the provider result (lead `send-message`, chat replies) stay direct.
+
 ## ADR‑015 — Listing search indexes and index‑backed full‑text search
 - **Date:** 2026-11-21 (session 6) · Task T‑1100 · GAP‑040
 - **Context:** `properties` had only single‑column B‑trees, and none matched the SQL the code emits:
@@ -378,3 +387,44 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - a request attribute set in Django middleware: JWT authentication happens later, inside DRF;
   - falling back to the primary org on an invalid selector: it would silently act on the wrong tenant;
   - keeping the header in the threat list and authenticating JWT in the security middleware: it duplicates auth on every request.
+
+## ADR‑021 — Membership contract: one service for invite, role change, removal and ownership transfer
+- **Date:** 2026-11-22 (session 8) · Task T‑1032a · KI‑010, GAP‑015
+- **Context:**
+  - After ADR‑020 the grant policy lived in `OrgMembershipView`, so any other writer could bypass it.
+  - There was no role change and no ownership transfer. The only way to move ownership was to edit `Organization.admin_user` in the admin. The projection hook then **deactivated** the previous owner entirely.
+  - Membership changes were not audited.
+- **Decision:**
+  - **Service.** `apps/organizations/membership.py` holds the contract: `check_invite`/`invite_member`, `change_role`, `remove_member(actor=…)` and `transfer_ownership`. Views only parse input and call it. Each operation runs in one transaction together with its `AuditLog` row:
+    - `membership.invited` / `membership.reactivated` (CREATE);
+    - `membership.role_changed` (UPDATE);
+    - `membership.removed` (DELETE);
+    - `organization.ownership_transferred` (UPDATE on the org).
+
+    `before`/`after` hold ids, role, employment type and active flag only, with no phone numbers.
+  - **Errors** are DRF exceptions with specific codes: `membership_invalid` (400), `membership_forbidden` (403), `membership_conflict` (409). The ADR‑017 envelope carries them.
+  - **Policy** (ADR‑020, now enforced in the service):
+    - actors must be `owner`/`org_admin` of the org, or a platform admin;
+    - `owner` is never granted by invite or role change;
+    - granting, changing or removing `org_admin` is owner‑only;
+    - the owner's membership cannot be changed or removed (transfer first).
+  - **Transfer rules:**
+    - caller must be the current owner or a platform admin;
+    - the target must be an **active `org_admin`** of the org (a two‑step promote → transfer);
+    - the target must have **account type `developer`**, be active, and own no other org, because `admin_user` is one‑to‑one until ADR‑013 phase C;
+    - previous owner(s) are demoted to `org_admin` and stay in the org;
+    - `admin_user` is written with `QuerySet.update` so the legacy projection hook does not deactivate the previous owner. The caller's instance and its post‑init snapshot are updated so a later `save()` cannot revert it.
+  - **API:**
+    - `PATCH /organizations/me/members/{id}/` (role, employment type);
+    - `POST /organizations/me/ownership/transfer/` (active org via `get_admin_org`);
+    - `POST /organizations/{id}/ownership/transfer/` (platform admin).
+
+    The members view is split into list and detail views (fixes 4 operationId collisions), and the members/ownership endpoints are documented in OpenAPI.
+- **Why the account‑type rule:** about 10 readers still scope data on `user.role == 'developer'` (leads, agents, org list, tenant middleware). An `agent`/`client` account made owner would administer the org but see an agent's or no data. Changing `user.role` silently would break that user's agent views. Lift the rule when those readers move to membership roles.
+- **Not done (deferred):**
+  - **Invite acceptance:** an invite still adds an existing user immediately, without their consent. A pending/accept state is a product decision (open question).
+  - **Phase C schema contraction:** T‑1032b, gated on a clean `reconcile_memberships` in prod.
+- **Rejected:**
+  - keeping the policy in views: the service is the only place every writer passes;
+  - letting the projection hook handle transfers: it would remove the previous owner from the org;
+  - auto‑promoting the target to `org_admin` during transfer: it skips a deliberate step for an irreversible‑feeling action.

@@ -86,3 +86,14 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
   - The members API no longer grants `owner`, and only owners grant or remove `org_admin`.
   - Clients may send `X-Organization-ID` to act for another org they belong to. A foreign org gives 403 and a `cross_tenant` security event; alert on those events.
   - `/auth/otp/send/` rejects `purpose` other than `otp_login`/`registration_verify` (KI‑030).
+
+## 11. Session‑8 changes (M1: membership contract, ADR‑021)
+- No migrations or new settings.
+- **New endpoints:**
+  - `PATCH /api/v1/organizations/me/members/{id}/` changes a member's role;
+  - `POST /api/v1/organizations/me/ownership/transfer/` (owner) and `POST /api/v1/organizations/{id}/ownership/transfer/` (platform admin) transfer ownership. The target must be an active `org_admin` with a developer account who owns no other org. The previous owner stays as `org_admin`.
+- **Behaviour change:** every member invite, reactivation, role change, removal and transfer writes an `audit_logs` row. Expect a few rows per member change.
+- **Prefer the transfer endpoint to editing `admin_user` in the Django admin.** The admin edit still works, but it deactivates the previous owner's membership (ADR‑013) and writes no audit row.
+- High‑risk deal‑lock audit rows (`detail='high_risk_deal_lock'`) are now actually written (KI‑040).
+- **Outbox (T‑1022a):** these now go through `outbox_messages` (kind `whatsapp.text`), so the `relay-outbox` beat job and a worker on `OUTBOX_CELERY_QUEUE` must be running: hot‑lead alerts, verification notices, new‑listing alerts, appointment reminders, stale‑lead reminders and client re‑engagement. `reminder_sent_at`/`follow_up_sent_at` now mean "queued". Failed rows show up as `status='failed'` with `last_error`.
+- Property owners no longer get a repeat “Verification Approved/Rejected” message whenever a reviewed verification is saved again (KI‑042).

@@ -19,8 +19,8 @@ SCHEMA_URL = '/api/v1/schema/'
 
 # Unique generator messages at introduction (session 6). Lower these when
 # views are annotated; never raise them.
-ERROR_BUDGET = 154      # almost all: APIView without serializer_class
-WARNING_BUDGET = 32
+ERROR_BUDGET = 153      # almost all: APIView without serializer_class (T-1032a: members API documented)
+WARNING_BUDGET = 28     # T-1032a: members view split + enum overrides
 
 
 def _build_schema():

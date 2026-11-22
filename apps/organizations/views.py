@@ -6,16 +6,19 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 from .models import Organization, OrganizationConfig, OrganizationMembership
 from .serializers import (
+    OrgMemberInviteSerializer, OrgMemberSerializer, OrgMemberUpdateSerializer,
+    OwnershipTransferRequestSerializer, OwnershipTransferResponseSerializer,
     OrganizationListSerializer, OrganizationDetailSerializer,
     OrgRegistrationSerializer, OrgRegistrationOTPVerifySerializer,
 )
 from apps.core.permissions import IsAdminUser, IsAdminOrOrgAdmin
+from drf_spectacular.utils import extend_schema
 from .services import OrgConfigService
 
 logger = logging.getLogger(__name__)
@@ -602,32 +605,22 @@ class OrgRegistrationOTPVerifyView(APIView):
         return response
 
 
-class OrgMembershipView(APIView):
-    """
-    GET  /api/v1/organizations/me/members/        — list active members of caller's org
-    POST /api/v1/organizations/me/members/        — invite an existing user into the org
-    DELETE /api/v1/organizations/me/members/{id}/ — deactivate a membership
-    """
+def _member_payload(m, user=None):
+    user = user or m.user
+    return {
+        'id': str(m.id),
+        'user_phone': user.phone,
+        'user_name': getattr(user, 'name', None),
+        'role': m.role,
+        'employment_type': m.employment_type,
+        'is_active': m.is_active,
+        'joined_at': m.joined_at.isoformat(),
+    }
+
+
+class _OrgMembersBase(APIView):
+    """Policy and audit live in ``apps.organizations.membership`` (ADR-020/021)."""
     permission_classes = [IsAuthenticated, IsAdminOrOrgAdmin]
-
-    # ADR-020 grant policy: ownership is never granted by invite (transfer is a
-    # separate flow) and only the owner may create or remove org admins.
-    _OWNER_ONLY_ROLES = (OrganizationMembership.Role.ORG_ADMIN,)
-
-    @staticmethod
-    def _caller_role(user, org):
-        if user.role == 'admin':
-            return 'platform_admin'
-        from apps.core.permissions import _membership_role_by_id
-        return _membership_role_by_id(user, org.pk)
-
-    def _check_grant(self, request, org, role):
-        if role == OrganizationMembership.Role.OWNER:
-            raise PermissionDenied('The owner role cannot be granted by invitation.')
-        if role in self._OWNER_ONLY_ROLES and self._caller_role(request.user, org) not in (
-            OrganizationMembership.Role.OWNER, 'platform_admin',
-        ):
-            raise PermissionDenied('Only the organization owner can grant this role.')
 
     def _get_org(self, user):
         from apps.core.permissions import get_user_org
@@ -636,82 +629,114 @@ class OrgMembershipView(APIView):
             raise PermissionDenied('No organization found for this account.')
         return org
 
+    def _get_membership(self, org, membership_id):
+        try:
+            return OrganizationMembership.objects.select_related('user').get(
+                id=membership_id, organization=org, is_active=True)
+        except OrganizationMembership.DoesNotExist:
+            raise NotFound('Membership not found.')
+
+
+
+class OrgMembershipView(_OrgMembersBase):
+    """
+    GET  /api/v1/organizations/me/members/ — list active members of caller's org
+    POST /api/v1/organizations/me/members/ — invite an existing user into the org
+    """
+
+    @extend_schema(responses=OrgMemberSerializer(many=True))
     def get(self, request):
         org = self._get_org(request.user)
         members = OrganizationMembership.objects.filter(
             organization=org, is_active=True
         ).select_related('user').order_by('joined_at')
-        data = [
-            {
-                'id': str(m.id),
-                'user_phone': m.user.phone,
-                'user_name': getattr(m.user, 'name', None),
-                'role': m.role,
-                'employment_type': m.employment_type,
-                'is_active': m.is_active,
-                'joined_at': m.joined_at.isoformat(),
-            }
-            for m in members
-        ]
-        return Response(data)
+        return Response([_member_payload(m) for m in members])
 
+    @extend_schema(request=OrgMemberInviteSerializer, responses={201: OrgMemberSerializer})
     def post(self, request):
         from apps.users.models import User
+        from .membership import check_invite, invite_member
         org = self._get_org(request.user)
-        phone = request.data.get('phone', '').strip()
+        phone = str(request.data.get('phone', '')).strip()
         role = request.data.get('role', OrganizationMembership.Role.AGENT)
         employment_type = request.data.get('employment_type', OrganizationMembership.EmploymentType.INTERNAL)
 
         if not phone:
             return Response({'detail': 'phone is required.'}, status=status.HTTP_400_BAD_REQUEST)
-        if role not in OrganizationMembership.Role.values:
-            return Response({'detail': f'Invalid role: {role}'}, status=status.HTTP_400_BAD_REQUEST)
-        if employment_type not in OrganizationMembership.EmploymentType.values:
-            return Response({'detail': f'Invalid employment_type: {employment_type}'}, status=status.HTTP_400_BAD_REQUEST)
-
-        self._check_grant(request, org, role)
+        check_invite(request.user, org, role, employment_type)
 
         user = User.objects.filter(phone=phone).first()
         if not user:
             return Response({'detail': 'No user found with this phone number.'}, status=status.HTTP_404_NOT_FOUND)
 
-        membership, created = OrganizationMembership.objects.get_or_create(
-            user=user,
-            organization=org,
-            defaults={'role': role, 'employment_type': employment_type, 'is_active': True},
-        )
-        if not created:
-            if not membership.is_active:
-                membership.is_active = True
-                membership.role = role
-                membership.employment_type = employment_type
-                membership.left_at = None
-                membership.save(update_fields=['is_active', 'role', 'employment_type', 'left_at'])
-            else:
-                return Response({'detail': 'User is already a member of this organization.'}, status=status.HTTP_409_CONFLICT)
+        membership, _ = invite_member(request.user, org, user, role, employment_type, request=request)
+        return Response(_member_payload(membership, user), status=status.HTTP_201_CREATED)
 
-        return Response({
-            'id': str(membership.id),
-            'user_phone': user.phone,
-            'user_name': getattr(user, 'name', None),
-            'role': membership.role,
-            'employment_type': membership.employment_type,
-            'is_active': membership.is_active,
-            'joined_at': membership.joined_at.isoformat(),
-        }, status=status.HTTP_201_CREATED)
 
-    def delete(self, request, membership_id):
+
+class OrgMembershipDetailView(_OrgMembersBase):
+    """
+    PATCH  /api/v1/organizations/me/members/{id}/ — change a member's role / employment type
+    DELETE /api/v1/organizations/me/members/{id}/ — deactivate a membership
+    """
+
+    @extend_schema(request=OrgMemberUpdateSerializer, responses=OrgMemberSerializer)
+    def patch(self, request, membership_id):
+        from .membership import change_role
         org = self._get_org(request.user)
-        try:
-            membership = OrganizationMembership.objects.get(id=membership_id, organization=org, is_active=True)
-        except OrganizationMembership.DoesNotExist:
-            return Response({'detail': 'Membership not found.'}, status=status.HTTP_404_NOT_FOUND)
-        if membership.role == OrganizationMembership.Role.OWNER:
-            return Response({'detail': 'Cannot remove the organization owner.'}, status=status.HTTP_400_BAD_REQUEST)
-        if membership.role in self._OWNER_ONLY_ROLES and self._caller_role(request.user, org) not in (
-            OrganizationMembership.Role.OWNER, 'platform_admin',
-        ):
-            raise PermissionDenied('Only the organization owner can remove an org admin.')
+        membership = self._get_membership(org, membership_id)
+        role = request.data.get('role')
+        if not role:
+            return Response({'detail': 'role is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        membership = change_role(request.user, membership, role,
+                                 request.data.get('employment_type') or None, request=request)
+        return Response(_member_payload(membership))
+
+    @extend_schema(responses={204: None})
+    def delete(self, request, membership_id):
         from .membership import remove_member
-        remove_member(membership)
+        org = self._get_org(request.user)
+        membership = self._get_membership(org, membership_id)
+        remove_member(membership, actor=request.user, request=request)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class OrgOwnershipTransferView(APIView):
+    """
+    POST /api/v1/organizations/me/ownership/transfer/   — owner of the active org
+    POST /api/v1/organizations/{pk}/ownership/transfer/ — platform admin
+
+    Body: ``{"membership_id": <int>}`` — an active ``org_admin`` of the org.
+    The previous owner stays as ``org_admin`` (ADR-021).
+    """
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(request=OwnershipTransferRequestSerializer,
+                   responses=OwnershipTransferResponseSerializer)
+    def post(self, request, pk=None):
+        from apps.core.permissions import get_admin_org
+        from .membership import transfer_ownership
+        if pk is not None:
+            if request.user.role != 'admin':
+                raise PermissionDenied()
+            try:
+                org = Organization.objects.get(pk=pk)
+            except Organization.DoesNotExist:
+                raise NotFound('Organization not found.')
+        else:
+            org = get_admin_org(request.user)
+            if org is None:
+                raise PermissionDenied('Only the organization owner can transfer ownership.')
+
+        raw_id = request.data.get('membership_id')
+        try:
+            membership_id = int(raw_id)
+        except (TypeError, ValueError):
+            return Response({'detail': 'membership_id must be an integer.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        owner = transfer_ownership(request.user, org, membership_id, request=request)
+        return Response({
+            'organization_id': str(org.pk),
+            'owner': _member_payload(owner),
+        })

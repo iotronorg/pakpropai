@@ -63,16 +63,18 @@ def _check_high_risk_deal(prop, deal) -> None:
     )
     try:
         from apps.core.models import AuditLog
-        AuditLog.objects.create(
-            event='high_risk_deal_lock',
-            target_type='EscrowDeal',
-            target_id=str(deal.id),
-            metadata={
-                'property_id':  str(prop.id),
-                'property_title': prop.title,
-                'ai_score':     ai_score,
-                'risk_level':   risk_level,
-                'buyer_phone':  getattr(deal.buyer, 'phone', ''),
+        # KI-040: this used non-existent fields (event/target_type/metadata), so
+        # every call raised and no audit row was ever written.
+        AuditLog.log(
+            actor=None,
+            action=AuditLog.Action.CREATE,
+            target=deal,
+            detail='high_risk_deal_lock',
+            after={
+                'property_id':    str(prop.id),
+                'ai_score':       ai_score,
+                'risk_level':     risk_level,
+                'buyer_user_id':  str(deal.buyer_id) if getattr(deal, 'buyer_id', None) else None,
             },
         )
     except Exception as exc:

@@ -126,7 +126,7 @@ def _notify_matching_leads(prop) -> int:
     try:
         from django.db.models import Q
         from apps.leads.models import Lead
-        from apps.whatsapp.client import get_wa_client
+        from apps.notifications.delivery import enqueue_whatsapp_text
 
         city_lower = (prop.city or '').strip().lower()
         if not city_lower:
@@ -167,7 +167,10 @@ def _notify_matching_leads(prop) -> int:
                     f"💰 {price_str}\n\n"
                     "Reply here to get full details or book a visit! 🔑"
                 )
-                get_wa_client(lead.organization).send_text(lead.user.phone.lstrip('+'), msg)
+                # T-1022a: outbox; one alert per (listing, lead) even if the task reruns.
+                enqueue_whatsapp_text(lead.user.phone.lstrip('+'), msg,
+                                      key=f'listing_alert:{prop.pk}:{lead.pk}',
+                                      organization=lead.organization)
                 sent += 1
             except Exception as exc:
                 logger.warning(f"Listing alert WA failed lead={lead.id}: {exc}")

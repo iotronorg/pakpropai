@@ -8,7 +8,7 @@
 | Criterion | State |
 |---|---|
 | All existing listings migrated to schema v2, with a backfill report and < X % unmatched locations | Not started (T‑1060, T‑1070) |
-| Permission matrix tests pass for every role | **In progress**: org‑admin/members/leads matrix for 8 actors + active‑org switching (T‑1031a); management endpoints vs. selected viewer org (T‑1031b) |
+| Permission matrix tests pass for every role | **In progress**: org‑admin/members/leads matrix for 8 actors + active‑org switching (T‑1031a); management endpoints vs. selected viewer org (T‑1031b); member invite/role‑change/removal/transfer rules (T‑1032a) |
 | OpenAPI published | **Met in CI** (T‑1090a): validated 3.1 schema published as a CI artefact and at `/api/v1/schema/` for staff. Coverage debt: KI‑037 |
 | No hardcoded `PKR`/`PK`/`marla` defaults outside the PK market pack (grep check in CI) | **Met for defaults** (T‑1050a): CI test rejects literal market defaults; logic literals ratcheted (T‑1050b) |
 
@@ -19,10 +19,10 @@
 | T‑1011 | P1 | MFA (TOTP) for staff and org admins | GAP‑082 | T‑1010 |
 | T‑1020 ✅ | P1 | Inbound WhatsApp retry + dead‑letter under DB starvation | KI‑019 | — |
 | T‑1021 ✅ | P1 | Transactional outbox for outbound side effects + named queues (ADR‑014) | GAP‑043, TR‑09 | T‑1020 |
-| T‑1022 | P1 | Outbox adoption for the remaining outbound sends | GAP‑043 | T‑1021 |
+| T‑1022 (a ✅, b) | P1 | Outbox adoption for the remaining outbound sends: alerts/reminders ✅ (`whatsapp.text`); escrow, audit, campaigns, digests | GAP‑043 | T‑1021 |
 | T‑1030 ✅ | P1 | Membership consolidation plan (ADR‑013) + phase A sync/backfill | GAP‑015, KI‑010 | — |
 | T‑1031 ✅ | P1 | Policy‑based RBAC + active org context + permission‑matrix tests (ADR‑013 phase B) | TR‑06 | T‑1030 |
-| T‑1032 | P2 | Membership contract (ADR‑013 phase C) | KI‑010 | T‑1031 |
+| T‑1032 (a ✅, b) | P2 | Membership contract: audited service + ownership transfer (ADR‑021) ✅; phase‑C schema contraction (ADR‑013) | KI‑010 | T‑1031; b: clean `reconcile_memberships` in prod |
 | T‑1033 | P1 | PII‑masking endpoint audit | KI‑032 | owner policy sign‑off |
 | T‑1040 | P2 | `is_sandbox` semantics for unscoped leads | KI‑017 | T‑1030 |
 | T‑1050 (a ✅, b, c) | P1 | `Market` entity from the registry; remove hardcoded PK defaults; UTC + per‑entity TZ | TR‑04, GAP‑014/091 | — |
@@ -35,4 +35,4 @@
 | T‑1120 | P2 | AI provider abstraction, prompt registry, market‑pack prompt fragments | GAP‑055/056/062 | — |
 
 ## Order
-T‑1010 ✅ → T‑1020 ✅ → T‑1030 ✅ → T‑1021 ✅ → T‑1100 ✅ → T‑1090 ✅ → T‑1050 → T‑1031 → T‑1032 → T‑1022 → T‑1070 → T‑1080 → T‑1011 → T‑1110 → T‑1120 → T‑1060 (this one waits on the vendor/PostGIS decision).
+T‑1010 ✅ → T‑1020 ✅ → T‑1030 ✅ → T‑1021 ✅ → T‑1100 ✅ → T‑1090 ✅ → T‑1050 → T‑1031 ✅ → T‑1032a ✅ → T‑1022a ✅ → T‑1022b → T‑1070 → T‑1080 → T‑1011 → T‑1110 → T‑1120 → T‑1060 (this one waits on the vendor/PostGIS decision).

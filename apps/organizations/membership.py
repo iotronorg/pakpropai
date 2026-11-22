@@ -13,16 +13,21 @@ canonical table can no longer drift from the projections. Removing a member via
 the membership API goes through :func:`remove_member`, which also clears the
 ``Agent.organization`` projection.
 
-Owner memberships are never deactivated by an agent-side change: ownership is
-transferred only by changing ``Organization.admin_user``.
+Owner memberships are never deactivated by an agent-side change. Ownership is
+transferred through :func:`transfer_ownership` (ADR-021), which moves the owner
+membership and the ``admin_user`` projection together.
+
+Member management (invite, role change, removal, transfer) is the membership
+contract below: the views only parse the request and call it.
 """
 from __future__ import annotations
 
 import logging
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Case, IntegerField, Value, When
 from django.utils import timezone
+from rest_framework.exceptions import APIException, NotFound, PermissionDenied
 
 logger = logging.getLogger(__name__)
 
@@ -118,17 +123,274 @@ def sync_owner_membership(organization, previous_admin_id) -> None:
         ensure_membership(new_admin_id, organization.pk, role=OWNER, promote=True)
 
 
+# ── Membership contract (T-1032a, ADR-021) ────────────────────────────────────
+#
+# Invite, role change, removal and ownership transfer are decided here, not in
+# views: one grant policy (ADR-020), one audit trail (``AuditLog``), one place
+# that keeps the ``Organization.admin_user`` projection in step with the owner
+# membership. Every operation is atomic together with its audit row.
+
+ORG_ADMIN = 'org_admin'
+PLATFORM_ADMIN = 'platform_admin'
+_MANAGER_ROLES = (OWNER, ORG_ADMIN, PLATFORM_ADMIN)
+# Granting, changing or removing these roles is reserved to the owner (or a platform admin).
+OWNER_ONLY_ROLES = (ORG_ADMIN,)
+# The account type the rest of the code scopes as an organization operator.
+OWNER_ACCOUNT_TYPE = 'developer'
+
+
+class MembershipInvalid(APIException):
+    status_code = 400
+    default_detail = 'Invalid membership request.'
+    default_code = 'membership_invalid'
+
+
+class MembershipConflict(APIException):
+    status_code = 409
+    default_detail = 'The membership is in a conflicting state.'
+    default_code = 'membership_conflict'
+
+
+class MembershipForbidden(PermissionDenied):
+    default_code = 'membership_forbidden'
+
+
+def actor_role(actor, organization_id) -> str | None:
+    """``platform_admin`` for platform admins, else the actor's active role in the org."""
+    if actor is None:
+        return None
+    if getattr(actor, 'role', None) == 'admin':
+        return PLATFORM_ADMIN
+    return (_model().objects
+            .filter(user_id=actor.pk, organization_id=organization_id, is_active=True)
+            .values_list('role', flat=True).first())
+
+
+def _require_manager(role):
+    if role not in _MANAGER_ROLES:
+        raise MembershipForbidden('Only organization admins can manage members.')
+
+
+def _require_owner_for(role, actor_role_, message):
+    if role in OWNER_ONLY_ROLES and actor_role_ not in (OWNER, PLATFORM_ADMIN):
+        raise MembershipForbidden(message)
+
+
+def _validate_choices(role, employment_type=None):
+    Membership = _model()
+    if role not in Membership.Role.values:
+        raise MembershipInvalid(f'Invalid role: {role}')
+    if employment_type is not None and employment_type not in Membership.EmploymentType.values:
+        raise MembershipInvalid(f'Invalid employment_type: {employment_type}')
+
+
+def _snapshot(m) -> dict:
+    return {
+        'user_id': str(m.user_id), 'organization_id': str(m.organization_id),
+        'role': m.role, 'employment_type': m.employment_type, 'is_active': m.is_active,
+    }
+
+
+def _audit(actor, action, target, detail, *, before=None, after=None, request=None):
+    from apps.core.models import AuditLog
+    if actor is not None and not getattr(actor, 'is_authenticated', False):
+        actor = None
+    AuditLog.log(actor=actor, action=action, target=target, detail=detail,
+                 before=before, after=after, request=request)
+
+
+def check_invite(actor, organization, role, employment_type) -> None:
+    """Validate an invite before the invitee is looked up (no user enumeration past a denial)."""
+    _validate_choices(role, employment_type)
+    caller = actor_role(actor, organization.pk)
+    _require_manager(caller)
+    if role == OWNER:
+        raise MembershipForbidden(
+            'The owner role cannot be granted by invitation; use ownership transfer.')
+    _require_owner_for(role, caller, 'Only the organization owner can grant this role.')
+
+
 @transaction.atomic
-def remove_member(membership) -> None:
+def invite_member(actor, organization, user, role, employment_type='internal', *, request=None):
+    """
+    Add ``user`` to ``organization`` with ``role`` (or reactivate a former membership).
+
+    Raises ``MembershipConflict`` when the user is already an active member.
+    Returns ``(membership, created)``.
+    """
+    from apps.core.models import AuditLog
+
+    check_invite(actor, organization, role, employment_type)
+    Membership = _model()
+    membership = (Membership.objects.select_for_update()
+                  .filter(user=user, organization=organization).first())
+    if membership is not None and membership.is_active:
+        raise MembershipConflict('User is already a member of this organization.')
+
+    before = _snapshot(membership) if membership is not None else None
+    if membership is None:
+        try:
+            with transaction.atomic():  # savepoint: a concurrent invite wins the unique key
+                membership = Membership.objects.create(
+                    user=user, organization=organization, role=role,
+                    employment_type=employment_type, is_active=True,
+                )
+        except IntegrityError:
+            raise MembershipConflict('User is already a member of this organization.')
+        created, detail = True, 'membership.invited'
+    else:
+        membership.is_active = True
+        membership.left_at = None
+        membership.role = role
+        membership.employment_type = employment_type
+        membership.save(update_fields=['is_active', 'left_at', 'role', 'employment_type'])
+        created, detail = False, 'membership.reactivated'
+
+    _audit(actor, AuditLog.Action.CREATE, membership, detail,
+           before=before, after=_snapshot(membership), request=request)
+    logger.info('%s user=%s org=%s role=%s by=%s', detail, user.pk, organization.pk, role,
+                getattr(actor, 'pk', None))
+    return membership, created
+
+
+@transaction.atomic
+def change_role(actor, membership, role, employment_type=None, *, request=None):
+    """
+    Change an active member's role (and optionally employment type).
+
+    * the owner's membership cannot be changed here (transfer ownership first);
+    * ``owner`` cannot be granted here;
+    * granting or revoking ``org_admin`` is owner‑only.
+    """
+    from apps.core.models import AuditLog
+
+    _validate_choices(role, employment_type)
+    Membership = _model()
+    membership = Membership.objects.select_for_update().get(pk=membership.pk)
+    if not membership.is_active:
+        raise MembershipConflict('The membership is not active.')
+    caller = actor_role(actor, membership.organization_id)
+    _require_manager(caller)
+    if membership.role == OWNER:
+        raise MembershipForbidden(
+            "The owner's role cannot be changed; transfer ownership first.")
+    if role == OWNER:
+        raise MembershipForbidden(
+            'The owner role cannot be granted by a role change; use ownership transfer.')
+    _require_owner_for(role, caller, 'Only the organization owner can grant this role.')
+    _require_owner_for(membership.role, caller,
+                       'Only the organization owner can change an org admin.')
+
+    new_employment = employment_type or membership.employment_type
+    if (role, new_employment) == (membership.role, membership.employment_type):
+        return membership
+
+    before = _snapshot(membership)
+    membership.role = role
+    membership.employment_type = new_employment
+    membership.save(update_fields=['role', 'employment_type'])
+    _audit(actor, AuditLog.Action.UPDATE, membership, 'membership.role_changed',
+           before=before, after=_snapshot(membership), request=request)
+    logger.info('membership.role_changed id=%s %s→%s by=%s', membership.pk,
+                before['role'], role, getattr(actor, 'pk', None))
+    return membership
+
+
+@transaction.atomic
+def transfer_ownership(actor, organization, membership_id, *, request=None):
+    """
+    Make the member ``membership_id`` the owner of ``organization``.
+
+    Rules (ADR-021):
+    * only the current owner or a platform admin may transfer;
+    * the target must be an active ``org_admin`` of the org (promote first) whose
+      account type is ``developer`` and who owns no other organization (the
+      ``admin_user`` projection is one‑to‑one until ADR-013 phase C);
+    * the previous owner(s) stay in the org as ``org_admin``.
+
+    ``Organization.admin_user`` is written with ``QuerySet.update`` so the legacy
+    projection hook (which would deactivate the previous owner) does not run;
+    memberships are set explicitly here. Returns the new owner membership.
+    """
+    from apps.core.models import AuditLog
+    from apps.organizations.models import Organization
+
+    Membership = _model()
+    org = Organization.objects.select_for_update().get(pk=organization.pk)
+    caller = actor_role(actor, org.pk)
+    if caller not in (OWNER, PLATFORM_ADMIN):
+        raise MembershipForbidden('Only the organization owner can transfer ownership.')
+
+    target = (Membership.objects.select_for_update().select_related('user')
+              .filter(pk=membership_id, organization=org, is_active=True).first())
+    if target is None:
+        raise NotFound('Membership not found.')
+    if target.role == OWNER:
+        raise MembershipConflict('This member already owns the organization.')
+    if target.role != ORG_ADMIN:
+        raise MembershipInvalid('Ownership can only be transferred to an org admin; '
+                                'change the member\'s role to org_admin first.')
+    if not target.user.is_active:
+        raise MembershipInvalid('The target account is not active.')
+    if target.user.role != OWNER_ACCOUNT_TYPE:
+        raise MembershipInvalid('The target account must be an organization (developer) '
+                                'account to own an organization.')
+    if Organization.objects.filter(admin_user_id=target.user_id).exclude(pk=org.pk).exists():
+        raise MembershipConflict('The target user already owns another organization.')
+
+    previous_admin_id = org.admin_user_id
+    previous = list(Membership.objects.select_for_update()
+                    .filter(organization=org, role=OWNER, is_active=True)
+                    .exclude(pk=target.pk))
+    before = {'owner_user_id': str(previous_admin_id) if previous_admin_id else None,
+              'owner_membership_ids': [m.pk for m in previous]}
+
+    now = timezone.now()
+    Organization.objects.filter(pk=org.pk).update(admin_user_id=target.user_id, updated_at=now)
+    for m in previous:
+        m.role = ORG_ADMIN
+        m.save(update_fields=['role'])
+    target.role = OWNER
+    target.save(update_fields=['role'])
+
+    # Keep the caller's instance consistent so a later full save() cannot revert
+    # the projection, and its snapshot so the post_save hook sees no change.
+    organization.admin_user_id = target.user_id
+    organization._membership_snapshot = (target.user_id,)
+
+    _audit(actor, AuditLog.Action.UPDATE, org, 'organization.ownership_transferred',
+           before=before,
+           after={'owner_user_id': str(target.user_id), 'owner_membership_ids': [target.pk]},
+           request=request)
+    logger.info('organization.ownership_transferred org=%s %s→%s by=%s', org.pk,
+                previous_admin_id, target.user_id, getattr(actor, 'pk', None))
+    return target
+
+
+@transaction.atomic
+def remove_member(membership, *, actor=None, request=None) -> None:
     """
     Deactivate a membership and clear the agent projection when it points at this org.
 
-    Owner memberships must be rejected by the caller (ownership is transferred via
-    ``Organization.admin_user``).
+    The owner cannot be removed (transfer ownership first). With an ``actor`` the
+    grant policy applies (removing an org admin is owner‑only) and the removal is
+    audited; ``actor=None`` is for system callers.
     """
     from apps.agents.models import Agent
+    from apps.core.models import AuditLog
 
+    if membership.role == OWNER:
+        raise MembershipInvalid('Cannot remove the organization owner.')
+    if actor is not None:
+        caller = actor_role(actor, membership.organization_id)
+        _require_manager(caller)
+        _require_owner_for(membership.role, caller,
+                           'Only the organization owner can remove an org admin.')
+
+    before = _snapshot(membership)
     membership.deactivate()
+    _audit(actor, AuditLog.Action.DELETE, membership, 'membership.removed',
+           before=before, after=_snapshot(membership), request=request)
     agent = Agent.objects.filter(
         user_id=membership.user_id, organization_id=membership.organization_id,
     ).first()

@@ -190,3 +190,18 @@
   - Switched: organizations (external_api, views), security/middleware, leads (serializers, admin_views), agents/views, compliance (utils, views, tasks, erasure), verification/views, inventory/views, billing (views, permissions), whatsapp (provisioning_views, views), reports/tasks.
   - `config/models.py`: `use_membership_rbac` default removed.
 - **Tests:** `tests/test_permission_matrix.py` +4 (`MigratedReadersTest`). `tests/test_report_tasks.py::test_falls_back_to_user_org_when_no_property` modified: it now patches `primary_org` instead of mocking `owned_organization`.
+
+## Session 8 — 2026-11-22
+- **T‑1032a membership contract (ADR‑021):**
+  - `apps/organizations/membership.py`: `actor_role`, `check_invite`, `invite_member`, `change_role`, `transfer_ownership`; `remove_member(actor=…, request=…)` enforces the owner/org‑admin rules itself. Each operation is atomic together with its `AuditLog` row. New exceptions `MembershipInvalid` (400), `MembershipForbidden` (403), `MembershipConflict` (409). A concurrent duplicate invite returns 409, not 500 (savepoint + `IntegrityError`).
+  - `apps/organizations/views.py`: `OrgMembershipView` (GET/POST) + new `OrgMembershipDetailView` (PATCH/DELETE), thin wrappers over the service; new `OrgOwnershipTransferView`.
+  - `urls.py`: `me/ownership/transfer/`, `<uuid:pk>/ownership/transfer/`.
+  - `serializers.py`: schema‑only serializers for members and transfer; `@extend_schema` on every method.
+  - `config/settings/base.py`: `ENUM_NAME_OVERRIDES` for the two `employment_type` choice sets.
+  - `tests/test_openapi_schema.py`: budgets lowered 154/32 → 153/28.
+- **KI‑040:** `apps/escrow/views.py::_check_high_risk_deal` now uses `AuditLog.log` with real fields; the buyer phone was dropped from the payload.
+- **T‑1022a outbox `whatsapp.text` (ADR‑014 addendum):**
+  - `apps/notifications/delivery.py`: `enqueue_whatsapp_text`, `deliver_whatsapp_text`.
+  - `apps/core/outbox.py`: kind registered; payload is wiped after delivery.
+  - Sites switched: `leads/signals.py` (hot lead), `verification/signals.py` (KI‑042), `properties/tasks.py` (listing alerts), `leads/tasks.py` (re‑engagement, stale reminders, appointment reminders; each in one transaction with its marker).
+- **Tests:** new `tests/test_membership_contract.py` (37) and `tests/test_outbox_adoption.py` (11). Updated `tests/test_follow_up_automation.py` (13 tests) and `tests/test_celery_tasks.py` (1): they now assert the queued outbox row (key, recipient, org, expiry) instead of a mocked `get_wa_client`. Delivery through the real client is covered in `test_outbox_adoption.py`.

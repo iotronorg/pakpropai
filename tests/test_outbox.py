@@ -313,6 +313,10 @@ class ClassLevelCallRegressionTest(TestCase):
         agent_user, agent = make_agent(org=org)
         lead = make_lead(make_user(), org=org)
         lead.assigned_agent = agent
-        _fire_hot_lead_alert(lead)
+        # T-1022a: queued in the outbox, delivered after commit through the real client
+        with patch('apps.core.tasks.dispatch_outbox_message.apply_async') as aa, \
+                self.captureOnCommitCallbacks(execute=True):
+            aa.side_effect = lambda args, **kw: outbox.dispatch(args[0])
+            _fire_hot_lead_alert(lead)
         self.assertEqual(post.call_count, 1)
         self.assertEqual(post.call_args.kwargs['json']['to'], agent_user.phone.lstrip('+'))

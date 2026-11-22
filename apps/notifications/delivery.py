@@ -93,3 +93,45 @@ def deliver_notification(msg, payload) -> str:
     n.error = ''
     n.save(update_fields=['status', 'wa_message_id', 'sent_at', 'error'])
     return n.wa_message_id
+
+
+# ── Free-form WhatsApp text (T-1022a) ────────────────────────────────────────
+
+def enqueue_whatsapp_text(phone: str, text: str, *, key: str, organization=None,
+                          skip_window_check: bool = False, expires_at=None):
+    """
+    Queue a free-form WhatsApp text through the outbox, in the caller's transaction.
+
+    ``key`` is the per-site idempotency key: name the business event, e.g.
+    ``hot_lead:<lead>:<last_scored_at>``, so a retried task or a re-fired signal sends
+    nothing twice. ``organization`` selects the org's WhatsApp credentials at
+    delivery time (global credentials when ``None``). Returns the ``OutboxMessage``,
+    or ``None`` when there is no recipient.
+    """
+    phone = (phone or '').strip()
+    if not phone or not text:
+        return None
+    return outbox.enqueue(
+        'whatsapp.text',
+        {'phone': phone, 'text': text, 'skip_window_check': bool(skip_window_check)},
+        key=key,
+        organization_id=getattr(organization, 'pk', None),
+        expires_at=expires_at,
+    )
+
+
+def deliver_whatsapp_text(msg, payload) -> str:
+    from apps.organizations.models import Organization
+    from apps.whatsapp.client import get_wa_client
+
+    phone, text = payload.get('phone'), payload.get('text')
+    if not phone or not text:
+        raise PermanentDeliveryError('payload missing phone/text')
+    org = (Organization.objects.filter(pk=msg.organization_id).first()
+           if msg.organization_id else None)
+    try:
+        resp = get_wa_client(org).send_text(
+            phone, text, skip_window_check=bool(payload.get('skip_window_check')))
+    except ValueError as exc:  # outside the 24h customer-service window
+        raise PermanentDeliveryError(str(exc)) from exc
+    return _wa_message_id(resp)

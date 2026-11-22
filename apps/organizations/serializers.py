@@ -125,3 +125,40 @@ class OrganizationThemeSerializer(serializers.ModelSerializer):
         model  = OrganizationTheme
         fields = ('primary_color', 'secondary_color', 'accent_color', 'logo_url', 'updated_at')
         read_only_fields = ('updated_at',)
+
+
+# ── Members / ownership API (schema documentation, T-1032a) ──────────────────
+from .models import OrganizationMembership as _M  # noqa: E402
+
+
+class OrgMemberSerializer(serializers.Serializer):
+    id              = serializers.CharField()
+    user_phone      = serializers.CharField()
+    user_name       = serializers.CharField(allow_null=True)
+    role            = serializers.ChoiceField(choices=_M.Role.choices)
+    employment_type = serializers.ChoiceField(choices=_M.EmploymentType.choices)
+    is_active       = serializers.BooleanField()
+    joined_at       = serializers.DateTimeField()
+
+
+class OrgMemberInviteSerializer(serializers.Serializer):
+    phone           = serializers.CharField(help_text='Phone of an existing user (E.164)')
+    role            = serializers.ChoiceField(choices=_M.Role.choices, required=False,
+                                              help_text='Default agent. owner is never grantable; '
+                                                        'org_admin is owner-only.')
+    employment_type = serializers.ChoiceField(choices=_M.EmploymentType.choices, required=False)
+
+
+class OrgMemberUpdateSerializer(serializers.Serializer):
+    role            = serializers.ChoiceField(choices=_M.Role.choices,
+                                              help_text='owner is not allowed; use ownership transfer.')
+    employment_type = serializers.ChoiceField(choices=_M.EmploymentType.choices, required=False)
+
+
+class OwnershipTransferRequestSerializer(serializers.Serializer):
+    membership_id = serializers.IntegerField(help_text='Active org_admin membership of the org')
+
+
+class OwnershipTransferResponseSerializer(serializers.Serializer):
+    organization_id = serializers.UUIDField()
+    owner           = OrgMemberSerializer()

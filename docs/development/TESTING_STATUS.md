@@ -63,8 +63,12 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | 2026-11-21 | Scratch DB `bench` | `migrate` → `migrate properties 0020` → `migrate` | OK both ways; indexes dropped on reverse, `pg_trgm` kept | — |
 | 2026-11-21 | Scratch DB `bench`, 200k synthetic listings, `ANALYZE` | `EXPLAIN ANALYZE` of 7 hot query shapes (scratchpad script) | No seq scans. City icontains + rank 2.7 ms; city+location 4.7 ms; price band 0.3 ms; viewer‑org OR 1.6 ms; API city iexact 0.07 ms; FTS old→new: selective 631→3 ms, common 757→238 ms, "penthouse" 720→92 ms | — |
 | 2026-11-21 | Container | `infra/scripts/health_check.py` against dead port / missing URL / local 200 server | exit 1 / exit 1 / exit 0 | — |
+| 2026-11-22 | Working tree, session 8 start (`2fd8ee0`, clean) | — | Not re‑run at start; the session‑7 handoff count was 1665/1/0 and the tree matched `HEAD` | — |
+| 2026-11-22 | Working tree, after T‑1032a | `pytest tests/ apps/ -q` | 1700 passed, 1 skipped, **1 failed**: `test_openapi_schema` error budget (new schema‑less view). Fixed by annotating the members/ownership views | 9m48s |
+| 2026-11-22 | Working tree, session 8 end | `pytest tests/ apps/ -q` | **1713 passed, 1 skipped, 0 failed**, 178 subtests | 6m28s |
+| 2026-11-22 | Working tree, session 8 end | `check` / `makemigrations --check` / `spectacular --validate` / `bandit -r apps/ -ll` | no issues / no changes / exit 0 (153 errors / 28 warnings unique) / **0 HIGH** | — |
 
-## Tests added in sessions 2–7
+## Tests added in sessions 2–8
 
 | File | Tests | Covers |
 |---|---|---|
@@ -86,8 +90,12 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | `tests/test_idempotency.py` | 15 | T‑1090d: appointment booking replay (one row, same id, replay header), no key unchanged, 422 reuse, per‑user scope, bad key 400, failed request frees key for corrected retry, body encrypted at rest; probe view: 4xx/5xx/exceptions not stored, 409 in flight, stale lease takeover, expiry frees key, anonymous untracked, purge; OpenAPI header on all 5 targets |
 | `tests/test_markets.py` | 24 | T‑1050a: seed = registry, only PK active, seed idempotent/keeps edits; `Market.clean`; PROTECT; admin no delete; `get_market` row/cache invalidation/registry fallback/unknown; defaults follow `DEFAULT_MARKET` (PK, AE override, unknown raises); market derived on create (explicit kept, not recomputed); backfill migrations; report + `--apply` + `--max-unmatched-pct`; static check of literal defaults + ratchet |
 | `tests/test_permission_matrix.py` | 26 | T‑1031a: members list matrix (8 actors), per‑org isolation; grant policy (owner never, org_admin owner‑only, reactivation, agents/viewers refused, removal rules, foreign member 404); `X-Organization-ID` (primary default, member org, foreign → 403 + one security event, malformed → 403, role from selected org, lead scoping follows, context cleared, deactivation immediate); OTP purpose whitelist (KI‑030) |
+| `tests/test_membership_contract.py` | 37 | T‑1032a: invite audited (no phone in audit), reactivation, owner never grantable, org_admin owner‑only, no phone enumeration past a denial, non‑manager refused, duplicate 409 + concurrent invite 409; role change (audit, employment type, no‑op, owner immutable, org_admin rules, validation, foreign/unknown 404, viewer refused, inactive); removal (audit, agent projection cleared, owner, org_admin owner‑only, system actor); transfer (owner→org_admin, previous owner kept as org_admin, drift clean, audit, rights move, stale instance save, only owner, target must be org_admin/developer/active/owning no other org, self 409, foreign/inactive 404, bad id, platform‑admin path, selector, anonymous); KI‑040 |
+| `tests/test_outbox_adoption.py` | 11 | T‑1022a: `whatsapp.text` through the real client, payload wiped, encrypted at rest, org credentials at delivery, closed window permanent, skip‑window passthrough, transient retry, idempotent key / no recipient, rollback; hot‑lead once per crossing; verification once per status (KI‑042); listing alert once per (listing, lead) |
 
 ## Modified existing tests (behaviour change, not weakening)
+
+- Session 8 (T‑1022a): `test_follow_up_automation.py` (13 tests) and `test_celery_tasks.py::test_sends_reminder_for_appointment_within_window` assert the queued outbox row (key, recipient, org, expiry, same‑day rerun dedup) instead of a mocked `get_wa_client`. `test_outbox.py::test_hot_lead_alert_reaches_meta` now delivers through the outbox dispatch and still asserts the real HTTP call. `test_openapi_schema.py` budgets lowered (154/32 → 153/28).
 
 - Session 6 (T‑1090c): `test_verification_input.py::test_bad_limit_returns_400` asserts the standard field‑level error (`limit` key + `error_info.fields`) instead of the old ad‑hoc `detail` string. Stricter than before.
 

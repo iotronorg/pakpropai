@@ -62,7 +62,7 @@ def _fire_hot_lead_alert(lead) -> None:
         agent = lead.assigned_agent
         if not agent or not agent.user or not agent.user.phone:
             return
-        from apps.whatsapp.client import get_wa_client
+        from apps.notifications.delivery import enqueue_whatsapp_text
         city   = lead.city_interest or 'Not specified'
         intent = lead.get_intent_display() if lead.intent else 'Not specified'
         msg = (
@@ -72,7 +72,10 @@ def _fire_hot_lead_alert(lead) -> None:
             f"🎯 Intent: {intent}\n\n"
             "Follow up NOW before the moment passes! ⚡"
         )
-        get_wa_client(lead.organization).send_text(agent.user.phone.lstrip('+'), msg)
-        logger.info(f"Hot lead alert sent for lead={lead.id} score={lead.score} agent={agent.id}")
+        # T-1022a: outbox; one alert per threshold crossing (the save that crossed it).
+        stamp = lead.last_scored_at.isoformat() if lead.last_scored_at else str(lead.score)
+        enqueue_whatsapp_text(agent.user.phone.lstrip('+'), msg,
+                              key=f'hot_lead:{lead.pk}:{stamp}', organization=lead.organization)
+        logger.info(f"Hot lead alert queued for lead={lead.id} score={lead.score} agent={agent.id}")
     except Exception as exc:
         logger.warning(f"Hot lead WA alert failed for lead {lead.id}: {exc}")

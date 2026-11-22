@@ -43,9 +43,12 @@ def notify_verification_status_change(sender, instance, created, **kwargs):
                 "Please ensure your documents are ready for verification."
             )
 
-        from apps.whatsapp.client import get_wa_client
-        get_wa_client(instance.property.organization).send_text(phone, msg)
-        logger.info(f"Verification notify sent to {phone} — status={instance.status} property={instance.property_id}")
+        # T-1022a: outbox. The key makes this once per (verification, status):
+        # the signal fires on every save, which used to re-send the notice.
+        from apps.notifications.delivery import enqueue_whatsapp_text
+        enqueue_whatsapp_text(phone, msg, key=f'verification:{instance.pk}:{instance.status}',
+                              organization=instance.property.organization)
+        logger.info(f"Verification notify queued — status={instance.status} property={instance.property_id}")
 
     except Exception as exc:
         logger.warning(f"Verification status notify failed for verification {instance.pk}: {exc}")

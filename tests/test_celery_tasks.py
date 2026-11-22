@@ -142,7 +142,10 @@ class SendAppointmentRemindersTest(TestCase):
         self.assertGreaterEqual(count, 1)
         appt.refresh_from_db()
         self.assertIsNotNone(appt.reminder_sent_at)
-        mock_wa.assert_called()
+        # T-1022a: queued through the outbox (delivery runs after commit)
+        from apps.core.models import OutboxMessage
+        self.assertTrue(OutboxMessage.objects.filter(
+            kind='whatsapp.text', idempotency_key__startswith=f'appt_reminder:{appt.pk}:').exists())
 
     @patch('apps.whatsapp.client.WhatsAppClient.send_text')
     def test_skips_already_reminded_appointment(self, mock_wa):

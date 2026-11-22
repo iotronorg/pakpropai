@@ -3,7 +3,8 @@ from datetime import timedelta
 from celery import shared_task
 from django.db import models
 from django.utils import timezone
-from apps.whatsapp.client import get_wa_client
+from django.db import transaction
+from apps.notifications.delivery import enqueue_whatsapp_text
 
 REMINDER_WINDOW_MINUTES  = 60
 AUTO_ASSIGN_DELAY_MINUTES = 30  # min age before a lead qualifies for auto-assign
@@ -118,9 +119,12 @@ def _send_client_reengagement(lead) -> None:
             f"New properties matching your criteria have been listed. "
             f"Just reply here and our AI assistant will pick up right where you left off! 🏠"
         )
-        get_wa_client(org=lead.organization).send_text(user.phone, msg)
-        lead.follow_up_sent_at = timezone.now()
-        lead.save(update_fields=['follow_up_sent_at'])
+        now = timezone.now()
+        with transaction.atomic():  # T-1022a: queued together with the sent marker
+            enqueue_whatsapp_text(user.phone, msg, key=f'reengage:{lead.pk}:{now.date()}',
+                                  organization=lead.organization)
+            lead.follow_up_sent_at = now
+            lead.save(update_fields=['follow_up_sent_at'])
     except Exception as exc:
         logger.warning(f"Client re-engagement WA failed for lead {lead.id}: {exc}")
 
@@ -169,11 +173,13 @@ def send_stale_lead_reminders():
                 f"📱 {names}{more}\n\n"
                 "Please reach out to keep your pipeline warm."
             )
-            get_wa_client(org=org).send_text(agent.user.phone, msg)
-
-            Lead.objects.filter(
-                id__in=[l.id for l in leads]
-            ).update(follow_up_sent_at=now)
+            with transaction.atomic():  # T-1022a: queued together with the sent markers
+                enqueue_whatsapp_text(agent.user.phone, msg,
+                                      key=f'stale_reminder:{agent.pk}:{now.date()}',
+                                      organization=org)
+                Lead.objects.filter(
+                    id__in=[l.id for l in leads]
+                ).update(follow_up_sent_at=now)
             sent += 1
         except Exception as exc:
             logger.warning(f"stale_lead_reminder failed for agent {agent.id}: {exc}")
@@ -221,9 +227,15 @@ def send_appointment_reminders():
                 "Reply *CONFIRM* to confirm or *CANCEL* to cancel your visit."
             )
 
-            get_wa_client(org=appt.lead.organization).send_text(client.phone, msg)
-            appt.reminder_sent_at = now
-            appt.save(update_fields=['reminder_sent_at'])
+            with transaction.atomic():  # T-1022a: queued together with the sent marker
+                enqueue_whatsapp_text(
+                    client.phone, msg,
+                    key=f'appt_reminder:{appt.pk}:{appt.scheduled_at.isoformat()}',
+                    organization=appt.lead.organization,
+                    expires_at=appt.scheduled_at,  # a reminder after the visit is noise
+                )
+                appt.reminder_sent_at = now
+                appt.save(update_fields=['reminder_sent_at'])
             sent += 1
         except Exception as exc:
             logger.warning(f"Appointment reminder failed for appt {appt.pk}: {exc}")

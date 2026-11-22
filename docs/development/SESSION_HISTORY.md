@@ -148,3 +148,31 @@
 1. `git status`: session‑7 changes are uncommitted. **Do not commit.** `scripts/dev/test.sh` should pass with 0 failed (see TESTING_STATUS for the count).
 2. Next: **T‑1032**, the membership contract. Invite, accept, role change, ownership transfer and removal become one service in `apps/organizations/membership.py`, with audit events and the ADR‑020 grant policy enforced there rather than in `OrgMembershipView`. Add an ownership‑transfer endpoint (owner only, target must be an active member).
 3. Then T‑1022 → T‑1050b/c → T‑1091/T‑1092 → T‑1070. ADR‑013 phase C (drop `Organization.admin_user`/`Agent.organization` projections) stays after T‑1032.
+
+## Session 8 — 2026-11-22 — M1: membership contract, outbox adoption
+- **Start state:** the owner had committed through T‑1031b (`2fd8ee0`, labelled "session 9"); the tree was clean. Docker Desktop had to be started.
+- **Completed:** T‑1032a (ADR‑021):
+  - invite, role change, removal and ownership transfer are one service in `apps/organizations/membership.py`, which enforces the grant policy and writes an `AuditLog` row with each change;
+  - new `PATCH /me/members/{id}/` and ownership‑transfer endpoints (owner via `/me/`, platform admin via `/{id}/`);
+  - the previous owner stays as `org_admin`;
+  - the target must be an active `org_admin` with a developer account who owns no other org.
+- **Split:** T‑1032 into a/b. b = ADR‑013 phase‑C schema contraction, gated on a clean prod reconcile.
+- **Found and fixed:**
+  - **KI‑040:** the escrow high‑risk audit row used non‑existent `AuditLog` fields and was never written;
+  - the members view served two URLs, which caused 4 operationId collisions; OpenAPI budgets 154/32 → 153/28.
+- **Completed:** T‑1022a (ADR‑014 addendum): generic `whatsapp.text` outbox kind, adopted for hot‑lead alerts, verification notices, listing alerts, appointment and stale‑lead reminders, and client re‑engagement.
+  - **Found and fixed (KI‑042):** the verification notice was re‑sent on every save.
+- **New issues:** KI‑040 (fixed), KI‑041 (no invite acceptance; product decision), KI‑042 (fixed).
+- **Tests:** 1713 passed, 1 skipped, 0 failed (session 7 ended 1665). `check`/drift/schema clean; Bandit 0 HIGH.
+- **Not committed.**
+
+### Handoff → session 9
+1. `git status`: session‑8 changes are uncommitted. **Do not commit.** `scripts/dev/test.sh` should give 1713 passed, 1 skipped. Docker Desktop must be running.
+2. Next: **T‑1022b**, the remaining direct WhatsApp sends, moved onto `enqueue_whatsapp_text` (`apps/notifications/delivery.py`):
+   - escrow notices in `apps/escrow/tasks.py` (`_wa(deal)` helpers) and `apps/escrow/views.py::_notify_seller_lock_initiated`. That message contains a confirmation code: keep it in `SENSITIVE_KINDS` (already true for `whatsapp.text`) and never log it;
+   - `apps/audit/gateway.py` + `apps/audit/tasks.py:117` (audit companion);
+   - `apps/properties/tasks.py:70` (saved‑search digest, global creds);
+   - `apps/campaigns/tasks.py`, `apps/campaigns/re_engagement.py`;
+   - `apps/notifications/services.py:20`.
+   Keep the lead `send-message` endpoint (`apps/leads/views.py:141`) and conversational replies synchronous. Update tests that patch `get_wa_client` the way `tests/test_follow_up_automation.py` was updated (`_queued()` helper).
+3. Then T‑1050b (PKR/PK literal ratchet) → T‑1050c (UTC, needs a schedule review) → T‑1091/T‑1092 → T‑1070.

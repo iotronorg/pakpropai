@@ -254,6 +254,11 @@ SPECTACULAR_SETTINGS = {
     'SERVE_AUTHENTICATION': None,   # REST_FRAMEWORK defaults (JWT header/cookie)
     'COMPONENT_SPLIT_REQUEST': True,
     'SORT_OPERATIONS': True,
+    # Agent and membership both have an `employment_type` choice set.
+    'ENUM_NAME_OVERRIDES': {
+        'AgentEmploymentTypeEnum': 'apps.agents.models.Agent.EmploymentType',
+        'MembershipEmploymentTypeEnum': 'apps.organizations.models.OrganizationMembership.EmploymentType',
+    },
     # ADR-017 error envelope, added to every /api/ JSON error body.
     'APPEND_COMPONENTS': {'schemas': {'ErrorEnvelope': {
         'type': 'object',
