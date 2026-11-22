@@ -71,6 +71,15 @@ class DualWriteTest(TestCase):
         p.refresh_from_db()
         self.assertEqual((p.area_marla, p.size_value), (Decimal('9.00'), Decimal('9.00')))
 
+    def test_unsaved_size_survives_unrelated_partial_save(self):
+        p = Property.objects.get(pk=make_property(org=self.org, area_marla=5).pk)
+        p.size_value = 9                             # in memory only
+        p.title = 'T3'
+        p.save(update_fields=['title'])
+        p.save(update_fields=['size_value'])
+        p.refresh_from_db()
+        self.assertEqual((p.size_value, p.area_marla), (Decimal('9.00'), Decimal('9.00')))
+
     def test_unrelated_update_fields_untouched(self):
         p = Property.objects.get(pk=make_property(org=self.org, area_marla=5).pk)
         p.title = 'T2'

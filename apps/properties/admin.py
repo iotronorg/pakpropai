@@ -37,6 +37,11 @@ rescore_deterministic.short_description = "Re-score selected (deterministic, ins
 
 @admin.register(Property)
 class PropertyAdmin(admin.ModelAdmin):
+    def save_model(self, request, obj, form, change):
+        from .price_history import price_change_context
+        with price_change_context(user=request.user, source='admin'):
+            super().save_model(request, obj, form, change)
+
     list_display   = ('ref_no', 'title', 'city', 'property_type', 'price', 'ai_score', 'risk_level', 'legal_status', 'owner', 'created_at')
     list_filter    = ('city', 'property_type', 'legal_status', 'risk_level', 'construction_status')
     search_fields  = ('ref_no', 'title', 'city', 'location', 'owner__phone')

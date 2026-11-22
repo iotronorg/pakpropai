@@ -402,7 +402,42 @@ class Property(models.Model):
         # Deferred size fields (.only()): state unknown → the v1 pair wins on save.
         inst._size_loaded = (inst._size_state() if all(n in inst.__dict__ for n in names)
                              else 'deferred')
+        inst._price_loaded = inst._price_state()
         return inst
+
+    # ── Price history (T-1070c) ─────────────────────────────────────────────
+    _PRICE_FIELDS = ('price', 'currency', 'price_type', 'price_on_request')
+
+    def _price_state(self):
+        d = self.__dict__
+        if not all(f in d for f in self._PRICE_FIELDS):
+            return 'deferred'
+        return tuple(d[f] for f in self._PRICE_FIELDS)
+
+    def _record_price_change(self, adding: bool, update_fields) -> None:
+        """Append a PriceHistory row when the saved price terms differ from the last one."""
+        if update_fields is not None and not set(update_fields) & set(self._PRICE_FIELDS):
+            return
+        state = self._price_state()
+        if state == 'deferred':
+            return                                   # price terms were not loaded or set
+        if adding:
+            if self.price is None and not self.price_on_request:
+                return
+        else:
+            loaded = getattr(self, '_price_loaded', 'deferred')
+            if loaded != 'deferred' and loaded == state:
+                return
+            last = (self.price_history.order_by('-changed_at', '-id')
+                    .values_list(*self._PRICE_FIELDS).first())
+            if last == state:
+                return                               # e.g. deferred load, value unchanged
+        from .price_history import current_actor, current_source
+        PriceHistory.objects.create(
+            property=self, price=self.price, currency=self.currency,
+            price_type=self.price_type, price_on_request=self.price_on_request,
+            changed_by=current_actor(), source=current_source(),
+        )
 
     def _size_state(self):
         d = self.__dict__                    # never triggers a deferred-field fetch
@@ -473,11 +508,49 @@ class Property(models.Model):
             touched = set(update_fields)
             if touched & set(self._SIZE_V1 + self._SIZE_V2):
                 kwargs['update_fields'] = list(touched | set(self._SIZE_V1 + self._SIZE_V2))
-        super().save(*args, **kwargs)
-        self._size_loaded = self._size_state()
+        adding = self._state.adding
+        with transaction.atomic():                   # listing + its price-history row together
+            super().save(*args, **kwargs)
+            self._record_price_change(adding, update_fields)
+        # Refresh a snapshot only when its fields were written (else it would
+        # mark unsaved in-memory values as persisted).
+        written = None if update_fields is None else set(kwargs['update_fields'])
+        if written is None or written & set(self._SIZE_V1 + self._SIZE_V2):
+            self._size_loaded = self._size_state()
+        if written is None or written & set(self._PRICE_FIELDS):
+            self._price_loaded = self._price_state()
 
     def __str__(self):
         return f"[{self.ref_no}] {self.title} — {self.city}"
+
+
+class PriceHistory(models.Model):
+    """Append-only log of a listing's price terms (FR-LST-002, T-1070c)."""
+
+    class Source(models.TextChoices):
+        API      = 'api',      'API'
+        ADMIN    = 'admin',    'Admin'
+        AI_TOOL  = 'ai_tool',  'AI assistant'
+        SYSTEM   = 'system',   'System'
+        BACKFILL = 'backfill', 'Backfill'
+
+    property         = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='price_history')
+    price            = models.BigIntegerField(null=True, blank=True)
+    currency         = models.CharField(max_length=3)
+    price_type       = models.CharField(max_length=20, choices=Property.PriceType.choices)
+    price_on_request = models.BooleanField(default=False)
+    changed_at       = models.DateTimeField(default=timezone.now)
+    changed_by       = models.ForeignKey('users.User', on_delete=models.SET_NULL, null=True, blank=True,
+                                         related_name='+')
+    source           = models.CharField(max_length=10, choices=Source.choices, default=Source.SYSTEM)
+
+    class Meta:
+        db_table = 'property_price_history'
+        ordering = ['-changed_at', '-id']
+        indexes  = [models.Index(fields=['property', '-changed_at'], name='price_hist_prop_idx')]
+
+    def __str__(self):
+        return f"{self.property_id} {self.currency} {self.price} @ {self.changed_at:%Y-%m-%d}"
 
 
 class PropertyImage(models.Model):

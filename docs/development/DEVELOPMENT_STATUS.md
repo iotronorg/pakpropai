@@ -4,13 +4,13 @@ _Last updated: 2026-11-22 (session 8)_
 
 | Item | Value |
 |---|---|
-| Branch | `development`. The owner committed through session 7 (`2fd8ee0`). **Session 8 (continued): T‑1070b is uncommitted** (the owner committed T‑1070a and earlier work) (the owner committed the earlier session‑8 work) |
+| Branch | `development`. The owner committed through session 7 (`2fd8ee0`). **Session 8 (continued): T‑1070c is uncommitted** (the owner committed T‑1070a/b and earlier work) (the owner committed the earlier session‑8 work) |
 | Current milestone | **M1 — Core foundation** ([MILESTONE_01](milestones/MILESTONE_01_CORE_FOUNDATION.md)); M0 code‑complete, awaiting first GitHub Actions run |
 | M0 progress | All 17 tasks complete. Remaining exit criterion: CI green on GitHub Actions (owner pushes) |
-| M1 progress | 9 of 18 tasks done (T‑1010, T‑1020, T‑1021, T‑1022, T‑1030, T‑1031, T‑1050, T‑1090, T‑1100) plus subtasks T‑1032a, T‑1070a, T‑1070b. T‑1060 blocked on a vendor decision; T‑1033 needs an owner policy sign‑off |
-| Test suite | **1770 passed, 1 skipped, 0 failed** (session 8 end). See [TESTING_STATUS](TESTING_STATUS.md) |
-| Last completed task | T‑1070b size rename + dual‑write (ADR‑023 addendum; KI‑049), after T‑1070a |
-| Next task | **T‑1070c** `PriceHistory`: model (property FK, amount, currency, price_type, changed_at, changed_by, source), written in the same transaction whenever `price`/`currency`/`price_type` changes (create + update, via the `from_db` snapshot pattern of T‑1070b), read endpoint `properties/{id}/price-history/` with the same visibility as the listing, OpenAPI documented |
+| M1 progress | 9 of 18 tasks done (T‑1010, T‑1020, T‑1021, T‑1022, T‑1030, T‑1031, T‑1050, T‑1090, T‑1100) plus subtasks T‑1032a, T‑1070a, T‑1070b, T‑1070c. T‑1060 blocked on a vendor decision; T‑1033 needs an owner policy sign‑off |
+| Test suite | **1781 passed, 1 skipped, 0 failed** (session 8 end). See [TESTING_STATUS](TESTING_STATUS.md) |
+| Last completed task | T‑1070c price history (ADR‑023 addendum), after T‑1070a/b |
+| Next task | **T‑1070d** category/subtype taxonomy + amenities. Design first: map today's `property_type` (residential/commercial/plot/industrial) to PRD `category` (residential, commercial, industrial, land, hospitality) + `subtype`. Seed `Amenity` (key, category, labels per language, markets) via a data migration, `ListingAmenity` M2M, API read/write by key, search filter `amenities=` (all must match). `property_type` stays as a deprecated alias derived from category until T‑1070g |
 
 ## Owner decisions (2026-11-21)
 - **No commits by the agent.**
@@ -25,7 +25,7 @@ _Last updated: 2026-11-22 (session 8)_
 
 ## Operator actions before deploying these changes
 See **[GO_LIVE_CHECKLIST](GO_LIVE_CHECKLIST.md)**: DB backup, `FIELD_ENCRYPTION_KEYS`, config‑row check. Summary:
-- **Session 8** (checklist §11 and **§12 UTC switch**): no migrations. Restart celery beat after deploy and review the periodic‑task rows (§12). **New: migrations `properties.0025`–`0028` (§13, §14), additive, rolling‑safe; run `sync_listing_size` after rollout (§14).**
+- **Session 8** (checklist §11 and **§12 UTC switch**): no migrations. Restart celery beat after deploy and review the periodic‑task rows (§12). **New: migrations `properties.0025`–`0028` (§13, §14), additive, rolling‑safe; run `sync_listing_size` after rollout (§14); `0029`/`0030` price history (§15).**
   - New member role‑change and ownership‑transfer endpoints; every member change is audited.
   - Alerts, reminders, escrow notices and the audit companion text now go through the outbox, so the `relay-outbox` beat job and an outbox worker must be running.
   - Listing prices are shown in the listing's own currency (KI‑044), and the seller deal‑lock code is sent only after AML screening (KI‑043).

@@ -15,8 +15,9 @@ from apps.core.permissions import IsOwnerOrReadOnly, IsAgentOrAdmin, get_user_or
 from apps.core.query_params import choice_param, int_param
 from apps.core.throttles import PropertySearchThrottle, ScorePropertyThrottle
 from .models import Property, PropertyImage
-from .serializers import (PropertyCreateSerializer, PropertyDetailSerializer,
-                          PropertyImageSerializer, PropertyListSerializer)
+from .serializers import (PriceHistorySerializer, PropertyCreateSerializer,
+                          PropertyDetailSerializer, PropertyImageSerializer,
+                          PropertyListSerializer)
 
 _ALLOWED_IMAGE_TYPES = {'image/jpeg', 'image/png', 'image/webp'}
 _MAX_IMAGE_SIZE      = 5 * 1024 * 1024   # 5 MB
@@ -166,7 +167,9 @@ class PropertyViewSet(viewsets.ModelViewSet):
             }
         else:
             extra = {'owner': user, 'listing_owner_type': _P.ListingOwnerType.CLIENT}
-        prop = serializer.save(**extra)
+        from .price_history import price_change_context
+        with price_change_context(user=user, source='api'):
+            prop = serializer.save(**extra)
         try:
             from apps.properties.tasks import score_property_task
             score_property_task.delay(str(prop.id))
@@ -325,6 +328,22 @@ class PropertyViewSet(viewsets.ModelViewSet):
 
         props = recommend_for_lead(lead)
         return Response(PropertyListSerializer(props, many=True, context={'request': request}).data)
+
+    def perform_update(self, serializer):
+        from .price_history import price_change_context
+        with price_change_context(user=self.request.user, source='api'):
+            serializer.save()
+
+    @extend_schema(responses=PriceHistorySerializer(many=True))
+    @action(detail=True, methods=['get'], url_path='price-history')
+    def price_history(self, request, pk=None):
+        """GET /properties/{id}/price-history/ — newest first; same visibility as the listing."""
+        prop = self.get_object()
+        qs = prop.price_history.all()
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            return self.get_paginated_response(PriceHistorySerializer(page, many=True).data)
+        return Response(PriceHistorySerializer(qs, many=True).data)
 
     @action(detail=True, methods=['get'], url_path='similar')
     def similar(self, request, pk=None):

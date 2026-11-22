@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Property, PropertyImage
+from .models import PriceHistory, Property, PropertyImage
 from apps.users.models import User
 
 
@@ -147,3 +147,12 @@ class PropertyCreateSerializer(ListingV2ValidationMixin, serializers.ModelSerial
         if v is not None and v <= 0:
             raise serializers.ValidationError('Area must be positive.')
         return v
+
+
+class PriceHistorySerializer(serializers.ModelSerializer):
+    """Price-history entry (T-1070c). The acting user is not exposed."""
+
+    class Meta:
+        model  = PriceHistory
+        fields = ('price', 'currency', 'price_type', 'price_on_request', 'changed_at', 'source')
+        read_only_fields = fields

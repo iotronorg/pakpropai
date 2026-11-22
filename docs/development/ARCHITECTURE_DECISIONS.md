@@ -481,7 +481,7 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
     |---|---|---|
     | T‑1070a | Expand core fields and price terms (`purpose`, `bedrooms`, `bathrooms`, `floor`, `total_floors`, `year_built`, `parking_spaces`, `pets_allowed`, `price_type`, `price_negotiable`, `price_on_request`, `deposit`, `service_charge`, `attributes`). Wire them through the API, search and the AI search tool. Existing rows become `purpose='sale'`: scrapers fetch `/sale/` only and the seed data is all sale | done |
     | T‑1070b | Size rename: `size_value`/`size_unit`/`size_m2` and a nullable `plot_size_m2`. Dual‑write with `area_marla`/`area_unit` via an instance snapshot; migrate readers; the API keeps `area_marla` as a deprecated alias | done |
-    | T‑1070c | `PriceHistory` table, recorded on every price change (FR‑LST‑002, P1) | planned |
+    | T‑1070c | `PriceHistory` table, recorded on every price change (FR‑LST‑002, P1) | done |
     | T‑1070d | Category/subtype taxonomy (adds land and hospitality) plus `Amenity`/`ListingAmenity` | planned |
     | T‑1070e | Market attribute schema: `Market.listing_schema` validates `attributes` (FR‑LST‑004) | planned |
     | T‑1070f | Stored `tsvector` column + trigger (KI‑035) | planned |
@@ -517,3 +517,17 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - match and score on the **canonical m²** (`size_in('marla')` for the marla‑based PK benchmarks);
   - display the **listed unit** (`size_display()`);
   - the AI/scraper `area_marla` parameters still mean "marla" (user intent in the PK market) and are converted at the DB boundary.
+
+### ADR‑023 addendum — T‑1070c price history (2026-11-22)
+- **Storage:** an append‑only `property_price_history` table. It snapshots `price`, `currency`, `price_type` and `price_on_request`.
+- **Writes happen inside `Property.save()`,** in the same transaction as the listing (both commit or roll back together):
+  - on create, when the listing is priced or "on request";
+  - on update, when the terms differ from the loaded snapshot;
+  - a deferred load is compared with the latest row instead;
+  - `update_fields` without any price field skip recording;
+  - the snapshot refreshes only for fields actually written, a bug the tests caught.
+- **Attribution is explicit:** callers wrap writes in `price_change_context(user, source)` (`api`, `admin`, `ai_tool`). Otherwise the row gets `system` and no user. A contextvar keeps the model free of request coupling.
+- **API:** `GET /properties/{id}/price-history/` uses `get_object()`, so it has exactly the listing's visibility. It is paginated, newest first, and **does not expose `changed_by`**. The actor is personal data, kept for audit and admin only.
+- **Gaps:**
+  - writes from pre‑v2 pods during a rollout and `QuerySet.update(price=…)` are not recorded (no app code does the latter);
+  - the baseline row is dated at listing creation, not at the last real change.

@@ -254,3 +254,12 @@
   - Other readers: `scoring.py` (marla‑equivalent), `tasks.py` (alert size text), `ai/scoring.py` (prompt area), `whatsapp/copilot_stream.py` (`size_m2`, bedrooms), `seed_data.py`.
   - `config/settings/base.py`: `AreaUnitEnum` override.
   - Tests: `tests/test_size_v2.py` (16).
+- **T‑1070c (ADR‑023 addendum):**
+  - `apps/properties/models.py`: `PriceHistory`, price snapshot in `from_db`, `_record_price_change`, atomic `save()`, snapshot refresh only for written fields (also for size).
+  - New `apps/properties/price_history.py` (context).
+  - Migrations 0029 and 0030.
+  - `serializers.py`: `PriceHistorySerializer`.
+  - `views.py`: `perform_update`, context in `perform_create`, `price_history` action.
+  - `admin.py`: `save_model` context.
+  - `ai/tools.py`: listing creation context.
+  - Tests: new `tests/test_price_history.py` (10); `tests/test_size_v2.py` gained 1 test (17).

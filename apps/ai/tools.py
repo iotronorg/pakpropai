@@ -255,20 +255,22 @@ def list_property(
         if pending:
             return pending
 
-        prop = Property.objects.create(
-            listing_owner_type=Property.ListingOwnerType.CLIENT,
-            owner=user,
-            title=title,
-            city=city,
-            location=location,
-            area_marla=area_marla if area_marla else None,
-            price=price,
-            property_type=property_type,
-            furnished_status=furnished or None,
-            construction_status=construction_status or None,
-            description=description,
-            legal_status=Property.LegalStatus.UNVERIFIED,
-        )
+        from apps.properties.price_history import price_change_context
+        with price_change_context(user=user, source='ai_tool'):
+            prop = Property.objects.create(
+                listing_owner_type=Property.ListingOwnerType.CLIENT,
+                owner=user,
+                title=title,
+                city=city,
+                location=location,
+                area_marla=area_marla if area_marla else None,
+                price=price,
+                property_type=property_type,
+                furnished_status=furnished or None,
+                construction_status=construction_status or None,
+                description=description,
+                legal_status=Property.LegalStatus.UNVERIFIED,
+            )
 
         # Queue async AI scoring
         try:

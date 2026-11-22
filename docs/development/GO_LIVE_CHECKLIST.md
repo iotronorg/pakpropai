@@ -127,3 +127,12 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - **After every pre‑v2 pod has stopped:** run `python manage.py sync_listing_size --dry-run`, then `python manage.py sync_listing_size`. This copies rows that old code wrote only to `area_*`.
 - **API:** `size_value`/`size_unit`/`size_m2`/`plot_size_m2` added. `area_marla`/`area_unit`/`area_sqm` still work, are marked deprecated, and are removed only in T‑1070g. Sending conflicting `size_value` and `area_marla` returns 400.
 - **Behaviour change:** search size matching and price verdicts now use real size. Kanal and sqft listings may get different `ai_score`/price verdicts on rescoring (they were wrong before, KI‑049).
+
+## 15. Session‑8 change: price history (T‑1070c, ADR‑023)
+- **Migrations:**
+  - `properties.0029`: new table.
+  - `properties.0030`: one baseline row per priced listing, idempotent; reverse deletes only backfill rows.
+
+  The backfill is one `INSERT … SELECT`. On a very large `properties` table, run it in a quiet window.
+- **New endpoint:** `GET /api/v1/properties/{id}/price-history/`, read‑only, with the listing's visibility.
+- Price changes made by pre‑v2 pods during the rollout are not in the history.
