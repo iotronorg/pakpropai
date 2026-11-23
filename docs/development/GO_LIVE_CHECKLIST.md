@@ -189,7 +189,7 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - **Order matters:** run `migrate` (`properties 0040` trigger, `0041` non‑atomic repair) **before** rolling out the new pods. Pods of the previous release keep working with these migrations applied. New pods without the trigger would fail inserts (NOT NULL `area_unit`/`property_type`).
 - `sync_listing_size` and `sync_listing_taxonomy` no longer exist. 0041 performs their final repair, and the trigger prevents new drift. The earlier steps in §11/§13 that call them apply only to releases before this one.
 - After the rollout, run `python manage.py check_listing_contract`. It must print `OK`.
-- **Next release (T‑1070g‑2):** follow `apps/properties/contract_migrations/README.md`. Re‑run the check; `git mv` the staged 0045/0046 into `migrations/`; migrate on a direct DB connection (0046 is CONCURRENTLY). Rollback must use the g‑2 build: `migrate properties 0041`.
+- **Next release (T‑1070g‑2):** follow `apps/properties/contract_migrations/README.md`. Re‑run the check; move the staged 0048/0049 into `migrations/`; migrate on a direct DB connection (0049 is CONCURRENTLY). Rollback must use the g‑2 build: `migrate properties 0041`.
 - **API:** no breaking change. `area_marla`/`area_unit`/`area_sqm`/`property_type` are still returned and accepted (deprecated aliases). Tell API clients to move to `size_*`/`category`.
 
 ## 23. Session‑9 change: geo search and coordinate privacy (T‑1060b)
@@ -215,3 +215,16 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
   4. Review *Admin → Locations*, filtered on geocode status partial/rejected/zero. Enter coordinates by hand where needed; these are kept as `manual`.
   5. Restart celery beat (daily `geocode-locations`).
 - **Owner/legal:** confirm Google Maps Platform terms for the 30‑day coordinate cache (handled by re‑geocoding) and for display on non‑Google maps (a frontend constraint).
+
+## 25. Session‑9 change: listing lifecycle (T‑1080, ADR‑025)
+- **Migrations:**
+  - `properties 0045`: additive, with the trigger and a CHECK constraint added NOT VALID.
+  - `0046`: non‑atomic batched backfill (inactive → archived; `published_at` = `created_at` for active listings), then `VALIDATE CONSTRAINT`.
+  - `0047`: `CREATE INDEX CONCURRENTLY`; use a direct, non‑pooled DB connection.
+- **Migrate before rollout.** Old pods keep working, because the trigger maps their `is_active` writes.
+- **Behaviour change:** owners and listing agents see their own drafts and archived listings through detail, `?status=` and `mine/`. Public lists are unchanged.
+- **Optional, per market** (*Admin → Markets → settings*):
+  - `"listing_review_required": true` sends new listings to `pending_review`; approve them with the admin action.
+  - `"listing_ttl_days": 90` makes listings published after that point expire, with a reminder 7 days before.
+  - Restart celery beat (hourly `expire-listings`).
+- **Staged T‑1070g‑2** is now `contract_migrations/0048`/`0049`, depending on 0047.

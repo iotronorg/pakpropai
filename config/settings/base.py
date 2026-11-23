@@ -325,6 +325,10 @@ GEO_MAX_RADIUS_KM   = env.float('GEO_MAX_RADIUS_KM', default=100.0)
 
 # ── Geocoding of location centroids (T-1060c). Off until the owner sets the
 # key and enables it; paid per request, so a daily request budget applies.
+# ── Listing lifecycle (T-1080). Review and TTL are per market (Market.settings:
+# listing_review_required, listing_ttl_days); both off unless configured.
+LISTING_EXPIRY_REMINDER_DAYS = env.int('LISTING_EXPIRY_REMINDER_DAYS', default=7)
+
 GEOCODING_ENABLED      = env.bool('GEOCODING_ENABLED', default=False)
 GOOGLE_MAPS_API_KEY    = env('GOOGLE_MAPS_API_KEY', default='')
 GEOCODING_DAILY_BUDGET = env.int('GEOCODING_DAILY_BUDGET', default=500)
@@ -366,6 +370,10 @@ CELERY_BEAT_SCHEDULE = {
     'purge-idempotency-records': {
         'task':     'apps.core.tasks.purge_idempotency_records',
         'schedule': 3600,   # hourly; rows live IDEMPOTENCY_TTL_HOURS (ADR-018)
+    },
+    'expire-listings': {
+        'task':     'apps.properties.tasks.expire_listings',
+        'schedule': 3600,   # hourly; no-op unless a market sets listing_ttl_days (T-1080)
     },
     'geocode-locations': {
         'task':     'apps.geo.tasks.geocode_locations',

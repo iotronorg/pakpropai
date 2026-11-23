@@ -228,12 +228,12 @@
 - **Not committed.**
 
 ### Handoff → session 10
-1. `git status`: the owner committed through T‑1070g‑1 (`493309b`). Uncommitted: **T‑1060b + T‑1060c**:
-   - `apps/geo/`;
-   - `properties 0042–0044`, `locations 0003`, `geo 0001`;
-   - serializer, view, discovery and matching changes;
-   - the PostGIS test image;
-   - the staged contract migrations, renumbered to 0045/0046.
-   **Do not commit.** `scripts/dev/test.sh` should give 1884 passed, 1 skipped.
-2. **Deploy:** migrate before rollout (GO_LIVE §22–§24). Geocoding and PostGIS stay off until the owner adds the key and the extension. T‑1070g‑2 goes in the following release.
-3. Next: **T‑1080** listing lifecycle, then T‑1011 MFA → T‑1110 → T‑1120 → T‑1032b.
+1. `git status`: the owner committed through T‑1060c (`d991ee7`). Uncommitted: **T‑1080**:
+   - `apps/properties/lifecycle*.py`;
+   - migrations 0045–0047;
+   - model, serializer, view and admin changes;
+   - staged contract migrations renumbered 0048/0049;
+   - `tests/test_listing_lifecycle.py`.
+   **Do not commit.**
+2. **Deploy:** migrate before rollout (GO_LIVE §22–§25). Review and TTL stay off until set per market.
+3. Next: **T‑1011** MFA, then T‑1110 → T‑1120 → T‑1032b. Open from T‑1080: KI‑055 (agent edit rule), KI‑056.

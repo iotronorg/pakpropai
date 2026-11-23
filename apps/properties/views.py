@@ -17,9 +17,41 @@ from apps.core.query_params import choice_param, int_param
 from apps.core.throttles import PropertySearchThrottle, ScorePropertyThrottle
 from .models import Amenity, Property, PropertyImage
 from .taxonomy import property_type_expression
-from .serializers import (AmenitySerializer, PriceHistorySerializer, PropertyCreateSerializer,
-                          PropertyDetailSerializer, PropertyImageSerializer,
-                          PropertyListSerializer)
+from .serializers import (AmenitySerializer, ListingTransitionSerializer, PriceHistorySerializer,
+                          PropertyCreateSerializer, PropertyDetailSerializer,
+                          PropertyImageSerializer, PropertyListSerializer,
+                          TransitionRequestSerializer)
+
+
+def _transition_api_error(exc):
+    """lifecycle.TransitionError → DRF exception (400 fields / 403 / 409)."""
+    from rest_framework.exceptions import APIException, PermissionDenied, ValidationError
+    if exc.http_status == 400:
+        return ValidationError(exc.fields or {'status': str(exc)})
+    if exc.http_status == 403:
+        return PermissionDenied(str(exc))
+    err = APIException(str(exc))
+    err.status_code = 409
+    return err
+
+
+def _manage_q(user):
+    """Listings ``user`` manages (owner or listing agent): they see them in any status."""
+    if not getattr(user, 'is_authenticated', False):
+        return Q(pk__in=[])
+    return Q(owner=user) | Q(listed_by_agent__user=user)
+
+
+def status_param(params) -> list[str] | None:
+    raw = params.get('status', '').strip()
+    if not raw:
+        return None
+    vals = [v.strip() for v in raw.split(',') if v.strip()]
+    bad = [v for v in vals if v not in Property.Status.values]
+    if bad or not vals:
+        from rest_framework.exceptions import ValidationError
+        raise ValidationError({'status': f"Unknown status: {', '.join(bad) or raw}."})
+    return vals
 
 _ALLOWED_IMAGE_TYPES = {'image/jpeg', 'image/png', 'image/webp'}
 _MAX_IMAGE_SIZE      = 5 * 1024 * 1024   # 5 MB
@@ -32,6 +64,9 @@ _LIST_PARAMETERS = [
         'Full-text: every word must match, as a prefix (ADR-015). A full reference '
         'number (RT-LHR-2026-000000001) matches exactly.')),
     OpenApiParameter('ref_no', str, description='Exact reference number (case-insensitive).'),
+    OpenApiParameter('status', str, description=(
+        'Lifecycle status(es), comma-separated (T-1080). Default: public listings only '
+        '(published, under_offer). Non-public statuses return only listings you manage.')),
     OpenApiParameter('city', str, description='City name, case-insensitive exact match.'),
     OpenApiParameter('type', str, enum=Property.PropertyType.values,
                      description='Deprecated (T-1070d): use category.'),
@@ -100,7 +135,8 @@ def apply_geo_filters(qs, params):
 
 @extend_schema_view(list=extend_schema(parameters=_LIST_PARAMETERS))
 class PropertyViewSet(viewsets.ModelViewSet):
-    queryset = Property.objects.filter(is_active=True)
+    # Visibility by status is applied in get_queryset (T-1080).
+    queryset = Property.objects.all()
     permission_classes = [IsAuthenticated, IsOwnerOrReadOnly]
     filter_backends = [filters.OrderingFilter]
     throttle_classes = [PropertySearchThrottle]
@@ -124,6 +160,24 @@ class PropertyViewSet(viewsets.ModelViewSet):
             'owner', 'organization', 'assigned_agent', 'listed_by_agent', 'location_ref'
         ).prefetch_related('images', 'amenities')
         user = self.request.user
+
+        # Lifecycle visibility (T-1080): the public sees published / under offer;
+        # owners and listing agents also see their own listings in any status.
+        from .lifecycle import is_staff
+        statuses = status_param(self.request.query_params)
+        staff = is_staff(user)
+        if statuses:
+            qs = qs.filter(status__in=statuses)
+            if not staff and set(statuses) - Property.VISIBLE_STATUSES:
+                qs = qs.filter(Q(is_active=True) | _manage_q(user))
+        elif self.action == 'list':
+            qs = qs.filter(is_active=True)
+        elif self.action == 'mine':
+            qs = qs.exclude(status=Property.Status.ARCHIVED)
+            if not staff:
+                qs = qs.filter(Q(is_active=True) | _manage_q(user))
+        elif not staff:
+            qs = qs.filter(Q(is_active=True) | _manage_q(user))
 
         # Developers see only their org's inventory
         if user.is_authenticated and user.role == 'developer':
@@ -236,9 +290,18 @@ class PropertyViewSet(viewsets.ModelViewSet):
             }
         else:
             extra = {'owner': user, 'listing_owner_type': _P.ListingOwnerType.CLIENT}
+        from .lifecycle import TransitionError, initial_status, on_create
+        try:
+            from apps.markets.services import default_country, market_code_for_country
+            like = _P(market_id=market_code_for_country(
+                serializer.validated_data.get('country') or default_country()))
+            extra['status'] = initial_status(serializer.validated_data.pop('status', None), like, user)
+        except TransitionError as exc:
+            raise _transition_api_error(exc)
         from .price_history import price_change_context
         with price_change_context(user=user, source='api'):
             prop = serializer.save(**extra)
+        on_create(prop, user)
         if 'location_ref' not in serializer.validated_data:
             from apps.locations.matching import link_listing
             link_listing(prop)
@@ -404,13 +467,55 @@ class PropertyViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         from .price_history import price_change_context
+        from django.db import transaction
+        from .lifecycle import TransitionError, transition
         before = (serializer.instance.city, serializer.instance.location, serializer.instance.market_id)
-        with price_change_context(user=self.request.user, source='api'):
+        want_active = serializer.validated_data.pop('is_active', None)
+        with transaction.atomic(), price_change_context(user=self.request.user, source='api'):
             prop = serializer.save()
+            if want_active is not None and want_active != prop.is_active:
+                # Legacy toggle → audited transition (published / archived).
+                to = Property.Status.PUBLISHED if want_active else Property.Status.ARCHIVED
+                try:
+                    transition(prop, to, actor=self.request.user, reason='is_active via API')
+                except TransitionError as exc:
+                    raise _transition_api_error(exc)
         if 'location_ref' not in serializer.validated_data and \
                 (prop.city, prop.location, prop.market_id) != before:
             from apps.locations.matching import link_listing
             link_listing(prop, force=True)        # the text moved: re-match
+
+    @extend_schema(methods=['GET'], responses=inline_serializer('ListingLifecycle', {
+                       'status': drf_serializers.CharField(),
+                       'allowed': drf_serializers.ListField(child=drf_serializers.CharField()),
+                       'history': ListingTransitionSerializer(many=True)}))
+    @extend_schema(methods=['POST'], request=TransitionRequestSerializer,
+                   responses=PropertyDetailSerializer)
+    @action(detail=True, methods=['get', 'post'], url_path='transitions')
+    def transitions(self, request, pk=None):
+        """
+        GET: current status, the targets you may move to, and the audit trail
+        (listers and staff only). POST {to, reason}: change status — 409 on an
+        invalid edge, 403 if not yours / moderator-only, 400 if incomplete.
+        """
+        from .lifecycle import TransitionError, allowed_targets, can_manage, transition
+        prop = self.get_object()
+        if not can_manage(request.user, prop):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied('You cannot manage this listing.')
+        if request.method == 'GET':
+            return Response({'status': prop.status,
+                             'allowed': allowed_targets(prop, request.user),
+                             'history': ListingTransitionSerializer(
+                                 prop.transitions.select_related('actor')[:100], many=True).data})
+        body = TransitionRequestSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        try:
+            transition(prop, body.validated_data['to'], actor=request.user,
+                       reason=body.validated_data['reason'])
+        except TransitionError as exc:
+            raise _transition_api_error(exc)
+        return Response(PropertyDetailSerializer(prop, context=self.get_serializer_context()).data)
 
     @extend_schema(responses=PriceHistorySerializer(many=True))
     @action(detail=True, methods=['get'], url_path='price-history')

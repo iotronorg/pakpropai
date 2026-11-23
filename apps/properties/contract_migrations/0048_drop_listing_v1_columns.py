@@ -1,7 +1,7 @@
 """
 T-1070g-2 (ADR-023 contract, release 2 of 2) — STAGED.
 
-Move this file and 0046 into apps/properties/migrations/ only in the release
+Move this file and 0049 into apps/properties/migrations/ only in the release
 AFTER the one that shipped 0040/0041 (T-1070g-1) — see README.md here.
 
 1. Gate: refuses (raises) unless ``check_listing_contract`` passes: g-1
@@ -60,7 +60,7 @@ CREATE INDEX IF NOT EXISTS properties_propert_f38ecc_idx ON properties (property
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('properties', '0044_geo_point_index'),
+        ('properties', '0047_listing_status_index'),
     ]
 
     operations = [

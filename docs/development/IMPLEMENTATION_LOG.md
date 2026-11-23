@@ -361,3 +361,21 @@
   - `locations/matching.link_listing` refreshes the in‑memory point;
   - `LocationAdmin`: geocode columns and filter, manual coordinates, re‑geocode action.
 - **Fixed during tests:** the coarse‑result check ignored nothing, so `{administrative_area_level_1, political}` passed. It now ignores the generic `political` tag.
+
+### 2026-11-23 — session 9 (seventh part): T‑1080 listing lifecycle
+- **Verified:** the owner committed T‑1060b/c (`52bd8bb`, `d991ee7`); the tree was clean.
+- **Added:**
+  - `apps/properties/lifecycle.py` (service, rules, expiry, reminders);
+  - `apps/properties/lifecycle_sql.py` (frozen trigger/CHECK SQL);
+  - `ListingTransition` model;
+  - migrations `0045_listing_status_expand`, `0046_backfill_listing_status`, `0047_listing_status_index`;
+  - task `expire_listings` with hourly beat;
+  - setting `LISTING_EXPIRY_REMINDER_DAYS`;
+  - `tests/test_listing_lifecycle.py` (15).
+- **Changed:**
+  - `Property`: `status`, `status_changed_at`, `published_at`, `expires_at`, `expiry_reminded_at`, `_sync_status`, `_record_transition`;
+  - serializers: `status` in list/detail (read‑only) and create; `ListingTransitionSerializer`, `TransitionRequestSerializer`;
+  - `PropertyViewSet`: status visibility, `?status=`, the `transitions` action, the create/patch lifecycle hooks;
+  - property admin: lifecycle actions and a transitions inline;
+  - OpenAPI type hints on `get_primary_image`/`get_url`.
+- **Renumbered:** staged contract migrations to 0048/0049, depending on 0047; README and test updated.

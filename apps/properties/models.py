@@ -128,6 +128,21 @@ class Property(models.Model):
     ATTRIBUTES_MAX_KEYS  = 50
     ATTRIBUTES_MAX_BYTES = 8192
 
+    class Status(models.TextChoices):             # FR-LST-005 (T-1080)
+        DRAFT          = 'draft',          'Draft'
+        PENDING_REVIEW = 'pending_review', 'Pending review'
+        PUBLISHED      = 'published',      'Published'
+        UNDER_OFFER    = 'under_offer',    'Under offer'
+        SOLD           = 'sold',           'Sold'
+        LET            = 'let',            'Let'
+        EXPIRED        = 'expired',        'Expired'
+        ARCHIVED       = 'archived',       'Archived'
+        SUSPENDED      = 'suspended',      'Suspended'
+
+    # Statuses shown publicly; ``is_active`` == status in VISIBLE_STATUSES
+    # (kept in step by the 0045 trigger and by save()).
+    VISIBLE_STATUSES = frozenset({'published', 'under_offer'})
+
     class ListingOwnerType(models.TextChoices):
         ORGANIZATION    = 'organization',    'Organization'
         FREELANCE_AGENT = 'freelance_agent', 'Freelance Agent'
@@ -290,7 +305,15 @@ class Property(models.Model):
     risk_level    = models.CharField(max_length=20, choices=RiskLevel.choices, null=True, blank=True)
     raw_docs      = models.JSONField(default=dict, blank=True)
     ai_analysis   = models.JSONField(default=dict, blank=True)
+    # Derived from ``status`` (T-1080): readers keep using it as "publicly visible".
     is_active     = models.BooleanField(default=True)
+    # Lifecycle (T-1080, ADR-025). Change it through apps.properties.lifecycle.
+    status             = models.CharField(max_length=20, choices=Status.choices,
+                                          default=Status.PUBLISHED, db_default='published')
+    status_changed_at  = models.DateTimeField(null=True, blank=True)
+    published_at       = models.DateTimeField(null=True, blank=True)
+    expires_at         = models.DateTimeField(null=True, blank=True)
+    expiry_reminded_at = models.DateTimeField(null=True, blank=True)
     is_sandbox    = models.BooleanField(default=True, db_index=True)
     created_at    = models.DateTimeField(auto_now_add=True)
     updated_at    = models.DateTimeField(auto_now=True)
@@ -314,6 +337,10 @@ class Property(models.Model):
             models.Index(fields=['price']),
             models.Index(fields=['is_active', 'city']),
             models.Index(fields=['is_active', 'created_at']),
+            # Lifecycle (T-1080; 0047, concurrently): owner dashboards and the expiry job.
+            models.Index(fields=['organization', 'status'], name='prop_org_status_idx'),
+            models.Index(fields=['expires_at'], condition=models.Q(status='published'),
+                         name='prop_expiry_idx'),
             # ── Search indexes (T-1100, ADR-015; migration 0022) ──────────────
             # Full-text on the trigger-maintained search_tsv (T-1070f, 0037).
             # The legacy expression index prop_fts_gin left the model in
@@ -341,6 +368,12 @@ class Property(models.Model):
                     models.Q(listing_owner_type='platform')
                 ),
                 name='property_ownership_consistency',
+            ),
+            # DB-03: allowed status values (0045 adds it NOT VALID, then validates).
+            models.CheckConstraint(
+                condition=models.Q(status__in=['draft', 'pending_review', 'published', 'under_offer',
+                                           'sold', 'let', 'expired', 'archived', 'suspended']),
+                name='property_status_valid',
             ),
         ]
 
@@ -455,7 +488,38 @@ class Property(models.Model):
         inst = super().from_db(db, field_names, values)
         inst._price_loaded = inst._price_state()
         inst._country_loaded = inst.__dict__.get('country', 'deferred')
+        inst._status_loaded = (inst.__dict__.get('status'), inst.__dict__.get('is_active'))
         return inst
+
+    def _sync_status(self, update_fields):
+        """
+        Keep ``status`` and ``is_active`` consistent (same rule as the 0045
+        trigger). ``status`` wins when it changed; a write that changed only
+        ``is_active`` (legacy code) maps to published / archived. Returns the
+        previous status when it changed (for the audit row), else ``None``.
+        """
+        if 'status' not in self.__dict__ or 'is_active' not in self.__dict__:
+            return None                                   # deferred: the trigger decides
+        if update_fields is not None and not {'status', 'is_active'} & set(update_fields):
+            return None
+        visible = self.VISIBLE_STATUSES
+        loaded = getattr(self, '_status_loaded', None)
+        if self._state.adding or loaded is None or loaded[0] is None:
+            if self.status in visible and not self.is_active:
+                self.status = self.Status.ARCHIVED          # legacy create(is_active=False)
+            prev = '' if self._state.adding else None
+        else:
+            prev_status, prev_active = loaded
+            if self.status == prev_status and self.is_active != prev_active:
+                if self.is_active and self.status not in visible:
+                    self.status = self.Status.PUBLISHED
+                elif not self.is_active and self.status in visible:
+                    self.status = self.Status.ARCHIVED
+            prev = prev_status if self.status != prev_status else None
+        self.is_active = self.status in visible
+        if prev is not None:
+            self.status_changed_at = timezone.now()
+        return prev
 
     _SIZE_FIELDS = ('size_value', 'size_unit', 'size_m2')
     _TAXONOMY_FIELDS = ('category', 'subtype')
@@ -566,6 +630,7 @@ class Property(models.Model):
         if not self.ref_no:
             self.ref_no = self._build_ref_no()
         self._normalise_size_and_taxonomy()
+        prev_status = self._sync_status(kwargs.get('update_fields'))
         geo_computed = all(f in self.__dict__ for f in self._GEO_INPUTS)
         if geo_computed:
             self.geo_lat, self.geo_lng = self._public_point()
@@ -578,11 +643,17 @@ class Property(models.Model):
                 touched.add('size_m2')
             if 'category' in touched:
                 touched.add('subtype')
+            if touched & {'status', 'is_active'}:
+                touched |= {'status', 'is_active'}
+                if prev_status is not None:
+                    touched.add('status_changed_at')
             kwargs['update_fields'] = list(touched)
         adding = self._state.adding
         with transaction.atomic():                   # listing + its price-history row together
             super().save(*args, **kwargs)
             self._record_price_change(adding, update_fields)
+            if prev_status is not None:
+                self._record_transition(prev_status)
         # Refresh a snapshot only when its fields were written (else it would
         # mark unsaved in-memory values as persisted).
         written = None if update_fields is None else set(kwargs['update_fields'])
@@ -590,6 +661,19 @@ class Property(models.Model):
             self._price_loaded = self._price_state()
         if written is None or 'country' in written:
             self._country_loaded = self.__dict__.get('country', 'deferred')
+        if written is None or 'status' in written:
+            self._status_loaded = (self.__dict__.get('status'), self.__dict__.get('is_active'))
+
+    def _record_transition(self, prev_status: str) -> None:
+        """Audit row for every status change made through the ORM (T-1080)."""
+        ctx = getattr(self, '_transition_ctx', None) or {}
+        ListingTransition.objects.create(
+            property=self, from_status=prev_status, to_status=self.status,
+            actor=ctx.get('actor'),
+            source=ctx.get('source') or (ListingTransition.Source.CREATE if prev_status == ''
+                                         else ListingTransition.Source.DIRECT),
+            reason=(ctx.get('reason') or '')[:500])
+        self._transition_ctx = None
 
     def _country_changed(self, update_fields) -> bool:
         if update_fields is not None and 'country' not in update_fields:
@@ -630,6 +714,34 @@ class PriceHistory(models.Model):
 
     def __str__(self):
         return f"{self.property_id} {self.currency} {self.price} @ {self.changed_at:%Y-%m-%d}"
+
+
+class ListingTransition(models.Model):
+    """Append-only audit of listing status changes (FR-LST-005, T-1080)."""
+
+    class Source(models.TextChoices):
+        API    = 'api',    'API'
+        ADMIN  = 'admin',  'Admin'
+        SYSTEM = 'system', 'System (expiry)'
+        CREATE = 'create', 'Created'
+        DIRECT = 'direct', 'Direct write (legacy path)'
+
+    property    = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='transitions')
+    from_status = models.CharField(max_length=20, blank=True)        # '' = created
+    to_status   = models.CharField(max_length=20, choices=Property.Status.choices)
+    actor       = models.ForeignKey('users.User', on_delete=models.SET_NULL, null=True, blank=True,
+                                    related_name='+')
+    source      = models.CharField(max_length=10, choices=Source.choices, default=Source.DIRECT)
+    reason      = models.CharField(max_length=500, blank=True)
+    created_at  = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = 'property_transitions'
+        ordering = ['-created_at', '-id']
+        indexes  = [models.Index(fields=['property', '-created_at'], name='prop_transition_idx')]
+
+    def __str__(self):
+        return f"{self.property_id} {self.from_status or '∅'} → {self.to_status}"
 
 
 class Amenity(models.Model):

@@ -13,7 +13,7 @@ class PropertyImageSerializer(serializers.ModelSerializer):
         model  = PropertyImage
         fields = ('id', 'url', 'caption', 'order', 'created_at')
 
-    def get_url(self, obj):
+    def get_url(self, obj) -> str | None:
         request = self.context.get('request')
         if not obj.image:
             return None
@@ -301,10 +301,11 @@ class PropertyListSerializer(GeoPointMixin, LegacyReadAliases, serializers.Model
                   'purpose', 'price_type', 'price_on_request', 'bedrooms', 'bathrooms',
                   'category', 'subtype', 'amenities', 'location_ref',
                   'property_type', 'construction_status', 'furnished_status',
-                  'legal_status', 'ai_score', 'risk_level', 'primary_image', 'created_at')
+                  'legal_status', 'ai_score', 'risk_level', 'primary_image', 'status',
+                  'created_at')
         extra_kwargs = _SIZE_EXTRA_KWARGS
 
-    def get_primary_image(self, obj):
+    def get_primary_image(self, obj) -> str | None:
         first = obj.images.first()
         if not first:
             return None
@@ -337,14 +338,17 @@ class PropertyDetailSerializer(GeoPointMixin, ListingV2ValidationMixin, LegacyWr
                   'purpose', 'bedrooms', 'bathrooms', 'floor', 'total_floors', 'year_built',
                   'parking_spaces', 'pets_allowed', 'price_type', 'price_negotiable',
                   'price_on_request', 'deposit', 'service_charge', 'attributes',
-                  'is_active', 'primary_image', 'images',
+                  'is_active', 'status', 'status_changed_at', 'published_at', 'expires_at',
+                  'primary_image', 'images',
                   'created_at', 'updated_at')
         extra_kwargs = _SIZE_EXTRA_KWARGS
+        # status changes go through POST …/transitions/ (T-1080); a PATCH of
+        # is_active is mapped to published / archived there too.
         read_only_fields = ('id', 'ref_no', 'owner', 'owner_phone', 'ai_score', 'risk_level',
-                            'size_m2',
+                            'size_m2', 'status', 'status_changed_at', 'published_at', 'expires_at',
                             'ai_analysis', 'primary_image', 'images', 'created_at', 'updated_at')
 
-    def get_primary_image(self, obj):
+    def get_primary_image(self, obj) -> str | None:
         first = obj.images.first()
         if not first:
             return None
@@ -360,10 +364,14 @@ class PropertyCreateSerializer(GeoPointMixin, ListingV2ValidationMixin, LegacyWr
     )
     amenities = AmenityKeysField(many=True, required=False)
     location_id = LocationRefField()
+    status = serializers.ChoiceField(
+        choices=['draft', 'pending_review', 'published'], required=False,
+        help_text='Initial status (default published; a market that reviews listings turns '
+                  'published into pending_review).')
 
     class Meta:
         model  = Property
-        fields = ('title', 'description', 'city', 'location',
+        fields = ('title', 'description', 'city', 'location', 'status',
                   'size_value', 'size_unit', 'plot_size_m2',
                   'area_marla', 'area_unit',
                   'price', 'country', 'currency',
@@ -419,3 +427,24 @@ class AmenitySerializer(serializers.ModelSerializer):
     def get_label(self, obj) -> str:
         return obj.label(self.context.get('lang') or 'en')
 
+
+
+class ListingTransitionSerializer(serializers.ModelSerializer):
+    """Audit row (T-1080). The actor is shown only as a kind, not an identity."""
+    actor_kind = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import ListingTransition
+        model  = ListingTransition
+        fields = ('from_status', 'to_status', 'source', 'reason', 'actor_kind', 'created_at')
+        read_only_fields = fields
+
+    def get_actor_kind(self, obj) -> str:
+        if obj.actor_id is None:
+            return 'system'
+        return 'staff' if getattr(obj.actor, 'role', None) == 'admin' else 'lister'
+
+
+class TransitionRequestSerializer(serializers.Serializer):
+    to     = serializers.ChoiceField(choices=Property.Status.choices)
+    reason = serializers.CharField(max_length=500, required=False, allow_blank=True, default='')

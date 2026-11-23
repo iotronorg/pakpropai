@@ -217,3 +217,10 @@ def rescore_all_properties_task():
         score_property_task.delay(str(pid))
     logger.info(f"Queued rescore for {len(ids)} properties")
     return len(ids)
+
+
+@shared_task(name='apps.properties.tasks.expire_listings')
+def expire_listings():
+    """T-1080: expire overdue listings and remind owners of upcoming expiry."""
+    from apps.properties.lifecycle import expire_due, remind_expiring
+    return {'expired': expire_due(), 'reminded': remind_expiring()}

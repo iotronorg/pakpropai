@@ -667,3 +667,15 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - Coordinates may be cached for at most 30 consecutive days. Centroids are re‑geocoded after `GEOCODING_REFRESH_DAYS` (29), and the place id is kept.
   - Geocoding results shown on a map must be shown on a Google map. If a frontend shows listing or location points on another map provider, that conflicts with the terms.
 - **Security:** the key is a query parameter. `requests` exceptions include the URL, so errors are logged and stored by type only, with no cause chained.
+
+### ADR‑025 — Listing lifecycle (T‑1080, 2026‑11‑23)
+- **Decision:** `Property.status` is the source of truth, with 9 states (PRD FR‑LST‑005) and a DB CHECK constraint. `is_active` stays as a **derived** "publicly visible" flag (`status ∈ {published, under_offer}`).
+  - About 30 readers (`visible_to`, search, AI tools, reports, escrow) keep working unchanged, as do the existing `is_active` indexes.
+  - Trigger `properties_status_trg` keeps the pair consistent for every writer: `QuerySet.update`, raw SQL, and pods of the previous release that only write `is_active` (`false` → archived, `true` → published). `Property._sync_status` mirrors it in memory.
+- **Transitions** go through `apps.properties.lifecycle.transition`: edge table, role checks, publish preconditions, row lock, timestamps. Every ORM status change writes a `ListingTransition` row (source api/admin/system/create/direct). `QuerySet.update(status=…)` is consistent but **not audited**; code must not use it.
+- **Compatibility:**
+  - A new listing still starts as `published` unless the request asks for `draft`/`pending_review`. A market with `listing_review_required` turns published into pending_review.
+  - PATCH `is_active` still works, mapped to an audited transition.
+  - Owners and listing agents now also see their own non‑public listings on detail and with `?status=`.
+- **Expiry is per market** (`Market.settings.listing_ttl_days`) and **off by default**. Existing listings get no `expires_at`, so nothing vanishes on deploy. Reminders go out once, `LISTING_EXPIRY_REMINDER_DAYS` (7) before expiry, through `notify_user` (outbox).
+- **Not done here:** an outbox domain event per transition (no consumer exists yet; add a kind when one does); the "at least one image" publish rule (FR‑LST business rule, market‑configurable); the moderation queue of FR‑LST‑009.
