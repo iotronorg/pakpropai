@@ -394,3 +394,21 @@
   - user admin: `mfa_enabled` column and filter, *Reset MFA* action;
   - `UsersConfig.ready` installs the admin login form.
 - **Found:** KI‑057 (cookie‑path CSRF failures are swallowed).
+
+### 2026-11-23 — session 9 (ninth part): T‑1110 image upload hardening
+- **Verified:** the owner committed T‑1011 (`1a1ed64`); the tree was clean.
+- **Added:**
+  - `apps/core/images.py` (`sanitize_image`, `safe_upload_name`, `SanitizedImageField`);
+  - the `sanitize_images` command;
+  - settings `IMAGE_*` and `MAX_IMAGES_PER_LISTING`;
+  - `PropertyImage.thumbnail/alt_text/width/height/size_bytes/sha256` (`properties 0048`);
+  - agent photo `upload_to` callable (`agents 0014`);
+  - `tests/test_image_uploads.py` (11).
+- **Changed:**
+  - `upload_images` rewritten (all‑or‑nothing, duplicates, row lock, `can_manage`);
+  - the `images/{id}` action gains PATCH; new `images/reorder`;
+  - `PropertyImageSerializer` fields;
+  - org logo and agent photo serializers;
+  - `_property_image_path` and `_logo_upload_path` use `safe_upload_name`;
+  - the agent photo content‑type‑only validator is removed.
+- **Renumbered:** staged contract migrations to 0049/0050; the test now requires them to sit on the latest real migration.

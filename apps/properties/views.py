@@ -53,9 +53,6 @@ def status_param(params) -> list[str] | None:
         raise ValidationError({'status': f"Unknown status: {', '.join(bad) or raw}."})
     return vals
 
-_ALLOWED_IMAGE_TYPES = {'image/jpeg', 'image/png', 'image/webp'}
-_MAX_IMAGE_SIZE      = 5 * 1024 * 1024   # 5 MB
-_MAX_IMAGES_PER_PROP = 10
 
 
 
@@ -378,66 +375,103 @@ class PropertyViewSet(viewsets.ModelViewSet):
         serializer = PropertyListSerializer(qs, many=True, context={'request': request})
         return Response(serializer.data)
 
+    @extend_schema(request={'multipart/form-data': inline_serializer('ImageUpload', {
+                       'images': drf_serializers.ListField(child=drf_serializers.ImageField()),
+                       'alt_text': drf_serializers.CharField(required=False)})},
+                   responses=PropertyImageSerializer(many=True))
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated],
             url_path='upload-images', parser_classes=[MultiPartParser])
     def upload_images(self, request, pk=None):
+        """
+        Upload up to MAX_IMAGES_PER_LISTING images (T-1110). Each file is
+        sniffed, decoded under a pixel budget and re-encoded (metadata
+        stripped) before storage; one bad file rejects the whole request.
+        """
+        from django.conf import settings
+        from django.db import transaction
+        from apps.core.images import ImageRejected, sanitize_image
+        from .lifecycle import can_manage
         prop = self.get_object()
-
-        if prop.owner != request.user and request.user.role != 'admin':
+        if not can_manage(request.user, prop):
             return Response({'detail': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
-
         files = request.FILES.getlist('images')
         if not files:
             return Response({'detail': 'No images provided.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        existing = prop.images.count()
-        if existing + len(files) > _MAX_IMAGES_PER_PROP:
-            return Response(
-                {'detail': f'Max {_MAX_IMAGES_PER_PROP} images per property. {existing} already uploaded.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        for f in files:
-            if f.content_type not in _ALLOWED_IMAGE_TYPES:
-                return Response(
-                    {'detail': f'{f.name}: unsupported type. Use JPEG, PNG, or WebP.'},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            if f.size > _MAX_IMAGE_SIZE:
-                return Response(
-                    {'detail': f'{f.name}: exceeds 5 MB limit.'},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-        created = [
-            PropertyImage.objects.create(
-                property=prop,
-                image=f,
-                order=existing + i,
-                uploaded_by=request.user,
-            )
-            for i, f in enumerate(files)
-        ]
-
+        limit = settings.MAX_IMAGES_PER_LISTING
+        if len(files) > limit:
+            return Response({'detail': f'Max {limit} images per listing.'}, status=status.HTTP_400_BAD_REQUEST)
+        cleaned, errors = [], {}
+        for i, f in enumerate(files):
+            try:
+                cleaned.append(sanitize_image(f, thumbnail_side=settings.IMAGE_THUMB_SIDE))
+            except ImageRejected as exc:
+                errors[f'images[{i}]'] = str(exc)             # never echo the client file name
+        if errors:
+            return Response(errors, status=status.HTTP_400_BAD_REQUEST)
+        if len({c.sha256 for c in cleaned}) != len(cleaned):
+            return Response({'detail': 'The same image was sent twice.'}, status=status.HTTP_400_BAD_REQUEST)
+        alt = (request.data.get('alt_text') or '')[:250]
+        with transaction.atomic():
+            Property.objects.select_for_update().filter(pk=prop.pk).first()     # serialise uploads
+            existing = list(prop.images.values_list('sha256', flat=True))
+            if len(existing) + len(cleaned) > limit:
+                return Response({'detail': f'Max {limit} images per listing. {len(existing)} already uploaded.'},
+                                status=status.HTTP_400_BAD_REQUEST)
+            if set(existing) & {c.sha256 for c in cleaned}:
+                return Response({'detail': 'This image is already on the listing.'},
+                                status=status.HTTP_400_BAD_REQUEST)
+            created = [PropertyImage.objects.create(
+                property=prop, image=c.content, thumbnail=c.thumbnail, order=len(existing) + i,
+                alt_text=alt, width=c.width, height=c.height, size_bytes=c.size, sha256=c.sha256,
+                uploaded_by=request.user) for i, c in enumerate(cleaned)]
         serializer = PropertyImageSerializer(created, many=True, context={'request': request})
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-    @action(detail=True, methods=['delete'], permission_classes=[IsAuthenticated],
+    @extend_schema(methods=['PATCH'], request=PropertyImageSerializer, responses=PropertyImageSerializer)
+    @extend_schema(methods=['DELETE'], responses={204: None})
+    @action(detail=True, methods=['patch', 'delete'], permission_classes=[IsAuthenticated],
             url_path=r'images/(?P<image_id>[0-9a-f-]+)')
     def delete_image(self, request, pk=None, image_id=None):
+        """PATCH caption / alt_text; DELETE removes the image and its thumbnail."""
+        from .lifecycle import can_manage
         prop = self.get_object()
-
-        if prop.owner != request.user and request.user.role != 'admin':
+        if not can_manage(request.user, prop):
             return Response({'detail': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
-
         try:
             img = prop.images.get(id=image_id)
-        except PropertyImage.DoesNotExist:
+        except (PropertyImage.DoesNotExist, ValueError):
             return Response({'detail': 'Image not found.'}, status=status.HTTP_404_NOT_FOUND)
-
+        if request.method == 'PATCH':
+            ser = PropertyImageSerializer(img, data=request.data, partial=True, context={'request': request})
+            ser.is_valid(raise_exception=True)
+            ser.save()
+            return Response(ser.data)
+        if img.thumbnail:
+            img.thumbnail.delete(save=False)
         img.image.delete(save=False)
         img.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(request=inline_serializer('ImageOrder', {
+                       'ids': drf_serializers.ListField(child=drf_serializers.UUIDField())}),
+                   responses=PropertyImageSerializer(many=True))
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated],
+            url_path='images/reorder')
+    def reorder_images(self, request, pk=None):
+        """POST {ids: [...]}: the listing's image ids in the new order (all of them)."""
+        from .lifecycle import can_manage
+        prop = self.get_object()
+        if not can_manage(request.user, prop):
+            return Response({'detail': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
+        ids = [str(i) for i in (request.data.get('ids') or [])]
+        current = {str(i) for i in prop.images.values_list('id', flat=True)}
+        if len(ids) != len(set(ids)) or set(ids) != current:
+            return Response({'ids': 'Give every image id of this listing exactly once.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        for order, image_id in enumerate(ids):
+            PropertyImage.objects.filter(pk=image_id, property=prop).update(order=order)
+        fresh = PropertyImage.objects.filter(property=prop).order_by('order', 'created_at')
+        return Response(PropertyImageSerializer(fresh, many=True, context={'request': request}).data)
 
     @action(detail=False, methods=['get'], url_path='recommended')
     def recommended(self, request):

@@ -6,6 +6,12 @@ from apps.core.crypto import EncryptedTextField
 from django.conf import settings
 
 
+
+
+def _profile_photo_path(instance, filename):
+    from apps.core.images import safe_upload_name          # T-1110: no client file names
+    return safe_upload_name('agents/photos', filename)
+
 class Agent(models.Model):
 
     class AgentType(models.TextChoices):
@@ -68,7 +74,7 @@ class Agent(models.Model):
                          )
     cnic_number     = EncryptedTextField(blank=True,
                           help_text='[Deprecated — use national_id_number] Pakistan CNIC (format: 12345-1234567-1)')
-    profile_photo   = models.ImageField(upload_to='agents/photos/', blank=True, null=True)
+    profile_photo   = models.ImageField(upload_to=_profile_photo_path, blank=True, null=True)
 
     # ── Professional Details ───────────────────────────────────────────────────
     company_name     = models.CharField(max_length=200, blank=True,

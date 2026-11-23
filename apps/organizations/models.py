@@ -10,8 +10,8 @@ from django.utils import timezone
 
 
 def _logo_upload_path(instance, filename):
-    ext = filename.rsplit('.', 1)[-1].lower()
-    return f"organizations/logos/{instance.id}/{uuid.uuid4().hex}.{ext}"
+    from apps.core.images import safe_upload_name          # T-1110
+    return safe_upload_name(f"organizations/logos/{instance.id}", filename)
 
 
 class Organization(models.Model):

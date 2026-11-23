@@ -4,13 +4,13 @@ _Last updated: 2026-11-23 (session 9, continued)_
 
 | Item | Value |
 |---|---|
-| Branch | `development`. The owner committed everything through T‑1060a and branding (`6fc5634`). **Uncommitted:** T‑1011 (owner committed through T‑1080 as `4ec3d94`) |
+| Branch | `development`. The owner committed everything through T‑1060a and branding (`6fc5634`). **Uncommitted:** T‑1110 (owner committed through T‑1011 as `1a1ed64`) |
 | Current milestone | **M1 — Core foundation** ([MILESTONE_01](milestones/MILESTONE_01_CORE_FOUNDATION.md)); M0 code‑complete, awaiting first GitHub Actions run |
 | M0 progress | All 17 tasks complete. Remaining exit criterion: CI green on GitHub Actions (owner pushes) |
 | M1 progress | 10 of 18 tasks done (T‑1010, T‑1020, T‑1021, T‑1022, T‑1030, T‑1031, T‑1033, T‑1050, T‑1090, T‑1100) plus subtasks T‑1032a, T‑1032c and T‑1070a–f |
 | Test suite | **1839 passed, 1 skipped, 0 failed** (session 9 end). See [TESTING_STATUS](TESTING_STATUS.md) |
 | Last completed task | T‑1032c org invitations (KI‑041), after T‑1070f, T‑1033 and KI‑050 |
-| Next task | **T‑1110** media pipeline hardening for images (GAP‑083, FR‑LST‑007): content‑type sniffing from bytes (not the client header), Pillow decode/verify with a pixel‑count limit (decompression bombs), EXIF/GPS stripping by re‑encoding, size and count limits, normalised formats/ordering/alt text, generated sizes, storage keys not derived from user input; tests with crafted files. Then T‑1120 → T‑1032b |
+| Next task | **T‑1120** AI provider abstraction, prompt registry and market‑pack prompt fragments (GAP‑055/056/062): one `LLMProvider` interface (Gemini, local/Ollama, OpenAI‑compatible) with timeouts, retries and failover order; prompts as versioned, named templates (registry + hash recorded on each AI call); market packs contribute fragments instead of hard‑coded PK text; token accounting unchanged. Then T‑1032b |
 
 ## Owner decisions (2026-11-23)
 - **T‑1070g approved.** It ships one release after the current changes: drop `area_marla`/`area_unit`/`area_sqm`, the `property_type` column and `prop_fts_gin`.

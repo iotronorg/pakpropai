@@ -326,6 +326,13 @@ GEO_MAX_RADIUS_KM   = env.float('GEO_MAX_RADIUS_KM', default=100.0)
 
 # ── Geocoding of location centroids (T-1060c). Off until the owner sets the
 # key and enables it; paid per request, so a daily request budget applies.
+# ── Image uploads (T-1110, ADR-027): every image is re-encoded by apps.core.images.
+IMAGE_MAX_BYTES  = env.int('IMAGE_MAX_BYTES',  default=10 * 1024 * 1024)   # input; output is smaller
+IMAGE_MAX_PIXELS = env.int('IMAGE_MAX_PIXELS', default=40_000_000)         # decompression-bomb guard
+IMAGE_MAX_SIDE   = env.int('IMAGE_MAX_SIDE',   default=2560)               # longest stored side
+IMAGE_THUMB_SIDE = env.int('IMAGE_THUMB_SIDE', default=480)
+MAX_IMAGES_PER_LISTING = env.int('MAX_IMAGES_PER_LISTING', default=20)
+
 # ── MFA (T-1011, ADR-026). Required for staff and org owners/admins; enforced
 # only when MFA_ENFORCE is on (turn on after those users have enrolled).
 MFA_ENFORCE = env.bool('MFA_ENFORCE', default=False)

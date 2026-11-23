@@ -8,17 +8,25 @@ from apps.users.models import User
 
 class PropertyImageSerializer(serializers.ModelSerializer):
     url = serializers.SerializerMethodField()
+    thumbnail_url = serializers.SerializerMethodField()
 
     class Meta:
         model  = PropertyImage
-        fields = ('id', 'url', 'caption', 'order', 'created_at')
+        fields = ('id', 'url', 'thumbnail_url', 'caption', 'alt_text', 'order', 'width', 'height',
+                  'created_at')
+        read_only_fields = ('id', 'url', 'thumbnail_url', 'order', 'width', 'height', 'created_at')
+
+    def _abs(self, f) -> str | None:
+        if not f:
+            return None
+        request = self.context.get('request')
+        return request.build_absolute_uri(f.url) if request else f.url
 
     def get_url(self, obj) -> str | None:
-        request = self.context.get('request')
-        if not obj.image:
-            return None
-        url = obj.image.url
-        return request.build_absolute_uri(url) if request else url
+        return self._abs(obj.image)
+
+    def get_thumbnail_url(self, obj) -> str | None:
+        return self._abs(obj.thumbnail) or self._abs(obj.image)
 
 
 V2_FIELDS = ('purpose', 'bedrooms', 'bathrooms', 'floor', 'total_floors', 'year_built',

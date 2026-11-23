@@ -228,11 +228,12 @@
 - **Not committed.**
 
 ### Handoff → session 10
-1. `git status`: the owner committed through T‑1080 (`4ec3d94`). Uncommitted: **T‑1011**:
-   - `apps/users/mfa*.py`, `admin_mfa.py`, `templates/admin/login.html`;
-   - `users 0014`;
-   - auth class, login views and org registration changes;
-   - `tests/test_mfa.py`.
+1. `git status`: the owner committed through T‑1011 (`1a1ed64`). Uncommitted: **T‑1110**:
+   - `apps/core/images.py`, the `sanitize_images` command;
+   - `properties 0048`, `agents 0014`;
+   - image API, serializer and model changes;
+   - staged contract migrations renumbered 0049/0050;
+   - `tests/test_image_uploads.py`.
    **Do not commit.**
-2. **Deploy:** GO_LIVE §26. Keep `MFA_ENFORCE=false` until admins and org owners have enrolled. The frontend must handle `mfa_required` and `mfa_enrollment_required` login responses.
-3. Next: **T‑1110** media pipeline hardening, then T‑1120 → T‑1032b. Open: KI‑055, KI‑056, KI‑057.
+2. **Deploy:** GO_LIVE §27. Run the `sanitize_images` backfill and check the proxy body limit.
+3. Next: **T‑1120** AI provider abstraction and prompt registry, then T‑1032b. Open: KI‑055…KI‑058.

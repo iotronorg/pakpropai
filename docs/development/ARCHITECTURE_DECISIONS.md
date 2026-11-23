@@ -689,3 +689,20 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
 - **Django admin:** the login form asks for the authenticator code (or a recovery code). When enforced, staff without MFA must enrol through the app first.
 - **Recovery:** an admin action resets MFA (audited, all sessions revoked). Users for whom MFA is required cannot disable it themselves.
 - **Side effect:** the refresh endpoint now also refuses a refresh token for a deactivated user.
+
+### ADR‑027 — Image upload sanitisation (T‑1110, 2026‑11‑23)
+- **Decision:** every user‑uploaded image is **decoded and re‑encoded** by `apps.core.images.sanitize_image` before storage; the original bytes are never stored. This removes, in one mechanism:
+  - EXIF/GPS and other metadata (privacy: home locations of private sellers);
+  - polyglot or appended payloads;
+  - mismatched content types.
+- **Trust nothing from the client:** the format comes from the magic bytes, and only JPEG, PNG and WebP are accepted (no SVG, GIF or HEIC). The storage key is `<uuid>.<ext of the detected format>`; `upload_to` functions use `safe_upload_name`, which maps anything else to `.bin`. Error messages never echo client file names.
+- **Resource limits:**
+  - bounded read (`IMAGE_MAX_BYTES`);
+  - pixel budget checked from the header before decoding (`IMAGE_MAX_PIXELS`), plus Pillow's bomb errors;
+  - a full decode, so truncated files fail;
+  - downscale to `IMAGE_MAX_SIDE`;
+  - listing count limit enforced under a row lock.
+- **Kept:** the ICC colour profile; the EXIF orientation is applied to the pixels; animated images keep their first frame.
+- **Thumbnails** are generated at upload (`IMAGE_THUMB_SIDE`) so they work with plain file storage. With Cloudinary the same files are stored; delivery transformations remain possible.
+- **Existing files:** `manage.py sanitize_images` re‑encodes pre‑T‑1110 listing images (`sha256 = ''`) and, with `--include-profiles`, agent photos and org logos.
+- **Not in scope:** documents (PDF) — content sniffing and malware scanning for the verification uploads remain FR‑LST‑007 / a follow‑up; video, tours and floor plans (P2).

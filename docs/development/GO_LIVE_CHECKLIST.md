@@ -189,7 +189,7 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - **Order matters:** run `migrate` (`properties 0040` trigger, `0041` non‑atomic repair) **before** rolling out the new pods. Pods of the previous release keep working with these migrations applied. New pods without the trigger would fail inserts (NOT NULL `area_unit`/`property_type`).
 - `sync_listing_size` and `sync_listing_taxonomy` no longer exist. 0041 performs their final repair, and the trigger prevents new drift. The earlier steps in §11/§13 that call them apply only to releases before this one.
 - After the rollout, run `python manage.py check_listing_contract`. It must print `OK`.
-- **Next release (T‑1070g‑2):** follow `apps/properties/contract_migrations/README.md`. Re‑run the check; move the staged 0048/0049 into `migrations/`; migrate on a direct DB connection (0049 is CONCURRENTLY). Rollback must use the g‑2 build: `migrate properties 0041`.
+- **Next release (T‑1070g‑2):** follow `apps/properties/contract_migrations/README.md`. Re‑run the check; move the staged 0049/0050 into `migrations/`; migrate on a direct DB connection (0050 is CONCURRENTLY). Rollback must use the g‑2 build: `migrate properties 0041`.
 - **API:** no breaking change. `area_marla`/`area_unit`/`area_sqm`/`property_type` are still returned and accepted (deprecated aliases). Tell API clients to move to `size_*`/`category`.
 
 ## 23. Session‑9 change: geo search and coordinate privacy (T‑1060b)
@@ -227,7 +227,7 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
   - `"listing_review_required": true` sends new listings to `pending_review`; approve them with the admin action.
   - `"listing_ttl_days": 90` makes listings published after that point expire, with a reminder 7 days before.
   - Restart celery beat (hourly `expire-listings`).
-- **Staged T‑1070g‑2** is now `contract_migrations/0048`/`0049`, depending on 0047.
+- **Staged T‑1070g‑2** is now `contract_migrations/0049`/`0050` (renumbered again in T‑1110), depending on the latest real migration.
 
 ## 26. Session‑9 change: MFA (T‑1011, ADR‑026)
 - **Migration:** `users 0014`, additive (`users.mfa_enabled`, `user_mfa_devices`, `user_mfa_recovery_codes`).
@@ -239,3 +239,13 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
   Staff who haven't enrolled by then cannot log in to the Django admin until they enrol in the app.
 - **Support:** lost device → recovery code; no codes left → *Admin → Users → Reset MFA* (audited), after verifying the person's identity out of band.
 - `MFA_ISSUER` (default `RealTron`) is the name shown in authenticator apps.
+
+## 27. Session‑9 change: image upload hardening (T‑1110, ADR‑027)
+- **Migrations:** `properties 0048` and `agents 0014`, both additive or `upload_to` only.
+- **API:**
+  - Upload responses now include `thumbnail_url`, `alt_text`, `width`, `height`.
+  - New `PATCH /properties/{id}/images/{image_id}/` (caption, alt text) and `POST /properties/{id}/images/reorder/`.
+  - The per‑listing limit is 20 (was 10); input files may be up to 10 MB (was 5) and are stored downscaled.
+  - A request with one bad file now rejects all files, with errors keyed `images[i]`.
+- **After deploy:** run `python manage.py sanitize_images --dry-run`, then `sanitize_images --limit 500 --include-profiles` (repeat until 0 remain). Until then, older listing photos may still contain GPS metadata.
+- **Reverse proxy:** make sure the request body limit (e.g. nginx `client_max_body_size`) allows a multi‑image upload (20 × 10 MB) or a lower, deliberate cap.

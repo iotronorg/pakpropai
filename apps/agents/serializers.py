@@ -4,11 +4,13 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from rest_framework import serializers
 from .models import Agent
-from apps.core.validators import validate_photo
+from apps.core.images import SanitizedImageField
 from apps.organizations.models import Organization
 
 
 class AgentSerializer(serializers.ModelSerializer):
+    # T-1110: re-encoded (EXIF/GPS stripped), size-checked, renamed.
+    profile_photo = SanitizedImageField(required=False, allow_null=True, max_side=1024)
     user_phone = serializers.CharField(source='user.phone', read_only=True, allow_null=True)
     user_email = serializers.CharField(source='user.email', read_only=True, allow_null=True)
     organization_name = serializers.CharField(
@@ -38,10 +40,6 @@ class AgentSerializer(serializers.ModelSerializer):
             'registration_status', 'rejection_reason',
         )
 
-    def validate_profile_photo(self, value):
-        if value:
-            validate_photo(value)
-        return value
 
 
 class AgentRegistrationSerializer(serializers.Serializer):

@@ -2,6 +2,7 @@ import re
 
 from rest_framework import serializers
 
+from apps.core.images import SanitizedImageField
 from .models import Organization, OrganizationTheme
 
 
@@ -38,6 +39,7 @@ class OrganizationListSerializer(serializers.ModelSerializer):
 
 class OrganizationDetailSerializer(serializers.ModelSerializer):
     """Full fields for detail / create / update."""
+    logo = SanitizedImageField(required=False, allow_null=True, max_side=1024)   # T-1110
     admin_phone    = serializers.CharField(source='admin_user.phone', read_only=True, allow_null=True)
     admin_name     = serializers.CharField(source='admin_user.name',  read_only=True, allow_null=True)
     agent_count    = serializers.SerializerMethodField()
