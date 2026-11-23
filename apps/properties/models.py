@@ -214,6 +214,14 @@ class Property(models.Model):
                         null=True, blank=True,
                         help_text='WGS-84 longitude — enables haversine geo-search',
                     )
+    # Public point (T-1060b, ADR-024 addendum): what geo search and other
+    # viewers see. A DB trigger fills it from latitude/longitude, snapped to 2
+    # decimals (~1 km) for private-seller or approximate listings, so exact
+    # coordinates never answer a public query (no radius triangulation).
+    geo_lat       = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True,
+                                        editable=False)
+    geo_lng       = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True,
+                                        editable=False)
 
     # ── Price — currency stored alongside (ISO 4217) ───────────────────────────
     price         = models.BigIntegerField(
@@ -302,6 +310,7 @@ class Property(models.Model):
             models.Index(fields=['purpose', 'is_active'], name='prop_purpose_active_idx'),
             models.Index(fields=['category', 'is_active'], name='prop_category_active_idx'),
             models.Index(fields=['location_ref', 'is_active'], name='prop_location_ref_idx'),
+            models.Index(fields=['geo_lat', 'geo_lng'], name='prop_geo_point_idx'),   # 0044
             models.Index(fields=['price']),
             models.Index(fields=['is_active', 'city']),
             models.Index(fields=['is_active', 'created_at']),
@@ -451,6 +460,19 @@ class Property(models.Model):
     _SIZE_FIELDS = ('size_value', 'size_unit', 'size_m2')
     _TAXONOMY_FIELDS = ('category', 'subtype')
 
+    _GEO_INPUTS = ('latitude', 'longitude', 'listing_owner_type', 'location_precision')
+
+    def _public_point(self):
+        """Same rule as the 0042 trigger (apps.geo.sql), for the in-memory instance."""
+        from decimal import ROUND_HALF_UP, Decimal
+        if self.latitude is None or self.longitude is None:
+            return None, None
+        if self.listing_owner_type == self.ListingOwnerType.CLIENT or self.location_precision != 'exact':
+            q = Decimal('0.01')
+            snap = lambda v: Decimal(str(v)).quantize(q, ROUND_HALF_UP).quantize(Decimal('0.000001'))
+            return snap(self.latitude), snap(self.longitude)
+        return self.latitude, self.longitude
+
     def _normalise_size_and_taxonomy(self):
         """size_m2 follows size_value/size_unit; a subtype outside the category is cleared."""
         d = self.__dict__
@@ -535,9 +557,14 @@ class Property(models.Model):
         if not self.ref_no:
             self.ref_no = self._build_ref_no()
         self._normalise_size_and_taxonomy()
+        geo_computed = all(f in self.__dict__ for f in self._GEO_INPUTS)
+        if geo_computed:
+            self.geo_lat, self.geo_lng = self._public_point()
         update_fields = kwargs.get('update_fields')
         if update_fields is not None:
             touched = set(update_fields)
+            if geo_computed and touched & set(self._GEO_INPUTS):
+                touched |= {'geo_lat', 'geo_lng'}     # (the trigger recomputes them anyway)
             if touched & {'size_value', 'size_unit'}:
                 touched.add('size_m2')
             if 'category' in touched:

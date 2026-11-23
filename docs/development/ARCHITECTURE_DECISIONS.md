@@ -636,3 +636,19 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - the API names `area_marla`/`area_unit`/`area_sqm`/`property_type`, as deprecated aliases computed from and mapped onto v2 (removing them is an API‑version change);
   - the search/AI/scraper DTO and parameter names (`area_marla` = marla‑equivalent search size, `property_type` = coarse type), because they are not DB columns, and they are also Celery kwargs and LLM tool schemas that must stay stable across rollouts.
 - **Ordering rule:** g‑1 migrations must be applied **before** any g‑1 pod serves traffic. g‑1 inserts rely on the trigger to fill the NOT NULL v1 columns. The previous release is unaffected by 0040/0041.
+
+### ADR‑024 addendum — T‑1060b geo search without a hard PostGIS dependency (2026‑11‑23)
+- **Context:** the owner chose PostGIS, but no environment has it yet, and deploys must not be blocked.
+- **Decision:**
+  - **No GeoDjango.** That means no GDAL in the images, no DB engine switch and no `geography` column, for now.
+  - Listings get a **public point** (`geo_lat`/`geo_lng`, decimals), maintained by a trigger. It is exact only for non‑private listings marked exact; otherwise it is rounded to 2 dp (~1.1 km).
+  - **All geo queries and every non‑privileged response use the public point.** Exact coordinates never answer a radius query, so they cannot be triangulated.
+  - **Backends:**
+    - default: bbox on the btree index `prop_geo_point_idx`, then haversine in SQL;
+    - with PostGIS (`geo_setup` + `GEO_POSTGIS_ENABLED`): `ST_DWithin`/`ST_Distance` on a GiST index over `ST_MakePoint(geo_lng, geo_lat)::geography`, an expression on the same columns, so nothing needs backfilling.
+- **Measured** (200k rows, local): both paths use their index; 5 km returns 18 rows in about 1 ms, 25 km returns 208 rows in 4–5 ms. Results are the same, and distances agree within 0.5 % (sphere vs spheroid).
+- **When to adopt GeoDjango:** for polygon search or areas on `Location` (later). It would add a `geography` column from the same public point, under the same expand/contract rules.
+- **Rejected:**
+  - switching the engine to `postgis` now: every deploy would need PostGIS first;
+  - Python‑side haversine, as the pin resolver did: a full scan per request;
+  - masking only in the serializer: radius filters on exact coordinates leak location.

@@ -49,7 +49,53 @@ _LIST_PARAMETERS = [
     OpenApiParameter('min_price', int, description='Inclusive, in the listing currency.'),
     OpenApiParameter('max_price', int, description='Inclusive, in the listing currency.'),
     OpenApiParameter('min_score', int, description='Minimum AI score (0-100).'),
+    OpenApiParameter('near', str, description=(
+        '"lat,lng": with radius_km, listings whose public point is within the radius '
+        '(T-1060b). Adds distance_km; ordering=distance_km sorts by it.')),
+    OpenApiParameter('radius_km', float, description='With near; default 5, max GEO_MAX_RADIUS_KM.'),
+    OpenApiParameter('bbox', str, description='"min_lng,min_lat,max_lng,max_lat" (public point).'),
 ]
+
+
+def _floats(params, name, n):
+    from rest_framework.exceptions import ValidationError
+    raw = params.get(name, '')
+    try:
+        values = [float(x) for x in raw.split(',')]
+    except ValueError:
+        values = []
+    if len(values) != n:
+        raise ValidationError({name: f'Expected {n} comma-separated numbers.'})
+    return values
+
+
+def apply_geo_filters(qs, params):
+    """?near/radius_km and ?bbox (T-1060b); public point only (apps.geo.search)."""
+    from django.conf import settings
+    from rest_framework.exceptions import ValidationError
+    from apps.geo.search import within_bbox, within_radius
+    near = 'near' in params
+    if near:
+        lat, lng = _floats(params, 'near', 2)
+        try:
+            radius = float(params.get('radius_km') or 5)
+        except ValueError:
+            raise ValidationError({'radius_km': 'Must be a number.'})
+        if not (0 < radius <= settings.GEO_MAX_RADIUS_KM):
+            raise ValidationError({'radius_km': f'Must be in (0, {settings.GEO_MAX_RADIUS_KM:g}].'})
+        try:
+            qs = within_radius(qs, lat, lng, radius)
+        except ValueError as exc:
+            raise ValidationError({'near': str(exc)})
+    elif 'distance_km' in (params.get('ordering') or ''):
+        raise ValidationError({'ordering': 'distance_km needs near=lat,lng.'})
+    if 'bbox' in params:
+        min_lng, min_lat, max_lng, max_lat = _floats(params, 'bbox', 4)
+        try:
+            qs = within_bbox(qs, min_lng, min_lat, max_lng, max_lat)
+        except ValueError as exc:
+            raise ValidationError({'bbox': str(exc)})
+    return qs
 
 
 @extend_schema_view(list=extend_schema(parameters=_LIST_PARAMETERS))
@@ -65,7 +111,7 @@ class PropertyViewSet(viewsets.ModelViewSet):
             # Clients (role=user) are WhatsApp-only and must not submit via API.
             return [IsAgentOrAdmin()]
         return super().get_permissions()
-    ordering_fields = ['ai_score', 'price', 'created_at']
+    ordering_fields = ['ai_score', 'price', 'created_at', 'distance_km']
     ordering        = ['-created_at']
 
     def get_serializer_class(self):
@@ -82,17 +128,14 @@ class PropertyViewSet(viewsets.ModelViewSet):
         # Developers see only their org's inventory
         if user.is_authenticated and user.role == 'developer':
             org = get_user_org(user)
-            if not org:
-                return qs.none()
-            qs = qs.filter(organization=org)
+            # Empty, but keep going: later steps add annotations (distance_km)
+            # that ?ordering= may name.
+            qs = qs.filter(organization=org) if org else qs.none()
 
         # Agents see only their org's inventory (freelance agents see all active)
         if user.is_authenticated and user.role == 'agent':
             org = get_user_org(user)
-            if org:
-                qs = qs.filter(organization=org)
-            else:
-                return qs.none()
+            qs = qs.filter(organization=org) if org else qs.none()
 
         # Consumers never see other orgs' sandbox / demo inventory (ADR-002).
         # A client's own private listings stay visible to them.
@@ -119,6 +162,7 @@ class PropertyViewSet(viewsets.ModelViewSet):
                 from rest_framework.exceptions import ValidationError
                 raise ValidationError({'location_id': 'Unknown location.'})
             qs = qs.filter(loc.descendants_q('location_ref__path'))
+        qs = apply_geo_filters(qs, params)
         if (keys := amenity_keys_param(params)):
             from .taxonomy import filter_all_amenities
             qs = filter_all_amenities(qs, keys)

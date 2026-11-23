@@ -189,5 +189,19 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - **Order matters:** run `migrate` (`properties 0040` trigger, `0041` non‑atomic repair) **before** rolling out the new pods. Pods of the previous release keep working with these migrations applied. New pods without the trigger would fail inserts (NOT NULL `area_unit`/`property_type`).
 - `sync_listing_size` and `sync_listing_taxonomy` no longer exist. 0041 performs their final repair, and the trigger prevents new drift. The earlier steps in §11/§13 that call them apply only to releases before this one.
 - After the rollout, run `python manage.py check_listing_contract`. It must print `OK`.
-- **Next release (T‑1070g‑2):** follow `apps/properties/contract_migrations/README.md`. Re‑run the check; `git mv` the staged 0042/0043 into `migrations/`; migrate on a direct DB connection (0043 is CONCURRENTLY). Rollback must use the g‑2 build: `migrate properties 0041`.
+- **Next release (T‑1070g‑2):** follow `apps/properties/contract_migrations/README.md`. Re‑run the check; `git mv` the staged 0045/0046 into `migrations/`; migrate on a direct DB connection (0046 is CONCURRENTLY). Rollback must use the g‑2 build: `migrate properties 0041`.
 - **API:** no breaking change. `area_marla`/`area_unit`/`area_sqm`/`property_type` are still returned and accepted (deprecated aliases). Tell API clients to move to `size_*`/`category`.
+
+## 23. Session‑9 change: geo search and coordinate privacy (T‑1060b)
+- **Migrations:**
+  - `properties 0042`: two nullable columns plus a trigger; no rewrite.
+  - `properties 0043`: non‑atomic batched backfill.
+  - `properties 0044`: `CREATE INDEX CONCURRENTLY`; use a direct DB connection.
+- **No PostGIS needed.** With `GEO_POSTGIS_ENABLED=false` (the default), radius search is plain SQL using the btree index.
+- **When PostGIS exists in a DB:**
+  1. Run `python manage.py geo_setup` (creates the extension and the GiST index concurrently; needs a role that may `CREATE EXTENSION`).
+  2. Run `geo_setup --check`.
+  3. Set `GEO_POSTGIS_ENABLED=true`.
+  4. If 0042 is ever rolled back and re‑applied, re‑run `geo_setup`.
+- **Privacy:** private‑seller and approximate listings expose only coordinates snapped to ~1 km, and only those are searchable. Exact coordinates are shown to the owner, the listing's organisation and staff.
+- **Infra (dev/CI only):** test runner, CI and the dev `docker-compose.yml` now use `postgis/postgis:15-3.4-alpine` (amd64; emulated on Apple Silicon). `docker/docker-compose.prod.yml` is unchanged; switching production to a PostGIS image is your decision.

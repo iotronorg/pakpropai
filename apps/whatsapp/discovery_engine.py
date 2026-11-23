@@ -144,24 +144,20 @@ class GeoContextResolver:
 
         # ── Tier 2: Haversine ────────────────────────────────────────────
         if tier is None:
-            candidates = list(
-                Property.objects.filter(
-                    organization=org, is_active=True,
-                    latitude__isnull=False, longitude__isnull=False,
-                )
-            )
-            nearby = [
-                p for p in candidates
-                if _haversine_km(lat, lon, float(p.latitude), float(p.longitude))
-                <= _HAVERSINE_RADIUS
-            ]
-            if nearby:
-                nearby.sort(
-                    key=lambda p: _haversine_km(lat, lon, float(p.latitude), float(p.longitude))
-                )
+            # Indexed radius search on the public point (T-1060b), nearest first.
+            from apps.geo.search import within_radius
+            try:
+                nearby = within_radius(
+                    Property.objects.filter(organization=org, is_active=True),
+                    lat, lon, _HAVERSINE_RADIUS,
+                ).order_by('distance_km')
+                first = nearby.only('id', 'city').first()
+            except ValueError:                       # pin outside ±90/±180
+                first = None
+            if first is not None:
                 tier    = 2
-                city    = nearby[0].city
-                results = Property.objects.filter(pk__in=[p.pk for p in nearby])
+                city    = first.city
+                results = nearby
 
         # ── Tier 3: NeighbourhoodZone ────────────────────────────────────
         if tier is None:

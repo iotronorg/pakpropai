@@ -46,6 +46,7 @@ LOCAL_APPS = [
     'apps.config',
     'apps.markets',
     'apps.locations',
+    'apps.geo',
     'apps.users',
     'apps.organizations',
     'apps.properties',
@@ -314,7 +315,13 @@ CELERY_TASK_DEFAULT_QUEUE = 'default'
 # (CELERY_QUEUES=default) keep delivering; set to 'outbound' only once a worker
 # consumes that queue (see GO_LIVE_CHECKLIST §8).
 OUTBOX_CELERY_QUEUE = env('OUTBOX_CELERY_QUEUE', default='default')
-ORG_INVITE_TTL_DAYS = env.int('ORG_INVITE_TTL_DAYS', default=7)   # T-1032c, KI-041
+ORG_INVITE_TTL_DAYS = env.int('ORG_INVITE_TTL_DAYS', default=7)
+
+# ── Geo search (T-1060b, ADR-024). Off until PostGIS exists in the DB and
+# `manage.py geo_setup` has created the extension + GiST index; until then
+# radius search uses an indexed bounding box + haversine in plain SQL.
+GEO_POSTGIS_ENABLED = env.bool('GEO_POSTGIS_ENABLED', default=False)
+GEO_MAX_RADIUS_KM   = env.float('GEO_MAX_RADIUS_KM', default=100.0)   # T-1032c, KI-041
 CELERY_TASK_ROUTES = {
     # Outbound side effects
     'apps.core.tasks.dispatch_outbox_message':            {'queue': OUTBOX_CELERY_QUEUE},

@@ -1,6 +1,7 @@
 services:
   db:
-    image: postgres:15-alpine
+    image: postgis/postgis:15-3.4-alpine   # PostGIS available for T-1060b (flag off by default)
+    platform: linux/amd64
     environment:
       POSTGRES_DB: realtron
       POSTGRES_USER: realtron

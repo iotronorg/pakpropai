@@ -67,7 +67,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:15-alpine
+        image: postgis/postgis:15-3.4-alpine   # PostGIS available; GEO_POSTGIS_ENABLED stays off (T-1060b)
         env:
           POSTGRES_DB: realtron_test
           POSTGRES_USER: realtron

@@ -173,14 +173,14 @@ class StagedContractMigrationTest(TestCase):
         from django.db.migrations.loader import MigrationLoader
         loaded = {n for a, n in MigrationLoader(connection).disk_migrations if a == 'properties'}
         self.assertIn('0041_repair_v1_drift', loaded)
-        self.assertFalse({'0042_drop_listing_v1_columns', '0043_drop_prop_fts_gin'} & loaded)
-        m42, m43 = _staged('0042_drop_listing_v1_columns'), _staged('0043_drop_prop_fts_gin')
-        self.assertEqual(m42.Migration.dependencies, [('properties', '0041_repair_v1_drift')])
-        self.assertEqual(m43.Migration.dependencies, [('properties', '0042_drop_listing_v1_columns')])
-        self.assertFalse(m43.Migration.atomic)
+        self.assertFalse({'0045_drop_listing_v1_columns', '0046_drop_prop_fts_gin'} & loaded)
+        m45, m46 = _staged('0045_drop_listing_v1_columns'), _staged('0046_drop_prop_fts_gin')
+        self.assertEqual(m45.Migration.dependencies, [('properties', '0044_geo_point_index')])
+        self.assertEqual(m46.Migration.dependencies, [('properties', '0045_drop_listing_v1_columns')])
+        self.assertFalse(m46.Migration.atomic)
 
     def test_gate_refuses_on_drift(self):
-        m42 = _staged('0042_drop_listing_v1_columns')
+        m42 = _staged('0045_drop_listing_v1_columns')
         _, org = make_developer()
         p = make_property(org=org)
         _without_triggers("UPDATE properties SET area_marla = 99 WHERE id = %s", [p.pk])
@@ -188,7 +188,7 @@ class StagedContractMigrationTest(TestCase):
             m42.gate(None, connection.schema_editor())
 
     def test_drop_then_restore(self):
-        m42 = _staged('0042_drop_listing_v1_columns')
+        m42 = _staged('0045_drop_listing_v1_columns')
         _, org = make_developer()
         p = make_property(org=org, category='land', size_value=3)
         m42.gate(None, connection.schema_editor())

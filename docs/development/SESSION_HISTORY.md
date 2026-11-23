@@ -228,6 +228,10 @@
 - **Not committed.**
 
 ### Handoff → session 10
-1. `git status`: the owner committed everything through T‑1060a as `6fc5634`. Uncommitted: **T‑1070g‑1 only** (`properties 0040/0041`, `listing_contract.py`, `check_listing_contract`, `apps/properties/contract_migrations/`, the reader/serializer/test changes). **Do not commit.** `scripts/dev/test.sh` should give 1862 passed, 1 skipped.
-2. **Deploy order** for this batch: run `migrate` before the new pods serve (GO_LIVE §22). After the rollout, run `check_listing_contract`. **T‑1070g‑2** is staged; move it in only for the following release (see the README there).
-3. Next: **T‑1060b** (PostGIS test image + point/GiST/radius; deploy only once PostGIS exists), then T‑1060c (Google, flag off, mocked), then T‑1080 → T‑1011 → T‑1110 → T‑1120 → T‑1032b.
+1. `git status`: the owner committed through T‑1070g‑1 (`493309b`). Uncommitted: **T‑1060b** (`apps/geo/`, `properties 0042–0044`, serializer/view/discovery changes, the PostGIS test image, the staged contract migrations renumbered to 0045/0046). **Do not commit.** `scripts/dev/test.sh` should give 1874 passed, 1 skipped. The first run recreates the DB container on the PostGIS image.
+2. **Deploy:**
+   - Migrate before rollout (GO_LIVE §22/§23). 0044 is concurrent.
+   - After the rollout, run `check_listing_contract`.
+   - T‑1070g‑2 (staged 0045/0046) goes in the following release.
+   - PostGIS stays optional until you install it; then run `geo_setup` and set the flag.
+3. Next: **T‑1060c** (Google geocoding of location centroids, flag off, HTTP mocked), then T‑1080 → T‑1011 → T‑1110 → T‑1120 → T‑1032b.

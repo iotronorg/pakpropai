@@ -323,7 +323,7 @@
   - `apps/properties/listing_contract.py` (trigger SQL, drift and invalid‑category repair, `status`/`problems` gate);
   - migrations `0040_listing_v1_state_removal` (state‑only removal + trigger) and `0041_repair_v1_drift` (non‑atomic);
   - the command `check_listing_contract`;
-  - `apps/properties/contract_migrations/` (staged `0042`, `0043`, README);
+  - `apps/properties/contract_migrations/` (staged `0042`, `0043` (renumbered to `0045`/`0046` in T‑1060b), README);
   - `tests/test_listing_contract.py` (16).
 - **Removed:**
   - the `Property` fields `area_marla`/`area_unit`/`area_sqm`/`property_type`, their index, `prop_fts_gin` and the dual‑write `_sync_size`/`_sync_taxonomy` (the model now has `_normalise_size_and_taxonomy`, `_compute_size_m2` as a Decimal, and a derived `property_type`);
@@ -334,3 +334,17 @@
   - views (`?type=`, market report), `reports/generator.py`, `reports/views.py`, `organizations/views.py`, `recommendations.py`, `search.py`, `ai/tools.py` (list_property create), `ai/context.py`, `seed_data`;
   - tests: factories (legacy kwargs translated), `test_size_v2`, `test_taxonomy_amenities`, `test_markets`, `test_discovery_engine`, `test_compliance_filters`, `test_payment_webhooks_deal_lock`, `test_copilot_stream`;
   - `apps/properties/tests.py`: an order‑dependent search test now sets the scraper flag explicitly.
+
+### 2026-11-23 — session 9 (fifth part): T‑1060b geo search
+- **Added:**
+  - `apps/geo/` (`sql.py` trigger and GiST SQL, `search.py` with `within_radius`/`within_bbox`/`postgis_ready`/`bbox_for_radius`, the `geo_setup` command);
+  - migrations `properties 0042_geo_point_expand`, `0043_backfill_geo_point`, `0044_geo_point_index`;
+  - settings `GEO_POSTGIS_ENABLED` and `GEO_MAX_RADIUS_KM`;
+  - `tests/test_geo.py` (12).
+- **Changed:**
+  - `Property`: `geo_lat`/`geo_lng` and `_public_point()`, set in `save()`;
+  - serializers: `GeoPointMixin` (masked coordinates, `distance_km`, coordinate validation), `viewer_sees_exact_point`;
+  - views: `apply_geo_filters`, `distance_km` ordering, and no early `return qs.none()` (that caused a 500 with `ordering=distance_km`);
+  - `whatsapp/discovery_engine.py`: tier 2 now uses SQL;
+  - `scripts/dev/test.sh`, `.github/workflows/ci.yml` and `docker-compose.yml` now use the PostGIS image;
+  - the staged contract migrations were renumbered to 0045/0046.

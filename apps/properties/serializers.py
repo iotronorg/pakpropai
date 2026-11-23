@@ -140,6 +140,61 @@ class LocationRefOut(serializers.Field):
         return {'id': loc.pk, 'name': loc.name, 'level': loc.level, 'path': loc.path}
 
 
+def viewer_sees_exact_point(context, prop) -> bool:
+    """Owner, the listing's organisation, or staff see exact coordinates (FR-LST-003)."""
+    request = context.get('request')
+    user = getattr(request, 'user', None)
+    if user is None or not user.is_authenticated:
+        return False
+    if user.is_staff or getattr(user, 'role', None) == 'admin' or prop.owner_id == user.pk:
+        return True
+    if not prop.organization_id:
+        return False
+    if '_viewer_org_id' not in context:                     # once per response
+        from apps.core.permissions import get_user_org
+        org = get_user_org(user)
+        context['_viewer_org_id'] = org.pk if org else None
+    return context['_viewer_org_id'] == prop.organization_id
+
+
+class GeoPointMixin:
+    """
+    latitude/longitude: exact for privileged viewers, else the public point
+    (snapped to ~1 km for private-seller/approximate listings). distance_km
+    (from ?near=) is rounded to 0.1 km, or to whole km when the point is snapped.
+    """
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if 'latitude' in data and not viewer_sees_exact_point(self.context, instance):
+            data['latitude'] = _coord(instance.geo_lat)
+            data['longitude'] = _coord(instance.geo_lng)
+        if 'distance_km' in data:
+            d = getattr(instance, 'distance_km', None)
+            exact = instance.geo_lat is not None and instance.geo_lat == instance.latitude \
+                and instance.geo_lng == instance.longitude
+            data['distance_km'] = None if d is None else (round(d, 1) if exact else float(round(d)))
+        return data
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        lat = attrs.get('latitude', getattr(self.instance, 'latitude', None))
+        lng = attrs.get('longitude', getattr(self.instance, 'longitude', None))
+        if (lat is None) != (lng is None):
+            raise serializers.ValidationError({'latitude': 'Send latitude and longitude together.'})
+        if lat is not None:
+            from apps.geo.search import validate_point
+            try:
+                validate_point(lat, lng)
+            except ValueError as exc:
+                raise serializers.ValidationError({'latitude': str(exc)})
+        return attrs
+
+
+def _coord(v):
+    return None if v is None else f'{v:.6f}'
+
+
 class ListingV2ValidationMixin:
     """Cross-field rules for listing schema v2 (T-1070a/b/d); partial updates merge the instance."""
 
@@ -228,15 +283,18 @@ class ListingV2ValidationMixin:
             return super().update(instance, validated_data)
 
 
-class PropertyListSerializer(LegacyReadAliases, serializers.ModelSerializer):
+class PropertyListSerializer(GeoPointMixin, LegacyReadAliases, serializers.ModelSerializer):
     """Lightweight serializer for list views."""
     primary_image = serializers.SerializerMethodField()
     amenities     = AmenityKeysField(many=True, read_only=True)
     location_ref  = LocationRefOut()
+    distance_km   = serializers.FloatField(read_only=True, required=False, default=None,
+                                           help_text='Only with ?near=: km to the public point.')
 
     class Meta:
         model  = Property
-        fields = ('id', 'ref_no', 'title', 'city', 'location',
+        fields = ('id', 'ref_no', 'title', 'city', 'location', 'latitude', 'longitude',
+                  'location_precision', 'distance_km',
                   'size_value', 'size_unit', 'size_m2',
                   'area_marla', 'area_unit', 'area_sqm',
                   'price', 'country', 'currency',
@@ -255,7 +313,8 @@ class PropertyListSerializer(LegacyReadAliases, serializers.ModelSerializer):
         return request.build_absolute_uri(url) if request else url
 
 
-class PropertyDetailSerializer(ListingV2ValidationMixin, LegacyWriteAliases, serializers.ModelSerializer):
+class PropertyDetailSerializer(GeoPointMixin, ListingV2ValidationMixin, LegacyWriteAliases,
+                               serializers.ModelSerializer):
     owner_phone   = serializers.CharField(source='owner.phone', read_only=True)
     images        = PropertyImageSerializer(many=True, read_only=True)
     primary_image = serializers.SerializerMethodField()
@@ -271,7 +330,7 @@ class PropertyDetailSerializer(ListingV2ValidationMixin, LegacyWriteAliases, ser
                   'area_marla', 'area_unit', 'area_sqm',
                   'price', 'country', 'currency',
                   'property_type', 'category', 'subtype', 'amenities',
-                  'location_id', 'location_ref', 'location_precision',
+                  'location_id', 'location_ref', 'location_precision', 'latitude', 'longitude',
                   'furnished_status', 'construction_status',
                   'legal_status', 'ai_score', 'risk_level', 'assigned_agent',
                   'installment_available', 'raw_docs', 'ai_analysis',
@@ -294,7 +353,8 @@ class PropertyDetailSerializer(ListingV2ValidationMixin, LegacyWriteAliases, ser
         return request.build_absolute_uri(url) if request else url
 
 
-class PropertyCreateSerializer(ListingV2ValidationMixin, LegacyWriteAliases, serializers.ModelSerializer):
+class PropertyCreateSerializer(GeoPointMixin, ListingV2ValidationMixin, LegacyWriteAliases,
+                               serializers.ModelSerializer):
     owner = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.all(), required=False, allow_null=True
     )
@@ -308,7 +368,7 @@ class PropertyCreateSerializer(ListingV2ValidationMixin, LegacyWriteAliases, ser
                   'area_marla', 'area_unit',
                   'price', 'country', 'currency',
                   'property_type', 'category', 'subtype', 'amenities', 'furnished_status',
-                  'location_id', 'location_precision',
+                  'location_id', 'location_precision', 'latitude', 'longitude',
                   'construction_status', 'legal_status', 'assigned_agent', 'owner',
                   'purpose', 'bedrooms', 'bathrooms', 'floor', 'total_floors', 'year_built',
                   'parking_spaces', 'pets_allowed', 'price_type', 'price_negotiable',
