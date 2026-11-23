@@ -1,3 +1,4 @@
+from apps.properties.taxonomy import property_type_expression  # T-1070g
 import datetime
 import logging
 
@@ -297,7 +298,7 @@ class PropertyReportView(APIView):
             org = get_user_org(request.user)
             qs = qs.filter(organization=org) if org else qs.none()
 
-        by_type   = dict(qs.values_list('property_type').annotate(c=Count('id')).values_list('property_type', 'c'))
+        by_type   = dict(qs.annotate(ptype=property_type_expression()).values_list('ptype').annotate(c=Count('id')).values_list('ptype', 'c'))
         by_legal  = dict(qs.values_list('legal_status').annotate(c=Count('id')).values_list('legal_status', 'c'))
         by_risk   = dict(qs.values_list('risk_level').annotate(c=Count('id')).values_list('risk_level', 'c'))
         by_city   = dict(qs.values_list('city').annotate(c=Count('id')).values_list('city', 'c'))

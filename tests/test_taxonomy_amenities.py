@@ -1,15 +1,10 @@
 """
-T-1070d — listing category/subtype taxonomy (with property_type as a synced,
-deprecated alias) and the amenity taxonomy: model sync, backfill/drift repair,
+T-1070d — listing category/subtype taxonomy (property_type is a derived,
+deprecated alias since T-1070g-1) and the amenity taxonomy: model rules,
 seed, API read/write by key, list filters, the taxonomy endpoint, and the
 search service / AI tool amenity filter.
 """
-import importlib
-from io import StringIO
-
 from django.core.exceptions import ValidationError
-from django.core.management import call_command
-from django.db import connection
 from django.test import TestCase
 from rest_framework.test import APIClient
 
@@ -48,58 +43,12 @@ class ModelSyncTest(TestCase):
         p.refresh_from_db()
         self.assertEqual((p.category, p.subtype), ('hospitality', 'hotel'))
 
-    def test_v1_writer_wins_when_category_untouched_and_clears_subtype(self):
-        p = Property.objects.get(pk=make_property(org=self.org, category='residential',
-                                                  subtype='house').pk)
-        p.property_type = 'plot'                 # pre-v2 style write
-        p.save()
-        p.refresh_from_db()
-        self.assertEqual((p.category, p.subtype), ('land', None))
-
-    def test_changed_category_wins_over_property_type(self):
-        p = Property.objects.get(pk=make_property(org=self.org).pk)
-        p.category, p.property_type = 'industrial', 'residential'
-        p.save()
-        p.refresh_from_db()
-        self.assertEqual((p.category, p.property_type), ('industrial', 'industrial'))
-
-    def test_update_fields_are_extended_and_deferred_load_syncs(self):
-        pk = make_property(org=self.org, category='residential', subtype='apartment').pk
-        p = Property.objects.only('id', 'property_type').get(pk=pk)
-        p.property_type = 'commercial'
-        p.save(update_fields=['property_type'])
-        p = Property.objects.get(pk=pk)
-        self.assertEqual((p.category, p.subtype), ('commercial', None))
-
     def test_clean_rejects_foreign_subtype(self):
         p = make_property(org=self.org, category='residential')
         p.subtype = 'warehouse'
         with self.assertRaises(ValidationError) as cm:
             p.full_clean()
         self.assertIn('subtype', cm.exception.message_dict)
-
-
-class BackfillAndDriftTest(TestCase):
-    def test_backfill_and_sync_command(self):
-        _, org = make_developer()
-        a = make_property(org=org, property_type='plot', location='A')
-        b = make_property(org=org, category='hospitality', subtype='hotel', location='B')
-        # Simulate un-backfilled rows and a pre-v2 pod's write.
-        Property.objects.filter(pk=a.pk).update(category=None)
-        self.assertEqual(taxonomy.count_drift(), 1)
-        mig = importlib.import_module('apps.properties.migrations.0032_backfill_category')
-        mig.backfill(None, connection.schema_editor())
-        self.assertEqual(Property.objects.get(pk=a.pk).category, 'land')
-        self.assertEqual(Property.objects.get(pk=b.pk).category, 'hospitality')   # consistent: untouched
-
-        Property.objects.filter(pk=b.pk).update(property_type='industrial')
-        out = StringIO()
-        call_command('sync_listing_taxonomy', '--dry-run', stdout=out)
-        self.assertIn('1 listing(s) out of sync', out.getvalue())
-        call_command('sync_listing_taxonomy', stdout=StringIO())
-        b = Property.objects.get(pk=b.pk)
-        self.assertEqual((b.category, b.subtype), ('industrial', None))
-        self.assertEqual(taxonomy.count_drift(), 0)
 
 
 class SeedTest(TestCase):

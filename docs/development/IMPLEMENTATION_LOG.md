@@ -317,3 +317,20 @@
   - properties: `LocationRefField` (write `location_id`), `LocationRefOut` (read `location_ref`), a market check, `?location_id=` with descendants, matching on create and on update when the text changes;
   - settings: the `apps.locations` app and the hourly beat `link-unmatched-listings`;
   - tests: `tests/test_locations.py` (19).
+
+### 2026-11-23 — session 9 (fourth part): T‑1070g‑1 contract and staged g‑2
+- **Added:**
+  - `apps/properties/listing_contract.py` (trigger SQL, drift and invalid‑category repair, `status`/`problems` gate);
+  - migrations `0040_listing_v1_state_removal` (state‑only removal + trigger) and `0041_repair_v1_drift` (non‑atomic);
+  - the command `check_listing_contract`;
+  - `apps/properties/contract_migrations/` (staged `0042`, `0043`, README);
+  - `tests/test_listing_contract.py` (16).
+- **Removed:**
+  - the `Property` fields `area_marla`/`area_unit`/`area_sqm`/`property_type`, their index, `prop_fts_gin` and the dual‑write `_sync_size`/`_sync_taxonomy` (the model now has `_normalise_size_and_taxonomy`, `_compute_size_m2` as a Decimal, and a derived `property_type`);
+  - `size_sync.py` and the `sync_listing_size`/`sync_listing_taxonomy` commands, with their tests.
+- **Changed:**
+  - serializers: `LegacyReadAliases`/`LegacyWriteAliases`, with alias mapping and conflict checks in `ListingV2ValidationMixin`;
+  - taxonomy: `categories_for_property_type`, `property_type_expression`, `classify_type_text`; the drift SQL is gone;
+  - views (`?type=`, market report), `reports/generator.py`, `reports/views.py`, `organizations/views.py`, `recommendations.py`, `search.py`, `ai/tools.py` (list_property create), `ai/context.py`, `seed_data`;
+  - tests: factories (legacy kwargs translated), `test_size_v2`, `test_taxonomy_amenities`, `test_markets`, `test_discovery_engine`, `test_compliance_filters`, `test_payment_webhooks_deal_lock`, `test_copilot_stream`;
+  - `apps/properties/tests.py`: an order‑dependent search test now sets the scraper flag explicitly.

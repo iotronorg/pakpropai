@@ -274,7 +274,7 @@ class PropertySearchService:
             .only(
                 'id', 'title', 'city', 'location', 'size_value', 'size_unit', 'size_m2',
                 'price', 'currency',
-                'property_type', 'furnished_status', 'construction_status',
+                'category', 'furnished_status', 'construction_status',
                 'ai_score', 'installment_available', 'legal_status',
                 'organization_id', 'listed_by_agent_id',
                 'purpose', 'price_type', 'price_on_request', 'bedrooms', 'bathrooms',
@@ -295,7 +295,11 @@ class PropertySearchService:
             target_m2 = float(area_marla) * Property._SQM_FACTORS['marla']
             qs = qs.filter(size_m2__gte=target_m2 * 0.8, size_m2__lte=target_m2 * 1.2)
         if property_type:
-            qs = qs.filter(property_type__icontains=property_type)
+            # Legacy type vocabulary (AI tool / WhatsApp): matched on category.
+            from .taxonomy import categories_for_property_type
+            cats = categories_for_property_type(property_type.strip().lower()) or \
+                [c for c in Property.Category.values if property_type.strip().lower() in c]
+            qs = qs.filter(category__in=cats)
         if furnished_status:
             qs = qs.filter(furnished_status=furnished_status)
         if construction_status:

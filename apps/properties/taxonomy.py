@@ -2,8 +2,9 @@
 Listing category/subtype taxonomy (T-1070d, FR-LST-001, ADR-023 addendum).
 
 `category` + `subtype` are the canonical classification. The v1 `property_type`
-(residential/commercial/plot/industrial) stays as a deprecated alias that
-`Property.save()` keeps in sync until the contract step (T-1070g):
+(residential/commercial/plot/industrial) is a derived, read-only value since
+T-1070g-1 (``Property.property_type``; the API alias; a DB trigger mirrors the
+legacy column for older pods until g-2 drops it):
 
     property_type → category : plot → land, others unchanged
     category → property_type : land → plot, hospitality → commercial, others unchanged
@@ -11,12 +12,7 @@ Listing category/subtype taxonomy (T-1070d, FR-LST-001, ADR-023 addendum).
 `hospitality` has no v1 value, so it projects to `commercial`; a row with
 category=hospitality and property_type=commercial is consistent and is never
 "repaired" back to commercial.
-
-The drift SQL serves ``manage.py sync_listing_taxonomy``: pre-v2 pods running
-during a rollout write only `property_type`, so a disagreement means
-`property_type` is the newer value.
 """
-from django.db import connection
 
 CATEGORIES = ('residential', 'commercial', 'industrial', 'land', 'hospitality')
 
@@ -75,32 +71,39 @@ def subtype_errors(category: str | None, subtype: str | None) -> dict:
     return {}
 
 
-# ── Drift repair (rolling deploys) ───────────────────────────────────────────
-_DERIVED_PT = ("CASE category WHEN 'land' THEN 'plot' WHEN 'hospitality' THEN 'commercial' "
-               "ELSE category END")
-_DRIFT = f"category IS NULL OR {_DERIVED_PT} IS DISTINCT FROM property_type"
-_FROM_PT = "CASE property_type WHEN 'plot' THEN 'land' ELSE property_type END"
+# ── Legacy property_type vocabulary (no column since T-1070g-1) ──────────────
+
+def categories_for_property_type(property_type: str | None) -> list[str]:
+    """Categories a legacy ``?type=`` value covers (commercial → commercial + hospitality)."""
+    if not property_type:
+        return []
+    return [c for c in CATEGORIES if property_type_for_category(c) == property_type]
 
 
-def count_drift(cursor=None) -> int:
-    cur = cursor or connection.cursor()
-    cur.execute(f"SELECT count(*) FROM properties WHERE {_DRIFT}")
-    return cur.fetchone()[0]
+def property_type_expression():
+    """ORM expression deriving the legacy type from ``category`` (for values()/grouping)."""
+    from django.db.models import CharField, F, Value, When, Case
+    return Case(
+        *(When(category=c, then=Value(pt)) for c, pt in _CATEGORY_TO_PT.items()),
+        When(category__isnull=True, then=Value('residential')),
+        default=F('category'), output_field=CharField(),
+    )
 
 
-def sync_property_type_to_category(cursor=None, batch_size: int = 5000) -> int:
-    """Derive category from property_type where they disagree (subtype is cleared)."""
-    cur = cursor or connection.cursor()
-    total = 0
-    while True:
-        cur.execute(
-            f"UPDATE properties SET category = {_FROM_PT}, subtype = NULL "
-            f"WHERE id IN (SELECT id FROM properties WHERE {_DRIFT} LIMIT %s)",
-            [batch_size],
-        )
-        total += cur.rowcount
-        if cur.rowcount < batch_size:
-            return total
+_TEXT_TYPES = {
+    'plot': ('land', None), 'land': ('land', None), 'residential': ('residential', None),
+    'commercial': ('commercial', None), 'industrial': ('industrial', None),
+    'hospitality': ('hospitality', None), 'house': ('residential', 'house'),
+    'home': ('residential', 'house'), 'villa': ('residential', 'villa'),
+    'apartment': ('residential', 'apartment'), 'flat': ('residential', 'apartment'),
+    'office': ('commercial', 'office'), 'shop': ('commercial', 'shop'),
+    'warehouse': ('industrial', 'warehouse'), 'hotel': ('hospitality', 'hotel'),
+}
+
+
+def classify_type_text(text: str | None) -> tuple[str, str | None]:
+    """Free-text type from the AI tool ('plot', 'house', 'flat'…) → (category, subtype)."""
+    return _TEXT_TYPES.get((text or '').strip().lower(), ('residential', None))
 
 
 # ── Amenity filters (API list filter + search service) ───────────────────────

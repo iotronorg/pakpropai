@@ -115,9 +115,7 @@ def make_property(
     title='Test Property',
     city='Lahore',
     location='DHA Phase 5',
-    property_type='residential',
     price=5_000_000,
-    area_marla=5,
     **kwargs,
 ):
     """
@@ -128,7 +126,21 @@ def make_property(
       neither             → listing_owner_type='platform'
 
     Pass listing_owner_type explicitly to override the inference.
+    Defaults: category residential, 5 (market unit). The legacy kwargs
+    ``property_type``/``area_marla``/``area_unit`` are translated to
+    category/size_value/size_unit (test convenience; the model has no such
+    fields since T-1070g-1).
     """
+    from apps.properties.taxonomy import category_for_property_type
+    if 'property_type' in kwargs:
+        kwargs.setdefault('category', category_for_property_type(kwargs.pop('property_type')))
+    if 'area_marla' in kwargs:
+        kwargs.setdefault('size_value', kwargs.pop('area_marla'))
+    if 'area_unit' in kwargs:
+        kwargs.setdefault('size_unit', kwargs.pop('area_unit'))
+    kwargs.setdefault('category', 'residential')
+    kwargs.setdefault('size_value', 5)
+
     if 'listing_owner_type' not in kwargs:
         if org is not None:
             kwargs['listing_owner_type'] = 'organization'
@@ -146,9 +158,7 @@ def make_property(
         title=title,
         city=city,
         location=location,
-        property_type=property_type,
         price=price,
-        area_marla=area_marla,
         **kwargs,
     )
 

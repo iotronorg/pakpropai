@@ -184,3 +184,10 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
   - `properties.0039`: concurrent index; run it on a direct DB connection.
 - **After rollout:** run `python manage.py match_listing_locations` (batched; prints coverage). Then work the review queue in *Admin → Locations* (filter "verified: No"): verify the real places and merge the misspellings. Restart celery beat so it picks up the hourly `link-unmatched-listings` job.
 - **Branding:** user‑facing text is now RealTron. The WhatsApp OTP template is approved by Meta, so **edit and re‑submit its body text ("Your RealTron AI code is …") in Meta Business Manager**. The code only sends parameters.
+
+## 22. Session‑9 change: listing schema contract, part 1 (T‑1070g‑1)
+- **Order matters:** run `migrate` (`properties 0040` trigger, `0041` non‑atomic repair) **before** rolling out the new pods. Pods of the previous release keep working with these migrations applied. New pods without the trigger would fail inserts (NOT NULL `area_unit`/`property_type`).
+- `sync_listing_size` and `sync_listing_taxonomy` no longer exist. 0041 performs their final repair, and the trigger prevents new drift. The earlier steps in §11/§13 that call them apply only to releases before this one.
+- After the rollout, run `python manage.py check_listing_contract`. It must print `OK`.
+- **Next release (T‑1070g‑2):** follow `apps/properties/contract_migrations/README.md`. Re‑run the check; `git mv` the staged 0042/0043 into `migrations/`; migrate on a direct DB connection (0043 is CONCURRENTLY). Rollback must use the g‑2 build: `migrate properties 0041`.
+- **API:** no breaking change. `area_marla`/`area_unit`/`area_sqm`/`property_type` are still returned and accepted (deprecated aliases). Tell API clients to move to `size_*`/`category`.

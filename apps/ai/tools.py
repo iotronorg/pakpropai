@@ -256,6 +256,8 @@ def list_property(
             return pending
 
         from apps.properties.price_history import price_change_context
+        from apps.properties.taxonomy import classify_type_text
+        category, subtype = classify_type_text(property_type)
         with price_change_context(user=user, source='ai_tool'):
             prop = Property.objects.create(
                 listing_owner_type=Property.ListingOwnerType.CLIENT,
@@ -263,9 +265,11 @@ def list_property(
                 title=title,
                 city=city,
                 location=location,
-                area_marla=area_marla if area_marla else None,
+                size_value=area_marla if area_marla else None,
+                size_unit=Property.AreaUnit.MARLA,          # the tool takes marla
                 price=price,
-                property_type=property_type,
+                category=category,
+                subtype=subtype,
                 furnished_status=furnished or None,
                 construction_status=construction_status or None,
                 description=description,

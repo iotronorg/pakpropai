@@ -1,19 +1,16 @@
 """
-T-1070b — size rename (size_value/size_unit/size_m2) with dual-write,
-backfill/drift repair, and readers on the canonical size (KI-049).
+T-1070b — size rename (size_value/size_unit/size_m2): readers on the
+canonical size (KI-049) and the deprecated API aliases. The v1 mirror is a DB
+trigger since T-1070g-1 (tests/test_listing_contract.py).
 """
-import importlib
 from decimal import Decimal
-from io import StringIO
 
-from django.core.management import call_command
 from django.db import connection
 from django.test import TestCase
 from rest_framework.test import APIClient
 
 from apps.properties.models import Property
 from apps.properties.search import PropertySearchService
-from apps.properties.size_sync import count_drift
 from tests.factories import make_developer, make_property
 
 URL = '/api/v1/properties/'
@@ -23,94 +20,6 @@ def _raw_v1_write(pk, value, unit):
     """What a pre-v2 pod does: writes only the deprecated columns."""
     with connection.cursor() as cur:
         cur.execute("UPDATE properties SET area_marla=%s, area_unit=%s WHERE id=%s", [value, unit, pk])
-
-
-class DualWriteTest(TestCase):
-    def setUp(self):
-        _, self.org = make_developer()
-
-    def test_new_with_v1_only_mirrors_to_v2(self):
-        p = make_property(org=self.org, area_marla=5)
-        p.refresh_from_db()
-        self.assertEqual((p.size_value, p.size_unit), (Decimal('5.00'), 'marla'))
-        self.assertEqual(p.size_m2, p.area_sqm)
-        self.assertAlmostEqual(float(p.size_m2), 126.4645, places=3)
-
-    def test_new_with_v2_mirrors_to_v1(self):
-        p = make_property(org=self.org, area_marla=None, size_value=1, size_unit='kanal')
-        p.refresh_from_db()
-        self.assertEqual((p.area_marla, p.area_unit), (Decimal('1.00'), 'kanal'))
-        self.assertAlmostEqual(float(p.size_m2), 505.857, places=2)
-
-    def test_loaded_object_whichever_pair_changed_wins(self):
-        p = Property.objects.get(pk=make_property(org=self.org, area_marla=5).pk)
-        p.size_value = 8
-        p.save()
-        p.refresh_from_db()
-        self.assertEqual(p.area_marla, Decimal('8.00'))
-        p = Property.objects.get(pk=p.pk)
-        p.area_marla, p.area_unit = 2, 'kanal'      # a v1 writer
-        p.save()
-        p.refresh_from_db()
-        self.assertEqual((p.size_value, p.size_unit), (Decimal('2.00'), 'kanal'))
-
-    def test_update_fields_carry_the_mirror(self):
-        p = Property.objects.get(pk=make_property(org=self.org, area_marla=5).pk)
-        p.size_value = 7
-        p.save(update_fields=['size_value'])
-        p.refresh_from_db()
-        self.assertEqual((p.area_marla, p.size_m2 is not None), (Decimal('7.00'), True))
-        self.assertAlmostEqual(float(p.size_m2), 7 * 25.2929, places=3)
-
-    def test_deferred_load_does_not_clobber(self):
-        pk = make_property(org=self.org, area_marla=5).pk
-        _raw_v1_write(pk, 9, 'marla')                # drift from an old pod
-        p = Property.objects.only('id', 'title').get(pk=pk)
-        p.title = 'Renamed'
-        p.save()                                     # v1 (newer) must win, not stale v2
-        p.refresh_from_db()
-        self.assertEqual((p.area_marla, p.size_value), (Decimal('9.00'), Decimal('9.00')))
-
-    def test_unsaved_size_survives_unrelated_partial_save(self):
-        p = Property.objects.get(pk=make_property(org=self.org, area_marla=5).pk)
-        p.size_value = 9                             # in memory only
-        p.title = 'T3'
-        p.save(update_fields=['title'])
-        p.save(update_fields=['size_value'])
-        p.refresh_from_db()
-        self.assertEqual((p.size_value, p.area_marla), (Decimal('9.00'), Decimal('9.00')))
-
-    def test_unrelated_update_fields_untouched(self):
-        p = Property.objects.get(pk=make_property(org=self.org, area_marla=5).pk)
-        p.title = 'T2'
-        p.save(update_fields=['title'])
-        p.refresh_from_db()
-        self.assertEqual(p.title, 'T2')
-
-
-class BackfillAndDriftTest(TestCase):
-    def test_migration_backfill_and_command(self):
-        _, org = make_developer()
-        pk = make_property(org=org, area_marla=5).pk
-        with connection.cursor() as cur:
-            cur.execute("UPDATE properties SET size_value=NULL, size_unit=NULL, size_m2=NULL WHERE id=%s", [pk])
-        self.assertEqual(count_drift(), 1)
-        mig = importlib.import_module('apps.properties.migrations.0028_backfill_size_v2')
-        with connection.schema_editor() as se:
-            mig.backfill(None, se)
-        self.assertEqual(count_drift(), 0)
-        self.assertEqual(Property.objects.get(pk=pk).size_value, Decimal('5.00'))
-
-        _raw_v1_write(pk, 3, 'kanal')
-        with connection.cursor() as cur:
-            cur.execute("UPDATE properties SET area_sqm=%s WHERE id=%s", [3 * 505.857, pk])
-        out = StringIO()
-        call_command('sync_listing_size', '--dry-run', stdout=out)
-        self.assertIn('1 listing', out.getvalue())
-        call_command('sync_listing_size', stdout=StringIO())
-        p = Property.objects.get(pk=pk)
-        self.assertEqual((p.size_value, p.size_unit), (Decimal('3.00'), 'kanal'))
-        self.assertEqual(count_drift(), 0)
 
 
 class CanonicalSizeReadersTest(TestCase):

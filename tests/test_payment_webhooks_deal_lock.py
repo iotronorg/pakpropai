@@ -36,9 +36,9 @@ def _property(title='Phase5 Property'):
         title=title,
         city='Lahore',
         location='DHA Phase 5',
-        property_type='residential',
+        category='residential',
         price=5_000_000,
-        area_marla=5,
+        size_value=5,
     )
 
 

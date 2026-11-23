@@ -8,7 +8,6 @@ from django.db.models.functions import Upper
 from django.conf import settings
 from django.utils import timezone
 
-from .text_search import search_vector
 from . import taxonomy
 
 
@@ -195,27 +194,12 @@ class Property(models.Model):
         'cent':   40.4686,
     }
 
-    # ── Size — unit-agnostic ───────────────────────────────────────────────────
-    area_marla    = models.DecimalField(
-                        max_digits=10, decimal_places=2, null=True, blank=True,
-                        help_text='Numeric size in the unit specified by area_unit',
-                    )
-    area_unit     = models.CharField(
-                        max_length=10,
-                        choices=AreaUnit.choices,
-                        default=default_area_unit,
-                        help_text='Unit for area_marla — marla, kanal, sqft, sqm, acre, etc.',
-                    )
-    area_sqm      = models.DecimalField(
-                        max_digits=12, decimal_places=4, null=True, blank=True,
-                        help_text='Canonical area in square metres — auto-computed from area_marla + area_unit on save',
-                    )
-    # ── Size v2 (T-1070b, ADR-023 / GAP-045) ─────────────────────────────────
-    # Canonical names. Kept in sync with the deprecated area_marla/area_unit/area_sqm
-    # by save() until the contract step (T-1070g). Nullable: pre-v2 inserts omit them.
+    # ── Size (T-1070b; legacy area_marla/area_unit/area_sqm removed from the
+    # model in T-1070g-1, mirrored by a DB trigger until the columns drop in g-2)
     size_value    = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True,
                         help_text='Size in size_unit')
-    size_unit     = models.CharField(max_length=10, choices=AreaUnit.choices, null=True, blank=True)
+    size_unit     = models.CharField(max_length=10, choices=AreaUnit.choices, null=True, blank=True,
+                        default=default_area_unit)
     size_m2       = models.DecimalField(max_digits=12, decimal_places=4, null=True, blank=True,
                         help_text='Canonical size in square metres (computed)')
     plot_size_m2  = models.DecimalField(max_digits=12, decimal_places=4, null=True, blank=True,
@@ -241,11 +225,11 @@ class Property(models.Model):
                         help_text='ISO 4217 currency code, e.g. PKR, AED, USD, GBP',
                     )
 
-    property_type        = models.CharField(max_length=30, choices=PropertyType.choices, default=PropertyType.RESIDENTIAL,
-                               help_text='Deprecated (T-1070d): derived from category until T-1070g')
-    # ── Taxonomy (T-1070d). Nullable: pre-v2 inserts omit them; save() derives
-    # category from property_type and sync_listing_taxonomy repairs rollout drift.
-    category             = models.CharField(max_length=20, choices=Category.choices, null=True, blank=True)
+    # ── Taxonomy (T-1070d). The legacy property_type column left the model in
+    # T-1070g-1 (a DB trigger mirrors it for older pods until g-2 drops it);
+    # ``property_type`` below is a read-only derived value.
+    category             = models.CharField(max_length=20, choices=Category.choices, null=True, blank=True,
+                                            default=Category.RESIDENTIAL)
     subtype              = models.CharField(max_length=40, choices=SUBTYPE_CHOICES, null=True, blank=True)
     amenities            = models.ManyToManyField('Amenity', through='ListingAmenity',
                                                   related_name='listings', blank=True)
@@ -315,7 +299,6 @@ class Property(models.Model):
             models.Index(fields=['listing_owner_type']),
             models.Index(fields=['organization', 'is_active']),
             models.Index(fields=['owner']),
-            models.Index(fields=['property_type']),
             models.Index(fields=['purpose', 'is_active'], name='prop_purpose_active_idx'),
             models.Index(fields=['category', 'is_active'], name='prop_category_active_idx'),
             models.Index(fields=['location_ref', 'is_active'], name='prop_location_ref_idx'),
@@ -323,11 +306,10 @@ class Property(models.Model):
             models.Index(fields=['is_active', 'city']),
             models.Index(fields=['is_active', 'created_at']),
             # ── Search indexes (T-1100, ADR-015; migration 0022) ──────────────
-            # Full-text: the expression must match text_search.search_vector().
-            # Legacy expression index, used by pre-T-1070f pods; dropped in a
-            # later release (T-1070g) once no pod queries the expression.
-            GinIndex(search_vector(), name='prop_fts_gin'),
-            GinIndex(fields=['search_tsv'], name='prop_search_tsv_gin'),     # 0037
+            # Full-text on the trigger-maintained search_tsv (T-1070f, 0037).
+            # The legacy expression index prop_fts_gin left the model in
+            # T-1070g-1 and is dropped concurrently in g-2.
+            GinIndex(fields=['search_tsv'], name='prop_search_tsv_gin'),
             # Trigram on UPPER(col): serves Django's icontains/iexact SQL
             # (UPPER(col::text) LIKE/= UPPER(%s)) used by search, recs, API.
             GinIndex(OpClass(Upper('city'), name='gin_trgm_ops'), name='prop_city_trgm'),
@@ -403,8 +385,7 @@ class Property(models.Model):
         floor, total = data.get('floor'), data.get('total_floors')
         if floor is not None and total is not None and floor > total:
             errors['floor'] = 'Must not exceed total_floors.'
-        category = (data.get('category')
-                    or taxonomy.category_for_property_type(data.get('property_type')))
+        category = data.get('category') or cls.Category.RESIDENTIAL
         errors.update(taxonomy.subtype_errors(category, data.get('subtype')))
         year = data.get('year_built')
         if year is not None and not (1800 <= year <= timezone.now().year + 10):
@@ -447,57 +428,36 @@ class Property(models.Model):
             counter.save(update_fields=['last_seq'])
         return f"RT-{city_code}-{year}-{str(counter.last_seq).zfill(9)}"
 
-    def _compute_area_sqm(self):
-        if self.area_marla is None:
+    def _compute_size_m2(self):
+        """size_value × unit factor, as a Decimal with the column's 4 places (KI-051)."""
+        if self.size_value is None:
             return None
-        factor = self._SQM_FACTORS.get(self.area_unit or 'marla', 1.0)
-        return round(float(self.area_marla) * factor, 4)
+        from decimal import ROUND_HALF_UP, Decimal
+        factor = Decimal(str(self._SQM_FACTORS.get(self.size_unit or 'marla', 1.0)))
+        return (Decimal(str(self.size_value)) * factor).quantize(Decimal('0.0001'), ROUND_HALF_UP)
 
-    # ── Size v2 sync (T-1070b) ──────────────────────────────────────────────
-    _SIZE_V1 = ('area_marla', 'area_unit', 'area_sqm')
-    _SIZE_V2 = ('size_value', 'size_unit', 'size_m2')
+    @property
+    def property_type(self) -> str:
+        """Legacy coarse type, derived from category (land → plot, hospitality → commercial)."""
+        return taxonomy.property_type_for_category(self.category) or self.PropertyType.RESIDENTIAL
 
     @classmethod
     def from_db(cls, db, field_names, values):
         inst = super().from_db(db, field_names, values)
-        names = ('area_marla', 'area_unit', 'size_value', 'size_unit')
-        # Deferred size fields (.only()): state unknown → the v1 pair wins on save.
-        inst._size_loaded = (inst._size_state() if all(n in inst.__dict__ for n in names)
-                             else 'deferred')
         inst._price_loaded = inst._price_state()
-        inst._taxonomy_loaded = (inst._taxonomy_state()
-                                 if all(n in inst.__dict__ for n in ('property_type', 'category'))
-                                 else 'deferred')
         inst._country_loaded = inst.__dict__.get('country', 'deferred')
         return inst
 
-    # ── Taxonomy sync (T-1070d) ─────────────────────────────────────────────
-    _TAXONOMY_FIELDS = ('property_type', 'category', 'subtype')
+    _SIZE_FIELDS = ('size_value', 'size_unit', 'size_m2')
+    _TAXONOMY_FIELDS = ('category', 'subtype')
 
-    def _taxonomy_state(self):
+    def _normalise_size_and_taxonomy(self):
+        """size_m2 follows size_value/size_unit; a subtype outside the category is cleared."""
         d = self.__dict__
-        return (d.get('property_type'), d.get('category'))
-
-    def _sync_taxonomy(self):
-        """
-        Keep category and the deprecated property_type consistent.
-        A category changed since load (or set on a new object) wins and projects
-        to property_type; otherwise property_type wins (pre-v2 writers,
-        un-backfilled rows, deferred loads) and a subtype that no longer fits
-        the derived category is cleared.
-        """
-        loaded = getattr(self, '_taxonomy_loaded', None)
-        if loaded == 'deferred':
-            category_changed = False
-        elif loaded:
-            category_changed = self.category != loaded[1]
-        else:                                # new, unsaved object
-            category_changed = self.category is not None
-        if category_changed and self.category:
-            self.property_type = taxonomy.property_type_for_category(self.category)
-        elif taxonomy.property_type_for_category(self.category) != self.property_type:
-            self.category = taxonomy.category_for_property_type(self.property_type)
-        if self.subtype and taxonomy.subtype_errors(self.category, self.subtype):
+        if 'size_value' in d and 'size_unit' in d:
+            self.size_m2 = self._compute_size_m2()
+        if 'category' in d and 'subtype' in d and self.subtype and \
+                taxonomy.subtype_errors(self.category, self.subtype):
             self.subtype = None
 
     # ── Price history (T-1070c) ─────────────────────────────────────────────
@@ -534,38 +494,9 @@ class Property(models.Model):
             changed_by=current_actor(), source=current_source(),
         )
 
-    def _size_state(self):
-        d = self.__dict__                    # never triggers a deferred-field fetch
-        return (d.get('area_marla'), d.get('area_unit'), d.get('size_value'), d.get('size_unit'))
-
-    def _sync_size(self):
-        """
-        Keep (size_value, size_unit) and the deprecated (area_marla, area_unit) equal.
-        The v2 pair wins when it was changed since load (or set on a new object);
-        otherwise the v1 pair wins: it covers pre-v2 writers and un-backfilled rows.
-        """
-        loaded = getattr(self, '_size_loaded', None)
-        v1 = (self.area_marla, self.area_unit)
-        v2 = (self.size_value, self.size_unit)
-        if loaded == 'deferred':
-            v2_changed = False
-        elif loaded:
-            v2_changed = v2 != loaded[2:]
-        else:                                # new, unsaved object
-            v2_changed = self.size_value is not None
-        if v2_changed:
-            self.area_marla = self.size_value
-            if self.size_unit:
-                self.area_unit = self.size_unit
-        elif v2 != v1:
-            self.size_value, self.size_unit = v1
-        if self.size_unit is None:
-            self.size_unit = self.area_unit
-        self.area_sqm = self.size_m2 = self._compute_area_sqm()
-
     def size_in(self, unit: str) -> float | None:
         """Size converted to ``unit`` (an AreaUnit value) via the canonical m²."""
-        m2 = self.size_m2 if self.size_m2 is not None else self._compute_area_sqm()
+        m2 = self.size_m2 if self.size_m2 is not None else self._compute_size_m2()
         factor = self._SQM_FACTORS.get(unit)
         if m2 is None or not factor:
             return None
@@ -577,7 +508,7 @@ class Property(models.Model):
             return ''
         v = float(self.size_value)
         num = f"{v:,.0f}" if v.is_integer() else f"{v:,.2f}".rstrip('0').rstrip('.')
-        return f"{num} {self.size_unit or self.area_unit}"
+        return f"{num} {self.size_unit or ''}".strip()
 
     def derive_is_sandbox(self) -> bool:
         """ADR-002: platform demo listings and non-production orgs are sandbox."""
@@ -603,15 +534,14 @@ class Property(models.Model):
                 kwargs['update_fields'] = list(set(kwargs['update_fields']) | {'market'})
         if not self.ref_no:
             self.ref_no = self._build_ref_no()
-        self._sync_size()
-        self._sync_taxonomy()
+        self._normalise_size_and_taxonomy()
         update_fields = kwargs.get('update_fields')
         if update_fields is not None:
             touched = set(update_fields)
-            if touched & set(self._SIZE_V1 + self._SIZE_V2):
-                touched |= set(self._SIZE_V1 + self._SIZE_V2)
-            if touched & set(self._TAXONOMY_FIELDS):
-                touched |= set(self._TAXONOMY_FIELDS)
+            if touched & {'size_value', 'size_unit'}:
+                touched.add('size_m2')
+            if 'category' in touched:
+                touched.add('subtype')
             kwargs['update_fields'] = list(touched)
         adding = self._state.adding
         with transaction.atomic():                   # listing + its price-history row together
@@ -620,12 +550,8 @@ class Property(models.Model):
         # Refresh a snapshot only when its fields were written (else it would
         # mark unsaved in-memory values as persisted).
         written = None if update_fields is None else set(kwargs['update_fields'])
-        if written is None or written & set(self._SIZE_V1 + self._SIZE_V2):
-            self._size_loaded = self._size_state()
         if written is None or written & set(self._PRICE_FIELDS):
             self._price_loaded = self._price_state()
-        if written is None or written & set(self._TAXONOMY_FIELDS):
-            self._taxonomy_loaded = self._taxonomy_state()
         if written is None or 'country' in written:
             self._country_loaded = self.__dict__.get('country', 'deferred')
 

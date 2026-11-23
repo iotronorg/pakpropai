@@ -112,7 +112,7 @@ class DynamicContextBuilder:
                     Property.objects
                     .filter(organization=org, is_active=True)
                     .order_by('-created_at')
-                    .values('title', 'city', 'location', 'price', 'currency', 'property_type')[:5]
+                    .values('title', 'city', 'location', 'price', 'currency')[:5]
                 )
                 if sample:
                     lines.append('Inventory sample (live):')

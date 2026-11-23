@@ -81,7 +81,7 @@ class RecommendationEngineTests(TestCase):
             city='Dubai',
             price=500000,
             currency='AED',
-            area_sqm=200,
+            size_value=200, size_unit='sqm',
             is_active=True,
         )
         from apps.whatsapp.copilot_stream import CopilotIntent

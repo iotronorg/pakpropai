@@ -228,6 +228,6 @@
 - **Not committed.**
 
 ### Handoff → session 10
-1. `git status`: the owner committed T‑1070d/e (`89b230a`). Uncommitted: T‑1070f, T‑1033, T‑1032c, KI‑050, the branding change and T‑1060a (`apps/locations/`, `properties 0038/0039`, `tests/test_locations.py`). **Do not commit.** `scripts/dev/test.sh` should give 1856 passed, 1 skipped.
-2. Next: **T‑1070g‑1** (approved; see the DEVELOPMENT_STATUS "Next task"), then g‑2 as a separate migration set that ships one release later.
-3. Then T‑1060b (PostGIS test image and point; deploy only once PostGIS exists), T‑1060c (Google, flag off, mocked), then T‑1080 → T‑1011 → T‑1110 → T‑1120 → T‑1032b.
+1. `git status`: the owner committed everything through T‑1060a as `6fc5634`. Uncommitted: **T‑1070g‑1 only** (`properties 0040/0041`, `listing_contract.py`, `check_listing_contract`, `apps/properties/contract_migrations/`, the reader/serializer/test changes). **Do not commit.** `scripts/dev/test.sh` should give 1862 passed, 1 skipped.
+2. **Deploy order** for this batch: run `migrate` before the new pods serve (GO_LIVE §22). After the rollout, run `check_listing_contract`. **T‑1070g‑2** is staged; move it in only for the following release (see the README there).
+3. Next: **T‑1060b** (PostGIS test image + point/GiST/radius; deploy only once PostGIS exists), then T‑1060c (Google, flag off, mocked), then T‑1080 → T‑1011 → T‑1110 → T‑1120 → T‑1032b.

@@ -56,7 +56,8 @@ def recommend_for_lead(lead, limit: int = 5) -> list:
 
         allowed = _INTENT_TYPES.get(lead.intent or '', [])
         if allowed:
-            qs = qs.filter(property_type__in=allowed)
+            from .taxonomy import categories_for_property_type
+            qs = qs.filter(category__in=[c for t in allowed for c in categories_for_property_type(t)])
 
         # Fetch up to 100 candidates (pre-sorted by AI score so we don't pull bad listings)
         candidates = list(qs.order_by('-ai_score')[:100])
@@ -78,12 +79,14 @@ def similar_to(prop, limit: int = 5) -> list:
     Matches on same city + property_type; prefers ±30% price range.
     """
     from apps.properties.models import Property
+    from .taxonomy import categories_for_property_type
 
     try:
         qs = (
             Property.objects
             .visible_to(prop.organization_id)
-            .filter(city__iexact=prop.city, property_type=prop.property_type)
+            .filter(city__iexact=prop.city,
+                    category__in=categories_for_property_type(prop.property_type))
             .exclude(id=prop.id)
             .select_related('organization')
         )

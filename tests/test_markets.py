@@ -132,12 +132,12 @@ class DefaultsFollowSettingTest(TestCase):
     def test_pk_by_default(self):
         self.assertEqual((default_country(), default_currency(), default_area_unit()), ('PK', 'PKR', 'marla'))
         p = Property()
-        self.assertEqual((p.country, p.currency, p.area_unit), ('PK', 'PKR', 'marla'))
+        self.assertEqual((p.country, p.currency, p.size_unit), ('PK', 'PKR', 'marla'))
 
     @override_settings(DEFAULT_MARKET='AE')
     def test_other_default_market(self):
         p = Property()
-        self.assertEqual((p.country, p.currency, p.area_unit), ('AE', 'AED', 'sqft'))
+        self.assertEqual((p.country, p.currency, p.size_unit), ('AE', 'AED', 'sqft'))
         self.assertEqual(Organization().country, 'AE')
         self.assertEqual(Lead().budget_currency, 'AED')
         self.assertEqual(Payment().currency, 'AED')

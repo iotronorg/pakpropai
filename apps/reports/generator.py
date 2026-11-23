@@ -1,3 +1,4 @@
+from apps.properties.taxonomy import property_type_expression  # T-1070g
 import logging
 from django.db.models import Avg, Count
 
@@ -86,7 +87,7 @@ def _properties_section(org, start_dt, end_dt) -> dict:
         created_at__lt=end_dt,
     )
     by_type = dict(
-        qs.values_list('property_type').annotate(c=Count('id')).values_list('property_type', 'c')
+        qs.annotate(ptype=property_type_expression()).values_list('ptype').annotate(c=Count('id')).values_list('ptype', 'c')
     )
     avg_score = qs.aggregate(avg=Avg('ai_score'))['avg'] or 0
     return {

@@ -618,3 +618,21 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - geocoding every listing: cost, and the text already names the place;
   - `django-mptt` / `ltree`: a materialised path covers the queries without a new dependency or extension;
   - auto‑verifying matched text: free text is noisy, so a human reviews new places.
+
+### ADR‑023 addendum — T‑1070g contract (2026‑11‑23, session 9)
+- **Owner decisions:** the contract is approved, and money stays in major units (`BigInteger` + ISO currency; no minor‑unit conversion).
+- **Two releases instead of one drop.** The model can only stop selecting a column once no running pod needs it, and the previous release still reads the v1 columns.
+  - **g‑1, `properties 0040/0041`:** a state‑only removal of `area_marla`/`area_unit`/`area_sqm`/`property_type`, their index and `prop_fts_gin`, using `SeparateDatabaseAndState`.
+    - A BEFORE INSERT/UPDATE trigger keeps the v1 columns correct for older pods. v2 is authoritative, except when a write changed only the v1 pair (an older pod), in which case v1 → v2.
+    - 0041 repairs pre‑trigger drift in batches. v1 wins, as the old repair commands did.
+    - 0041 also normalises categories that were never valid (`house`, `flat` …), which came from the unvalidated v1 `property_type`.
+    - This replaces the Python dual‑write and the repair commands.
+  - **g‑2:** drop the trigger, the columns and (concurrently) `prop_fts_gin`.
+    - Staged outside `migrations/` so it cannot ship early. Moved in one release later.
+    - Its first operation is the same gate as `check_listing_contract`: g‑1 applied, trigger present, zero drift, no unknown category. It refuses otherwise.
+    - The reverse restores the columns from v2.
+- **Kept:**
+  - `Property.property_type` as a derived read‑only property, with no setter, so stray writers fail loudly;
+  - the API names `area_marla`/`area_unit`/`area_sqm`/`property_type`, as deprecated aliases computed from and mapped onto v2 (removing them is an API‑version change);
+  - the search/AI/scraper DTO and parameter names (`area_marla` = marla‑equivalent search size, `property_type` = coarse type), because they are not DB columns, and they are also Celery kwargs and LLM tool schemas that must stay stable across rollouts.
+- **Ordering rule:** g‑1 migrations must be applied **before** any g‑1 pod serves traffic. g‑1 inserts rely on the trigger to fill the NOT NULL v1 columns. The previous release is unaffected by 0040/0041.

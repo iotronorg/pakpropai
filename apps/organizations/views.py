@@ -1,3 +1,4 @@
+from apps.properties.taxonomy import property_type_expression  # T-1070g
 import datetime
 import logging
 
@@ -350,7 +351,7 @@ class OrgDashboardView(APIView):
             leads.values_list('intent').annotate(c=Count('id')).values_list('intent', 'c')
         )
         by_prop_type = dict(
-            properties.values_list('property_type').annotate(c=Count('id')).values_list('property_type', 'c')
+            properties.annotate(ptype=property_type_expression()).values_list('ptype').annotate(c=Count('id')).values_list('ptype', 'c')
         )
 
         return Response({

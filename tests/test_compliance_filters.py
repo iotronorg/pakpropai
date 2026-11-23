@@ -88,10 +88,10 @@ def _make_property(
         title='Test Villa DHA',
         city=city,
         location='DHA Phase 5',
-        property_type='residential',
+        category='residential',
         price=price,
         currency='PKR',
-        area_marla=10,
+        size_value=10,
         installment_available=installment_available,
         is_active=True,
     )

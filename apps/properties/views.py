@@ -16,6 +16,7 @@ from apps.core.permissions import IsOwnerOrReadOnly, IsAgentOrAdmin, get_user_or
 from apps.core.query_params import choice_param, int_param
 from apps.core.throttles import PropertySearchThrottle, ScorePropertyThrottle
 from .models import Amenity, Property, PropertyImage
+from .taxonomy import property_type_expression
 from .serializers import (AmenitySerializer, PriceHistorySerializer, PropertyCreateSerializer,
                           PropertyDetailSerializer, PropertyImageSerializer,
                           PropertyListSerializer)
@@ -105,7 +106,8 @@ class PropertyViewSet(viewsets.ModelViewSet):
         if (city := params.get('city')):
             qs = qs.filter(city__iexact=city)
         if (ptype := choice_param(params, 'type', Property.PropertyType.values)):
-            qs = qs.filter(property_type=ptype)
+            from .taxonomy import categories_for_property_type
+            qs = qs.filter(category__in=categories_for_property_type(ptype))   # legacy alias
         if (category := choice_param(params, 'category', Property.Category.values)):
             qs = qs.filter(category=category)
         if (subtype := choice_param(params, 'subtype', [c[0] for c in Property.SUBTYPE_CHOICES])):
@@ -515,6 +517,7 @@ class PropertyMarketTrendsView(APIView):
         data = list(
             qs
             .annotate(period=trunc_fn('created_at', tzinfo=user_timezone(user)))
+            .annotate(property_type=property_type_expression())
             .values('period', 'city', 'property_type')
             .annotate(avg_price=Avg('price'), count=Count('id'))
             .order_by('city', 'period')

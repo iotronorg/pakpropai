@@ -60,8 +60,11 @@ class PropertySearchServiceExecuteTest(TestCase):
         for key in ('page', 'page_size', 'total', 'has_next'):
             self.assertIn(key, pag)
 
+    @patch('apps.config.services.SystemConfigService.scraper_enabled', return_value=True)
     @patch('apps.properties.search.PropertySearchService._from_scrapers', return_value=[])
-    def test_empty_results_returns_no_results_message(self, _):
+    def test_empty_results_returns_no_results_message(self, *_):
+        # Explicit flag: it defaults off, and the test used to depend on a cached
+        # value left by an earlier test.
         result = PropertySearchService.execute(SearchParams(city='Nowhere'))
         self.assertEqual(result['pagination']['total'], 0)
         self.assertIn('follow-up', result['whatsapp_message'])
