@@ -8,6 +8,7 @@ from django.conf import settings
 from django.utils import timezone
 
 from .text_search import search_vector
+from . import taxonomy
 
 
 # Default map — override with CITY_CODE_MAP in Django settings for other markets.
@@ -110,6 +111,17 @@ class Property(models.Model):
         PER_MONTH = 'per_month', 'Per Month'
         PER_YEAR  = 'per_year',  'Per Year'
         PER_SQM   = 'per_sqm',   'Per m²'
+
+    class Category(models.TextChoices):           # FR-LST-001 (T-1070d)
+        RESIDENTIAL = 'residential', 'Residential'
+        COMMERCIAL  = 'commercial',  'Commercial'
+        INDUSTRIAL  = 'industrial',  'Industrial'
+        LAND        = 'land',        'Land'
+        HOSPITALITY = 'hospitality', 'Hospitality'
+
+    SUBTYPE_CHOICES = [(s, taxonomy.subtype_label(s))
+                       for subs in taxonomy.SUBTYPES.values() for s in subs]
+    MAX_AMENITIES = 60
 
     RENT_PURPOSES = frozenset({'rent_long', 'rent_short'})
     PERIODIC_PRICE_TYPES = frozenset({'per_month', 'per_year'})
@@ -218,7 +230,14 @@ class Property(models.Model):
                         help_text='ISO 4217 currency code, e.g. PKR, AED, USD, GBP',
                     )
 
-    property_type        = models.CharField(max_length=30, choices=PropertyType.choices, default=PropertyType.RESIDENTIAL)
+    property_type        = models.CharField(max_length=30, choices=PropertyType.choices, default=PropertyType.RESIDENTIAL,
+                               help_text='Deprecated (T-1070d): derived from category until T-1070g')
+    # ── Taxonomy (T-1070d). Nullable: pre-v2 inserts omit them; save() derives
+    # category from property_type and sync_listing_taxonomy repairs rollout drift.
+    category             = models.CharField(max_length=20, choices=Category.choices, null=True, blank=True)
+    subtype              = models.CharField(max_length=40, choices=SUBTYPE_CHOICES, null=True, blank=True)
+    amenities            = models.ManyToManyField('Amenity', through='ListingAmenity',
+                                                  related_name='listings', blank=True)
     furnished_status     = models.CharField(max_length=20, choices=FurnishedStatus.choices, null=True, blank=True)
     construction_status  = models.CharField(max_length=25, choices=ConstructionStatus.choices, null=True, blank=True)
     legal_status         = models.CharField(max_length=30, choices=LegalStatus.choices, default=LegalStatus.UNVERIFIED)
@@ -283,6 +302,7 @@ class Property(models.Model):
             models.Index(fields=['owner']),
             models.Index(fields=['property_type']),
             models.Index(fields=['purpose', 'is_active'], name='prop_purpose_active_idx'),
+            models.Index(fields=['category', 'is_active'], name='prop_category_active_idx'),
             models.Index(fields=['price']),
             models.Index(fields=['is_active', 'city']),
             models.Index(fields=['is_active', 'created_at']),
@@ -326,6 +346,11 @@ class Property(models.Model):
         if self.price is not None and self.price <= 0:
             raise ValidationError({'price': 'Price must be a positive value.'})
         errors = self.v2_errors(self.__dict__)
+        if 'attributes' not in errors:
+            from apps.markets.services import market_code_for_country
+            market = self.market_id or market_code_for_country(self.country)
+            if (attr_errors := self.attribute_errors(self.attributes, market)):
+                errors['attributes'] = [f'{k}: {v}' for k, v in sorted(attr_errors.items())]
         if errors:
             raise ValidationError(errors)
 
@@ -359,6 +384,9 @@ class Property(models.Model):
         floor, total = data.get('floor'), data.get('total_floors')
         if floor is not None and total is not None and floor > total:
             errors['floor'] = 'Must not exceed total_floors.'
+        category = (data.get('category')
+                    or taxonomy.category_for_property_type(data.get('property_type')))
+        errors.update(taxonomy.subtype_errors(category, data.get('subtype')))
         year = data.get('year_built')
         if year is not None and not (1800 <= year <= timezone.now().year + 10):
             errors['year_built'] = 'Must be between 1800 and ten years from now.'
@@ -372,6 +400,21 @@ class Property(models.Model):
                 errors['attributes'] = (f'At most {cls.ATTRIBUTES_MAX_KEYS} keys and '
                                         f'{cls.ATTRIBUTES_MAX_BYTES} bytes.')
         return errors
+
+    @staticmethod
+    def attribute_schema_for(market_code: str | None) -> dict:
+        """The market's listing attribute schema (T-1070e); {} = no market or no rules."""
+        if not market_code:
+            return {}
+        from apps.markets.services import get_market
+        info = get_market(market_code)
+        return dict(getattr(info, 'listing_schema', None) or {}) if info else {}
+
+    @classmethod
+    def attribute_errors(cls, attributes, market_code: str | None) -> dict:
+        """Per-key errors for ``attributes`` under the market schema (FR-LST-004)."""
+        from apps.markets.listing_schema import attribute_errors
+        return attribute_errors(cls.attribute_schema_for(market_code), attributes or {})
 
     def _build_ref_no(self):
         city_key  = self.city.strip().lower()
@@ -403,7 +446,39 @@ class Property(models.Model):
         inst._size_loaded = (inst._size_state() if all(n in inst.__dict__ for n in names)
                              else 'deferred')
         inst._price_loaded = inst._price_state()
+        inst._taxonomy_loaded = (inst._taxonomy_state()
+                                 if all(n in inst.__dict__ for n in ('property_type', 'category'))
+                                 else 'deferred')
         return inst
+
+    # ── Taxonomy sync (T-1070d) ─────────────────────────────────────────────
+    _TAXONOMY_FIELDS = ('property_type', 'category', 'subtype')
+
+    def _taxonomy_state(self):
+        d = self.__dict__
+        return (d.get('property_type'), d.get('category'))
+
+    def _sync_taxonomy(self):
+        """
+        Keep category and the deprecated property_type consistent.
+        A category changed since load (or set on a new object) wins and projects
+        to property_type; otherwise property_type wins (pre-v2 writers,
+        un-backfilled rows, deferred loads) and a subtype that no longer fits
+        the derived category is cleared.
+        """
+        loaded = getattr(self, '_taxonomy_loaded', None)
+        if loaded == 'deferred':
+            category_changed = False
+        elif loaded:
+            category_changed = self.category != loaded[1]
+        else:                                # new, unsaved object
+            category_changed = self.category is not None
+        if category_changed and self.category:
+            self.property_type = taxonomy.property_type_for_category(self.category)
+        elif taxonomy.property_type_for_category(self.category) != self.property_type:
+            self.category = taxonomy.category_for_property_type(self.property_type)
+        if self.subtype and taxonomy.subtype_errors(self.category, self.subtype):
+            self.subtype = None
 
     # ── Price history (T-1070c) ─────────────────────────────────────────────
     _PRICE_FIELDS = ('price', 'currency', 'price_type', 'price_on_request')
@@ -503,11 +578,15 @@ class Property(models.Model):
         if not self.ref_no:
             self.ref_no = self._build_ref_no()
         self._sync_size()
+        self._sync_taxonomy()
         update_fields = kwargs.get('update_fields')
         if update_fields is not None:
             touched = set(update_fields)
             if touched & set(self._SIZE_V1 + self._SIZE_V2):
-                kwargs['update_fields'] = list(touched | set(self._SIZE_V1 + self._SIZE_V2))
+                touched |= set(self._SIZE_V1 + self._SIZE_V2)
+            if touched & set(self._TAXONOMY_FIELDS):
+                touched |= set(self._TAXONOMY_FIELDS)
+            kwargs['update_fields'] = list(touched)
         adding = self._state.adding
         with transaction.atomic():                   # listing + its price-history row together
             super().save(*args, **kwargs)
@@ -519,6 +598,8 @@ class Property(models.Model):
             self._size_loaded = self._size_state()
         if written is None or written & set(self._PRICE_FIELDS):
             self._price_loaded = self._price_state()
+        if written is None or written & set(self._TAXONOMY_FIELDS):
+            self._taxonomy_loaded = self._taxonomy_state()
 
     def __str__(self):
         return f"[{self.ref_no}] {self.title} — {self.city}"
@@ -551,6 +632,61 @@ class PriceHistory(models.Model):
 
     def __str__(self):
         return f"{self.property_id} {self.currency} {self.price} @ {self.changed_at:%Y-%m-%d}"
+
+
+class Amenity(models.Model):
+    """Amenity taxonomy entry (T-1070d). Seeded by migration 0033; editable in admin."""
+
+    class Group(models.TextChoices):
+        INTERIOR      = 'interior',      'Interior'
+        BUILDING      = 'building',      'Building'
+        OUTDOOR       = 'outdoor',       'Outdoor'
+        SECURITY      = 'security',      'Security'
+        UTILITIES     = 'utilities',     'Utilities'
+        COMMUNITY     = 'community',     'Community'
+        ACCESSIBILITY = 'accessibility', 'Accessibility'
+
+    key        = models.SlugField(max_length=50, unique=True,
+                                  help_text='Stable API identifier, e.g. "gym"')
+    group      = models.CharField(max_length=20, choices=Group.choices)
+    labels     = models.JSONField(default=dict, help_text='Label per language: {"en": "Gym", "ur": "…"}')
+    markets    = models.JSONField(default=list, blank=True,
+                                  help_text='Market codes where it applies; empty = every market')
+    sort_order = models.PositiveSmallIntegerField(default=0)
+    is_active  = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'amenities'
+        ordering = ['group', 'sort_order', 'key']
+
+    def clean(self):
+        if not isinstance(self.labels, dict) or not self.labels.get('en'):
+            raise ValidationError({'labels': 'Needs at least an "en" label.'})
+        if not isinstance(self.markets, list) or not all(
+                isinstance(m, str) and len(m) == 2 and m.isupper() for m in self.markets):
+            raise ValidationError({'markets': 'A list of two-letter market codes.'})
+
+    def label(self, lang: str = 'en') -> str:
+        return (self.labels or {}).get(lang) or (self.labels or {}).get('en') or self.key
+
+    def available_in(self, market_code: str | None) -> bool:
+        return not self.markets or not market_code or market_code in self.markets
+
+    def __str__(self):
+        return self.key
+
+
+class ListingAmenity(models.Model):
+    """A listing has an amenity (T-1070d)."""
+    property   = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='listing_amenities')
+    amenity    = models.ForeignKey(Amenity, on_delete=models.PROTECT, related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'property_amenities'
+        constraints = [models.UniqueConstraint(fields=['property', 'amenity'],
+                                               name='uniq_property_amenity')]
+        indexes = [models.Index(fields=['amenity', 'property'], name='prop_amenity_lookup_idx')]
 
 
 class PropertyImage(models.Model):

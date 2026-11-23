@@ -263,3 +263,24 @@
   - `admin.py`: `save_model` context.
   - `ai/tools.py`: listing creation context.
   - Tests: new `tests/test_price_history.py` (10); `tests/test_size_v2.py` gained 1 test (17).
+
+## Session 9 — 2026-11-23
+- **T‑1070d (ADR‑023 addendum):**
+  - New `apps/properties/taxonomy.py`: categories, subtypes, `property_type` ↔ `category` mapping, `subtype_errors`, drift SQL (`count_drift`, `sync_property_type_to_category`), and the amenity helpers (`parse_amenity_keys`, `active_amenity_keys`, `filter_all_amenities`).
+  - `apps/properties/models.py`: `Category`, `SUBTYPE_CHOICES`, `category`/`subtype`/`amenities` fields, `(category, is_active)` index, taxonomy snapshot in `from_db`, `_sync_taxonomy`, `update_fields` extension, subtype rule in `v2_errors`. New models `Amenity` and `ListingAmenity`.
+  - Migrations `properties.0031` (expand), `0032` (batched backfill), `0033` (seed, 35 amenities, en+ur), `0034` (concurrent index).
+  - New command `sync_listing_taxonomy`.
+  - `serializers.py`: `AmenityKeysField`, `_merge_taxonomy` (deprecated alias and conflict → 400), `_validate_amenities` (active, market, ≤60), atomic create/update, `AmenitySerializer`.
+  - `views.py`: `category`/`subtype`/`amenities` filters (`amenity_keys_param`, ≤10), amenity prefetch (list, mine, recommend, similar), `PropertyTaxonomyView` (`GET properties/taxonomy/`, inline OpenAPI schema). `urls.py`: route added.
+  - `search.py`: `SearchParams.amenities`, `resolve_amenities` (unknown keys dropped), `_scrapers_apply(purpose, amenities)`, DB amenity filter + prefetch, `amenities` in results. `scrapers/base.py`: `PropertyResult.amenities`.
+  - `ai/_tools_search.py`: `amenities` tool argument; `ai/schemas.py`: `PropertySearchFilter.amenities`.
+  - `admin.py`: `AmenityAdmin`, `ListingAmenityInline`, category/subtype columns.
+  - Tests: new `tests/test_taxonomy_amenities.py` (23). `tests/test_markets.py`: the query count is now 2 (one constant amenity prefetch).
+- **T‑1070e (ADR‑023 addendum):**
+  - New `apps/markets/listing_schema.py` (`schema_errors`, `attribute_errors`).
+  - `apps/markets/models.py`: `listing_schema` field, schema check in `clean()`.
+  - `apps/markets/services.py`: `MarketInfo.listing_schema`, cache prefix `market:v2:`.
+  - Migrations `markets.0003` and `0004`.
+  - `apps/properties/models.py`: `attribute_schema_for`, `attribute_errors`, check in `clean()`.
+  - `serializers.py`: `_target_market`, `_validate_attributes` (only when `attributes`/`country` is written).
+  - Tests: new `tests/test_listing_schema.py` (9). `tests/test_listing_schema_v2.py`: its fixture `possession: 'ready'` is now `'available'`, because the PK schema rejects `'ready'`, as intended.

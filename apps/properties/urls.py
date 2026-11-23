@@ -1,6 +1,7 @@
 from django.urls import path
 from rest_framework.routers import DefaultRouter
-from .views import PropertyViewSet, PropertyCompareView, PropertyMarketTrendsView
+from .views import (PropertyCompareView, PropertyMarketTrendsView, PropertyTaxonomyView,
+                    PropertyViewSet)
 
 router = DefaultRouter()
 router.register(r'', PropertyViewSet, basename='property')
@@ -10,4 +11,5 @@ router.register(r'', PropertyViewSet, basename='property')
 urlpatterns = [
     path('compare/',       PropertyCompareView.as_view(),       name='property-compare'),
     path('market-trends/', PropertyMarketTrendsView.as_view(),  name='property-market-trends'),
+    path('taxonomy/',      PropertyTaxonomyView.as_view(),      name='property-taxonomy'),
 ] + router.urls

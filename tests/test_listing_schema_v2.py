@@ -68,13 +68,13 @@ class ApiTest(TestCase):
             'purpose': 'rent_long', 'price_type': 'per_month', 'bedrooms': 3, 'bathrooms': 2,
             'floor': 4, 'total_floors': 10, 'year_built': 2015, 'parking_spaces': 1,
             'pets_allowed': False, 'deposit': 300_000, 'price_negotiable': True,
-            'attributes': {'possession': 'ready'},
+            'attributes': {'possession': 'available'},   # valid under the PK schema (T-1070e),
         }, format='json')
         self.assertEqual(r.status_code, 201, r.data)
         p = Property.objects.get(title='Flat')
         self.assertEqual((p.purpose, p.price_type, p.bedrooms, p.deposit), ('rent_long', 'per_month', 3, 300_000))
         d = self.c.get(f'{URL}{p.pk}/').data
-        self.assertEqual((d['purpose'], d['bedrooms'], d['attributes']), ('rent_long', 3, {'possession': 'ready'}))
+        self.assertEqual((d['purpose'], d['bedrooms'], d['attributes']), ('rent_long', 3, {'possession': 'available'}))
         row = self.c.get(URL).data['results'][0]
         self.assertEqual((row['purpose'], row['price_type'], row['bathrooms']), ('rent_long', 'per_month', 2))
 

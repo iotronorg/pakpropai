@@ -54,6 +54,8 @@ class PropertySearchFilter(BaseModel):
     furnished:     Optional[Literal['furnished', 'semi_furnished', 'unfurnished']] = None
     purpose:       Literal['buy', 'rent', ''] = ''
     bedrooms:      Optional[int]  = Field(None, ge=0, le=50, description="Minimum bedrooms")
+    amenities:     list[str]      = Field(default_factory=list, max_length=10,
+                       description="Required amenity keys (taxonomy, e.g. 'gym'); unknown ones are ignored")
 
     @field_validator('city')
     @classmethod
@@ -77,6 +79,7 @@ class PropertySearchFilter(BaseModel):
             'furnished':            self.furnished or '',
             'purpose':              self.purpose or '',
             'bedrooms':             self.bedrooms or 0,
+            'amenities':            ','.join(self.amenities),
         }
 
 

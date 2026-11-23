@@ -1,16 +1,16 @@
 # Development Status
 
-_Last updated: 2026-11-22 (session 8)_
+_Last updated: 2026-11-23 (session 9)_
 
 | Item | Value |
 |---|---|
-| Branch | `development`. The owner committed through session 7 (`2fd8ee0`). **Session 8 (continued): T‑1070c is uncommitted** (the owner committed T‑1070a/b and earlier work) (the owner committed the earlier session‑8 work) |
+| Branch | `development`. The owner committed through session 8 (`c113704`). **Session 9 work (T‑1070d, T‑1070e) is uncommitted** |
 | Current milestone | **M1 — Core foundation** ([MILESTONE_01](milestones/MILESTONE_01_CORE_FOUNDATION.md)); M0 code‑complete, awaiting first GitHub Actions run |
 | M0 progress | All 17 tasks complete. Remaining exit criterion: CI green on GitHub Actions (owner pushes) |
-| M1 progress | 9 of 18 tasks done (T‑1010, T‑1020, T‑1021, T‑1022, T‑1030, T‑1031, T‑1050, T‑1090, T‑1100) plus subtasks T‑1032a, T‑1070a, T‑1070b, T‑1070c. T‑1060 blocked on a vendor decision; T‑1033 needs an owner policy sign‑off |
-| Test suite | **1781 passed, 1 skipped, 0 failed** (session 8 end). See [TESTING_STATUS](TESTING_STATUS.md) |
-| Last completed task | T‑1070c price history (ADR‑023 addendum), after T‑1070a/b |
-| Next task | **T‑1070d** category/subtype taxonomy + amenities. Design first: map today's `property_type` (residential/commercial/plot/industrial) to PRD `category` (residential, commercial, industrial, land, hospitality) + `subtype`. Seed `Amenity` (key, category, labels per language, markets) via a data migration, `ListingAmenity` M2M, API read/write by key, search filter `amenities=` (all must match). `property_type` stays as a deprecated alias derived from category until T‑1070g |
+| M1 progress | 9 of 18 tasks done (T‑1010, T‑1020, T‑1021, T‑1022, T‑1030, T‑1031, T‑1050, T‑1090, T‑1100) plus subtasks T‑1032a and T‑1070a–e. T‑1060 blocked on a vendor decision; T‑1033 needs an owner policy sign‑off |
+| Test suite | **1813 passed, 1 skipped, 0 failed** (session 9 end). See [TESTING_STATUS](TESTING_STATUS.md) |
+| Last completed task | T‑1070e market attribute schema, after T‑1070d taxonomy + amenities (ADR‑023 addenda) |
+| Next task | **T‑1070f** stored `tsvector` column + trigger (KI‑035). Start in `apps/properties/text_search.py` (the `search_vector()` expression), migration `0022` (current GIN expression index) and ADR‑015. Plan: nullable `search_tsv` column filled by a Postgres trigger (no app writes, so it is rolling‑safe); batched backfill; build the GIN index concurrently on the column; switch `apply_text_search` to it; drop the old expression index only in a later release. Keep the `simple` config and the prefix/AND semantics; EXPLAIN on 200k rows as in T‑1100 |
 
 ## Owner decisions (2026-11-21)
 - **No commits by the agent.**
@@ -21,10 +21,12 @@ _Last updated: 2026-11-22 (session 8)_
 - GitHub Actions has not run the updated workflow (no push).
 - T‑1060 needs a geocoding vendor and PostGIS in every environment.
 - **KI‑032 / T‑1033:** `PIIMaskingMiddleware` masks PII in every JSON write except a short exempt list. Which other endpoints (agent/lead create, profile PATCH) may receive raw phone/email needs an owner policy decision.
-- **KI‑041 (new):** should an org invite need the invitee's acceptance (pending → accept/decline)? Today an existing user is added immediately.
+- **KI‑050 (new):** should a listing's `market` follow a later `country` change, or should `country` be immutable after publish? This ties into lifecycle (T‑1080).
+- **KI‑041:** should an org invite need the invitee's acceptance (pending → accept/decline)? Today an existing user is added immediately.
 
 ## Operator actions before deploying these changes
 See **[GO_LIVE_CHECKLIST](GO_LIVE_CHECKLIST.md)**: DB backup, `FIELD_ENCRYPTION_KEYS`, config‑row check. Summary:
+- **Session 9** (checklist §16, §17): migrations `properties 0031`–`0034` (taxonomy and amenities; `0034` builds its index concurrently, so run it on a direct DB connection) and `markets 0003`/`0004` (attribute schemas). Run `sync_listing_taxonomy` after rollout. **Behaviour change:** PK/AE/GB listing writes that send `attributes` now reject unknown keys and invalid values. Check the existing non‑empty `attributes` first (§17).
 - **Session 8** (checklist §11 and **§12 UTC switch**): no migrations. Restart celery beat after deploy and review the periodic‑task rows (§12). **New: migrations `properties.0025`–`0028` (§13, §14), additive, rolling‑safe; run `sync_listing_size` after rollout (§14); `0029`/`0030` price history (§15).**
   - New member role‑change and ownership‑transfer endpoints; every member change is audited.
   - Alerts, reminders, escrow notices and the audit companion text now go through the outbox, so the `relay-outbox` beat job and an outbox worker must be running.

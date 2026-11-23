@@ -36,6 +36,9 @@ class Market(models.Model):
     tax_system        = models.CharField(max_length=300, blank=True)
     settings          = models.JSONField(default=dict, blank=True,
                             help_text='Market-specific flags and overrides')
+    listing_schema    = models.JSONField(default=dict, db_default={}, blank=True,
+                            help_text='Validates Property.attributes for listings in this market '
+                                      '(format: apps/markets/listing_schema.py); {} = no rules')
     created_at        = models.DateTimeField(auto_now_add=True)
     updated_at        = models.DateTimeField(auto_now=True)
 
@@ -58,6 +61,9 @@ class Market(models.Model):
             ZoneInfo(self.timezone or '')
         except (ZoneInfoNotFoundError, ValueError):
             errors['timezone'] = 'Unknown IANA time zone.'
+        from .listing_schema import schema_errors
+        if (schema_problems := schema_errors(self.listing_schema)):
+            errors['listing_schema'] = schema_problems
         if errors:
             raise ValidationError(errors)
 

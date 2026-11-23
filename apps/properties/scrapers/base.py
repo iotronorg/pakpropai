@@ -34,6 +34,7 @@ class PropertyResult:
     purpose:              str             = 'sale'
     bedrooms:             Optional[int]   = None
     bathrooms:            Optional[int]   = None
+    amenities:            list            = field(default_factory=list)   # taxonomy keys (T-1070d)
     price_type:           str             = 'total'
     price_on_request:     bool            = False
     # Size as listed (T-1070b); area_marla stays the marla-equivalent used for matching.

@@ -1,5 +1,7 @@
+from django.db import transaction
 from rest_framework import serializers
-from .models import PriceHistory, Property, PropertyImage
+from .models import Amenity, PriceHistory, Property, PropertyImage
+from . import taxonomy
 from apps.users.models import User
 
 
@@ -23,18 +25,35 @@ V2_FIELDS = ('purpose', 'bedrooms', 'bathrooms', 'floor', 'total_floors', 'year_
              'price_on_request', 'deposit', 'service_charge', 'attributes')
 
 
+TAXONOMY_FIELDS = ('property_type', 'category', 'subtype')
+
 _DEPRECATED = 'Deprecated (T-1070b): use {0}. Kept in sync until removal (T-1070g).'
 _SIZE_EXTRA_KWARGS = {
     'area_marla': {'help_text': _DEPRECATED.format('size_value')},
     'area_unit':  {'help_text': _DEPRECATED.format('size_unit')},
     'area_sqm':   {'help_text': _DEPRECATED.format('size_m2')},
+    'property_type': {'help_text': 'Deprecated (T-1070d): use category. Derived from it until '
+                                   'removal (T-1070g); land → plot, hospitality → commercial.'},
+    'category':   {'help_text': 'Listing category. Defaults from property_type when omitted.'},
+    'subtype':    {'help_text': 'Must belong to the category (see GET properties/taxonomy/).'},
     'size_value': {'help_text': 'Size in size_unit.'},
     'size_m2':    {'help_text': 'Canonical size in m², computed from size_value + size_unit.'},
 }
 
 
+class AmenityKeysField(serializers.SlugRelatedField):
+    """Amenities read and written as a list of taxonomy keys (T-1070d)."""
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault('slug_field', 'key')
+        if not kwargs.get('read_only'):
+            kwargs.setdefault('queryset', Amenity.objects.filter(is_active=True))
+        kwargs.setdefault('help_text', 'Amenity keys (see GET properties/taxonomy/).')
+        super().__init__(**kwargs)
+
+
 class ListingV2ValidationMixin:
-    """Cross-field rules for listing schema v2 (T-1070a/b); partial updates merge the instance."""
+    """Cross-field rules for listing schema v2 (T-1070a/b/d); partial updates merge the instance."""
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
@@ -42,17 +61,79 @@ class ListingV2ValidationMixin:
             if new in attrs and old in attrs and attrs[new] != attrs[old]:
                 raise serializers.ValidationError(
                     {old: f'Conflicts with {new}; send only {new} ({old} is deprecated).'})
-        merged = {f: getattr(self.instance, f, None) for f in V2_FIELDS} if self.instance else {}
-        merged.update({k: v for k, v in attrs.items() if k in V2_FIELDS})
+        fields = V2_FIELDS + TAXONOMY_FIELDS
+        if self.instance:
+            merged = {f: getattr(self.instance, f, None) for f in fields}
+        else:
+            merged = {'property_type': Property.PropertyType.RESIDENTIAL}
+        merged.update({k: v for k, v in attrs.items() if k in fields})
+        self._merge_taxonomy(attrs, merged)
         errors = Property.v2_errors(merged)
         if errors:
             raise serializers.ValidationError(errors)
+        if 'attributes' in attrs or 'country' in attrs:
+            self._validate_attributes(attrs)
+        if 'amenities' in attrs:
+            self._validate_amenities(attrs['amenities'], attrs)
         return attrs
+
+    def _target_market(self, attrs):
+        """Market the written listing will be validated against."""
+        from apps.markets.services import default_country, market_code_for_country
+        if self.instance is not None and 'country' not in attrs:
+            return self.instance.market_id
+        country = attrs.get('country') or getattr(self.instance, 'country', None) or default_country()
+        return market_code_for_country(country)
+
+    def _validate_attributes(self, attrs):
+        """Market attribute schema (T-1070e). Stored attributes are re-checked only on a market move."""
+        attributes = attrs.get('attributes', getattr(self.instance, 'attributes', None)) or {}
+        errors = Property.attribute_errors(attributes, self._target_market(attrs))
+        if errors:
+            raise serializers.ValidationError({'attributes': errors})
+
+    @staticmethod
+    def _merge_taxonomy(attrs, merged):
+        """Resolve the deprecated property_type against category (same rules as Property.save)."""
+        if 'property_type' in attrs:
+            ptype = attrs['property_type']
+            if 'category' in attrs:
+                if attrs['category'] and taxonomy.property_type_for_category(attrs['category']) != ptype:
+                    raise serializers.ValidationError({'property_type': (
+                        'Conflicts with category; send only category (property_type is deprecated).')})
+            elif taxonomy.property_type_for_category(merged.get('category')) != ptype:
+                attrs['category'] = merged['category'] = taxonomy.category_for_property_type(ptype)
+        if not merged.get('category'):
+            merged['category'] = taxonomy.category_for_property_type(merged.get('property_type'))
+        # A stored subtype that no longer fits a changed category is cleared;
+        # an explicitly sent one is validated (→ 400).
+        if 'subtype' not in attrs and merged.get('subtype') and \
+                taxonomy.subtype_errors(merged['category'], merged['subtype']):
+            attrs['subtype'] = merged['subtype'] = None
+
+    def _validate_amenities(self, amenities, attrs):
+        if len(amenities) > Property.MAX_AMENITIES:
+            raise serializers.ValidationError(
+                {'amenities': f'At most {Property.MAX_AMENITIES} amenities.'})
+        market = self._target_market(attrs)
+        foreign = sorted(a.key for a in amenities if not a.available_in(market))
+        if foreign:
+            raise serializers.ValidationError(
+                {'amenities': f"Not available in market {market}: {', '.join(foreign)}."})
+
+    def create(self, validated_data):
+        with transaction.atomic():
+            return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        with transaction.atomic():
+            return super().update(instance, validated_data)
 
 
 class PropertyListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for list views."""
     primary_image = serializers.SerializerMethodField()
+    amenities     = AmenityKeysField(many=True, read_only=True)
 
     class Meta:
         model  = Property
@@ -61,6 +142,7 @@ class PropertyListSerializer(serializers.ModelSerializer):
                   'area_marla', 'area_unit', 'area_sqm',
                   'price', 'country', 'currency',
                   'purpose', 'price_type', 'price_on_request', 'bedrooms', 'bathrooms',
+                  'category', 'subtype', 'amenities',
                   'property_type', 'construction_status', 'furnished_status',
                   'legal_status', 'ai_score', 'risk_level', 'primary_image', 'created_at')
         extra_kwargs = _SIZE_EXTRA_KWARGS
@@ -78,6 +160,7 @@ class PropertyDetailSerializer(ListingV2ValidationMixin, serializers.ModelSerial
     owner_phone   = serializers.CharField(source='owner.phone', read_only=True)
     images        = PropertyImageSerializer(many=True, read_only=True)
     primary_image = serializers.SerializerMethodField()
+    amenities     = AmenityKeysField(many=True, required=False)
 
     class Meta:
         model  = Property
@@ -85,7 +168,8 @@ class PropertyDetailSerializer(ListingV2ValidationMixin, serializers.ModelSerial
                   'city', 'location', 'size_value', 'size_unit', 'size_m2', 'plot_size_m2',
                   'area_marla', 'area_unit', 'area_sqm',
                   'price', 'country', 'currency',
-                  'property_type', 'furnished_status', 'construction_status',
+                  'property_type', 'category', 'subtype', 'amenities',
+                  'furnished_status', 'construction_status',
                   'legal_status', 'ai_score', 'risk_level', 'assigned_agent',
                   'installment_available', 'raw_docs', 'ai_analysis',
                   'purpose', 'bedrooms', 'bathrooms', 'floor', 'total_floors', 'year_built',
@@ -111,6 +195,7 @@ class PropertyCreateSerializer(ListingV2ValidationMixin, serializers.ModelSerial
     owner = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.all(), required=False, allow_null=True
     )
+    amenities = AmenityKeysField(many=True, required=False)
 
     class Meta:
         model  = Property
@@ -118,7 +203,7 @@ class PropertyCreateSerializer(ListingV2ValidationMixin, serializers.ModelSerial
                   'size_value', 'size_unit', 'plot_size_m2',
                   'area_marla', 'area_unit',
                   'price', 'country', 'currency',
-                  'property_type', 'furnished_status',
+                  'property_type', 'category', 'subtype', 'amenities', 'furnished_status',
                   'construction_status', 'legal_status', 'assigned_agent', 'owner',
                   'purpose', 'bedrooms', 'bathrooms', 'floor', 'total_floors', 'year_built',
                   'parking_spaces', 'pets_allowed', 'price_type', 'price_negotiable',
@@ -156,3 +241,15 @@ class PriceHistorySerializer(serializers.ModelSerializer):
         model  = PriceHistory
         fields = ('price', 'currency', 'price_type', 'price_on_request', 'changed_at', 'source')
         read_only_fields = fields
+
+
+class AmenitySerializer(serializers.ModelSerializer):
+    label = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = Amenity
+        fields = ('key', 'group', 'label', 'labels', 'markets')
+        read_only_fields = fields
+
+    def get_label(self, obj) -> str:
+        return obj.label(self.context.get('lang') or 'en')

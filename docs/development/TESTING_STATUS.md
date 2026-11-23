@@ -74,6 +74,11 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | 2026-11-22 | Working tree, session 8 continued, after T‑1070b | `pytest tests/ apps/ -q` + checks | **1770 passed, 1 skipped, 0 failed**; check/drift/schema clean; Bandit 0 HIGH | 8m36s |
 | 2026-11-22 | Working tree, session 8 continued, after T‑1070c | `pytest tests/ apps/ -q` + checks | **1781 passed, 1 skipped, 0 failed**; check/drift/schema clean; Bandit 0 HIGH | 7m54s |
 | 2026-11-22 | Working tree, session 8 end | `check` / `makemigrations --check` / `spectacular --validate` / `bandit -r apps/ -ll` | no issues / no changes / exit 0 (153 errors / 28 warnings unique) / **0 HIGH** | — |
+| 2026-11-23 | Working tree, session 9, after T‑1070d | `pytest tests/ apps/ -q` | **1804 passed, 1 skipped, 0 failed**, 188 subtests | 5m40s |
+| 2026-11-23 | Working tree, session 9, after T‑1070e (first run) | `pytest tests/ apps/ -q` | 1812 passed, 1 skipped, **1 failed**: `test_listing_schema_v2::test_create_and_read_v2_fields` sent `possession: 'ready'`, which the new PK schema rejects as intended. Fixture changed to `'available'` | 5m55s |
+| 2026-11-23 | Working tree, session 9 end | `pytest tests/ apps/ -q` | **1813 passed, 1 skipped, 0 failed**, 201 subtests | 5m51s |
+| 2026-11-23 | Working tree, session 9 | `check` / `makemigrations --check` / OpenAPI budget test / `bandit -r apps/ -ll` | no issues / no changes / within budget (taxonomy view has an inline schema) / **0 HIGH** (Medium 14: 3 new B608 on constant‑only SQL, same pattern as `size_sync.py`) | — |
+| 2026-11-23 | Test DB `realtron_test` | `migrate properties 0030` → `migrate`; `migrate markets 0002` → `migrate`; `sync_listing_taxonomy --dry-run`; `Market.full_clean()` on every row | OK both ways; 35 amenities seeded; 0 drift; all seeded schemas valid | — |
 
 ## Tests added in sessions 2–8
 

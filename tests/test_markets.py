@@ -293,7 +293,7 @@ class SearchCurrencyDbTest(TestCase):
         _, org = make_developer()
         make_property(org=org, city='Lahore', currency='AED', price=900000)
         make_property(org=org, city='Lahore', currency='PKR', price=700000)
-        with self.assertNumQueries(1):
+        with self.assertNumQueries(2):           # listings + one amenity prefetch (T-1070d)
             results = PropertySearchService._from_db(city='Lahore', viewer_org=org)
             formatted = sorted(PropertySearchService._result_to_dict(r)['price_formatted'] for r in results)
         self.assertEqual(formatted, ['AED 900,000', 'PKR 700,000'])

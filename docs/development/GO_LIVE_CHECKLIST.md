@@ -136,3 +136,25 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
   The backfill is one `INSERT … SELECT`. On a very large `properties` table, run it in a quiet window.
 - **New endpoint:** `GET /api/v1/properties/{id}/price-history/`, read‑only, with the listing's visibility.
 - Price changes made by pre‑v2 pods during the rollout are not in the history.
+
+## 16. Session‑9 change: listing taxonomy and amenities (T‑1070d, ADR‑023)
+- **Migrations:** all additive and rolling‑safe.
+  - `properties.0031`: nullable `category`/`subtype` columns, plus the new `amenities` and `property_amenities` tables.
+  - `properties.0032`: batched backfill of `category` from `property_type`. Non‑atomic; reverse is a no‑op.
+  - `properties.0033`: seeds 35 amenities. Idempotent, so admin edits survive a re‑run. Reverse removes only seeded keys that no listing uses.
+  - `properties.0034`: `CREATE INDEX CONCURRENTLY` on `(category, is_active)`. Non‑atomic; run it on a direct DB connection, not through PgBouncer in transaction mode.
+- **After every pre‑v2 pod has stopped:** run `python manage.py sync_listing_taxonomy --dry-run`, then `python manage.py sync_listing_taxonomy`. Rows that old code wrote with a new `property_type` get their category re‑derived and their subtype cleared.
+- **API (additive):**
+  - `category`, `subtype` and `amenities` (a list of keys) on listing create, update and read;
+  - list filters `category`, `subtype` and `amenities=a,b` (all must match);
+  - `GET /api/v1/properties/taxonomy/?market=&lang=`.
+
+  `property_type` and `?type=` still work and are marked deprecated. Sending `property_type` and `category` that disagree returns 400.
+- **Admin:** amenities are curated under *Properties → Amenities*. Retire one with `is_active=False`; an amenity in use cannot be deleted.
+
+## 17. Session‑9 change: market attribute schema (T‑1070e, ADR‑023)
+- **Migrations:**
+  - `markets.0003`: adds the `listing_schema` column with `db_default {}`.
+  - `markets.0004`: seeds PK/AE/GB schemas, and only fills empty ones.
+- **Behaviour change:** when listing `attributes` (or `country`) are written in PK, AE or GB, unknown keys and invalid values now return 400. Before this, any object up to 50 keys/8 KB was accepted. **Check before deploy:** `SELECT market_id, count(*) FROM properties WHERE attributes <> '{}' GROUP BY 1`. Stored values are not rewritten. They are re‑checked only when a client sends `attributes` or changes `country`.
+- **Admin:** edit schemas under *Markets*. Malformed schemas are refused by `Market.clean()`. The market cache key prefix changed to `market:v2:`, and the first read after deploy repopulates it.

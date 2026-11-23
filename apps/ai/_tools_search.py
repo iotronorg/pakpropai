@@ -15,6 +15,7 @@ def search_properties(
     construction_status: str = '',
     purpose: str = '',
     bedrooms: int = 0,
+    amenities: str = '',
 ) -> dict:
     """
     Search for available property listings in Pakistan (both database and live scraped results).
@@ -30,6 +31,11 @@ def search_properties(
         construction_status: One of 'builder', 'ready', 'under_construction'. Leave blank if not specified.
         purpose: 'buy' or 'rent' when the user says so (rent, kiraya, lease → 'rent'). Leave blank if unclear.
         bedrooms: Minimum number of bedrooms the user asked for. Use 0 if not specified.
+        amenities: Comma-separated amenities the user requires, as keys, e.g. 'gym,lift'.
+            Known keys include gym, swimming_pool, private_pool, lift, covered_parking,
+            security_guard, cctv, gated_community, backup_generator, solar_panels,
+            gas_connection, garden, balcony, servant_quarters, air_conditioning,
+            wheelchair_access. Leave blank if none were asked for.
     """
     try:
         from apps.properties.search import PropertySearchService
@@ -46,11 +52,14 @@ def search_properties(
             viewer_org=_ctx_org.get(),
             purpose=purpose,
             min_bedrooms=bedrooms if bedrooms and bedrooms > 0 else None,
+            amenities=amenities,
         )
         from apps.config.services import SystemConfigService
-        from apps.properties.search import _scrapers_apply
-        # Scrapers only fetch sale listings (T-1070a): no follow-up for rent/lease searches.
-        scraping = SystemConfigService.scraper_enabled() and _scrapers_apply(purpose)
+        from apps.properties.search import _scrapers_apply, resolve_amenities
+        # Scrapers only fetch sale listings (T-1070a) and have no amenity data
+        # (T-1070d): no follow-up for rent/lease or amenity searches.
+        scraping = (SystemConfigService.scraper_enabled()
+                    and _scrapers_apply(purpose, resolve_amenities(amenities)))
         if not results:
             return {
                 'count': 0,
@@ -83,6 +92,7 @@ def search_properties(
                     'bedrooms': r.bedrooms,
                     'bathrooms': r.bathrooms,
                     'property_type': r.property_type,
+                    'amenities': r.amenities,
                     'source': r.source,
                     'url': r.url or '',
                     'ai_verdict': getattr(r, 'ai_verdict', ''),

@@ -1,4 +1,4 @@
-from django.db.models import Avg, Count, Q
+from django.db.models import Avg, Count, Q, prefetch_related_objects
 from django.db.models.functions import TruncMonth, TruncWeek
 
 from apps.markets.services import user_timezone
@@ -9,13 +9,14 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view, inline_serializer
+from rest_framework import serializers as drf_serializers
 
 from apps.core.permissions import IsOwnerOrReadOnly, IsAgentOrAdmin, get_user_org
 from apps.core.query_params import choice_param, int_param
 from apps.core.throttles import PropertySearchThrottle, ScorePropertyThrottle
-from .models import Property, PropertyImage
-from .serializers import (PriceHistorySerializer, PropertyCreateSerializer,
+from .models import Amenity, Property, PropertyImage
+from .serializers import (AmenitySerializer, PriceHistorySerializer, PropertyCreateSerializer,
                           PropertyDetailSerializer, PropertyImageSerializer,
                           PropertyListSerializer)
 
@@ -31,7 +32,13 @@ _LIST_PARAMETERS = [
         'number (RT-LHR-2026-000000001) matches exactly.')),
     OpenApiParameter('ref_no', str, description='Exact reference number (case-insensitive).'),
     OpenApiParameter('city', str, description='City name, case-insensitive exact match.'),
-    OpenApiParameter('type', str, enum=Property.PropertyType.values),
+    OpenApiParameter('type', str, enum=Property.PropertyType.values,
+                     description='Deprecated (T-1070d): use category.'),
+    OpenApiParameter('category', str, enum=Property.Category.values),
+    OpenApiParameter('subtype', str, enum=[c[0] for c in Property.SUBTYPE_CHOICES]),
+    OpenApiParameter('amenities', str, description=(
+        'Comma-separated amenity keys; a listing must have all of them '
+        '(at most 10).')),
     OpenApiParameter('legal_status', str, enum=Property.LegalStatus.values),
     OpenApiParameter('purpose', str, enum=Property.Purpose.values),
     OpenApiParameter('min_bedrooms', int, description='Inclusive (0-50).'),
@@ -66,7 +73,7 @@ class PropertyViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset().select_related(
             'owner', 'organization', 'assigned_agent', 'listed_by_agent'
-        ).prefetch_related('images')
+        ).prefetch_related('images', 'amenities')
         user = self.request.user
 
         # Developers see only their org's inventory
@@ -97,6 +104,13 @@ class PropertyViewSet(viewsets.ModelViewSet):
             qs = qs.filter(city__iexact=city)
         if (ptype := choice_param(params, 'type', Property.PropertyType.values)):
             qs = qs.filter(property_type=ptype)
+        if (category := choice_param(params, 'category', Property.Category.values)):
+            qs = qs.filter(category=category)
+        if (subtype := choice_param(params, 'subtype', [c[0] for c in Property.SUBTYPE_CHOICES])):
+            qs = qs.filter(subtype=subtype)
+        if (keys := amenity_keys_param(params)):
+            from .taxonomy import filter_all_amenities
+            qs = filter_all_amenities(qs, keys)
         if (legal := choice_param(params, 'legal_status', Property.LegalStatus.values)):
             qs = qs.filter(legal_status=legal)
         if (purpose := choice_param(params, 'purpose', Property.Purpose.values)):
@@ -327,6 +341,7 @@ class PropertyViewSet(viewsets.ModelViewSet):
                 return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         props = recommend_for_lead(lead)
+        prefetch_related_objects(props, 'amenities')
         return Response(PropertyListSerializer(props, many=True, context={'request': request}).data)
 
     def perform_update(self, serializer):
@@ -351,7 +366,69 @@ class PropertyViewSet(viewsets.ModelViewSet):
         from apps.properties.recommendations import similar_to
         prop = self.get_object()
         props = similar_to(prop)
+        prefetch_related_objects(props, 'amenities')
         return Response(PropertyListSerializer(props, many=True, context={'request': request}).data)
+
+
+MAX_AMENITY_FILTERS = 10
+
+
+def amenity_keys_param(params, name='amenities') -> list[str]:
+    """Parse `?amenities=gym,pool`; unknown or inactive keys → 400."""
+    from . import taxonomy
+    keys = taxonomy.parse_amenity_keys(params.get(name, ''))
+    if not keys:
+        return []
+    from rest_framework.exceptions import ValidationError
+    if len(keys) > MAX_AMENITY_FILTERS:
+        raise ValidationError({name: f'At most {MAX_AMENITY_FILTERS} keys.'})
+    known = taxonomy.active_amenity_keys(keys)
+    unknown = [k for k in keys if k not in known]
+    if unknown:
+        raise ValidationError({name: f"Unknown amenity: {', '.join(unknown)}."})
+    return keys
+
+
+class PropertyTaxonomyView(APIView):
+    """
+    GET /properties/taxonomy/?market=PK&lang=ur
+    Listing categories with their subtypes, and the active amenities
+    (limited to those available in ``market`` when given).
+    """
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter('market', str, description='Two-letter market code.'),
+            OpenApiParameter('lang', str, description='Label language (falls back to en).'),
+        ],
+        responses=inline_serializer('ListingTaxonomy', {
+            'categories': drf_serializers.ListField(child=inline_serializer('ListingCategory', {
+                'key': drf_serializers.CharField(),
+                'label': drf_serializers.CharField(),
+                'subtypes': drf_serializers.ListField(child=inline_serializer('ListingSubtype', {
+                    'key': drf_serializers.CharField(), 'label': drf_serializers.CharField()})),
+            })),
+            'amenities': AmenitySerializer(many=True),
+        }),
+    )
+    def get(self, request):
+        from . import taxonomy
+        market = (request.query_params.get('market') or '').strip().upper() or None
+        if market and (len(market) != 2 or not market.isalpha()):
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({'market': 'Must be a two-letter market code.'})
+        lang = (request.query_params.get('lang') or 'en').strip().lower()[:10]
+        amenities = [a for a in Amenity.objects.filter(is_active=True) if a.available_in(market)]
+        return Response({
+            'categories': [
+                {'key': c, 'label': taxonomy.CATEGORY_LABELS[c],
+                 'subtypes': [{'key': s, 'label': taxonomy.subtype_label(s)}
+                              for s in taxonomy.SUBTYPES[c]]}
+                for c in taxonomy.CATEGORIES
+            ],
+            'amenities': AmenitySerializer(amenities, many=True, context={'lang': lang}).data,
+        })
 
 
 class PropertyCompareView(APIView):

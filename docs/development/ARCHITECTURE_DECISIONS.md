@@ -482,8 +482,8 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
     | T‑1070a | Expand core fields and price terms (`purpose`, `bedrooms`, `bathrooms`, `floor`, `total_floors`, `year_built`, `parking_spaces`, `pets_allowed`, `price_type`, `price_negotiable`, `price_on_request`, `deposit`, `service_charge`, `attributes`). Wire them through the API, search and the AI search tool. Existing rows become `purpose='sale'`: scrapers fetch `/sale/` only and the seed data is all sale | done |
     | T‑1070b | Size rename: `size_value`/`size_unit`/`size_m2` and a nullable `plot_size_m2`. Dual‑write with `area_marla`/`area_unit` via an instance snapshot; migrate readers; the API keeps `area_marla` as a deprecated alias | done |
     | T‑1070c | `PriceHistory` table, recorded on every price change (FR‑LST‑002, P1) | done |
-    | T‑1070d | Category/subtype taxonomy (adds land and hospitality) plus `Amenity`/`ListingAmenity` | planned |
-    | T‑1070e | Market attribute schema: `Market.listing_schema` validates `attributes` (FR‑LST‑004) | planned |
+    | T‑1070d | Category/subtype taxonomy (adds land and hospitality) plus `Amenity`/`ListingAmenity` | done |
+    | T‑1070e | Market attribute schema: `Market.listing_schema` validates `attributes` (FR‑LST‑004) | done |
     | T‑1070f | Stored `tsvector` column + trigger (KI‑035) | planned |
     | T‑1070g | **Contract:** drop `area_marla`/`area_unit` and decide minor‑unit money. **Destructive; needs owner approval after one release with no old readers** | planned |
   - **Cross‑field rules live in `Property.v2_errors()`,** shared by `Model.clean` and the API serializers. A partial update is validated against the stored values. The rules:
@@ -531,3 +531,45 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
 - **Gaps:**
   - writes from pre‑v2 pods during a rollout and `QuerySet.update(price=…)` are not recorded (no app code does the latter);
   - the baseline row is dated at listing creation, not at the last real change.
+
+### ADR‑023 addendum — T‑1070d taxonomy and amenities (2026-11-23)
+- **Category is canonical; `property_type` is a deprecated alias** kept in sync by `Property.save()` until T‑1070g.
+  - `property_type → category`: `plot → land`, others unchanged.
+  - `category → property_type`: `land → plot`, `hospitality → commercial`, others unchanged.
+  - `hospitality` has no v1 value. A row with `category=hospitality, property_type=commercial` counts as consistent, so it is never "repaired" back to commercial.
+- **Sync rule** (same snapshot pattern as size, T‑1070b): a category changed since load (or set on a new object) wins and projects to `property_type`. Otherwise `property_type` wins: pre‑v2 writers, un‑backfilled rows and deferred loads. A subtype that no longer fits the resulting category is cleared. `update_fields` touching any of the three fields is extended to all three.
+- **Subtypes** are one flat, market‑neutral list per category in `apps/properties/taxonomy.py` (code, not a table). They change rarely, and code keeps them typed in OpenAPI (`enum`). Market‑specific ones such as PK `upper_portion` and `plot_file` are harmless elsewhere. Validation is in `Property.v2_errors()`, shared by `clean()` and the serializers.
+- **API rules:**
+  - `property_type` alone derives `category`;
+  - `property_type` and `category` that disagree → 400 (like `area_marla` vs `size_value`);
+  - an explicitly sent subtype that does not fit the category → 400;
+  - a stored subtype made invalid by a category change is cleared silently.
+- **Amenities are a table** (`amenities`: `key`, `group`, `labels` per language, `markets` list, `is_active`, `sort_order`) because operators edit it in admin. Migration 0033 seeds 35 entries with `en` + `ur` labels. `markets` empty = every market. Some are PK‑only (servant quarters, drawing room, gas connection) and one is AE‑only (maid's room).
+  - `property_amenities` (`ListingAmenity`) is the M2M through table. `PROTECT` on the amenity: retire one with `is_active=False`, not by deleting it.
+  - The API reads and writes amenities as a list of keys. Inactive or unknown keys → 400. Keys must be available in the listing's market. At most 60 per listing.
+- **Filtering:** `?amenities=a,b` means all must match, via one grouped subquery (`COUNT(DISTINCT amenity) = n`) rather than n joins. At most 10 keys; unknown keys → 400. `?category=`/`?subtype=` filters; `?type=` stays as a deprecated alias.
+- **Search service and AI tool:** amenities are a hard filter. Unknown keys are dropped rather than rejected, following the AI spec (unknown amenities become soft notes). Scrapers carry no amenity data, so an amenity search skips them and promises no follow‑up. `PropertyResult.amenities` carries the listing's keys for the response and for later grounding (GAP‑054).
+- **New endpoint:** `GET /properties/taxonomy/?market=&lang=` lists categories with subtypes and the active amenities for a market, with labels in the requested language (falls back to `en`).
+- **Rollout:** 0031 adds nullable columns and new tables; 0032 is a batched backfill; 0033 is the seed; 0034 builds the `(category, is_active)` index concurrently. Pre‑v2 pods write only `property_type`, so `manage.py sync_listing_taxonomy` repairs drift after rollout.
+- **Rejected:**
+  - renaming `property_type` in place: old pods break during a rolling deploy;
+  - an amenity JSON array on `Property`: no referential integrity, and no per‑market labels or admin curation;
+  - a subtype table: no current need for operator edits, and it loses the OpenAPI enum.
+
+### ADR‑023 addendum — T‑1070e market attribute schema (2026-11-23)
+- **Format:** `Market.listing_schema` uses a small in‑house format, defined and validated in `apps/markets/listing_schema.py`. It is not JSON Schema.
+  - `{"fields": {key: {"type": string|integer|number|boolean|enum, …options}}, "additional": "reject"|"allow"}`
+  - Options: `label`; `max_length` and `pattern` for strings; `min` and `max` for numbers; `values` for enums.
+  - `{}` means no market rules.
+  - Why not JSON Schema: operators edit it in admin, the same definition will drive listing forms, and the small vocabulary keeps validation predictable. It also needs no new dependency.
+- **Validation:**
+  - `Market.clean()` rejects a malformed schema.
+  - Listing values are checked in `Property.clean()` and in the API serializers. `null` means "unknown" and is allowed for a declared key.
+  - Strings are length‑checked before the regex runs. Patterns are staff‑authored only.
+- **When attributes are checked (API):** only when `attributes` or `country` is written. Stored legacy attributes do not block an unrelated PATCH. A country change re‑checks the stored attributes against the new market.
+- **Seeds (markets 0004):** only empty schemas are filled, so admin edits survive. All seeded schemas use `additional: reject`.
+  - PK: possession, corner, park facing, main road, plot number, block, society approval.
+  - AE: RERA/Trakheesi permit, broker ORN, freehold, chiller free, rent cheques.
+  - GB: EPC rating, tenure, lease years remaining, council tax band, ground rent.
+  - US/CA: `{}`.
+- **Cache:** `MarketInfo` gained `listing_schema`. The cache prefix moved `market:v1:` → `market:v2:`, so old cached entries are never read.

@@ -9,6 +9,7 @@ scrapers in the background, caches results, then sends a WhatsApp follow-up.
 import logging
 from dataclasses import dataclass
 from .models import Property
+from .taxonomy import active_amenity_keys, filter_all_amenities, parse_amenity_keys
 from .scrapers.base import PropertyResult, BaseScraper
 
 from apps.markets.services import format_price
@@ -30,6 +31,7 @@ class SearchParams:
     purpose: str = ''                # 'buy'/'sale' | 'rent' | 'lease' | a Property.Purpose value | ''
     min_bedrooms: int = 0
     min_bathrooms: int = 0
+    amenities: tuple = ()            # taxonomy keys, all must match; unknown keys are ignored
     min_price: int = 0
     max_price: int = 0
     area_marla: float = 0.0          # target size; DB query uses ±20 % tolerance band
@@ -53,6 +55,7 @@ class SearchParams:
             purpose=str(params.get('purpose', '')),
             min_bedrooms=int(params.get('min_bedrooms', 0) or params.get('bedrooms', 0) or 0),
             min_bathrooms=int(params.get('min_bathrooms', 0) or params.get('bathrooms', 0) or 0),
+            amenities=tuple(parse_amenity_keys(params.get('amenities'))),
             min_price=int(params.get('min_price', 0) or 0),
             max_price=int(
                 params.get('max_price', 0) or params.get('max_price', 0) or 0
@@ -87,10 +90,22 @@ def purpose_values(purpose: str) -> tuple:
     return _PURPOSE_ALIASES.get(p, ())
 
 
-def _scrapers_apply(purpose: str) -> bool:
-    """Scrapers only fetch sale listings: skip them for a rent/lease search."""
+def _scrapers_apply(purpose: str, amenities=()) -> bool:
+    """
+    Scrapers only fetch sale listings (skip them for a rent/lease search) and
+    carry no amenity data (skip them when an amenity is a hard filter, T-1070d).
+    """
     values = purpose_values(purpose)
-    return not values or 'sale' in values
+    return (not values or 'sale' in values) and not amenities
+
+
+def resolve_amenities(amenities) -> tuple:
+    """Known active amenity keys from a caller's list; unknown ones are dropped (soft, per the AI spec)."""
+    keys = parse_amenity_keys(amenities)
+    if not keys:
+        return ()
+    known = active_amenity_keys(keys)
+    return tuple(k for k in keys if k in known)
 
 
 class PropertySearchService:
@@ -102,6 +117,7 @@ class PropertySearchService:
         Accepts a SearchParams object and returns a structured payload
         ready for the WhatsApp formatter or API layer.
         """
+        amenities = resolve_amenities(params.amenities)
         db_results = cls._from_db(
             city=params.city,
             location=params.location,
@@ -118,6 +134,7 @@ class PropertySearchService:
             purpose=params.purpose,
             min_bedrooms=params.min_bedrooms or None,
             min_bathrooms=params.min_bathrooms or None,
+            amenities=amenities,
         )
         scraped_results = cls._from_scrapers(
             city=params.city,
@@ -126,7 +143,7 @@ class PropertySearchService:
             max_price=params.max_price or None,
             property_type=params.property_type,
             phone=params.phone,
-        ) if _scrapers_apply(params.purpose) else []
+        ) if _scrapers_apply(params.purpose, amenities) else []
 
         all_results = cls._dedup(db_results + scraped_results)
         if all_results:
@@ -137,7 +154,7 @@ class PropertySearchService:
         page_slice = all_results[offset: offset + params.page_size]
 
         from apps.config.services import SystemConfigService
-        live_pending = SystemConfigService.scraper_enabled() and _scrapers_apply(params.purpose) and (
+        live_pending = SystemConfigService.scraper_enabled() and _scrapers_apply(params.purpose, amenities) and (
             total == 0 or all(r.source == 'pakprop' for r in all_results)
         )
         return {
@@ -147,6 +164,7 @@ class PropertySearchService:
                 'property_type': params.property_type,
                 'purpose': params.purpose,
                 'min_bedrooms': params.min_bedrooms,
+                'amenities': list(amenities),
                 'max_price': params.max_price,
                 'area_marla': params.area_marla,
                 'furnished_status': params.furnished_status,
@@ -192,6 +210,7 @@ class PropertySearchService:
             'bedrooms': r.bedrooms,
             'bathrooms': r.bathrooms,
             'property_type': r.property_type,
+            'amenities': r.amenities,
             'furnished_status': r.furnished_status,
             'construction_status': r.construction_status,
             'url': r.url or '',
@@ -204,23 +223,24 @@ class PropertySearchService:
                property_type='', furnished_status='',
                construction_status='', phone: str = '',
                viewer_org=None, purpose='', min_bedrooms=None,
-               min_bathrooms=None) -> list[PropertyResult]:
+               min_bathrooms=None, amenities=()) -> list[PropertyResult]:
         """
         Returns merged + AI-scored results (DB first, then scraped).
         `phone` is forwarded to the background task so a follow-up WA message
         can be sent when live scraper results arrive.
         """
+        amenities = resolve_amenities(amenities)
         db_results = cls._from_db(
             city=city, location=location, area_marla=area_marla,
             max_price=max_price, property_type=property_type,
             furnished_status=furnished_status, construction_status=construction_status,
             viewer_org=viewer_org, purpose=purpose,
-            min_bedrooms=min_bedrooms, min_bathrooms=min_bathrooms,
+            min_bedrooms=min_bedrooms, min_bathrooms=min_bathrooms, amenities=amenities,
         )
         scraped_results = cls._from_scrapers(
             city=city, location=location, area_marla=area_marla,
             max_price=max_price, property_type=property_type, phone=phone,
-        ) if _scrapers_apply(purpose) else []
+        ) if _scrapers_apply(purpose, amenities) else []
 
         all_results = cls._dedup(db_results + scraped_results)
         if not all_results:
@@ -244,12 +264,13 @@ class PropertySearchService:
         cls, city='', location='', area_marla=None, max_price=None,
         property_type='', furnished_status='', construction_status='',
         min_price=None, installments=None, legal_status='', organization_id='',
-        viewer_org=None, purpose='', min_bedrooms=None, min_bathrooms=None,
+        viewer_org=None, purpose='', min_bedrooms=None, min_bathrooms=None, amenities=(),
     ) -> list[PropertyResult]:
         qs = (
             Property.objects
             .visible_to(viewer_org)
             .select_related('organization', 'listed_by_agent')
+            .prefetch_related('amenities')
             .only(
                 'id', 'title', 'city', 'location', 'size_value', 'size_unit', 'size_m2',
                 'price', 'currency',
@@ -291,6 +312,8 @@ class PropertySearchService:
             qs = qs.filter(bedrooms__gte=min_bedrooms)
         if min_bathrooms:
             qs = qs.filter(bathrooms__gte=min_bathrooms)
+        if amenities:
+            qs = filter_all_amenities(qs, amenities)
 
         return [
             PropertyResult(
@@ -314,6 +337,7 @@ class PropertySearchService:
                 price_on_request    = p.price_on_request,
                 bedrooms            = p.bedrooms,
                 bathrooms           = p.bathrooms,
+                amenities           = sorted(a.key for a in p.amenities.all()),
             )
             for p in qs.order_by('-ai_score', '-created_at')[:10]
         ]

@@ -15,7 +15,7 @@ Two kinds of read:
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from django.conf import settings
 from django.core.cache import cache
@@ -25,7 +25,7 @@ from .registry import MARKET_REGISTRY
 logger = logging.getLogger(__name__)
 
 CACHE_TTL = 300
-_CACHE_PREFIX = 'market:v1:'
+_CACHE_PREFIX = 'market:v2:'   # v2: + listing_schema (T-1070e)
 
 # Area units valid for each registry size unit family.
 _AREA_UNITS = {
@@ -52,6 +52,7 @@ class MarketInfo:
     tax_system: str
     settings: dict
     from_db: bool = False
+    listing_schema: dict = field(default_factory=dict)
 
 
 def default_market_code() -> str:
@@ -86,6 +87,7 @@ def _from_row(row) -> MarketInfo:
         default_language=row.default_language, languages=tuple(row.languages or ()),
         timezone=row.timezone, price_format=row.price_format, tax_system=row.tax_system,
         settings=dict(row.settings or {}), from_db=True,
+        listing_schema=dict(row.listing_schema or {}),
     )
 
 

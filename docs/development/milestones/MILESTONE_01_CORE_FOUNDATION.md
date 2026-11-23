@@ -7,7 +7,7 @@
 ## Exit criteria (from the PRD)
 | Criterion | State |
 |---|---|
-| All existing listings migrated to schema v2, with a backfill report and < X % unmatched locations | In progress: T‑1070a expand done (existing rows backfilled to purpose=sale); size rename done (T‑1070b, backfilled); locations (T‑1060) pending |
+| All existing listings migrated to schema v2, with a backfill report and < X % unmatched locations | In progress: T‑1070a expand done (existing rows backfilled to purpose=sale); size rename done (T‑1070b, backfilled); category taxonomy done (T‑1070d, backfilled from `property_type`); locations (T‑1060) pending |
 | Permission matrix tests pass for every role | **In progress**: org‑admin/members/leads matrix for 8 actors + active‑org switching (T‑1031a); management endpoints vs. selected viewer org (T‑1031b); member invite/role‑change/removal/transfer rules (T‑1032a) |
 | OpenAPI published | **Met in CI** (T‑1090a): validated 3.1 schema published as a CI artefact and at `/api/v1/schema/` for staff. Coverage debt: KI‑037 |
 | No hardcoded `PKR`/`PK`/`marla` defaults outside the PK market pack (grep check in CI) | **Met for defaults** (T‑1050a): CI test rejects literal market defaults; logic literals ratcheted (T‑1050b) |
@@ -27,7 +27,7 @@
 | T‑1040 | P2 | `is_sandbox` semantics for unscoped leads | KI‑017 | T‑1030 |
 | T‑1050 ✅ (a, b, c) | P1 | `Market` entity from the registry; remove hardcoded PK defaults; UTC + per‑entity TZ | TR‑04, GAP‑014/091 | — |
 | T‑1060 | P1 | Location hierarchy + PostGIS point + geocoding backfill with a review queue | GAP‑013/041 | T‑1050; **owner:** geocoding vendor, PostGIS in all envs |
-| T‑1070 (a ✅, b ✅, c ✅; d–g) | P1 | Listing schema v2 (expand/contract, ADR‑023) | GAP‑010/012/045 | T‑1050 |
+| T‑1070 (a ✅, b ✅, c ✅, d ✅, e ✅; f–g) | P1 | Listing schema v2 (expand/contract, ADR‑023) | GAP‑010/012/045 | T‑1050 |
 | T‑1080 | P2 | Listing lifecycle, transitions, audit, expiry | GAP‑011 | T‑1070 |
 | T‑1090 ✅ (a–d) | P2 | API standards: OpenAPI ✅, error envelope, filter validation, idempotency keys | GAP‑030–032 | — |
 | T‑1100 ✅ | P2 | Search indexes (composite, GIN, trigram) | GAP‑040 | — |
@@ -35,4 +35,4 @@
 | T‑1120 | P2 | AI provider abstraction, prompt registry, market‑pack prompt fragments | GAP‑055/056/062 | — |
 
 ## Order
-T‑1010 ✅ → T‑1020 ✅ → T‑1030 ✅ → T‑1021 ✅ → T‑1100 ✅ → T‑1090 ✅ → T‑1050 ✅ → T‑1031 ✅ → T‑1032a ✅ → T‑1022 ✅ → T‑1070 (a ✅, b ✅, c ✅) → T‑1080 → T‑1011 → T‑1110 → T‑1120 → T‑1060 (this one waits on the vendor/PostGIS decision).
+T‑1010 ✅ → T‑1020 ✅ → T‑1030 ✅ → T‑1021 ✅ → T‑1100 ✅ → T‑1090 ✅ → T‑1050 ✅ → T‑1031 ✅ → T‑1032a ✅ → T‑1022 ✅ → T‑1070 (a ✅, b ✅, c ✅, d ✅, e ✅) → T‑1080 → T‑1011 → T‑1110 → T‑1120 → T‑1060 (this one waits on the vendor/PostGIS decision).

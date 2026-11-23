@@ -204,3 +204,20 @@
 1. `git status`: T‑1070c is uncommitted (owner committed T‑1070a/b). **Do not commit.** `scripts/dev/test.sh` should give 1781 passed, 1 skipped.
 2. Next: **T‑1070d** taxonomy and amenities (see the DEVELOPMENT_STATUS "Next task"). Then e (market attribute schema), f (tsvector). Hold g (contract) for owner approval.
 3. After that: T‑1080 (lifecycle) → T‑1011 (MFA) → T‑1091/T‑1092 (OpenAPI/error cleanup, P3).
+
+## Session 9 — 2026-11-23 — M1: listing taxonomy, amenities, market attribute schema
+- **Start state:** the owner had committed session 8 (`c113704`) and the tree was clean. T‑1070c was confirmed in the code (migrations 0029/0030, `PriceHistory`, tests). Docker Desktop had to be started.
+- **Completed: T‑1070d** (ADR‑023 addendum).
+  - `category` (adds land and hospitality) and `subtype` are now canonical. `property_type` is a deprecated alias that `save()` keeps in sync, and `sync_listing_taxonomy` repairs rollout drift.
+  - New `Amenity` taxonomy: 35 seeded entries with `en`/`ur` labels and per‑market availability, attached to listings through `ListingAmenity`.
+  - API: amenities read and written by key; new list filters (`amenities` means all must match); new `GET properties/taxonomy/`.
+  - Search service and AI search tool: amenities are a hard filter, and amenity searches skip the scrapers.
+- **Completed: T‑1070e** (ADR‑023 addendum). `Market.listing_schema` is a small typed format with seeds for PK, AE and GB. It is validated in `Market.clean`; listing attributes are checked in `Property.clean` and in the API.
+- **New issues:** KI‑050 (`market` is not re‑derived when `country` changes; decision needed) and KI‑051 (float `size_m2` on an in‑memory instance after save).
+- **Tests:** 1813 passed, 1 skipped, 0 failed (session 8 ended at 1781). `check`, drift and schema checks are clean; migrations rehearsed forward → back → forward; Bandit 0 HIGH.
+- **Not committed.**
+
+### Handoff → session 10
+1. `git status`: T‑1070d/e are uncommitted. **Do not commit.** `scripts/dev/test.sh` should give 1813 passed, 1 skipped.
+2. Next: **T‑1070f**, a stored `tsvector` (see the DEVELOPMENT_STATUS "Next task"). Hold T‑1070g (contract) for owner approval.
+3. After that: T‑1080 (lifecycle; settle KI‑050 there) → T‑1011 (MFA) → T‑1110 → T‑1120. T‑1091/T‑1092 are P3.
