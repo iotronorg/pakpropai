@@ -4,15 +4,16 @@ _Last updated: 2026-11-23 (session 9, continued)_
 
 | Item | Value |
 |---|---|
-| Branch | `development`. The owner committed everything through T‑1060a and branding (`6fc5634`). **Uncommitted:** T‑1120 (owner committed through T‑1110 as `a215499`) |
+| Branch | `development`. The owner committed everything through T‑1060a and branding (`6fc5634`). **Uncommitted:** T‑1032b‑1 (owner committed through T‑1120 as `2bd9b9b`) |
 | Current milestone | **M1 — Core foundation** ([MILESTONE_01](milestones/MILESTONE_01_CORE_FOUNDATION.md)); M0 code‑complete, awaiting first GitHub Actions run |
 | M0 progress | All 17 tasks complete. Remaining exit criterion: CI green on GitHub Actions (owner pushes) |
 | M1 progress | 15 of 18 tasks done (T‑1010, T‑1011, T‑1020, T‑1021, T‑1022, T‑1030, T‑1031, T‑1033, T‑1050, T‑1060, T‑1080, T‑1090, T‑1100, T‑1110, T‑1120) plus subtasks T‑1032a, T‑1032c, T‑1070a–f and T‑1070g‑1 |
-| Test suite | **1934 passed, 1 skipped, 0 failed** (session 9, T‑1120). See [TESTING_STATUS](TESTING_STATUS.md) |
-| Last completed task | T‑1120 LLM provider router, prompt registry and market‑pack prompt fragments (ADR‑028) |
-| Next task | **T‑1032b** (see DEVELOPMENT_TASKS / MILESTONE_01). Open: KI‑055…KI‑059 |
+| Test suite | **1946 passed, 1 skipped, 0 failed** (session 9, T‑1032b‑1). See [TESTING_STATUS](TESTING_STATUS.md) |
+| Last completed task | T‑1032b‑1 ADR‑013 phase C expand (owner membership canonical, multi‑org owners; contract staged) |
+| Next task | **T‑1040** `is_sandbox` semantics for leads with no organization (KI‑017). Then T‑1070g‑2 / T‑1032b‑2 in their releases. Open: KI‑055…KI‑059 |
 
 ## Owner decisions (2026-11-23)
+- **T‑1032b:** staged like T‑1070g (b‑1 now, drops in a later release behind the reconcile gate); `Agent.organization` kept as a derived primary‑org pointer.
 - **T‑1070g approved.** It ships one release after the current changes: drop `area_marla`/`area_unit`/`area_sqm`, the `property_type` column and `prop_fts_gin`.
 - **Money stays in major units;** no minor‑unit conversion.
 - **Geo infrastructure:** neither PostGIS nor a Google key exists yet. Build and test against a local PostGIS container with the Google client mocked; geocoding stays behind a flag that defaults to off.

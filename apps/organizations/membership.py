@@ -17,6 +17,15 @@ Owner memberships are never deactivated by an agent-side change. Ownership is
 transferred through :func:`transfer_ownership` (ADR-021), which moves the owner
 membership and the ``admin_user`` projection together.
 
+Phase C, release 1 (T-1032b, ADR-013 addendum): the **owner membership is the
+source of truth** for who owns an org. Readers use :func:`owner_of` /
+:func:`owned_organization_ids` (``Organization.owner``), never ``admin_user``.
+``admin_user`` is now a best-effort projection for older builds, written only by
+:func:`sync_admin_projection`: the owner, or NULL when that user already holds
+the one-to-one ``admin_user`` of another org (one user may own several orgs).
+The column is dropped by the staged contract migration
+(``apps/organizations/contract_migrations``).
+
 Member management (invite, role change, removal, transfer) is the membership
 contract below: the views only parse the request and call it.
 """
@@ -72,6 +81,72 @@ def ensure_membership(user_id, organization_id, role, employment_type='internal'
         membership.save(update_fields=['role'])
         logger.info('membership.promoted user=%s org=%s role=%s', user_id, organization_id, role)
     return membership
+
+
+def owner_of(organization):
+    """
+    The user who owns ``organization`` (active ``owner`` membership; the earliest
+    if drift left several). Falls back to the legacy ``admin_user`` projection
+    only when no owner membership exists. ``None`` for an ownerless org.
+    """
+    if organization is None:
+        return None
+    m = (_model().objects.filter(organization_id=organization.pk, role=OWNER, is_active=True)
+         .select_related('user').order_by('joined_at', 'pk').first())
+    if m is not None:
+        return m.user
+    return organization.admin_user if organization.admin_user_id else None
+
+
+def owned_organization_ids(user) -> list:
+    """Ids of every org the user owns (active owner memberships), oldest first."""
+    if user is None or not getattr(user, 'pk', None):
+        return []
+    return list(_model().objects.filter(user_id=user.pk, role=OWNER, is_active=True)
+                .order_by('joined_at', 'pk').values_list('organization_id', flat=True))
+
+
+def sync_admin_projection(organization_id) -> None:
+    """
+    Point the legacy ``Organization.admin_user`` at the owner membership.
+
+    ``admin_user`` is one-to-one, so a user who already projects into another org
+    leaves this org's column NULL (readers no longer depend on it). Written with
+    ``QuerySet.update`` so the legacy post_save hook does not run.
+    """
+    from apps.organizations.models import Organization
+    owner_id = (_model().objects.filter(organization_id=organization_id, role=OWNER, is_active=True)
+                .order_by('joined_at', 'pk').values_list('user_id', flat=True).first())
+    if owner_id and Organization.objects.filter(admin_user_id=owner_id).exclude(pk=organization_id).exists():
+        owner_id = None
+    Organization.objects.filter(pk=organization_id).exclude(admin_user_id=owner_id).update(
+        admin_user_id=owner_id)
+
+
+@transaction.atomic
+def set_owner(organization, user) -> None:
+    """
+    Make ``user`` the sole owner of ``organization`` (org registration, platform
+    admin create/PATCH). Previous owners lose their membership, matching the
+    legacy ``admin_user`` semantics; member-initiated hand-over is
+    :func:`transfer_ownership`. ``user=None`` leaves the org ownerless.
+    """
+    Membership = _model()
+    previous = list(Membership.objects.select_for_update()
+                    .filter(organization_id=organization.pk, role=OWNER, is_active=True)
+                    .exclude(user_id=getattr(user, 'pk', None)).values_list('user_id', flat=True))
+    for uid in previous:
+        deactivate_membership(uid, organization.pk, keep_owner=False)
+    if user is not None:
+        ensure_membership(user.pk, organization.pk, role=OWNER, promote=True)
+    sync_admin_projection(organization.pk)
+    for uid in previous:                      # their admin_user slot may now be free
+        for oid in (Membership.objects.filter(user_id=uid, role=OWNER, is_active=True)
+                    .values_list('organization_id', flat=True)):
+            sync_admin_projection(oid)
+    projected = type(organization).objects.values_list('admin_user_id', flat=True).get(pk=organization.pk)
+    organization.admin_user_id = projected
+    organization._membership_snapshot = (projected,)
 
 
 def deactivate_membership(user_id, organization_id, *, keep_owner=True) -> bool:
@@ -443,13 +518,13 @@ def transfer_ownership(actor, organization, membership_id, *, request=None):
     Rules (ADR-021):
     * only the current owner or a platform admin may transfer;
     * the target must be an active ``org_admin`` of the org (promote first) whose
-      account type is ``developer`` and who owns no other organization (the
-      ``admin_user`` projection is one‑to‑one until ADR-013 phase C);
+      account type is ``developer``; since T-1032b they may already own other
+      organizations (the owner membership is canonical);
     * the previous owner(s) stay in the org as ``org_admin``.
 
-    ``Organization.admin_user`` is written with ``QuerySet.update`` so the legacy
-    projection hook (which would deactivate the previous owner) does not run;
-    memberships are set explicitly here. Returns the new owner membership.
+    Memberships are set explicitly here and the ``admin_user`` projection follows
+    via :func:`sync_admin_projection` (``QuerySet.update``, so the legacy hook that
+    would deactivate the previous owner does not run). Returns the new owner membership.
     """
     from apps.core.models import AuditLog
     from apps.organizations.models import Organization
@@ -474,8 +549,6 @@ def transfer_ownership(actor, organization, membership_id, *, request=None):
     if target.user.role != OWNER_ACCOUNT_TYPE:
         raise MembershipInvalid('The target account must be an organization (developer) '
                                 'account to own an organization.')
-    if Organization.objects.filter(admin_user_id=target.user_id).exclude(pk=org.pk).exists():
-        raise MembershipConflict('The target user already owns another organization.')
 
     previous_admin_id = org.admin_user_id
     previous = list(Membership.objects.select_for_update()
@@ -484,18 +557,24 @@ def transfer_ownership(actor, organization, membership_id, *, request=None):
     before = {'owner_user_id': str(previous_admin_id) if previous_admin_id else None,
               'owner_membership_ids': [m.pk for m in previous]}
 
-    now = timezone.now()
-    Organization.objects.filter(pk=org.pk).update(admin_user_id=target.user_id, updated_at=now)
     for m in previous:
         m.role = ORG_ADMIN
         m.save(update_fields=['role'])
     target.role = OWNER
     target.save(update_fields=['role'])
+    Organization.objects.filter(pk=org.pk).update(updated_at=timezone.now())
+    sync_admin_projection(org.pk)
+    # The previous owner's admin_user slot is free again: let one of their other
+    # orgs (if any) take the projection back.
+    for other_id in (_model().objects.filter(user_id=previous_admin_id, role=OWNER, is_active=True)
+                     .values_list('organization_id', flat=True) if previous_admin_id else ()):
+        sync_admin_projection(other_id)
 
     # Keep the caller's instance consistent so a later full save() cannot revert
     # the projection, and its snapshot so the post_save hook sees no change.
-    organization.admin_user_id = target.user_id
-    organization._membership_snapshot = (target.user_id,)
+    projected = Organization.objects.values_list('admin_user_id', flat=True).get(pk=org.pk)
+    organization.admin_user_id = projected
+    organization._membership_snapshot = (projected,)
 
     _audit(actor, AuditLog.Action.UPDATE, org, 'organization.ownership_transferred',
            before=before,
@@ -564,11 +643,8 @@ def primary_membership(user):
 
 
 def _owned_org_id(user):
-    from apps.organizations.models import Organization
-    try:
-        return user.owned_organization.pk
-    except (Organization.DoesNotExist, AttributeError):
-        return None
+    ids = owned_organization_ids(user)
+    return ids[0] if ids else None
 
 
 def _agent_org_id(user):
@@ -581,9 +657,12 @@ def _agent_org_id(user):
 
 # ── Drift detection / repair (manage.py reconcile_memberships) ────────────────
 
-REPAIRABLE = ('missing_owner', 'missing_agent')
+REPAIRABLE = ('missing_owner', 'missing_agent', 'stale_admin_projection', 'unlinked_collaboration')
 REPORT_ONLY = ('extra_owner', 'orphan_agent', 'collaboration_without_membership',
                'deprecated_agent_organization_memberships')
+# T-1032b: the staged contract migrations refuse while any of these is non-empty.
+CONTRACT_BLOCKERS = REPAIRABLE + ('extra_owner', 'collaboration_without_membership',
+                                  'deprecated_agent_organization_memberships')
 
 
 def find_drift() -> dict[str, list]:
@@ -591,10 +670,14 @@ def find_drift() -> dict[str, list]:
     Compare the canonical table with its projections.
 
     Repairable (by ``repair_drift``):
-      missing_owner  — (user, org) where org.admin_user has no active ``owner`` membership
+      missing_owner  — (admin_user, org) for an org with no active ``owner`` membership at all
       missing_agent  — (user, org) where Agent.user + Agent.organization has no active membership
+      stale_admin_projection — (owner, org) where admin_user is NULL or another user
+                       although the owner could be projected (T-1032b)
+      unlinked_collaboration — (agent user, org) of an AgentOrgMembership whose
+                       ``membership`` link is unset while a membership exists
     Report only (need a human decision, see ADR-013):
-      extra_owner    — active owner memberships whose user is not org.admin_user
+      extra_owner    — orgs with more than one active owner membership
       orphan_agent   — active agent/freelance_agent memberships not backed by
                        Agent.organization or an active AgentOrgMembership
       collaboration_without_membership — active AgentOrgMembership whose agent user
@@ -602,7 +685,9 @@ def find_drift() -> dict[str, list]:
       deprecated_agent_organization_memberships — rows in the unused
                        AgentOrganizationMembership table
     """
-    from apps.agents.models import Agent, AgentOrganizationMembership, AgentOrgMembership
+    from django.db import connection
+
+    from apps.agents.models import Agent, AgentOrgMembership
     from apps.organizations.models import Organization
 
     Membership = _model()
@@ -617,23 +702,53 @@ def find_drift() -> dict[str, list]:
     collab_links = set(AgentOrgMembership.objects.filter(status='active', agent__user__isnull=False)
                        .values_list('agent__user_id', 'organization_id'))
 
+    owners: dict = {}
+    for (u, o), r in active.items():
+        if r == OWNER:
+            owners.setdefault(o, []).append(u)
+    projected_users = set(admins.values())
+    stale = []
+    for o, users in owners.items():
+        if len(users) != 1:
+            continue
+        u = users[0]
+        if admins.get(o) == u:
+            continue
+        if admins.get(o) is None and u in projected_users:
+            continue                                   # projected into another org (allowed)
+        stale.append((str(u), str(o)))
+    member_ids = set(Membership.objects.values_list('user_id', 'organization_id'))
+    unlinked = sorted(
+        (str(u), str(o)) for u, o in AgentOrgMembership.objects
+        .filter(membership__isnull=True, agent__user__isnull=False)
+        .values_list('agent__user_id', 'organization_id') if (u, o) in member_ids)
+    with connection.cursor() as cur:
+        cur.execute("SELECT to_regclass('agent_organization_memberships') IS NOT NULL")
+        legacy_table = cur.fetchone()[0]
+        deprecated = []
+        if legacy_table:
+            cur.execute('SELECT p.user_id, m.organization_id FROM agent_organization_memberships m '
+                        'JOIN freelance_agent_profiles p ON p.id = m.freelance_agent_id')
+            deprecated = sorted((str(f), str(o)) for f, o in cur.fetchall())
+
     return {
+        # Owner membership is canonical (T-1032b): only an org with *no* owner is
+        # repaired from admin_user; a mismatch is stale_admin_projection instead.
         'missing_owner': sorted(
-            (str(u), str(o)) for o, u in admins.items() if active.get((u, o)) != OWNER),
+            (str(u), str(o)) for o, u in admins.items() if o not in owners),
         'missing_agent': sorted(
             (str(u), str(o)) for u, o in agent_links if (u, o) not in active),
+        'stale_admin_projection': sorted(stale),
+        'unlinked_collaboration': unlinked,
         'extra_owner': sorted(
-            (str(u), str(o)) for (u, o), r in active.items()
-            if r == OWNER and admins.get(o) != u),
+            (str(u), str(o)) for o, users in owners.items() if len(users) > 1 for u in users),
         'orphan_agent': sorted(
             (str(u), str(o)) for (u, o), r in active.items()
             if r in ('agent', 'freelance_agent')
             and (u, o) not in agent_links and (u, o) not in collab_links),
         'collaboration_without_membership': sorted(
             (str(u), str(o)) for u, o in collab_links if (u, o) not in active),
-        'deprecated_agent_organization_memberships': sorted(
-            (str(f), str(o)) for f, o in AgentOrganizationMembership.objects
-            .values_list('freelance_agent__user_id', 'organization_id')),
+        'deprecated_agent_organization_memberships': deprecated,
     }
 
 
@@ -648,4 +763,10 @@ def repair_drift(drift: dict[str, list] | None = None) -> dict[str, int]:
     for user_id, org_id in drift['missing_agent']:
         agent = Agent.objects.get(user_id=user_id, organization_id=org_id)
         sync_agent_membership(agent, previous_org_id=None, previous_user_id=None)
-    return {k: len(drift[k]) for k in REPAIRABLE}
+    for _user_id, org_id in drift.get('stale_admin_projection', ()):
+        sync_admin_projection(org_id)
+    if drift.get('unlinked_collaboration'):
+        from apps.agents.models import AgentOrgMembership
+        for collab in AgentOrgMembership.objects.filter(membership__isnull=True).select_related('agent'):
+            collab.link_membership(save=True)
+    return {k: len(drift.get(k, ())) for k in REPAIRABLE}

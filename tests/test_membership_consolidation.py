@@ -238,7 +238,7 @@ class DriftAndBackfillTest(TestCase):
             call_command('reconcile_memberships', '--fail-on-drift', stdout=StringIO())
 
     def test_report_only_categories(self):
-        org = make_org()
+        _owner, org = make_developer()
         stray = make_user(role='agent')
         M.objects.create(user=stray, organization=org, role='agent')
         extra = make_user(role='developer')

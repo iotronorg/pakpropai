@@ -124,13 +124,13 @@ class StripeService:
             return
         try:
             from apps.billing.models import OrgSubscription
-            sub = OrgSubscription.objects.select_related('organization__admin_user').get(
+            sub = OrgSubscription.objects.select_related('organization').get(
                 stripe_customer_id=customer_id
             )
             sub.status = OrgSubscription.Status.PAST_DUE
             sub.save(update_fields=['status', 'updated_at'])
             # Notify org admin via WhatsApp
-            admin = sub.organization.admin_user
+            admin = sub.organization.owner
             if admin and getattr(admin, 'phone', ''):
                 from apps.notifications.utils import notify_user
                 notify_user(

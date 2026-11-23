@@ -3,7 +3,7 @@ from django.test import TestCase
 from django.core.exceptions import ValidationError
 from apps.users.models import User
 from apps.organizations.models import OrganizationMembership, Organization
-from apps.agents.models import FreelanceAgentProfile, AgentOrganizationMembership
+from apps.agents.models import FreelanceAgentProfile
 from apps.leads.models import CRMContact, ClientProfile
 
 
@@ -20,29 +20,7 @@ class FreelanceAgentProfileTest(TestCase):
         self.assertEqual(profile.user, self.user)
         self.assertEqual(profile.verification_status, 'unverified')
 
-    def test_agent_org_membership_creation(self):
-        profile = FreelanceAgentProfile.objects.create(user=self.user)
-        membership = AgentOrganizationMembership.objects.create(
-            freelance_agent=profile,
-            organization=self.org,
-            commission_type='percentage',
-            commission_rate='5.00',
-        )
-        self.assertTrue(membership.is_active)
-        self.assertEqual(membership.commission_type, 'percentage')
-
-    def test_unique_freelance_agent_per_org(self):
-        profile = FreelanceAgentProfile.objects.create(user=self.user)
-        AgentOrganizationMembership.objects.create(
-            freelance_agent=profile, organization=self.org,
-            commission_type='flat', commission_rate='0',
-        )
-        from django.db import IntegrityError
-        with self.assertRaises(IntegrityError):
-            AgentOrganizationMembership.objects.create(
-                freelance_agent=profile, organization=self.org,
-                commission_type='flat', commission_rate='0',
-            )
+    # AgentOrganizationMembership was removed in T-1032b (tests/test_membership_phase_c.py).
 
 
 class UserPlatformRoleTest(TestCase):

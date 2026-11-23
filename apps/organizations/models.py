@@ -35,12 +35,15 @@ class Organization(models.Model):
     slug       = models.SlugField(max_length=120, unique=True, blank=True,
                      help_text='Auto-generated from name — used in URLs and internal references')
     org_type   = models.CharField(max_length=25, choices=OrgType.choices, default=OrgType.AGENCY)
+    # Legacy projection of the owner membership (ADR-013). Read `owner` instead;
+    # written only via membership.sync_admin_projection / the post_save hook.
+    # Dropped by the staged contract migration (T-1032b).
     admin_user = models.OneToOneField(
                      settings.AUTH_USER_MODEL,
                      on_delete=models.SET_NULL,
                      null=True, blank=True,
                      related_name='owned_organization',
-                     help_text='The platform user who administers this organization'
+                     help_text='Legacy projection of the owner membership (read Organization.owner)'
                  )
 
     # Contact
@@ -197,6 +200,12 @@ class Organization(models.Model):
             # PK stays pk_traditional (correct default, no change needed)
 
         super().save(*args, **kwargs)
+
+    @property
+    def owner(self):
+        """The owning user: active ``owner`` membership (T-1032b). Use instead of ``admin_user``."""
+        from apps.organizations.membership import owner_of
+        return owner_of(self)
 
     def __str__(self):
         return f"{self.name} ({self.get_org_type_display()})"

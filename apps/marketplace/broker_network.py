@@ -83,8 +83,8 @@ def _notify_broker(partnership, developer_org):
         recipient = None
         if partnership.broker_agent:
             recipient = partnership.broker_agent
-        elif partnership.broker_org and partnership.broker_org.admin_user:
-            recipient = partnership.broker_org.admin_user
+        elif partnership.broker_org and partnership.broker_org.owner:
+            recipient = partnership.broker_org.owner
         if recipient:
             Notification.objects.create(
                 user=recipient,

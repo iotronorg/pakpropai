@@ -279,6 +279,13 @@ class AgentOrgMembership(models.Model):
                        on_delete=models.CASCADE,
                        related_name='freelance_memberships',
                    )
+    # T-1032b (ADR-013 phase C): collaboration terms hang off the canonical
+    # membership. Derived in save(); NOT NULL once the staged contract ships.
+    membership   = models.ForeignKey(
+                       'organizations.OrganizationMembership',
+                       on_delete=models.SET_NULL, null=True, blank=True,
+                       related_name='collaboration_terms',
+                   )
     role           = models.CharField(max_length=20, choices=Role.choices, default=Role.COLLABORATOR)
     status         = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
     commission_pct = models.DecimalField(
@@ -303,6 +310,25 @@ class AgentOrgMembership(models.Model):
             models.Index(fields=['organization', 'status']),
             models.Index(fields=['agent', 'status']),
         ]
+
+    def link_membership(self, *, save=False):
+        """Point ``membership`` at the agent user's membership in this org (any state)."""
+        from apps.organizations.models import OrganizationMembership
+        user_id = getattr(self.agent, 'user_id', None) if self.agent_id else None
+        found = (OrganizationMembership.objects.filter(user_id=user_id, organization_id=self.organization_id)
+                 .values_list('pk', flat=True).first()) if user_id and self.organization_id else None
+        if found != self.membership_id:
+            self.membership_id = found
+            if save and self.pk:
+                type(self).objects.filter(pk=self.pk).update(membership_id=found)
+        return found
+
+    def save(self, *args, **kwargs):
+        if self.membership_id is None:
+            self.link_membership()
+            if kwargs.get('update_fields') is not None and self.membership_id:
+                kwargs['update_fields'] = {*kwargs['update_fields'], 'membership'}
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.agent.name} ↔ {self.organization.name} [{self.get_role_display()}]"
@@ -339,32 +365,7 @@ class FreelanceAgentProfile(models.Model):
         return f"FreelanceAgent({self.user.phone})"
 
 
-class AgentOrganizationMembership(models.Model):
-
-    class CommissionType(models.TextChoices):
-        FLAT       = 'flat',       'Flat Fee'
-        PERCENTAGE = 'percentage', 'Percentage'
-        TIERED     = 'tiered',     'Tiered'
-
-    freelance_agent = models.ForeignKey(
-        FreelanceAgentProfile,
-        on_delete=models.CASCADE,
-        related_name='org_memberships',
-    )
-    organization = models.ForeignKey(
-        'organizations.Organization',
-        on_delete=models.CASCADE,
-        related_name='freelance_members',
-    )
-    commission_type = models.CharField(max_length=20, choices=CommissionType.choices)
-    commission_rate = models.DecimalField(max_digits=8, decimal_places=2)
-    is_active       = models.BooleanField(default=True)
-    joined_at       = models.DateTimeField(auto_now_add=True)
-    left_at         = models.DateTimeField(null=True, blank=True)
-
-    class Meta:
-        db_table        = 'agent_organization_memberships'
-        unique_together = [('freelance_agent', 'organization')]
-
-    def __str__(self):
-        return f"{self.freelance_agent} → {self.organization.name}"
+# AgentOrganizationMembership (table ``agent_organization_memberships``) was a
+# reader-less duplicate of AgentOrgMembership. Removed from the model state in
+# agents 0015 (T-1032b); the table is dropped by the staged contract migration
+# in apps/agents/contract_migrations/ once reconcile_memberships reports it empty.

@@ -36,11 +36,11 @@ class OrganizationListView(APIView):
     def get(self, request):
         role = request.user.role
         if role == 'admin':
-            qs = Organization.objects.select_related('admin_user').all()
+            qs = Organization.objects.all()
         elif role == 'developer':
-            qs = Organization.objects.select_related('admin_user').filter(
-                admin_user=request.user
-            )
+            # T-1032b: every org the developer owns (owner membership is canonical).
+            from .membership import owned_organization_ids
+            qs = Organization.objects.filter(pk__in=owned_organization_ids(request.user))
         else:
             return Response(status=status.HTTP_403_FORBIDDEN)
 
@@ -87,12 +87,13 @@ class OrganizationDetailView(APIView):
 
     def _get_org(self, pk, user):
         try:
-            org = Organization.objects.select_related('admin_user').get(pk=pk)
+            org = Organization.objects.get(pk=pk)
         except Organization.DoesNotExist:
             return None, Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         # Object-level permission: admin sees all, developer sees own only
-        if user.role == 'developer' and org.admin_user_id != user.id:
+        from .membership import owned_organization_ids
+        if user.role == 'developer' and org.pk not in owned_organization_ids(user):
             return None, Response(status=status.HTTP_403_FORBIDDEN)
 
         return org, None
@@ -146,13 +147,20 @@ class OrganizationMeView(APIView):
     parser_classes     = [MultiPartParser, FormParser, JSONParser]
 
     def _get_own_org(self, user):
-        try:
-            return Organization.objects.get(admin_user=user), None
-        except Organization.DoesNotExist:
-            return None, Response(
-                {'detail': 'No organization linked to your account.'},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+        # T-1032b: the active org if the caller owns it, else their first owned org.
+        from apps.core.permissions import get_active_membership
+        from .membership import owned_organization_ids
+        owned = owned_organization_ids(user)
+        active = get_active_membership(user)
+        org_id = active.organization_id if active and active.organization_id in owned else (
+            owned[0] if owned else None)
+        org = Organization.objects.filter(pk=org_id).first() if org_id else None
+        if org is not None:
+            return org, None
+        return None, Response(
+            {'detail': 'No organization linked to your account.'},
+            status=status.HTTP_404_NOT_FOUND,
+        )
 
     def get(self, request):
         if request.user.role not in ('admin', 'developer'):
@@ -542,12 +550,12 @@ class OrgRegistrationView(APIView):
                 name=d['org_name'],
                 org_type=d['org_type'],
                 country=d['country'],
-                admin_user=user,
                 plan=Organization.Plan.TRIAL,
                 is_verified=True,
             )
-            # The owner membership is created by the admin_user projection sync
-            # (apps.organizations.membership, ADR-013) inside this transaction.
+            # T-1032b: ownership is the owner membership; admin_user follows.
+            from .membership import set_owner
+            set_owner(org, user)
 
         try:
             otp = OTPService.issue(d['phone'], purpose='org_registration')

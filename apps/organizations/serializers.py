@@ -6,9 +6,14 @@ from apps.core.images import SanitizedImageField
 from .models import Organization, OrganizationTheme
 
 
+def _owner_attr(org, attr):
+    owner = org.owner
+    return getattr(owner, attr, None) if owner else None
+
+
 class OrganizationListSerializer(serializers.ModelSerializer):
     """Minimal fields for list responses."""
-    admin_phone    = serializers.CharField(source='admin_user.phone', read_only=True, allow_null=True)
+    admin_phone    = serializers.SerializerMethodField()
     agent_count    = serializers.SerializerMethodField()
     lead_count     = serializers.SerializerMethodField()
     property_count = serializers.SerializerMethodField()
@@ -23,6 +28,9 @@ class OrganizationListSerializer(serializers.ModelSerializer):
             'agent_count', 'lead_count', 'property_count',
             'created_at',
         )
+
+    def get_admin_phone(self, obj) -> str | None:
+        return _owner_attr(obj, 'phone')
 
     def get_agent_count(self, obj):
         from apps.agents.models import Agent
@@ -40,8 +48,8 @@ class OrganizationListSerializer(serializers.ModelSerializer):
 class OrganizationDetailSerializer(serializers.ModelSerializer):
     """Full fields for detail / create / update."""
     logo = SanitizedImageField(required=False, allow_null=True, max_side=1024)   # T-1110
-    admin_phone    = serializers.CharField(source='admin_user.phone', read_only=True, allow_null=True)
-    admin_name     = serializers.CharField(source='admin_user.name',  read_only=True, allow_null=True)
+    admin_phone    = serializers.SerializerMethodField()
+    admin_name     = serializers.SerializerMethodField()
     agent_count    = serializers.SerializerMethodField()
     lead_count     = serializers.SerializerMethodField()
     property_count = serializers.SerializerMethodField()
@@ -74,6 +82,36 @@ class OrganizationDetailSerializer(serializers.ModelSerializer):
     def get_property_count(self, obj):
         from apps.properties.models import Property
         return Property.objects.filter(organization=obj, is_active=True).count()
+
+    def get_admin_phone(self, obj) -> str | None:
+        return _owner_attr(obj, 'phone')
+
+    def get_admin_name(self, obj) -> str | None:
+        return _owner_attr(obj, 'name')
+
+    def to_representation(self, obj):
+        data = super().to_representation(obj)
+        owner = obj.owner                         # T-1032b: owner membership, not the projection
+        data['admin_user'] = str(owner.pk) if owner else None
+        return data
+
+    # T-1032b: ``admin_user`` input sets the owner membership via the service.
+    def create(self, validated_data):
+        owner = validated_data.pop('admin_user', None)
+        org = super().create(validated_data)
+        if owner is not None:
+            from .membership import set_owner
+            set_owner(org, owner)
+        return org
+
+    def update(self, instance, validated_data):
+        has_owner = 'admin_user' in validated_data
+        owner = validated_data.pop('admin_user', None)
+        org = super().update(instance, validated_data)
+        if has_owner and getattr(owner, 'pk', None) != getattr(org.owner, 'pk', None):
+            from .membership import set_owner
+            set_owner(org, owner)
+        return org
 
     def validate_admin_user(self, user):
         from apps.users.models import User

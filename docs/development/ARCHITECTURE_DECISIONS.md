@@ -726,3 +726,20 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - document OCR in `RealTronAgent.verify_document_image` (market‑pack `ocr_prompt`);
   - audio transcription (the `STTService` cascade);
   - the intent classifier's prompts.
+
+### ADR‑013 addendum — Phase C, staged (T‑1032b, 2026‑11‑23)
+- **Owner decision:** the contraction is staged like T‑1070g, and `Agent.organization` stays as a derived primary‑org pointer.
+- **b‑1 (this release):**
+  - **The owner membership is the source of truth.** Readers use `membership.owner_of` (`Organization.owner`) and `owned_organization_ids`. Org registration and platform‑admin create/PATCH write through `set_owner`.
+  - **`admin_user`** remains a projection for older builds, written by `sync_admin_projection`. Because the column is one‑to‑one, an owner who already projects into another org leaves it NULL. The legacy post_save hook still mirrors direct `admin_user` writes (Django admin, factories).
+  - **Multi‑org owners:** a user may own several orgs. `transfer_ownership` no longer refuses a target who owns another org, and a freed projection moves to the previous owner's next org.
+  - **Collaboration terms:** `AgentOrgMembership.membership` links the terms to the canonical membership (derived on save, backfilled in `agents 0015`). Lead routing ignores terms whose membership was deactivated.
+  - **Legacy table:** `AgentOrganizationMembership` (no readers) left the model state; its table and rows stay until b‑2. Its two FK constraints are dropped in `agents 0015`, because otherwise a TRUNCATE of `organizations` (Django test flushes) fails on a table Django no longer knows about.
+- **Drift semantics:**
+  - `missing_owner` now fires only for an org with no owner membership. It previously also promoted a stale `admin_user` to a second owner.
+  - A mismatched projection is `stale_admin_projection` (repairable).
+  - `extra_owner` means more than one active owner.
+  - `unlinked_collaboration` is repairable.
+  - `CONTRACT_BLOCKERS` gate b‑2.
+- **b‑2 (staged):** `organizations/contract_migrations/0029` drops `admin_user_id` (and removes it from the state); `agents/contract_migrations/0016` drops `agent_organization_memberships`. Each refuses while any blocker is reported, and each reverse restores (the projection is refilled from owner memberships). The README lists the code removals that must ship in the same release. A guard test keeps `admin_user` out of every module except the projection's own.
+- **Rejected:** a DB trigger mirroring owner memberships into `admin_user` (as T‑1070g did). There is a single application write path, and the one‑to‑one constraint means the projection cannot be total anyway.

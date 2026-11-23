@@ -238,7 +238,7 @@ class BillingAlertService:
 
             from apps.notifications.models import Notification
             Notification.objects.create(
-                user=org.admin_user,
+                user=org.owner,
                 title='Token budget alert',
                 message=(
                     f'Your AI token budget is at {status.percent:.0f}% '

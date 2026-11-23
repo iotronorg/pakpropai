@@ -282,9 +282,16 @@ class OwnershipTransferTest(_World):
         self.admin_user.save(update_fields=['is_active'])
         self.assertEqual(self.transfer(self.owner, self.admin_m.pk).status_code, 400)
 
-    def test_target_owning_another_org_is_409(self):
+    def test_target_owning_another_org_now_allowed(self):
+        # T-1032b lifted the one-org rule: the owner membership is canonical and the
+        # one-to-one admin_user projection stays on the target's first org.
+        other_org = Organization.objects.get(admin_user=self.other_owner)
         m = make_membership(self.other_owner, self.org, role=ROLE.ORG_ADMIN)
-        self.assertEqual(self.transfer(self.owner, m.pk).status_code, 409)
+        self.assertEqual(self.transfer(self.owner, m.pk).status_code, 200)
+        self.org.refresh_from_db()
+        self.assertEqual(self.org.owner, self.other_owner)
+        self.assertIsNone(self.org.admin_user_id)
+        self.assertEqual(Organization.objects.get(pk=other_org.pk).admin_user_id, self.other_owner.pk)
 
     def test_self_transfer_is_409(self):
         self.assertEqual(self.transfer(self.owner, self.owner_m.pk).status_code, 409)

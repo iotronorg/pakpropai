@@ -30,7 +30,7 @@ class ApiKeyAuthentication(BaseAuthentication):
       Authorization: Bearer rtk_<prefix>_<secret>
       X-API-Key: rtk_<prefix>_<secret>
 
-    On success returns (org.admin_user, api_key_instance).
+    On success returns (org.owner, api_key_instance).
     Returns None (defers to next authenticator) when no rtk_ token is present.
     Raises AuthenticationFailed for malformed or invalid tokens.
     """
@@ -55,7 +55,7 @@ class ApiKeyAuthentication(BaseAuthentication):
                 code='org_inactive',
             )
 
-        return (api_key.organization.admin_user, api_key)
+        return (api_key.organization.owner, api_key)
 
     def authenticate_header(self, request):
         return 'Bearer realm="RealTron External API"'

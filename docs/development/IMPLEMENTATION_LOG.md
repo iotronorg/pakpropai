@@ -433,3 +433,21 @@
 - **Removed:** `apps/ai/client.py` (`GeminiClient`). Its breaker and cache are replaced by the router's.
 - **Note:** `manage.py test` (no root `conftest`) leaks cached feature flags between tests, so `test_ai_side_effect_guards` fails there, also at HEAD. Use `scripts/dev/test.sh` (pytest).
 - **New issue:** KI‑059 (OCR, STT and intent classifier not yet routed).
+
+### 2026-11-23 — session 9 (eleventh part): T‑1032b‑1 membership phase C, expand
+- **Verified:** the owner committed T‑1120 (`2bd9b9b`); the tree was clean.
+- **Owner decision (asked):** stage it like T‑1070g, and keep `Agent.organization`.
+- **Added:**
+  - `membership.owner_of`, `owned_organization_ids`, `sync_admin_projection`, `set_owner`, `CONTRACT_BLOCKERS`;
+  - `Organization.owner`;
+  - `AgentOrgMembership.membership` plus `link_membership()` and save‑time derivation;
+  - migrations `organizations 0028` (help text) and `agents 0015` (link FK and backfill; legacy model removed from the state; legacy table FKs dropped);
+  - staged `organizations/contract_migrations/0029_drop_admin_user.py` and `agents/contract_migrations/0016_drop_agent_organization_memberships.py`, with a README;
+  - `tests/test_membership_phase_c.py` (14).
+- **Changed:**
+  - Readers: org list/detail/me views, the org serializers (the `admin_user`/`admin_phone`/`admin_name` output shows the owner; input goes through `set_owner`), registration, external API key auth, notifications (broker network, agent application, compliance ×2, token governor, inventory conflicts, Stripe past‑due), `primary_membership`.
+  - `transfer_ownership` no longer refuses a target who owns another org.
+  - `find_drift`/`repair_drift`: new categories; `missing_owner` only for ownerless orgs.
+  - Lead routing skips terms whose membership is inactive.
+- **Tests updated:** the transfer conflict test now asserts that the transfer succeeds; the report‑only drift test gives the org a real owner; the two `AgentOrganizationMembership` model tests were removed.
+- **Fixed during testing:** TRUNCATE failures from the unmanaged legacy table's FKs.

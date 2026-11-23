@@ -261,3 +261,16 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
   - **This is a paid provider: the owner must decide before it is enabled.** Check its data‑processing terms, because prompts contain lead conversations.
 - **Tuning:** `AI_TIMEOUT_S` (30), `AI_BREAKER_FAILURES` (5), `AI_BREAKER_SECONDS` (120).
 - **Dashboards:** group `AIInteraction` by `prompt_name, prompt_version` to compare prompt versions, and by `provider` to watch failover.
+
+## 29. Session‑9 change: membership phase C, release 1 (T‑1032b‑1, ADR‑013 addendum)
+- **Migrations:**
+  - `organizations 0028` (help text only).
+  - `agents 0015`: adds the nullable `agent_org_memberships.membership_id` FK with a one‑UPDATE backfill (admin‑written, small table), removes `AgentOrganizationMembership` from the state, and drops that legacy table's two FK constraints. No table or row is dropped.
+- **Behaviour:**
+  - The org API's `admin_user`, `admin_phone` and `admin_name` now show the owner membership.
+  - A developer's `GET /organizations/` lists every org they own.
+  - `/organizations/me/` uses the active org (`X-Organization-ID`) when the caller owns it, else their first owned org.
+  - Ownership can be transferred to a user who already owns another org.
+  - A freelancer removed from an org stops receiving its leads even if their collaboration terms are still `active`.
+- **After deploy:** run `python manage.py reconcile_memberships`, then `--apply`, and resolve the report‑only categories. This is needed before T‑1032b‑2 (see `apps/organizations/contract_migrations/README.md`).
+- **Next release (T‑1032b‑2):** move the staged files and make the listed code removals in the same change. Rehearse the rollback (`migrate organizations 0028`, `migrate agents 0015`) on staging.

@@ -39,11 +39,13 @@ def suggest_agents_for_lead(lead, limit: int = 3) -> list:
         # Org boundary: match internal agents + freelancers with active org membership
         if getattr(lead, 'organization_id', None):
             from apps.agents.models import AgentOrgMembership
+            # T-1032b: terms whose canonical membership was deactivated (member
+            # removed) no longer route leads; unlinked legacy rows still do.
             freelance_ids = AgentOrgMembership.objects.filter(
                 organization_id=lead.organization_id,
                 status='active',
                 can_receive_leads=True,
-            ).values_list('agent_id', flat=True)
+            ).exclude(membership__is_active=False).values_list('agent_id', flat=True)
             candidates = candidates.filter(
                 Q(organization_id=lead.organization_id) | Q(id__in=freelance_ids)
             )

@@ -67,10 +67,10 @@ class ComplianceService:
         # 2. Admin notification
         try:
             from apps.notifications.models import Notification
-            admin_user = getattr(org, 'admin_user', None) if org else None
-            if admin_user:
+            owner = org.owner if org else None
+            if owner:
                 Notification.objects.create(
-                    user=admin_user,
+                    user=owner,
                     title='AML Block — Deal Lock Cancelled',
                     message=(
                         f"Deal lock {deal.id} was automatically cancelled — AML screening blocked "

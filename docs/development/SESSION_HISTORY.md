@@ -250,3 +250,20 @@
    **Do not commit.**
 2. **Owner decision before enabling failover:** a paid OpenAI‑compatible provider (GO_LIVE §28).
 3. Next: **T‑1032b**. Open: KI‑055…KI‑059.
+
+- **Continued ("continue"): T‑1032b.** Gated on production data and destructive, so I asked. The owner chose **staged** and **keep `Agent.organization`**. Done:
+  - b‑1: the owner membership is canonical, multi‑org owners are allowed, and collaboration terms are linked;
+  - b‑2 drops are staged with a gate and rehearsed.
+
+  ADR‑013 addendum, GO_LIVE §29. Tests: 1946 passed, 1 skipped, 0 failed. **Not committed.**
+
+### Handoff → session 10 (supersedes the ones above)
+1. `git status`: the owner committed through T‑1120 (`2bd9b9b`). Uncommitted: **T‑1032b‑1**:
+   - `membership.py`, models, migrations `organizations 0028`/`agents 0015`;
+   - `contract_migrations/` in organizations and agents;
+   - readers in organizations/agents/compliance/ai/inventory/billing/marketplace/leads;
+   - tests.
+
+   **Do not commit.**
+2. **After deploy:** `reconcile_memberships --apply`, then resolve the report‑only categories (GO_LIVE §29).
+3. Next: **T‑1040** (`is_sandbox` for leads with no organization, KI‑017). T‑1070g‑2 and T‑1032b‑2 wait for their releases. Open: KI‑055…KI‑059.

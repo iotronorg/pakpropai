@@ -71,7 +71,7 @@ class InventorySyncConflictResolver:
     def _notify_admin(connection, prop, resolution_type: str) -> None:
         try:
             from apps.notifications.models import Notification
-            admin = connection.org.admin_user
+            admin = connection.org.owner
             if not admin:
                 return
             Notification.objects.create(

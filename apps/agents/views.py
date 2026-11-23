@@ -165,9 +165,10 @@ class AgentRegisterView(APIView):
             from apps.notifications.services import notify_user
             from apps.users.models import User
 
-            if agent.organization and agent.organization.admin_user:
+            owner = agent.organization.owner if agent.organization else None
+            if owner:
                 notify_user(
-                    agent.organization.admin_user,
+                    owner,
                     title='New Agent Application',
                     message=(
                         f"{agent.name} ({agent.phone}) has applied to join your team "

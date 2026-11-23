@@ -38,9 +38,10 @@ def execute_rtbf_erasure(self, request_id: str):
                 from apps.notifications.models import Notification
                 from apps.core.permissions import primary_org
                 org = primary_org(req.user)
-                if org and hasattr(org, 'admin_user') and org.admin_user:
+                owner = org.owner if org else None
+                if owner:
                     Notification.objects.create(
-                        user=org.admin_user,
+                        user=owner,
                         severity='CRITICAL',
                         message=f'RTBF erasure failed permanently for request {request_id}: {exc}',
                     )
