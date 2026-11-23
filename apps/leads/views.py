@@ -178,26 +178,16 @@ class LeadViewSet(viewsets.ModelViewSet):
             f"{'Client' if m.direction == 'inbound' else 'Agent'}: {m.body}"
             for m in msgs
         )
-        lead_info = (
-            f"Lead phone: {lead.user.phone}\n"
-            f"Status: {lead.status}\n"
-            f"Budget: {lead.budget_min or '?'} – {lead.budget_max or '?'} PKR\n"
-            f"City interest: {lead.city_interest or 'unknown'}\n"
-        )
-        prompt = (
-            "You are a CRM assistant for a Pakistani real estate platform.\n"
-            f"Lead info:\n{lead_info}\n"
-            f"Conversation (last {len(msgs)} messages):\n{transcript}\n\n"
-            "Write a concise 3–5 sentence summary covering:\n"
-            "1. What the client is looking for\n"
-            "2. Key discussion points and preferences expressed\n"
-            "3. Current status and suggested next step for the agent\n"
-            "Reply in English only. Be direct and factual."
-        )
-
+        # T-1120: registered prompt, market from the lead's org; the phone number
+        # is no longer sent to the model (it added nothing to the summary).
         try:
-            from apps.ai.backends import generate
-            summary = generate(prompt, max_tokens=400, temperature=0.3)
+            from apps.ai import llm
+            summary = llm.complete('lead.summary', {
+                'status': lead.status, 'budget_min': lead.budget_min or '?',
+                'budget_max': lead.budget_max or '?', 'city': lead.city_interest or 'unknown',
+                'count': len(msgs), 'transcript': transcript,
+            }, country=getattr(lead.organization, 'country', None), user=request.user,
+                interaction_type='lead_summary', max_tokens=400, temperature=0.3).text
         except Exception as exc:
             logger.error(f"Summarize failed for lead {lead.id}: {exc}")
             return Response({'detail': 'AI summarization unavailable.'}, status=503)
@@ -226,24 +216,14 @@ class LeadViewSet(viewsets.ModelViewSet):
             f"{'Client' if m.direction == 'inbound' else 'Agent'}: {m.body}"
             for m in msgs[-6:]
         )
-        prompt = (
-            "You are a real estate agent assistant for a Pakistani platform.\n"
-            f"Lead status: {lead.status} | City: {lead.city_interest or 'unknown'} "
-            f"| Budget: {lead.budget_max or '?'} PKR\n\n"
-            f"Recent conversation:\n{recent}\n\n"
-            f"Last client message: {last_inbound}\n\n"
-            "Generate exactly 3 short, professional WhatsApp reply suggestions for the agent. "
-            "Each should be 1–2 sentences, natural Pakistani real estate style (mix of Urdu/English is fine). "
-            "Format as JSON array of strings: [\"reply1\", \"reply2\", \"reply3\"]. "
-            "No explanation, just the JSON array."
-        )
-
         try:
-            import json
-            from apps.ai.backends import generate
-            raw = generate(prompt, max_tokens=300, temperature=0.6)
-            arr_match = re.search(r'\[.*?\]', raw, re.DOTALL)
-            suggestions = json.loads(arr_match.group(0)) if arr_match else []
+            from apps.ai import llm
+            raw = llm.complete('lead.suggest_replies', {
+                'status': lead.status, 'city': lead.city_interest or 'unknown',
+                'budget_max': lead.budget_max or '?', 'recent': recent, 'last_inbound': last_inbound,
+            }, country=getattr(lead.organization, 'country', None), user=request.user,
+                interaction_type='reply_suggest', max_tokens=300, temperature=0.6).text
+            suggestions = llm.parse_json(raw)
             if not isinstance(suggestions, list):
                 suggestions = []
             suggestions = [str(s) for s in suggestions[:3]]

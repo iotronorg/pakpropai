@@ -249,3 +249,15 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
   - A request with one bad file now rejects all files, with errors keyed `images[i]`.
 - **After deploy:** run `python manage.py sanitize_images --dry-run`, then `sanitize_images --limit 500 --include-profiles` (repeat until 0 remain). Until then, older listing photos may still contain GPS metadata.
 - **Reverse proxy:** make sure the request body limit (e.g. nginx `client_max_body_size`) allows a multi‑image upload (20 × 10 MB) or a lower, deliberate cap.
+
+## 28. Session‑9 change: LLM router and prompt registry (T‑1120, ADR‑028)
+- **Migration:** `ai 0003` adds four columns to `ai_aiinteraction`, with DB defaults and no backfill.
+- **Behaviour:** unchanged by default (`AI_PROVIDER_ORDER` = `AI_BACKEND`).
+  - Prompts no longer use Pakistan‑specific wording for non‑PK markets; for PK organisations they say "Pakistan" through the market name.
+  - The lead summary no longer sends the lead's phone number to the model.
+- **Optional failover:**
+  - Set `AI_PROVIDER_ORDER=gemini,openai` (or `…,local`).
+  - For `openai`, also set `AI_OPENAI_BASE_URL`, `AI_OPENAI_API_KEY` (in the secret store) and `AI_OPENAI_MODEL`.
+  - **This is a paid provider: the owner must decide before it is enabled.** Check its data‑processing terms, because prompts contain lead conversations.
+- **Tuning:** `AI_TIMEOUT_S` (30), `AI_BREAKER_FAILURES` (5), `AI_BREAKER_SECONDS` (120).
+- **Dashboards:** group `AIInteraction` by `prompt_name, prompt_version` to compare prompt versions, and by `provider` to watch failover.

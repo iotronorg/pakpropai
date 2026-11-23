@@ -21,7 +21,7 @@ from django.conf import settings
 
 from apps.ai.usage import record_openai_response
 
-from .base import AIBackend, func_to_openai_schema
+from .base import AIBackend, Completion, func_to_openai_schema
 
 logger = logging.getLogger(__name__)
 
@@ -33,18 +33,46 @@ _TERMINAL_TOOLS = {'connect_to_agent', 'generate_property_audit'}
 
 
 class OllamaBackend(AIBackend):
+    name = 'local'
 
     def __init__(self):
         self._client = None
 
+    # Subclasses (OpenAI-compatible) override these three.
+    def _base_url(self) -> str:
+        return f"{settings.OLLAMA_BASE_URL}/v1"
+
+    def _api_key(self) -> str:
+        return 'ollama'                    # Ollama ignores this value
+
+    @property
+    def _model(self) -> str:
+        return settings.LOCAL_MODEL
+
+    def is_configured(self) -> bool:
+        return bool(settings.OLLAMA_BASE_URL)
+
     def _get_client(self):
         if self._client is None:
             from openai import OpenAI
-            self._client = OpenAI(
-                base_url=f"{settings.OLLAMA_BASE_URL}/v1",
-                api_key='ollama',          # Ollama ignores this value
-            )
+            self._client = OpenAI(base_url=self._base_url(), api_key=self._api_key(),
+                                  timeout=settings.AI_TIMEOUT_S, max_retries=0)
         return self._client
+
+    def complete(self, prompt, *, system='', max_tokens=512, temperature=0.2,
+                 json_mode=False, timeout=30.0) -> Completion:
+        messages = ([{'role': 'system', 'content': system}] if system else []) + \
+                   [{'role': 'user', 'content': prompt}]
+        kwargs = dict(model=self._model, messages=messages, max_tokens=max_tokens,
+                      temperature=temperature, timeout=timeout)
+        if json_mode:
+            kwargs['response_format'] = {'type': 'json_object'}
+        response = self._get_client().chat.completions.create(**kwargs)
+        record_openai_response(self._model, response)
+        usage = getattr(response, 'usage', None)
+        return Completion(text=(response.choices[0].message.content or '').strip(), model=self._model,
+                          prompt_tokens=getattr(usage, 'prompt_tokens', 0) or 0,
+                          completion_tokens=getattr(usage, 'completion_tokens', 0) or 0)
 
     # ── AIBackend interface ───────────────────────────────────────────────────
 
@@ -57,7 +85,7 @@ class OllamaBackend(AIBackend):
 
         for round_num in range(MAX_TOOL_ROUNDS):
             kwargs: dict = dict(
-                model=settings.LOCAL_MODEL,
+                model=self._model,
                 messages=messages,
                 temperature=0.3,
             )
@@ -69,7 +97,7 @@ class OllamaBackend(AIBackend):
             except Exception as exc:
                 logger.error(f"Ollama chat failed (round {round_num}): {exc}")
                 raise
-            record_openai_response(settings.LOCAL_MODEL, response)
+            record_openai_response(self._model, response)
 
             choice = response.choices[0]
 
@@ -159,7 +187,7 @@ class OllamaBackend(AIBackend):
 
     @property
     def label(self) -> str:
-        return f"local:{settings.LOCAL_MODEL}"
+        return f"{self.name}:{self._model}"
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 

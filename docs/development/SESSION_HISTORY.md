@@ -237,3 +237,16 @@
    **Do not commit.**
 2. **Deploy:** GO_LIVE §27. Run the `sanitize_images` backfill and check the proxy body limit.
 3. Next: **T‑1120** AI provider abstraction and prompt registry, then T‑1032b. Open: KI‑055…KI‑058.
+
+- **Continued ("continue"): T‑1120.** LLM router (`apps/ai/llm.py`), prompt registry (`apps/ai/prompts.py`) and the OpenAI‑compatible provider. Call sites are migrated and `GeminiClient` is removed. Failover is off by default (order = `AI_BACKEND`). ADR‑028, GO_LIVE §28, KI‑059. Tests: 1934 passed, 1 skipped, 0 failed. **Not committed.**
+
+### Handoff → session 10 (supersedes the one above)
+1. `git status`: the owner committed through T‑1110 (`a215499`). Uncommitted: **T‑1120**:
+   - `apps/ai/{llm,prompts}.py`, `backends/openai_compat.py`;
+   - backend changes, `ai 0003`, `client.py` deleted;
+   - scoring/agent/knowledge/leads/re‑engagement migrated;
+   - settings;
+   - `tests/test_llm.py`.
+   **Do not commit.**
+2. **Owner decision before enabling failover:** a paid OpenAI‑compatible provider (GO_LIVE §28).
+3. Next: **T‑1032b**. Open: KI‑055…KI‑059.

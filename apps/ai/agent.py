@@ -37,9 +37,9 @@ class RealTronAgent:
         self._backend = None
 
     def _get_backend(self):
-        configured = getattr(settings, 'AI_BACKEND', 'gemini').lower()
-        cached_type = 'gemini' if (self._backend and 'gemini' in self._backend.label) else 'local'
-        if self._backend is None or cached_type != configured:
+        from apps.ai.llm import provider_order
+        configured = provider_order()[0]
+        if self._backend is None or getattr(self._backend, 'name', '') != configured:
             self._backend = get_backend()
             logger.info(f"RealTronAgent using backend: {self._backend.label}")
         return self._backend
@@ -70,17 +70,13 @@ class RealTronAgent:
         extra_context — optional string appended to the system prompt.
         Populated by AIServiceManager with dynamic org/lead/market context.
         """
-        backend = self._get_backend()
-
-        # Gemini requires an API key; local (Ollama) does not
-        if backend.label.startswith('gemini'):
-            from apps.config.services import SystemConfigService
-            if not SystemConfigService.get('gemini_api_key'):
-                return (
-                    "AI service is not configured yet.\n"
-                    "Please ask the admin to set the Gemini API key in System Setup.\n\n"
-                    "Get a free key at: aistudio.google.com"
-                )
+        from apps.ai import llm
+        if not llm.any_configured():           # T-1120: any provider in AI_PROVIDER_ORDER
+            return (
+                "AI service is not configured yet.\n"
+                "Please ask the admin to set the Gemini API key in System Setup.\n\n"
+                "Get a free key at: aistudio.google.com"
+            )
 
         from apps.ai import tools as tool_module
 
@@ -101,53 +97,46 @@ class RealTronAgent:
             self._save_history(phone, organization, history, message, reply)
             return reply
 
-        from apps.ai.knowledge import SYSTEM_PROMPT
+        from apps.ai.knowledge import AGENT_SYSTEM
+        from apps.ai.prompts import Rendered
 
-        system_prompt = SYSTEM_PROMPT
-        if extra_context:
-            system_prompt = f"{SYSTEM_PROMPT}\n\n{extra_context}"
+        base = AGENT_SYSTEM.render()
+        system_prompt = Rendered(f"{base.text}\n\n{extra_context}" if extra_context else base.text,
+                                 AGENT_SYSTEM)
 
         history = self._load_history(phone, organization)
         start   = time.time()
         tools   = self._get_tools(tool_module)
 
+        result = None
         try:
-            reply = backend.chat(message, history, tools, system_prompt)
+            result = llm.chat(message, history, tools, system_prompt, user=user, log=False)
+            reply = result.text
         except Exception as exc:
             logger.error(f"Backend chat failed phone={phone}: {exc}", exc_info=True)
             reply = self._error_reply()
 
         self._save_history(phone, organization, history, message, reply)
-        self._log(user, message, reply, int((time.time() - start) * 1000))
+        self._log(user, message, reply, int((time.time() - start) * 1000), result)
         return reply
 
     def chat_with_image(self, phone: str, image_bytes: bytes, mime_type: str,
                         caption: str = '', user=None, organization=None) -> str:
         """Process an image/document message through the agent."""
-        backend = self._get_backend()
-
-        if backend.label.startswith('gemini'):
-            from apps.config.services import SystemConfigService
-            if not SystemConfigService.get('gemini_api_key'):
-                return "AI service not configured. Please set the Gemini API key in System Setup."
+        from apps.ai import llm
+        if not llm.any_configured():
+            return "AI service not configured. Please set the Gemini API key in System Setup."
 
         from apps.ai import tools as tool_module
-        from apps.ai.knowledge import SYSTEM_PROMPT
+        import apps.ai.knowledge  # noqa: F401 — registers agent.image
 
         tool_module.set_context(user, phone, org=organization)
 
-        context = caption or "User sent a property-related image."
-        prompt = (
-            f"The user sent an image via WhatsApp with caption: '{context}'.\n"
-            "Analyze this image in the context of Pakistani real estate. "
-            "If it's a property document, extract key fields (owner, CNIC, property address, "
-            "area, registration number). "
-            "If it's a property photo, give a brief assessment. "
-            "Flag anything suspicious or tampered."
-        )
-
         try:
-            reply = backend.analyze_image(image_bytes, mime_type, prompt)
+            reply = llm.vision('agent.image', image_bytes, mime_type,
+                               {'caption': caption or 'User sent a property-related image.'},
+                               country=getattr(organization, 'country', None), user=user,
+                               interaction_type='ocr').text
         except Exception as exc:
             logger.error(f"Image analysis failed: {exc}")
             reply = "Unable to analyze the image right now. Please describe what you need help with."
@@ -462,7 +451,7 @@ class RealTronAgent:
 
     # ─── Logging ──────────────────────────────────────────────────────────────
 
-    def _log(self, user, message: str, reply: str, response_ms: int):
+    def _log(self, user, message: str, reply: str, response_ms: int, result=None):
         try:
             from apps.ai.models import AIInteraction
             from apps.ai.usage import current_usage
@@ -470,7 +459,9 @@ class RealTronAgent:
             AIInteraction.objects.create(
                 user=user,
                 interaction_type='intent_classify',
-                model_used=self._backend.label if self._backend else 'unknown',
+                model_used=(result.model if result else 'unknown')[:50],
+                provider=result.provider if result else '',
+                **(result.prompt.ref if result and result.prompt else {}),
                 prompt_tokens=usage.tokens_in,
                 response_tokens=usage.tokens_out,
                 response_ms=response_ms,

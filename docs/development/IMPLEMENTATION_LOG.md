@@ -412,3 +412,24 @@
   - `_property_image_path` and `_logo_upload_path` use `safe_upload_name`;
   - the agent photo content‑type‑only validator is removed.
 - **Renumbered:** staged contract migrations to 0049/0050; the test now requires them to sit on the latest real migration.
+
+### 2026-11-23 — session 9 (tenth part): T‑1120 LLM router and prompt registry
+- **Verified:** the owner committed T‑1110 (`a215499`); the tree was clean.
+- **Added:**
+  - `apps/ai/llm.py`: router with provider order, circuit breaker, timeout, response cache, `AIInteraction` provenance, and no failover after a tool ran;
+  - `apps/ai/prompts.py`: registry, market variables, market‑pack fragments, and the prompt library;
+  - `apps/ai/backends/openai_compat.py`;
+  - `complete()` on every backend, plus `Completion`;
+  - settings `AI_PROVIDER_ORDER`, `AI_TIMEOUT_S`, `AI_BREAKER_*`, `AI_OPENAI_*`;
+  - `AIInteraction.provider/prompt_name/prompt_version/prompt_digest` and new interaction types (`ai 0003`);
+  - `tests/test_llm.py` (10 tests).
+- **Changed:**
+  - `apps/ai/scoring.py` (registered prompts; same signatures, optional `country`);
+  - `apps/ai/agent.py` (chat and image analysis through the router; the agent's log row carries provenance);
+  - `apps/ai/knowledge.py` (`agent.system`/`agent.image` registered; `get_market_knowledge` reads the registry);
+  - `apps/leads/views.py` (summary and suggestions; the lead's phone is no longer sent);
+  - `apps/campaigns/re_engagement.py`;
+  - `backends.get_backend`/`generate` now delegate to the router.
+- **Removed:** `apps/ai/client.py` (`GeminiClient`). Its breaker and cache are replaced by the router's.
+- **Note:** `manage.py test` (no root `conftest`) leaks cached feature flags between tests, so `test_ai_side_effect_guards` fails there, also at HEAD. Use `scripts/dev/test.sh` (pytest).
+- **New issue:** KI‑059 (OCR, STT and intent classifier not yet routed).

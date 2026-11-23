@@ -65,31 +65,29 @@ Always call the relevant tool. Do not hallucinate data — if you don't have a t
 """
 
 
-# ── Per-country knowledge router ───────────────────────────────────────────────
+# T-1120: registered so every chat turn records which system prompt version it used.
+from apps.ai.prompts import Prompt, register  # noqa: E402
+
+AGENT_SYSTEM = register(Prompt('agent.system', 1, SYSTEM_PROMPT.replace('{', '{{').replace('}', '}}'),
+                               'WhatsApp / web agent system prompt (market-neutral base)'))
+
+register(Prompt('agent.image', 1, """The user sent an image via WhatsApp with caption: '{caption}'.
+Analyze this image in the context of real estate in {market_name}.
+If it's a property document, extract key fields (owner, national ID, property address, area, registration number).
+If it's a property photo, give a brief assessment.
+Flag anything suspicious or tampered.""", 'Image message analysis (agent.chat_with_image); v0 said "Pakistani"'))
+
+
+# ── Per-country knowledge (market packs, via the prompt registry) ──────────────
 
 def get_market_knowledge(country: str) -> str:
     """
-    Return the market-specific knowledge block for injection into the system prompt.
-    Falls back to an empty string for unknown markets (graceful degradation).
-    Never raises.
+    The market-specific knowledge block for the system prompt ('' for markets
+    without a pack). Never raises. Source: ``market.<CC>.knowledge`` prompts.
     """
-    from apps.markets.services import country_or_default
-    country = country_or_default(country)
     try:
-        if country == 'PK':
-            from apps.markets.pk.knowledge import MARKET_KNOWLEDGE
-            return MARKET_KNOWLEDGE
-        if country == 'AE':
-            from apps.markets.ae.knowledge import MARKET_KNOWLEDGE
-            return MARKET_KNOWLEDGE
-        if country in ('GB', 'UK'):
-            from apps.markets.gb.knowledge import MARKET_KNOWLEDGE
-            return MARKET_KNOWLEDGE
-        if country == 'US':
-            from apps.markets.us.knowledge import MARKET_KNOWLEDGE
-            return MARKET_KNOWLEDGE
-        # Unknown market — return empty (DynamicContextBuilder market config block
-        # still provides currency, size unit, and tax system label)
-        return ''
-    except ImportError:
+        from apps.ai.prompts import market_fragment
+        frag = market_fragment(country)
+        return frag.text if frag else ''
+    except Exception:
         return ''

@@ -139,36 +139,24 @@ class ReEngagementPromptGenerator:
             return _CANNED_MESSAGE
 
     def _call_llm(self, lead, context: LeadContext, org) -> str:
-        from apps.ai.backends import get_backend
-        backend = get_backend()
+        from apps.ai import llm          # T-1120: registered prompts + failover
 
         lang = getattr(org, 'language', 'en') or 'en'
         summary = context.lead_summary
-
-        system_prompt = (
-            f"You are a real estate sales assistant for {org.name}. "
-            f"Generate a single WhatsApp re-engagement message (max {_MAX_MSG_LENGTH} characters) "
-            f"for a lead who went quiet 72+ hours ago. "
-            f"Tone: warm, helpful, not pushy. Language: {lang}. "
-            f"Do NOT use more than one emoji. Never mention internal CRM terms."
-        )
+        country = getattr(org, 'country', None)
+        system = llm.render('campaign.reengage.system', {
+            'org_name': org.name, 'max_chars': _MAX_MSG_LENGTH, 'language': lang}, country=country)
 
         budget_str = ''
         if summary.get('budget_min') and summary.get('budget_max'):
             budget_str = f"Budget: {summary['budget_min']:,}–{summary['budget_max']:,}"
 
-        user_prompt = (
-            f"Lead profile:\n"
-            f"- Intent: {summary.get('intent', 'unknown')}\n"
-            f"- City: {summary.get('city', 'unknown')}\n"
-            f"- {budget_str}\n\n"
-            f"Recent conversation:\n{context.transcript or '(no messages)'}\n\n"
-            f"CRM activity:\n{context.crm_timeline or '(no activity)'}\n\n"
-            f"Write one short WhatsApp message (max {_MAX_MSG_LENGTH} chars) that picks up "
-            f"naturally from this conversation."
-        )
-
-        return backend.chat(user_prompt, [], [], system_prompt)
+        return llm.complete('campaign.reengage.user', {
+            'intent': summary.get('intent', 'unknown'), 'city': summary.get('city', 'unknown'),
+            'budget': budget_str, 'transcript': context.transcript or '(no messages)',
+            'crm_timeline': context.crm_timeline or '(no activity)', 'max_chars': _MAX_MSG_LENGTH,
+        }, country=country, system=system.text, interaction_type='re_engagement',
+            max_tokens=200, temperature=0.7).text
 
 
 def run_reengagement_pass(org_id: str = None) -> int:

@@ -5,6 +5,7 @@ Every backend (Gemini, Ollama) implements AIBackend.
 import inspect
 import re
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import get_type_hints
 
 # Python type → JSON Schema type
@@ -74,6 +75,15 @@ def func_to_openai_schema(func) -> dict:
     }
 
 
+@dataclass
+class Completion:
+    """Result of a plain (tool-less) completion (T-1120)."""
+    text: str
+    model: str
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+
+
 class AIBackend(ABC):
     """
     Common interface for all AI backends.
@@ -94,6 +104,17 @@ class AIBackend(ABC):
     @abstractmethod
     def transcribe_audio(self, audio_bytes: bytes, mime_type: str) -> str:
         """Transcribe a voice message. Returns plain text."""
+
+    @abstractmethod
+    def complete(self, prompt: str, *, system: str = '', max_tokens: int = 512,
+                 temperature: float = 0.2, json_mode: bool = False,
+                 timeout: float = 30.0) -> Completion:
+        """One-shot completion honouring limits (T-1120). Raises on provider failure."""
+
+    name = 'base'
+
+    def is_configured(self) -> bool:
+        return True
 
     @property
     @abstractmethod

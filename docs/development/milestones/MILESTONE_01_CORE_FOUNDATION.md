@@ -35,4 +35,4 @@
 | T‑1120 | P2 | AI provider abstraction, prompt registry, market‑pack prompt fragments | GAP‑055/056/062 | — |
 
 ## Order
-T‑1010 ✅ → T‑1020 ✅ → T‑1030 ✅ → T‑1021 ✅ → T‑1100 ✅ → T‑1090 ✅ → T‑1050 ✅ → T‑1031 ✅ → T‑1032a ✅ → T‑1022 ✅ → T‑1070 (a–f ✅) → T‑1033 ✅ → T‑1032c ✅ → T‑1060a ✅ → T‑1070g‑1 ✅ (g‑2 staged for the next release) → T‑1060b ✅ (geo search; PostGIS optional) → T‑1060c ✅ (Google, flag off) → T‑1080 ✅ (lifecycle; review/TTL per market, off) → T‑1011 ✅ (MFA; enforcement flag off) → T‑1110 ✅ (images re‑encoded; backfill command) → T‑1120.
+T‑1010 ✅ → T‑1020 ✅ → T‑1030 ✅ → T‑1021 ✅ → T‑1100 ✅ → T‑1090 ✅ → T‑1050 ✅ → T‑1031 ✅ → T‑1032a ✅ → T‑1022 ✅ → T‑1070 (a–f ✅) → T‑1033 ✅ → T‑1032c ✅ → T‑1060a ✅ → T‑1070g‑1 ✅ (g‑2 staged for the next release) → T‑1060b ✅ (geo search; PostGIS optional) → T‑1060c ✅ (Google, flag off) → T‑1080 ✅ (lifecycle; review/TTL per market, off) → T‑1011 ✅ (MFA; enforcement flag off) → T‑1110 ✅ (images re‑encoded; backfill command) → T‑1120 ✅ (LLM router + prompt registry; failover off by default) → T‑1032b.

@@ -41,6 +41,10 @@ class AIInteraction(models.Model):
         FRAUD_CHECK     = 'fraud_check',      'Fraud Check'
         VOICE_TRANSCRIBE = 'voice_transcribe', 'Voice Transcription'
         REPORT_GEN      = 'report_gen',       'Report Generation'
+        CHAT            = 'chat',             'Conversation turn'
+        LEAD_SUMMARY    = 'lead_summary',     'Lead summary'
+        REPLY_SUGGEST   = 'reply_suggest',    'Reply suggestions'
+        RE_ENGAGEMENT   = 're_engagement',    'Re-engagement message'
 
     id               = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user             = models.ForeignKey(
@@ -53,6 +57,11 @@ class AIInteraction(models.Model):
     prompt_tokens    = models.PositiveIntegerField(default=0)
     response_tokens  = models.PositiveIntegerField(default=0)
     model_used       = models.CharField(max_length=50, default='gemini-1.5-flash')
+    # T-1120: which provider answered and which registered prompt produced the input.
+    provider         = models.CharField(max_length=20, blank=True, default='', db_default='')
+    prompt_name      = models.CharField(max_length=80, blank=True, default='', db_default='')
+    prompt_version   = models.PositiveSmallIntegerField(null=True, blank=True)
+    prompt_digest    = models.CharField(max_length=12, blank=True, default='', db_default='')
     was_cached       = models.BooleanField(default=False)
     response_ms      = models.PositiveIntegerField(default=0)   # latency
     input_data       = models.JSONField(default=dict, blank=True)

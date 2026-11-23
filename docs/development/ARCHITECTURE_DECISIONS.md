@@ -706,3 +706,23 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
 - **Thumbnails** are generated at upload (`IMAGE_THUMB_SIDE`) so they work with plain file storage. With Cloudinary the same files are stored; delivery transformations remain possible.
 - **Existing files:** `manage.py sanitize_images` re‑encodes pre‑T‑1110 listing images (`sha256 = ''`) and, with `--include-profiles`, agent photos and org logos.
 - **Not in scope:** documents (PDF) — content sniffing and malware scanning for the verification uploads remain FR‑LST‑007 / a follow‑up; video, tours and floor plans (P2).
+
+### ADR‑028 — LLM router and prompt registry (T‑1120, 2026‑11‑23)
+- **Decision:** product code calls models only through `apps.ai.llm` (`complete`, `complete_json`, `vision`, `chat`). Prompts are named, versioned `Prompt` objects in `apps.ai.prompts`. Each `AIInteraction` row records `provider`, `prompt_name`, `prompt_version` and `prompt_digest` (the first 12 hex characters of the template's sha256).
+- **Providers:** `gemini`, `local` (Ollama) and `openai` (any OpenAI‑compatible `/v1/chat/completions` server). They share the `AIBackend` interface plus a new `complete()` that honours max tokens, temperature, JSON mode and a timeout.
+- **Failover:**
+  - `AI_PROVIDER_ORDER` defaults to `[AI_BACKEND]`: a single provider, so behaviour and cost are unchanged.
+  - Unconfigured providers are skipped.
+  - A per‑provider circuit breaker in the cache (`AI_BREAKER_FAILURES` within `AI_BREAKER_SECONDS`) moves a failing provider to the end of the order instead of dropping it, so even a total outage gets one last try.
+  - Failover happens only on exceptions, never on a bad answer.
+  - SDK retries are off (`max_retries=0`); the router is the retry layer.
+- **Side effects:** a chat turn never fails over once any tool has run (tools are wrapped to record execution). Re‑running the turn on another provider could create a second listing, lead or deal lock.
+- **Versioning rule:** changing a template means bumping its version.
+  - `tests/test_llm.py` pins the versions, and re‑registering the same version with different text raises.
+  - Templates are market‑neutral: a test forbids Pakistan/PKR/marla/CNIC/Urdu outside the `market.*` fragments.
+  - Market facts come from `market_vars()` (name, currency, area unit, price format, tax system) and from the market packs' `MARKET_KNOWLEDGE`, registered as `market.<CC>.knowledge` (`KNOWLEDGE_VERSION`, default 1).
+- **Token accounting:** unchanged. Backends still report usage to `apps.ai.usage`; the router only adds provenance.
+- **Not in scope (KI‑059):** these are not yet routed or registered. The explicit Gemini tool loop is T‑2010.
+  - document OCR in `RealTronAgent.verify_document_image` (market‑pack `ocr_prompt`);
+  - audio transcription (the `STTService` cascade);
+  - the intent classifier's prompts.

@@ -513,6 +513,15 @@ GEMINI_MODEL   = env('GEMINI_MODEL',   default='gemini-2.5-flash-lite')
 
 # AI backend switcher: 'gemini' (cloud) or 'local' (Ollama)
 AI_BACKEND         = env('AI_BACKEND',         default='gemini').strip().lower()
+# T-1120 (ADR-028): providers tried in this order; unconfigured ones are skipped.
+# Default: AI_BACKEND only (no failover, no extra cost). E.g. "gemini,openai,local".
+AI_PROVIDER_ORDER  = [p.strip().lower() for p in env.list('AI_PROVIDER_ORDER', default=[AI_BACKEND]) if p.strip()]
+AI_TIMEOUT_S       = env.float('AI_TIMEOUT_S', default=30.0)
+AI_BREAKER_FAILURES = env.int('AI_BREAKER_FAILURES', default=5)     # per provider …
+AI_BREAKER_SECONDS  = env.int('AI_BREAKER_SECONDS',  default=120)   # … within / open for
+AI_OPENAI_BASE_URL = env('AI_OPENAI_BASE_URL', default='https://api.openai.com/v1')
+AI_OPENAI_API_KEY  = env('AI_OPENAI_API_KEY',  default='')
+AI_OPENAI_MODEL    = env('AI_OPENAI_MODEL',    default='')
 LOCAL_MODEL        = env('LOCAL_MODEL',        default='qwen2.5:7b')
 LOCAL_VISION_MODEL = env('LOCAL_VISION_MODEL', default='llava:7b')
 OLLAMA_BASE_URL    = env('OLLAMA_BASE_URL',    default='http://localhost:11434')
