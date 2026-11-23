@@ -1,6 +1,7 @@
 """
-Gemini backend — uses google.genai with Automatic Function Calling (AFC).
-The SDK handles the tool-call loop internally.
+Gemini backend (google.genai). Since T-2010 the SDK never runs tools:
+``step()`` disables Automatic Function Calling and returns the model's
+function calls to ``apps.ai.runtime``, which validates and executes them.
 """
 import logging
 
@@ -8,7 +9,7 @@ from django.conf import settings
 
 from apps.ai.usage import record_gemini_response
 
-from .base import AIBackend, Completion
+from .base import AIBackend, Completion, Step, ToolCall
 
 logger = logging.getLogger(__name__)
 
@@ -54,29 +55,62 @@ class GeminiBackend(AIBackend):
                           prompt_tokens=getattr(meta, 'prompt_token_count', 0) or 0,
                           completion_tokens=getattr(meta, 'candidates_token_count', 0) or 0)
 
-    # ── AIBackend interface ───────────────────────────────────────────────────
+    # ── Explicit tool loop (T-2010) ───────────────────────────────────────────
 
-    def chat(self, message: str, history: list,
-             tools: list, system_prompt: str) -> str:
+    def step(self, system, messages, tools, *, max_tokens=1024, temperature=0.3, timeout=30.0) -> Step:
         from google.genai import types
-        client = self._client_instance()
+        cfg = types.GenerateContentConfig(
+            system_instruction=system or None, temperature=temperature, max_output_tokens=max_tokens,
+            http_options=types.HttpOptions(timeout=int(timeout * 1000)),
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+        )
+        if tools:
+            cfg.tools = [types.Tool(function_declarations=[
+                types.FunctionDeclaration(name=t['name'], description=t['description'],
+                                          parameters_json_schema=t['parameters']) for t in tools])]
+        model = settings.GEMINI_MODEL
+        response = self._client_instance().models.generate_content(
+            model=model, contents=self._to_contents_v2(messages), config=cfg)
+        record_gemini_response(model, response)          # per step: every round is counted
+        content = response.candidates[0].content if response.candidates else None
+        parts = list(getattr(content, 'parts', None) or [])
+        text = ''.join(p.text for p in parts if getattr(p, 'text', None) and not getattr(p, 'thought', False))
+        calls = [ToolCall(id=fc.id or f'call_{n}', name=fc.name, args=dict(fc.args or {}))
+                 for n, fc in enumerate(p.function_call for p in parts if getattr(p, 'function_call', None))]
+        meta = getattr(response, 'usage_metadata', None)
+        return Step(text=text.strip(), tool_calls=calls, model=model, raw=content,
+                    prompt_tokens=getattr(meta, 'prompt_token_count', 0) or 0,
+                    completion_tokens=getattr(meta, 'candidates_token_count', 0) or 0)
 
-        config = types.GenerateContentConfig(
-            system_instruction=system_prompt,
-            tools=tools,           # Python callables → AFC handles the loop
-            temperature=0.3,
-            max_output_tokens=1024,
-        )
-        chat_session = client.chats.create(
-            model=settings.GEMINI_MODEL,
-            config=config,
-            history=self._to_contents(history),
-        )
-        response = chat_session.send_message(message)
-        # With Automatic Function Calling, usage_metadata covers the final model
-        # call only (intermediate tool rounds are not reported) — KNOWN_ISSUES KI-006.
-        record_gemini_response(settings.GEMINI_MODEL, response)
-        return (response.text or '').strip()
+    @staticmethod
+    def _to_contents_v2(messages):
+        from google.genai import types
+        out, pending = [], []
+
+        def flush():
+            if pending:
+                out.append(types.Content(role='user', parts=list(pending)))
+                pending.clear()
+        for m in messages:
+            if m['role'] == 'tool':
+                result = m['result'] if isinstance(m['result'], dict) else {'result': m['result']}
+                pending.append(types.Part(function_response=types.FunctionResponse(
+                    id=m['id'], name=m['name'], response=result)))
+                continue
+            flush()
+            if m['role'] == 'assistant':
+                if m.get('raw') is not None and m.get('provider') == 'gemini':
+                    out.append(m['raw'])                  # keeps thought signatures intact
+                    continue
+                parts = [types.Part(text=m['text'])] if m.get('text') else []
+                parts += [types.Part(function_call=types.FunctionCall(id=c.id, name=c.name, args=c.args))
+                          for c in m.get('tool_calls') or ()]
+                if parts:
+                    out.append(types.Content(role='model', parts=parts))
+            elif m.get('text'):
+                out.append(types.Content(role='user', parts=[types.Part(text=m['text'])]))
+        flush()
+        return out
 
     def analyze_image(self, image_bytes: bytes, mime_type: str,
                       prompt: str) -> str:
@@ -119,18 +153,3 @@ class GeminiBackend(AIBackend):
     @property
     def label(self) -> str:
         return f"gemini:{settings.GEMINI_MODEL}"
-
-    # ── Helpers ───────────────────────────────────────────────────────────────
-
-    @staticmethod
-    def _to_contents(history: list):
-        from google.genai import types
-        result = []
-        for item in history:
-            text = item.get('text', '').strip()
-            role = item.get('role', 'user')
-            if text and role in ('user', 'model'):
-                result.append(
-                    types.Content(role=role, parts=[types.Part(text=text)])
-                )
-        return result

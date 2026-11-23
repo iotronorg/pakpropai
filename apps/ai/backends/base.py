@@ -84,6 +84,25 @@ class Completion:
     completion_tokens: int = 0
 
 
+@dataclass
+class ToolCall:
+    """A tool call proposed by the model (T-2010). ``args`` is what the model sent."""
+    id: str
+    name: str
+    args: object
+
+
+@dataclass
+class Step:
+    """One model call of the explicit tool loop: final text and/or tool calls."""
+    text: str
+    tool_calls: list
+    model: str
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    raw: object = None          # provider-native assistant content (replayed to the same provider)
+
+
 class AIBackend(ABC):
     """
     Common interface for all AI backends.
@@ -91,10 +110,8 @@ class AIBackend(ABC):
     tools:           list of plain Python callables (typed + docstrings)
     """
 
-    @abstractmethod
-    def chat(self, message: str, history: list,
-             tools: list, system_prompt: str) -> str:
-        """Single conversational turn. Returns reply text."""
+    # T-2010: conversational turns run in apps.ai.runtime on top of step();
+    # the SDK-driven chat() loops (Gemini AFC, the Ollama loop) were removed.
 
     @abstractmethod
     def analyze_image(self, image_bytes: bytes, mime_type: str,
@@ -112,6 +129,16 @@ class AIBackend(ABC):
         """One-shot completion honouring limits (T-1120). Raises on provider failure."""
 
     name = 'base'
+
+    def step(self, system: str, messages: list, tools: list, *, max_tokens: int = 1024,
+             temperature: float = 0.3, timeout: float = 30.0) -> Step:
+        """
+        One model call for the explicit tool loop (T-2010). ``messages``:
+        ``{'role': 'user'|'assistant', 'text', 'tool_calls'?, 'raw'?}`` and
+        ``{'role': 'tool', 'id', 'name', 'result'}``; ``tools``: neutral schemas
+        ``{name, description, parameters}``. The provider never executes tools.
+        """
+        raise NotImplementedError(f'{self.name} has no explicit tool loop')
 
     def is_configured(self) -> bool:
         return True

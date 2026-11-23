@@ -462,3 +462,19 @@
   - `Lead` and `WhatsAppSession` use the mixin; their insert‑only `save()` overrides are removed.
   - `test_sandbox_visibility.test_unscoped_lead_keeps_default` became `test_unscoped_lead_is_live`.
 - **Decision note:** treating unscoped contacts as live follows ADR‑002 ("records without an org are decided by the caller"; private‑client listings are live). There is no platform sandbox, so this was not escalated.
+
+### 2026-11-23 — session 9 (thirteenth part): M2 start; T‑2010 explicit tool loop
+- **Verified:** the owner committed T‑1040 (`46c2ae4`); the tree was clean.
+- **M2 milestone file** `milestones/MILESTONE_02_AI_AGENT_MVP.md` created from PRD Phase 2 and the AI spec: 15 tasks, order, exit criteria = MVP acceptance 1–9. DEVELOPMENT_TASKS M2 section rewritten.
+- **Added:**
+  - `apps/ai/runtime.py` (`run_turn`, `TurnResult`, `TurnCommitted`);
+  - `apps/ai/tool_registry.py` (`ToolSpec`, `REGISTRY`, `enabled_tools`, `validate_args`);
+  - `Step`/`ToolCall` and `AIBackend.step`; `GeminiBackend.step` (AFC disabled) and `OllamaBackend.step` (also used by the OpenAI‑compatible provider);
+  - setting `AI_MAX_TOOL_STEPS`;
+  - `tests/test_runtime.py` (13).
+- **Changed:**
+  - `llm.chat` runs the runtime, with the refined failover rule; `LLMResult.tool_calls/steps`.
+  - The agent offers registry specs (`_get_specs`); `_get_tools` is kept as a compatibility view.
+  - Tool calls are stored in `AIInteraction.output_data`.
+  - `tests/test_llm.py` fakes moved to `step()`.
+- **Removed:** `GeminiBackend.chat` (AFC) and its history helper; the Ollama chat loop, `_run_tool`, `_TERMINAL_TOOLS`, `MAX_TOOL_ROUNDS`; the abstract `chat()`.

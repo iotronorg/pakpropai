@@ -4,13 +4,14 @@ _Last updated: 2026-11-23 (session 9, continued)_
 
 | Item | Value |
 |---|---|
-| Branch | `development`. The owner committed everything through T‑1060a and branding (`6fc5634`). **Uncommitted:** T‑1040 (owner committed through T‑1032b‑1 as `4ccd24f`) |
-| Current milestone | **M1 — Core foundation** ([MILESTONE_01](milestones/MILESTONE_01_CORE_FOUNDATION.md)); M0 code‑complete, awaiting first GitHub Actions run |
+| Branch | `development`. The owner committed everything through T‑1060a and branding (`6fc5634`). **Uncommitted:** M2 milestone file + T‑2010 (owner committed through T‑1040 as `46c2ae4`) |
+| Current milestone | **M2 — AI agent MVP** ([MILESTONE_02](milestones/MILESTONE_02_AI_AGENT_MVP.md)), started 2026‑11‑23. M1 code complete (contracts T‑1070g‑2 / T‑1032b‑2 release‑gated); M0 awaiting the first GitHub Actions run |
 | M0 progress | All 17 tasks complete. Remaining exit criterion: CI green on GitHub Actions (owner pushes) |
 | M1 progress | 16 of 18 tasks done (T‑1010, T‑1011, T‑1020, T‑1021, T‑1022, T‑1030, T‑1031, T‑1033, T‑1040, T‑1050, T‑1060, T‑1080, T‑1090, T‑1100, T‑1110, T‑1120) plus subtasks T‑1032a, T‑1032c, T‑1070a–f and T‑1070g‑1 |
-| Test suite | **1954 passed, 1 skipped, 0 failed** (session 9, T‑1040). See [TESTING_STATUS](TESTING_STATUS.md) |
-| Last completed task | T‑1040 lead/session `is_sandbox` follows the organization (KI‑017) |
-| Next task | **M1 code work is complete except the release‑gated contracts** (T‑1070g‑2, T‑1032b‑2: they ship when the owner deploys the current release and production reports clean). Next roadmap work: **M2 — AI agent MVP**, starting with **T‑2010** (explicit Gemini tool loop; also closes KI‑059 call sites), then T‑2012. Open: KI‑055…KI‑059 |
+| M2 progress | 1 of 15 tasks done (T‑2010) |
+| Test suite | **1966 passed, 1 skipped, 0 failed** (session 9, T‑2010). See [TESTING_STATUS](TESTING_STATUS.md) |
+| Last completed task | T‑2010 explicit tool loop + tool registry with policies (ADR‑029) |
+| Next task | **T‑2012** durable `PendingAction` confirmations (AI spec §5, MVP criterion 8): replace the cache‑only proposals in `apps/ai/confirmation.py` with a DB record bound to conversation + tool + args hash + expiry, enforced by the runtime for `requires_confirmation` tools; then drop the `_is_agent_request` bypass. Then T‑2011 (AITrace + cost). Open: KI‑055…KI‑059 |
 
 ## Owner decisions (2026-11-23)
 - **T‑1032b:** staged like T‑1070g (b‑1 now, drops in a later release behind the reconcile gate); `Agent.organization` kept as a derived primary‑org pointer.

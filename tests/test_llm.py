@@ -13,7 +13,7 @@ from django.test import TestCase, override_settings
 
 from apps.ai import llm
 from apps.ai import prompts as P
-from apps.ai.backends.base import AIBackend, Completion
+from apps.ai.backends.base import AIBackend, Completion, Step, ToolCall
 from apps.ai.models import AIInteraction
 
 LOCMEM = {'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}}
@@ -33,13 +33,13 @@ class Fake(AIBackend):
             raise ConnectionError('down')
         return Completion(self.reply, f'{self.name}-model', 11, 7)
 
-    def chat(self, message, history, tools, system_prompt):
-        self.calls.append(system_prompt)
-        if self.run_tool and tools:
-            tools[0](x=1)
+    def step(self, system, messages, tools, **kw):
+        self.calls.append(system)
+        if self.run_tool and tools and messages[-1]['role'] != 'tool':
+            return Step('', [ToolCall('c1', tools[0]['name'], {'x': 1})], f'{self.name}-model')
         if self.fail:
             raise TimeoutError('slow')
-        return self.reply
+        return Step(self.reply, [], f'{self.name}-model', 3, 2)
 
     def analyze_image(self, image_bytes, mime_type, prompt):
         self.calls.append(prompt)
@@ -112,7 +112,8 @@ class RouterTest(TestCase):
             return {}
 
         self.use(gemini=Fake('gemini', fail=True, run_tool=True), openai=Fake('openai', run_tool=True))
-        with self.assertRaises(TimeoutError):
+        from apps.ai.runtime import TurnCommitted
+        with self.assertRaises(TurnCommitted):
             llm.chat('sell my house', [], [list_property], 'sys')
         self.assertEqual(effects, [1])                       # not repeated on openai
         self.use(gemini=Fake('gemini', fail=True), openai=Fake('openai', reply='hi'))

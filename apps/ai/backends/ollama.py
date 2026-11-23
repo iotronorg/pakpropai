@@ -1,6 +1,6 @@
 """
 Ollama backend — runs local models via Ollama's OpenAI-compatible API.
-Implements the tool-call agentic loop manually (no framework needed).
+``step()`` returns tool calls; apps.ai.runtime runs the loop (T-2010).
 
 Setup:
     brew install ollama
@@ -21,15 +21,9 @@ from django.conf import settings
 
 from apps.ai.usage import record_openai_response
 
-from .base import AIBackend, Completion, func_to_openai_schema
+from .base import AIBackend, Completion, Step, ToolCall
 
 logger = logging.getLogger(__name__)
-
-MAX_TOOL_ROUNDS = 6   # prevent infinite loops if model keeps calling tools
-
-# Tools whose whatsapp_summary/message must be returned verbatim — local models
-# must NOT rephrase these because they contain real DB data (agent contacts, PDFs).
-_TERMINAL_TOOLS = {'connect_to_agent', 'generate_property_audit'}
 
 
 class OllamaBackend(AIBackend):
@@ -74,77 +68,47 @@ class OllamaBackend(AIBackend):
                           prompt_tokens=getattr(usage, 'prompt_tokens', 0) or 0,
                           completion_tokens=getattr(usage, 'completion_tokens', 0) or 0)
 
-    # ── AIBackend interface ───────────────────────────────────────────────────
+    # ── Explicit tool loop (T-2010) ───────────────────────────────────────────
 
-    def chat(self, message: str, history: list,
-             tools: list, system_prompt: str) -> str:
-        client       = self._get_client()
-        tool_schemas = [func_to_openai_schema(t) for t in tools]
-        tool_map     = {t.__name__: t for t in tools}
-        messages     = self._build_messages(system_prompt, history, message)
-
-        for round_num in range(MAX_TOOL_ROUNDS):
-            kwargs: dict = dict(
-                model=self._model,
-                messages=messages,
-                temperature=0.3,
-            )
-            if tool_schemas:
-                kwargs['tools'] = tool_schemas
-
+    def step(self, system, messages, tools, *, max_tokens=1024, temperature=0.3, timeout=30.0) -> Step:
+        kwargs = dict(model=self._model, messages=self._to_messages(system, messages),
+                      max_tokens=max_tokens, temperature=temperature, timeout=timeout)
+        if tools:
+            kwargs['tools'] = [{'type': 'function', 'function': t} for t in tools]
+        response = self._get_client().chat.completions.create(**kwargs)
+        record_openai_response(self._model, response)    # per step: every round is counted
+        msg = response.choices[0].message
+        calls = []
+        for tc in msg.tool_calls or ():
+            raw = tc.function.arguments
             try:
-                response = client.chat.completions.create(**kwargs)
-            except Exception as exc:
-                logger.error(f"Ollama chat failed (round {round_num}): {exc}")
-                raise
-            record_openai_response(self._model, response)
+                args = json.loads(raw) if isinstance(raw, str) else (raw or {})
+            except json.JSONDecodeError:
+                args = raw                               # the runtime reports it as invalid
+            calls.append(ToolCall(id=tc.id, name=tc.function.name, args=args))
+        usage = getattr(response, 'usage', None)
+        return Step(text=(msg.content or '').strip(), tool_calls=calls, model=self._model,
+                    prompt_tokens=getattr(usage, 'prompt_tokens', 0) or 0,
+                    completion_tokens=getattr(usage, 'completion_tokens', 0) or 0)
 
-            choice = response.choices[0]
-
-            if choice.finish_reason == 'tool_calls' and choice.message.tool_calls:
-                # Build assistant message (must include tool_calls field)
-                messages.append({
-                    'role':       'assistant',
-                    'content':    choice.message.content or '',
-                    'tool_calls': [
-                        {
-                            'id':   tc.id,
-                            'type': 'function',
-                            'function': {
-                                'name':      tc.function.name,
-                                'arguments': tc.function.arguments,
-                            },
-                        }
-                        for tc in choice.message.tool_calls
-                    ],
-                })
-
-                # Execute each tool and append results
-                terminal_reply = None
-                for tc in choice.message.tool_calls:
-                    result = self._run_tool(tc, tool_map)
-                    messages.append({
-                        'role':         'tool',
-                        'tool_call_id': tc.id,
-                        'content':      json.dumps(result, ensure_ascii=False),
-                    })
-                    # Tools that produce a final user-facing message should be
-                    # returned verbatim — do not let the local model rephrase or
-                    # hallucinate additional details (especially agent contacts).
-                    if tc.function.name in _TERMINAL_TOOLS and isinstance(result, dict):
-                        summary = result.get('whatsapp_summary') or result.get('message')
-                        if summary:
-                            terminal_reply = summary
-
-                if terminal_reply is not None:
-                    return terminal_reply
-
-            else:
-                # Final text response
-                return (choice.message.content or '').strip()
-
-        logger.warning("Ollama: hit MAX_TOOL_ROUNDS without a final response")
-        return "I couldn't complete that request. Please try rephrasing."
+    @staticmethod
+    def _to_messages(system, messages):
+        out = [{'role': 'system', 'content': system}] if system else []
+        for m in messages:
+            if m['role'] == 'tool':
+                out.append({'role': 'tool', 'tool_call_id': m['id'],
+                            'content': json.dumps(m['result'], ensure_ascii=False, default=str)})
+            elif m['role'] == 'assistant':
+                item = {'role': 'assistant', 'content': m.get('text') or ''}
+                if m.get('tool_calls'):
+                    item['tool_calls'] = [
+                        {'id': c.id, 'type': 'function',
+                         'function': {'name': c.name, 'arguments': json.dumps(c.args, default=str)}}
+                        for c in m['tool_calls']]
+                out.append(item)
+            elif m.get('text'):
+                out.append({'role': 'user', 'content': m['text']})
+        return out
 
     def analyze_image(self, image_bytes: bytes, mime_type: str,
                       prompt: str) -> str:
@@ -188,30 +152,3 @@ class OllamaBackend(AIBackend):
     @property
     def label(self) -> str:
         return f"{self.name}:{self._model}"
-
-    # ── Helpers ───────────────────────────────────────────────────────────────
-
-    @staticmethod
-    def _build_messages(system_prompt: str, history: list, message: str) -> list:
-        msgs = [{'role': 'system', 'content': system_prompt}]
-        for item in history:
-            role = 'assistant' if item.get('role') == 'model' else 'user'
-            text = item.get('text', '').strip()
-            if text:
-                msgs.append({'role': role, 'content': text})
-        msgs.append({'role': 'user', 'content': message})
-        return msgs
-
-    @staticmethod
-    def _run_tool(tool_call, tool_map: dict) -> dict:
-        name = tool_call.function.name
-        fn   = tool_map.get(name)
-        if fn is None:
-            return {'error': f"Unknown tool: {name}"}
-        try:
-            raw_args = tool_call.function.arguments
-            args = json.loads(raw_args) if isinstance(raw_args, str) else (raw_args or {})
-            return fn(**args)
-        except Exception as exc:
-            logger.error(f"Tool '{name}' raised: {exc}", exc_info=True)
-            return {'error': str(exc)}

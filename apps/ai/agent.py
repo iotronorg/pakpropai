@@ -46,21 +46,14 @@ class RealTronAgent:
 
     # ─── Public interface ─────────────────────────────────────────────────────
 
-    def _get_tools(self, tool_module) -> list:
-        """Returns the active tool list based on admin feature flags."""
-        from apps.config.services import SystemConfigService
-        features = SystemConfigService.get_features()
-        mapping = [
-            ('feature_property_search',    tool_module.search_properties),
-            ('feature_property_listing',   tool_module.list_property),
-            ('feature_scam_check',         tool_module.run_fraud_check),
-            ('feature_tax_advice',         tool_module.calculate_7e_tax),
-            ('feature_loan_eligibility',   tool_module.check_loan_eligibility),
-            ('feature_talk_to_agent',      tool_module.connect_to_agent),
-            ('feature_deal_lock',          tool_module.initiate_deal_lock),
-            ('feature_property_audit',     tool_module.generate_property_audit),
-        ]
-        return [fn for flag, fn in mapping if features.get(flag, True)]
+    def _get_specs(self, organization=None) -> list:
+        """Enabled tools (feature flags, market) from the registry (T-2010)."""
+        from apps.ai.tool_registry import enabled_tools
+        return enabled_tools(market=getattr(organization, 'country', None))
+
+    def _get_tools(self, tool_module=None) -> list:
+        """The enabled tool functions (compatibility view of ``_get_specs``)."""
+        return [spec.fn for spec in self._get_specs()]
 
     def chat(self, phone: str, message: str, user=None, organization=None,
              extra_context: str = '') -> str:
@@ -106,7 +99,7 @@ class RealTronAgent:
 
         history = self._load_history(phone, organization)
         start   = time.time()
-        tools   = self._get_tools(tool_module)
+        tools   = self._get_specs(organization)
 
         result = None
         try:
@@ -466,7 +459,9 @@ class RealTronAgent:
                 response_tokens=usage.tokens_out,
                 response_ms=response_ms,
                 input_data={'message': message[:300]},
-                output_data={'reply': reply[:300]},
+                output_data={'reply': reply[:300],
+                             **({'tool_calls': result.tool_calls, 'steps': result.steps}
+                                if result is not None and result.tool_calls is not None else {})},
             )
         except Exception:
             pass

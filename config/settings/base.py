@@ -517,6 +517,7 @@ AI_BACKEND         = env('AI_BACKEND',         default='gemini').strip().lower()
 # Default: AI_BACKEND only (no failover, no extra cost). E.g. "gemini,openai,local".
 AI_PROVIDER_ORDER  = [p.strip().lower() for p in env.list('AI_PROVIDER_ORDER', default=[AI_BACKEND]) if p.strip()]
 AI_TIMEOUT_S       = env.float('AI_TIMEOUT_S', default=30.0)
+AI_MAX_TOOL_STEPS  = env.int('AI_MAX_TOOL_STEPS', default=5)        # T-2010: model calls per turn
 AI_BREAKER_FAILURES = env.int('AI_BREAKER_FAILURES', default=5)     # per provider …
 AI_BREAKER_SECONDS  = env.int('AI_BREAKER_SECONDS',  default=120)   # … within / open for
 AI_OPENAI_BASE_URL = env('AI_OPENAI_BASE_URL', default='https://api.openai.com/v1')

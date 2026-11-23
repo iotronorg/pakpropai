@@ -755,3 +755,28 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - A change of the org's own `operational_mode` still does not re‑derive: going live is the provisioner's job.
 - **Data:** `leads 0021` and `whatsapp 0013` are batched, non‑atomic and idempotent. They set `False` for rows with no org or with a production org. Rows of non‑production orgs are untouched.
 - **Not covered:** `QuerySet.update(organization=…)` and `bulk_create` bypass `save()`. No such code exists today.
+
+### ADR‑029 — Explicit tool‑loop runtime and tool registry (T‑2010, 2026‑11‑23)
+- **Context:**
+  - Gemini ran tools inside the SDK (Automatic Function Calling). Usage covered only the last round (the KI‑006 remainder), and tool calls were invisible to the application.
+  - Ollama had its own hand‑written loop. Rules such as "return the agent contact verbatim" therefore applied to one provider only.
+- **Decision:**
+  - Providers implement only `AIBackend.step(system, messages, tools)`, which returns text and/or `ToolCall`s. Gemini sets `AutomaticFunctionCallingConfig(disable=True)` and declares tools with `parameters_json_schema`; OpenAI‑compatible servers use `tools`.
+  - `apps/ai/runtime.run_turn` owns the loop:
+    - at most `AI_MAX_TOOL_STEPS` (5) model calls, per the AI spec;
+    - argument validation through the registry;
+    - execution with the existing request context;
+    - error results instead of exceptions;
+    - terminal tools end the turn with the tool's own summary;
+    - per‑step usage;
+    - an audit record per call.
+  - Messages are provider‑neutral. A provider's raw assistant content is replayed only to that same provider (Gemini thought signatures).
+- **Tool registry (`apps/ai/tool_registry.py`):**
+  - A `ToolSpec` carries the policy fields from AI spec §5: JSON schema (from signature and docstring), side‑effect class, `requires_confirmation`, feature flag with its default (deal lock is off by default), terminal, timeout, markets.
+  - Functions are resolved on `apps.ai.tools` at call time.
+  - Plain callables are wrapped as conservative ad‑hoc specs that count as committing.
+- **Failover rule refined:** a turn may be re‑run on the next provider after read‑only tools. Only a *successful* tool with side‑effect class `low`, `contact_share`, `booking` or `financial` commits the turn; a later provider failure then raises `TurnCommitted`. This replaces T‑1120's "any tool ran".
+- **Unchanged:**
+  - Confirmations are still enforced inside the tools (cache‑based, T‑0007); T‑2012 makes them durable and runtime‑enforced.
+  - The `_is_agent_request` keyword bypass stays until then.
+  - Per‑tool `timeout_ms` is declared but not enforced; tools run synchronously in the request (T‑2011/T‑2020).

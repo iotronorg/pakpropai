@@ -280,3 +280,21 @@
    **Do not commit.**
 2. **M1:** all code tasks are done. T‑1070g‑2 and T‑1032b‑2 are staged and wait for a deployed release plus a clean production check (`check_listing_contract`, `reconcile_memberships`).
 3. **Next:** start **M2**. Create `milestones/MILESTONE_02_*.md` from PRD Phase 2 (as was done for M1), then **T‑2010**, the explicit Gemini tool loop. It also routes the KI‑059 call sites. Open: KI‑055…KI‑059.
+
+- **Continued ("continue"): M2 started.** Created the milestone file (15 tasks from PRD Phase 2 and the AI spec). **T‑2010:**
+  - the explicit tool‑loop runtime, the tool registry with policies, and provider `step()` adapters;
+  - per‑step usage and tool‑call auditing;
+  - verbatim terminal tools for every provider;
+  - a refined failover rule;
+  - the SDK chat loops removed.
+
+  ADR‑029, GO_LIVE §31. Tests: 1966 passed, 1 skipped, 0 failed. **Not committed.**
+
+### Handoff → session 10 (supersedes the ones above)
+1. `git status`: the owner committed through T‑1040 (`46c2ae4`). Uncommitted:
+   - `milestones/MILESTONE_02_AI_AGENT_MVP.md`;
+   - **T‑2010**: `apps/ai/{runtime,tool_registry}.py`, the backends' `step()`, `llm.chat`, the agent, settings, `tests/test_runtime.py`, `tests/test_llm.py`.
+
+   **Do not commit.**
+2. Next: **T‑2012** durable `PendingAction` confirmations, enforced by the runtime for `requires_confirmation` tools; then remove the `_is_agent_request` bypass. Then T‑2011 (AITrace + cost).
+3. **Open:** KI‑055…KI‑059. KI‑059 (OCR, STT and intent classifier not on the router) is not closed by T‑2010.

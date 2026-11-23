@@ -80,11 +80,21 @@ Priority: P0 (blocker) → P3.
 | T‑1110 | [x] | P2 | Media pipeline hardening for images | GAP‑083. `apps/core/images.py` `sanitize_image`: bounded read (`IMAGE_MAX_BYTES` 10 MB), format from magic bytes (JPEG/PNG/WebP only; client type and name ignored), header pixel budget (`IMAGE_MAX_PIXELS` 40 M) + Pillow bomb errors, full decode (truncation), EXIF orientation applied then **re‑encoded from pixels** (EXIF/GPS, XMP, comments, text chunks, appended payloads dropped; ICC kept), downscale (`IMAGE_MAX_SIDE` 2560), thumbnail (`IMAGE_THUMB_SIDE` 480), storage name `<uuid>.<detected ext>`; `safe_upload_name` for every `upload_to`. Listing images: all‑or‑nothing upload, duplicate detection (sha256), `MAX_IMAGES_PER_LISTING` 20 under a row lock, `alt_text`/width/height/thumbnail, PATCH caption/alt text, `images/reorder/`, delete removes the thumbnail; listing agent allowed (`can_manage`). Org logo and agent photo use `SanitizedImageField`. `sanitize_images` backfill command. Migrations `properties 0048`, `agents 0014`. 11 tests |
 | T‑1120 | [x] | P2 | AI provider abstraction, prompt registry, market‑pack prompts | ADR‑028, GAP‑055/056/062. `apps/ai/llm.py` router: `complete`/`complete_json`/`vision`/`chat` try `AI_PROVIDER_ORDER` (default = `AI_BACKEND`, so no failover or extra cost until configured), skip unconfigured providers, per‑provider circuit breaker (`AI_BREAKER_FAILURES`/`_SECONDS`; open = tried last), `AI_TIMEOUT_S`; **no failover after a tool ran** in a chat turn (side effects never repeat). Providers: Gemini, local/Ollama, new OpenAI‑compatible (`AI_OPENAI_*`); every backend gains `complete()` honouring max tokens/temperature/JSON mode. `apps/ai/prompts.py` registry: named, versioned templates with a 12‑char sha256 digest; missing variables raise; same version + different text refused; market variables (`market_name`, `currency`, `area_unit`, …) filled from the market; market packs register `market.<CC>.knowledge`. `AIInteraction.provider/prompt_name/prompt_version/prompt_digest` (`ai 0003`). Migrated: scoring (score, fraud, verdicts, OCR), lead summary / reply suggestions (phone no longer sent), re‑engagement, agent chat and image analysis; `apps/ai/client.py` (GeminiClient) removed. Token accounting unchanged (backends still call `apps.ai.usage`). 10 tests. Remaining direct calls: KI‑059 |
 
-## M2 — AI agent MVP — planned entries referenced by ADRs
+## M2 — AI agent MVP ([MILESTONE_02](milestones/MILESTONE_02_AI_AGENT_MVP.md))
 
-| ID | Status | P | Task |
-|---|---|---|---|
-| T‑2010 | [ ] | P1 | Explicit tool loop for Gemini (accurate per‑round usage, tool auditing) |
-| T‑2012 | [ ] | P1 | Durable `ActionConfirmation` record (replace cache‑only proposals) |
-| T‑2014 | [ ] | P2 | Listing draft/moderation state (KI‑025) |
-| T‑2016 | [ ] | P2 | Context‑free FAQ path so the semantic cache can be enabled safely |
+| ID | Status | P | Task | Notes |
+|---|---|---|---|---|
+| T‑2010 | [x] | P1 | Explicit tool loop + tool registry with policies | ADR‑029. `apps/ai/runtime.py`: providers return tool calls (`AIBackend.step`; Gemini AFC disabled, OpenAI‑compatible `tools`), the runtime validates and executes them, at most `AI_MAX_TOOL_STEPS` (5) model calls. Usage is recorded **per step** (multi‑round turns fully counted). Each tool call is audited (status, redacted args, ms, side‑effect class) on the turn's `AIInteraction.output_data`. Terminal tools (`connect_to_agent`, `generate_property_audit`) return their summary verbatim for every provider. Bad calls become error results; tool exceptions are not leaked. `apps/ai/tool_registry.py`: `ToolSpec` (schema, side‑effect class, confirmation, feature flag + default, terminal, timeout, markets), `enabled_tools`, `validate_args` (coercion, required, unknown dropped). Failover now re‑runs a turn after read‑only tools and refuses (`TurnCommitted`) only after a *successful* committing tool. SDK chat loops (Gemini AFC, the Ollama loop) removed. 13 tests |
+| T‑2011 | [ ] | P1 | `AITrace` + `ModelPrice` cost | |
+| T‑2012 | [ ] | P1 | Durable `PendingAction` confirmations (replace cache‑only proposals) | Then remove the `_is_agent_request` keyword bypass (AI spec §3.2) |
+| T‑2013 | [ ] | P1 | Grounding checker v2 | |
+| T‑2014 | [ ] | P2 | Listing draft/moderation state (KI‑025), moderation queue, user reports | |
+| T‑2016 | [ ] | P2 | Context‑free FAQ path so the semantic cache can be enabled safely | |
+| T‑2020 | [ ] | P1 | Durable Conversation/Message, SSE conversation API, WhatsApp adapter on the runtime | |
+| T‑2030 | [ ] | P1 | `SearchCriteria` extraction + clarification, SearchService v2, ranking with explanations | |
+| T‑2031 | [ ] | P1 | Public listing read API | |
+| T‑2040 | [ ] | P2 | Preferences with consent, favourites, saved searches + alerts | |
+| T‑2041 | [ ] | P2 | Consumer comparison | |
+| T‑2050 | [ ] | P1 | Enquiries → leads, threads, email notifications | |
+| T‑2060 | [ ] | P1 | Availability, booking, reminders, feedback | |
+| T‑2070 | [ ] | P1 | Eval suites + CI gate; kill switch | |

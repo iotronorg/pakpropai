@@ -46,6 +46,8 @@ class LLMResult:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     ms: int = 0
+    tool_calls: list = None
+    steps: int = 0
 
 
 # ── Providers + circuit breaker ───────────────────────────────────────────────
@@ -95,18 +97,21 @@ def any_configured() -> bool:
     return bool(_candidates())
 
 
-def _run(op, *, what: str, committed=lambda: False):
-    """Try providers in order. ``committed()`` true after a failure → no failover (tools ran)."""
+def _run(op, *, what: str):
+    """Try providers in order; a turn that already ran a committing tool is never retried."""
+    from .runtime import TurnCommitted
     errors = []
     for name, backend in _candidates():
         started = time.monotonic()
         try:
             out = op(backend)
+        except TurnCommitted:
+            _fail(name)
+            logger.error('llm.%s provider=%s failed after a committing tool ran; not failing over',
+                         what, name)
+            raise
         except Exception as exc:              # provider failure → next one
             _fail(name)
-            if committed():
-                logger.error('llm.%s provider=%s failed after a tool ran; not failing over', what, name)
-                raise
             errors.append(f'{name}: {type(exc).__name__}')
             logger.warning('llm.%s provider=%s failed: %s', what, name, type(exc).__name__)
             continue
@@ -130,7 +135,9 @@ def _log(result: LLMResult, *, interaction_type: str, user=None, input_preview: 
             prompt_name=ref.get('prompt_name', ''), prompt_version=ref.get('prompt_version'),
             prompt_digest=ref.get('prompt_digest', ''),
             input_data={'prompt_preview': input_preview[:200]},
-            output_data={'preview': result.text[:200]})
+            output_data={'preview': result.text[:200],
+                         **({'tool_calls': result.tool_calls, 'steps': result.steps}
+                            if result.tool_calls is not None else {})})
     except Exception as exc:                   # logging must never break the call
         logger.warning('AIInteraction log failed: %s', exc)
 
@@ -219,25 +226,22 @@ def vision(prompt_name: str, image_bytes: bytes, mime_type: str, values: dict | 
 
 def chat(message: str, history: list, tools: list, system: P.Rendered | str, *,
          user=None, interaction_type: str = 'chat', log: bool = True) -> LLMResult:
-    """Tool-using conversational turn with provider failover."""
-    import functools
+    """
+    Tool-using conversational turn (T-2010): the explicit runtime loop with
+    provider failover. ``tools``: ``ToolSpec`` objects (or plain callables,
+    treated as committing ad-hoc tools). A provider failing after a committing
+    tool ran raises ``runtime.TurnCommitted`` instead of failing over.
+    """
+    from . import runtime
+    from .tool_registry import ToolSpec
     rendered = system if isinstance(system, P.Rendered) else None
     system_text = system.text if rendered else system
-    ran = []
-
-    def track(fn):
-        @functools.wraps(fn)                  # keeps name, docstring, annotations, signature
-        def wrapper(*args, **kwargs):
-            ran.append(fn.__name__)
-            return fn(*args, **kwargs)
-        return wrapper
-
-    tracked = [track(t) for t in tools]
-    # A provider that fails after a tool already ran must not be retried elsewhere:
-    # the tool's side effect (a listing, a lead, a deal lock) would happen twice.
-    name, backend, text, ms = _run(lambda b: b.chat(message, history, tracked, system_text),
-                                   what='chat', committed=lambda: bool(ran))
-    result = LLMResult(text=text, provider=name, model=backend.label, prompt=rendered, ms=ms)
+    specs = [t if isinstance(t, ToolSpec) else ToolSpec.from_callable(t) for t in tools]
+    name, backend, turn, ms = _run(
+        lambda b: runtime.run_turn(b, message, history, specs, system_text), what='chat')
+    result = LLMResult(text=turn.text, provider=name, model=turn.model or backend.label, prompt=rendered,
+                       prompt_tokens=turn.prompt_tokens, completion_tokens=turn.completion_tokens, ms=ms,
+                       tool_calls=turn.tool_calls, steps=turn.steps)
     if log:                                   # the agent logs its own row (with usage totals)
         _log(result, interaction_type=interaction_type, user=user, input_preview=message)
     return result

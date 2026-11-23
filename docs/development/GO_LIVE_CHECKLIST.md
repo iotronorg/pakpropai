@@ -278,3 +278,11 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 ## 30. Session‑9 change: lead/session sandbox flag (T‑1040, ADR‑002 addendum)
 - **Migrations:** `leads 0021` and `whatsapp 0013` are data‑only backfills (batched by 5 000, non‑atomic, safe to re‑run). They only flip `is_sandbox` to `False`.
 - **Behaviour:** leads and sessions with no organization are now `is_sandbox=False`, and moving a lead or session into an org re‑derives the flag. No query filters leads or sessions on this flag today, so nothing becomes newly visible.
+
+## 31. Session‑9 change: explicit tool loop (T‑2010, ADR‑029)
+- **No migration.**
+- **Behaviour:**
+  - The model no longer runs tools inside the Gemini SDK; the app does, for at most 5 model calls per turn (`AI_MAX_TOOL_STEPS`).
+  - Agent‑contact and audit replies are verbatim tool output on every provider.
+  - Token usage now includes every round of a multi‑tool turn, so budgets fill faster than before: this is the true cost.
+- **Watch after deploy:** `AIInteraction.output_data.tool_calls` (statuses `rejected` or `error`) and the `ai.tool` log lines. A rise in `rejected` / `invalid_args` points to a schema or prompt problem.
