@@ -157,12 +157,13 @@ class DeriveMarketTest(TestCase):
     def test_explicit_market_is_kept(self):
         self.assertEqual(make_property(country='PK', market_id='GB').market_id, 'GB')
 
-    def test_market_not_recomputed_on_update(self):
+    def test_market_follows_country_change(self):
+        # Owner decision 2026-11-23 (KI-050): a country change re-derives the market.
         prop = make_property()
         prop.country = 'AE'
         prop.save()
         prop.refresh_from_db()
-        self.assertEqual(prop.market_id, 'PK')
+        self.assertEqual(prop.market_id, 'AE')
 
     def test_organization_market_from_country(self):
         self.assertEqual(make_org(country='GB').market_id, 'GB')

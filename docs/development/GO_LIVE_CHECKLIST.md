@@ -158,3 +158,21 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
   - `markets.0004`: seeds PK/AE/GB schemas, and only fills empty ones.
 - **Behaviour change:** when listing `attributes` (or `country`) are written in PK, AE or GB, unknown keys and invalid values now return 400. Before this, any object up to 50 keys/8 KB was accepted. **Check before deploy:** `SELECT market_id, count(*) FROM properties WHERE attributes <> '{}' GROUP BY 1`. Stored values are not rewritten. They are re‑checked only when a client sends `attributes` or changes `country`.
 - **Admin:** edit schemas under *Markets*. Malformed schemas are refused by `Market.clean()`. The market cache key prefix changed to `market:v2:`, and the first read after deploy repopulates it.
+
+## 18. Session‑9 change: stored search document (T‑1070f, ADR‑015 addendum)
+- **Migrations:**
+  - `properties.0035`: nullable `search_tsv` column, plus the trigger function `properties_search_tsv_refresh` and trigger `properties_search_tsv_trg`.
+  - `properties.0036`: batched backfill, non‑atomic; each batch takes short row locks.
+  - `properties.0037`: `CREATE INDEX CONCURRENTLY prop_search_tsv_gin`. Run it on a direct DB connection.
+- **Ordering:** run all three before new pods serve traffic. New code queries the column, so rows not yet backfilled would be missed.
+- The legacy `prop_fts_gin` index stays for old pods and is dropped in T‑1070g. Disk: expect roughly the size of the existing FTS index again, plus the column.
+
+## 19. Session‑9 change: org invitations (T‑1032c, KI‑041)
+- **Migration:** `organizations.0027` (new `organization_invites` table).
+- **API change:** `POST /api/v1/organizations/me/members/` now returns a **pending invite**, and the user joins only after `POST /api/v1/organizations/invites/{id}/accept/`. **Frontend:** show pending invites (`GET /organizations/invites/`) with accept/decline, and an org admin view (`GET/DELETE /organizations/me/invites/`).
+- The invitee gets a WhatsApp notice through the outbox (the outbox worker must be running).
+- **Optional:** `ORG_INVITE_TTL_DAYS` (default 7).
+
+## 20. Session‑9 change: PII masking allow‑list and market follows country (T‑1033, KI‑050)
+- **PII masking:** `/api/v1/agents/register/` and `/api/v1/organizations/me/members/` are no longer exempt as whole paths. Only the listed structured fields pass unmasked (`PRIVACY_MASK_FIELD_ALLOWLIST` in settings), so free text in those bodies (e.g. agent `bio`) is now masked. Agent profile edits (`/agents/me/`, `/agents/{id}/`) and org contact edits now keep real phone/email/ID values; before, they were masked.
+- **Listings:** changing a listing's `country` now moves it to that market (`market_id`). No migration is needed. Run `market_backfill_report` if you want to check existing rows.

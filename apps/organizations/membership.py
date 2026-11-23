@@ -253,6 +253,145 @@ def invite_member(actor, organization, user, role, employment_type='internal', *
     return membership, created
 
 
+# ── Invitations (T-1032c, KI-041): pending until the invitee accepts ────────
+
+def _invite_snapshot(inv) -> dict:
+    return {'invitee_id': str(inv.invitee_id), 'organization_id': str(inv.organization_id),
+            'role': inv.role, 'employment_type': inv.employment_type, 'status': inv.status}
+
+
+def _notify_invitee(invite) -> None:
+    """WhatsApp notice through the outbox, in the caller's transaction (one per invite)."""
+    from apps.markets.services import format_local
+    from apps.notifications.delivery import enqueue_whatsapp_text
+    org = invite.organization
+    role = invite.get_role_display()
+    expires = format_local(invite.expires_at, org, '%d %b %Y')
+    enqueue_whatsapp_text(
+        invite.invitee.phone,
+        f"{org.name} has invited you to join their team as {role}. "
+        f"Open the app to accept or decline. The invitation expires on {expires}.",
+        key=f'org_invite:{invite.pk}', organization=org,
+    )
+
+
+@transaction.atomic
+def create_invite(actor, organization, user, role, employment_type='internal', *, request=None):
+    """
+    Invite ``user`` to ``organization``. Nothing is granted until they accept.
+
+    Raises ``MembershipConflict`` when the user is already an active member or
+    already has an open invite. Returns the ``OrganizationInvite``.
+    """
+    from datetime import timedelta
+    from django.conf import settings
+    from apps.core.models import AuditLog
+    from apps.organizations.models import OrganizationInvite as Invite
+
+    check_invite(actor, organization, role, employment_type)
+    if _model().objects.filter(user=user, organization=organization, is_active=True).exists():
+        raise MembershipConflict('User is already a member of this organization.')
+    now = timezone.now()
+    # A lapsed invite no longer blocks a new one.
+    (Invite.objects.filter(organization=organization, invitee=user,
+                           status=Invite.Status.PENDING, expires_at__lte=now)
+     .update(status=Invite.Status.EXPIRED, responded_at=now))
+    try:
+        with transaction.atomic():
+            invite = Invite.objects.create(
+                organization=organization, invitee=user, invited_by=actor, role=role,
+                employment_type=employment_type,
+                expires_at=now + timedelta(days=getattr(settings, 'ORG_INVITE_TTL_DAYS', 7)),
+            )
+    except IntegrityError:
+        raise MembershipConflict('User already has a pending invitation to this organization.')
+    _audit(actor, AuditLog.Action.CREATE, invite, 'membership.invite_created',
+           after=_invite_snapshot(invite), request=request)
+    _notify_invitee(invite)
+    logger.info('membership.invite_created invite=%s user=%s org=%s role=%s by=%s',
+                invite.pk, user.pk, organization.pk, role, getattr(actor, 'pk', None))
+    return invite
+
+
+def _lock_open_invite(invite_id, **filters):
+    from apps.organizations.models import OrganizationInvite as Invite
+    invite = (Invite.objects.select_for_update().select_related('organization', 'invitee')
+              .filter(pk=invite_id, **filters).first())
+    if invite is None:
+        raise NotFound('Invitation not found.')
+    if invite.status == Invite.Status.PENDING and not invite.is_open:
+        invite.status, invite.responded_at = Invite.Status.EXPIRED, timezone.now()
+        invite.save(update_fields=['status', 'responded_at'])
+    return invite                                    # callers refuse a non-pending invite
+
+
+def _closed(invite):
+    """Raised by callers *after* their transaction, so an expiry mark is kept."""
+    return MembershipConflict(f'This invitation is {invite.status}.')
+
+
+def respond_to_invite(user, invite_id, *, accept: bool, request=None):
+    """
+    The invitee accepts or declines. Accepting re-checks the grant policy with
+    the inviter's *current* rights (an inviter who lost them voids the invite),
+    then creates or reactivates the membership. Returns ``(invite, membership|None)``;
+    a voided invite comes back with status ``revoked`` and no membership.
+    """
+    from apps.core.models import AuditLog
+    from apps.organizations.models import OrganizationInvite as Invite
+
+    with transaction.atomic():
+        invite = _lock_open_invite(invite_id, invitee=user)
+        if invite.status != Invite.Status.PENDING:
+            closed = invite
+        else:
+            closed = None
+            membership = _respond(user, invite, accept, request)
+    if closed is not None:
+        raise _closed(closed)
+    return invite, membership
+
+
+def _respond(user, invite, accept, request):
+    from apps.core.models import AuditLog
+    from apps.organizations.models import OrganizationInvite as Invite
+    before = _invite_snapshot(invite)
+    membership = None
+    if accept:
+        try:
+            with transaction.atomic():               # savepoint: keep the REVOKED update below
+                membership, _ = invite_member(invite.invited_by, invite.organization, user,
+                                              invite.role, invite.employment_type, request=request)
+            invite.status, detail = Invite.Status.ACCEPTED, 'membership.invite_accepted'
+        except MembershipForbidden:
+            invite.status, detail = Invite.Status.REVOKED, 'membership.invite_voided'
+    else:
+        invite.status, detail = Invite.Status.DECLINED, 'membership.invite_declined'
+    invite.responded_at = timezone.now()
+    invite.save(update_fields=['status', 'responded_at'])
+    _audit(user, AuditLog.Action.UPDATE, invite, detail,
+           before=before, after=_invite_snapshot(invite), request=request)
+    return membership
+
+
+def revoke_invite(actor, organization, invite_id, *, request=None):
+    """An org manager withdraws an open invitation."""
+    from apps.core.models import AuditLog
+    from apps.organizations.models import OrganizationInvite as Invite
+
+    _require_manager(actor_role(actor, organization.pk))
+    with transaction.atomic():
+        invite = _lock_open_invite(invite_id, organization=organization)
+        if invite.status == Invite.Status.PENDING:
+            before = _invite_snapshot(invite)
+            invite.status, invite.responded_at = Invite.Status.REVOKED, timezone.now()
+            invite.save(update_fields=['status', 'responded_at'])
+            _audit(actor, AuditLog.Action.UPDATE, invite, 'membership.invite_revoked',
+                   before=before, after=_invite_snapshot(invite), request=request)
+            return invite
+    raise _closed(invite)
+
+
 @transaction.atomic
 def change_role(actor, membership, role, employment_type=None, *, request=None):
     """

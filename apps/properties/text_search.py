@@ -1,12 +1,14 @@
 """
-Index-backed full-text search over listings (T-1100, ADR-015).
+Index-backed full-text search over listings (T-1100, ADR-015; T-1070f).
 
-The GIN index ``prop_fts_gin`` (see ``Property.Meta.indexes``) is built on the
-exact expression returned by :func:`search_vector`. Postgres only uses an
-expression index when the query repeats the same expression, so every
-full-text filter on ``Property`` must go through :func:`apply_text_search`.
-Changing ``SEARCH_CONFIG`` or ``SEARCH_FIELDS`` needs a migration that
-rebuilds the index.
+Queries use the stored ``search_tsv`` column (GIN ``prop_search_tsv_gin``),
+which a DB trigger (migration 0035) keeps equal to :func:`search_vector`.
+Ranking reads the stored vector instead of recomputing ``to_tsvector`` per
+match (KI-035). Changing ``SEARCH_CONFIG`` or ``SEARCH_FIELDS`` needs a
+migration that replaces the trigger function and re-runs the backfill.
+
+:func:`search_vector` also defines the legacy expression index
+``prop_fts_gin``, still used by pre-T-1070f pods until it is dropped (T-1070g).
 
 Why the ``simple`` configuration: an expression index needs an explicit
 (immutable) text-search config, and listings are multilingual place names
@@ -17,6 +19,7 @@ stemming.
 import re
 
 from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
+from django.db.models import F
 
 SEARCH_CONFIG = 'simple'
 SEARCH_FIELDS = ('title', 'city', 'location', 'description', 'ref_no')
@@ -35,7 +38,7 @@ _REF_NO_RE = re.compile(r'^[A-Za-z]{2,5}-[A-Za-z0-9]{2,5}-\d{4}-\d{6,}$')
 
 
 def search_vector() -> SearchVector:
-    """The indexed document expression. Must match ``prop_fts_gin``."""
+    """The document expression: ``prop_fts_gin`` and the 0035 trigger must match it."""
     return SearchVector(*SEARCH_FIELDS, config=SEARCH_CONFIG)
 
 
@@ -54,7 +57,7 @@ def build_prefix_tsquery(term: str) -> str | None:
 def apply_text_search(qs, term: str):
     """
     Filter ``qs`` (a ``Property`` queryset) to listings matching ``term`` and
-    order them by relevance, newest first on ties. Uses the GIN index.
+    order them by relevance, newest first on ties. Uses ``prop_search_tsv_gin``.
     """
     stripped = (term or '').strip()
     if _REF_NO_RE.match(stripped):
@@ -64,8 +67,7 @@ def apply_text_search(qs, term: str):
         return qs.none()
     query = SearchQuery(raw, search_type='raw', config=SEARCH_CONFIG)
     return (
-        qs.alias(search_document=search_vector())
-          .filter(search_document=query)
-          .annotate(rank=SearchRank(search_vector(), query))
+        qs.filter(search_tsv=query)
+          .annotate(rank=SearchRank(F('search_tsv'), query))
           .order_by('-rank', '-created_at')
     )

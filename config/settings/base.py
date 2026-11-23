@@ -313,6 +313,7 @@ CELERY_TASK_DEFAULT_QUEUE = 'default'
 # (CELERY_QUEUES=default) keep delivering; set to 'outbound' only once a worker
 # consumes that queue (see GO_LIVE_CHECKLIST §8).
 OUTBOX_CELERY_QUEUE = env('OUTBOX_CELERY_QUEUE', default='default')
+ORG_INVITE_TTL_DAYS = env.int('ORG_INVITE_TTL_DAYS', default=7)   # T-1032c, KI-041
 CELERY_TASK_ROUTES = {
     # Outbound side effects
     'apps.core.tasks.dispatch_outbox_message':            {'queue': OUTBOX_CELERY_QUEUE},
@@ -608,8 +609,24 @@ PRIVACY_MASK_EXEMPT_PATHS = [
     '/api/v1/compliance/',
     '/api/v1/auth/',
     '/api/v1/organizations/register/',
-    '/api/v1/organizations/me/members/',  # invite looks the user up by phone (KI-032)
-    '/api/v1/agents/register/',           # self-registration submits the agent's own phone (KI-032)
     '/api/v1/whatsapp/webhook/',
     '/public/',  # viral referral endpoints — user voluntarily submits phone for WA deep-link
+]
+
+# Per-endpoint allow-list (T-1033, owner decision 2026-11-23): these top-level
+# JSON fields legitimately carry contact/identity data and pass unmasked; every
+# other field in the same body (free text: bio, notes, messages) is still masked.
+_AGENT_CONTACT = ['phone', 'whatsapp_number', 'email', 'license_number',
+                  'national_id_number', 'tax_id_number']
+PRIVACY_MASK_FIELD_ALLOWLIST = [
+    {'path': r'^/api/v1/organizations/me/members/$', 'methods': ['POST'],
+     'fields': ['phone']},                                    # invite looks the user up by phone
+    {'path': r'^/api/v1/agents/register/$', 'methods': ['POST'],
+     'fields': _AGENT_CONTACT},                               # agent's own contact details
+    {'path': r'^/api/v1/agents/me/$', 'methods': ['PATCH', 'PUT'],
+     'fields': _AGENT_CONTACT},                               # agent edits own profile
+    {'path': r'^/api/v1/agents/\d+/$', 'methods': ['PATCH', 'PUT'],
+     'fields': _AGENT_CONTACT},                               # admin edits an agent
+    {'path': r'^/api/v1/organizations/(me|[0-9a-f-]{36})/$', 'methods': ['PATCH', 'PUT'],
+     'fields': ['phone', 'email']},                           # org business contact
 ]

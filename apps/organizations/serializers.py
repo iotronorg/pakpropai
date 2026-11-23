@@ -149,6 +149,33 @@ class OrgMemberInviteSerializer(serializers.Serializer):
     employment_type = serializers.ChoiceField(choices=_M.EmploymentType.choices, required=False)
 
 
+class OrgInviteSerializer(serializers.ModelSerializer):
+    """Invitation (T-1032c). ``status`` reads ``expired`` once past ``expires_at``."""
+    organization_id   = serializers.CharField(source='organization.id', read_only=True)
+    organization_name = serializers.CharField(source='organization.name', read_only=True)
+    invitee_phone     = serializers.CharField(source='invitee.phone', read_only=True)
+    invited_by_name   = serializers.CharField(source='invited_by.name', read_only=True, allow_null=True,
+                                              default=None)
+    status            = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import OrganizationInvite
+        model  = OrganizationInvite
+        fields = ('id', 'organization_id', 'organization_name', 'invitee_phone', 'invited_by_name',
+                  'role', 'employment_type', 'status', 'created_at', 'expires_at', 'responded_at')
+        read_only_fields = fields
+
+    def get_status(self, obj) -> str:
+        if obj.status == obj.Status.PENDING and not obj.is_open:
+            return obj.Status.EXPIRED
+        return obj.status
+
+
+class OrgInviteResponseSerializer(serializers.Serializer):
+    invite     = OrgInviteSerializer()
+    membership = OrgMemberSerializer(allow_null=True)
+
+
 class OrgMemberUpdateSerializer(serializers.Serializer):
     role            = serializers.ChoiceField(choices=_M.Role.choices,
                                               help_text='owner is not allowed; use ownership transfer.')

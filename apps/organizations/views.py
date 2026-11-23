@@ -10,9 +10,9 @@ from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
-from .models import Organization, OrganizationConfig, OrganizationMembership
+from .models import Organization, OrganizationConfig, OrganizationInvite, OrganizationMembership
 from .serializers import (
-    OrgMemberInviteSerializer, OrgMemberSerializer, OrgMemberUpdateSerializer,
+    OrgInviteResponseSerializer, OrgInviteSerializer, OrgMemberInviteSerializer, OrgMemberSerializer, OrgMemberUpdateSerializer,
     OwnershipTransferRequestSerializer, OwnershipTransferResponseSerializer,
     OrganizationListSerializer, OrganizationDetailSerializer,
     OrgRegistrationSerializer, OrgRegistrationOTPVerifySerializer,
@@ -652,10 +652,11 @@ class OrgMembershipView(_OrgMembersBase):
         ).select_related('user').order_by('joined_at')
         return Response([_member_payload(m) for m in members])
 
-    @extend_schema(request=OrgMemberInviteSerializer, responses={201: OrgMemberSerializer})
+    @extend_schema(request=OrgMemberInviteSerializer, responses={201: OrgInviteSerializer})
     def post(self, request):
+        """Creates a pending invitation; the user joins only after accepting (KI-041)."""
         from apps.users.models import User
-        from .membership import check_invite, invite_member
+        from .membership import check_invite, create_invite
         org = self._get_org(request.user)
         phone = str(request.data.get('phone', '')).strip()
         role = request.data.get('role', OrganizationMembership.Role.AGENT)
@@ -669,8 +670,69 @@ class OrgMembershipView(_OrgMembersBase):
         if not user:
             return Response({'detail': 'No user found with this phone number.'}, status=status.HTTP_404_NOT_FOUND)
 
-        membership, _ = invite_member(request.user, org, user, role, employment_type, request=request)
-        return Response(_member_payload(membership, user), status=status.HTTP_201_CREATED)
+        invite = create_invite(request.user, org, user, role, employment_type, request=request)
+        return Response(OrgInviteSerializer(invite).data, status=status.HTTP_201_CREATED)
+
+
+class OrgInviteListView(_OrgMembersBase):
+    """GET /api/v1/organizations/me/invites/ — open invitations of the caller's org."""
+
+    @extend_schema(responses=OrgInviteSerializer(many=True))
+    def get(self, request):
+        from django.utils import timezone as _tz
+        from .membership import _MANAGER_ROLES, actor_role
+        org = self._get_org(request.user)
+        if actor_role(request.user, org.pk) not in _MANAGER_ROLES:
+            raise PermissionDenied('Only organization admins can view invitations.')
+        qs = (OrganizationInvite.objects.filter(organization=org, status='pending',
+                                                expires_at__gt=_tz.now())
+              .select_related('organization', 'invitee', 'invited_by'))
+        return Response(OrgInviteSerializer(qs, many=True).data)
+
+
+class OrgInviteRevokeView(_OrgMembersBase):
+    """DELETE /api/v1/organizations/me/invites/{id}/ — withdraw an open invitation."""
+
+    @extend_schema(responses={204: None})
+    def delete(self, request, invite_id):
+        from .membership import revoke_invite
+        revoke_invite(request.user, self._get_org(request.user), invite_id, request=request)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class MyInvitesView(APIView):
+    """GET /api/v1/organizations/invites/ — the caller's open invitations."""
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses=OrgInviteSerializer(many=True))
+    def get(self, request):
+        from django.utils import timezone as _tz
+        qs = (OrganizationInvite.objects.filter(invitee=request.user, status='pending',
+                                                expires_at__gt=_tz.now())
+              .select_related('organization', 'invitee', 'invited_by'))
+        return Response(OrgInviteSerializer(qs, many=True).data)
+
+
+class InviteRespondView(APIView):
+    """
+    POST /api/v1/organizations/invites/{id}/accept/
+    POST /api/v1/organizations/invites/{id}/decline/
+    Only the invitee can respond; another user's invite id → 404.
+    """
+    permission_classes = [IsAuthenticated]
+    accept = True
+
+    @extend_schema(request=None, responses=OrgInviteResponseSerializer)
+    def post(self, request, invite_id):
+        from .membership import respond_to_invite
+        invite, membership = respond_to_invite(request.user, invite_id, accept=self.accept,
+                                               request=request)
+        if self.accept and membership is None:
+            return Response({'detail': 'This invitation is no longer valid.',
+                             'invite': OrgInviteSerializer(invite).data},
+                            status=status.HTTP_409_CONFLICT)
+        return Response({'invite': OrgInviteSerializer(invite).data,
+                         'membership': _member_payload(membership) if membership else None})
 
 
 

@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 import threading
 
 from django.conf import settings
@@ -12,6 +13,16 @@ _pipeline = PIIMaskingPipeline()
 
 _MASK_METHODS = {"POST", "PATCH", "PUT"}
 _DEFAULT_EXEMPT = ["/api/v1/compliance/", "/api/v1/auth/"]
+
+
+def _compile_allowlist(rules) -> list[tuple]:
+    """[{path, methods, fields}] → [(regex, {METHODS}, {fields})] (T-1033)."""
+    compiled = []
+    for rule in rules or ():
+        compiled.append((re.compile(rule['path']),
+                         {m.upper() for m in rule.get('methods', _MASK_METHODS)},
+                         frozenset(rule['fields'])))
+    return compiled
 
 
 def _fire_detection_events(detections, org_id, path):
@@ -65,6 +76,17 @@ class PIIMaskingMiddleware:
         self.exempt_paths: list[str] = getattr(
             settings, "PRIVACY_MASK_EXEMPT_PATHS", _DEFAULT_EXEMPT
         )
+        self.field_allowlist = _compile_allowlist(
+            getattr(settings, "PRIVACY_MASK_FIELD_ALLOWLIST", ())
+        )
+
+    def allowed_fields(self, method: str, path: str) -> frozenset:
+        """Top-level JSON keys that may carry raw contact PII on this endpoint (T-1033)."""
+        allowed = set()
+        for regex, methods, fields in self.field_allowlist:
+            if method in methods and regex.match(path):
+                allowed |= fields
+        return frozenset(allowed)
 
     def __call__(self, request):
         if request.method in _MASK_METHODS:
@@ -86,7 +108,16 @@ class PIIMaskingMiddleware:
                 return
 
             payload = json.loads(raw)
-            masked_payload, detections = _mask_strings_recursive(payload, _pipeline)
+            allowed = self.allowed_fields(request.method, path)
+            if allowed and isinstance(payload, dict):
+                # Allow-listed structured fields pass through; every other
+                # value (free text such as bio/notes) is still masked.
+                kept = {k: v for k, v in payload.items() if k in allowed}
+                rest = {k: v for k, v in payload.items() if k not in allowed}
+                masked_rest, detections = _mask_strings_recursive(rest, _pipeline)
+                masked_payload = {k: (kept[k] if k in kept else masked_rest[k]) for k in payload}
+            else:
+                masked_payload, detections = _mask_strings_recursive(payload, _pipeline)
 
             if not detections:
                 return

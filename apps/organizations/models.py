@@ -412,6 +412,50 @@ class OrganizationMembership(models.Model):
         return f"{self.user} → {self.organization.name} [{self.role}]"
 
 
+class OrganizationInvite(models.Model):
+    """
+    A pending invitation to join an organization (T-1032c, KI-041). Grants no
+    access: the membership is created only when the invitee accepts.
+    """
+
+    class Status(models.TextChoices):
+        PENDING  = 'pending',  'Pending'
+        ACCEPTED = 'accepted', 'Accepted'
+        DECLINED = 'declined', 'Declined'
+        REVOKED  = 'revoked',  'Revoked'
+        EXPIRED  = 'expired',  'Expired'
+
+    organization    = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='invites')
+    invitee         = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                        related_name='org_invites')
+    invited_by      = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+                                        null=True, blank=True, related_name='+')
+    role            = models.CharField(max_length=20, choices=OrganizationMembership.Role.choices)
+    employment_type = models.CharField(max_length=20,
+                                       choices=OrganizationMembership.EmploymentType.choices,
+                                       default=OrganizationMembership.EmploymentType.INTERNAL)
+    status          = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
+    created_at      = models.DateTimeField(auto_now_add=True)
+    expires_at      = models.DateTimeField()
+    responded_at    = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table    = 'organization_invites'
+        ordering    = ['-created_at']
+        constraints = [models.UniqueConstraint(fields=['organization', 'invitee'],
+                                               condition=models.Q(status='pending'),
+                                               name='uniq_pending_org_invite')]
+        indexes     = [models.Index(fields=['invitee', 'status'], name='org_invite_invitee_idx')]
+
+    @property
+    def is_open(self) -> bool:
+        """Pending and not yet past its expiry."""
+        return self.status == self.Status.PENDING and self.expires_at > timezone.now()
+
+    def __str__(self):
+        return f"invite {self.invitee_id} → {self.organization_id} [{self.role}, {self.status}]"
+
+
 class DeveloperApiKey(models.Model):
     """
     Cryptographic API token for external CRM / integration access.

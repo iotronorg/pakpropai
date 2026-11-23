@@ -179,7 +179,9 @@ class WriterPathTest(TestCase):
         r = self.client.post('/api/v1/organizations/me/members/',
                              {'phone': '+923001112233', 'role': 'viewer'}, format='json')
         self.assertEqual(r.status_code, 201, r.content)
-        self.assertEqual(_active(invited, self.org).role, 'viewer')
+        self.assertEqual(r.data['invitee_phone'], '+923001112233')     # raw, not masked
+        from apps.organizations.models import OrganizationInvite
+        self.assertEqual(OrganizationInvite.objects.get(invitee=invited).role, 'viewer')
 
 
 class PrimaryMembershipTest(TestCase):

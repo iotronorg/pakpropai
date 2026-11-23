@@ -217,7 +217,17 @@
 - **Tests:** 1813 passed, 1 skipped, 0 failed (session 8 ended at 1781). `check`, drift and schema checks are clean; migrations rehearsed forward → back → forward; Bandit 0 HIGH.
 - **Not committed.**
 
+- **Continued (owner said "ask me for blockers and continue"):** asked 4 questions. The owner chose **Google Maps** geocoding with PostGIS (T‑1060), a **per‑endpoint PII allow‑list** (T‑1033), **pending invites with accept/decline** (KI‑041), and **market re‑derived on a country change** (KI‑050).
+  - **KI‑050:** `save()` re‑derives `market` when `country` changes.
+  - **T‑1033:** `PRIVACY_MASK_FIELD_ALLOWLIST` replaces two path exemptions; free text stays masked.
+  - **T‑1070f:** trigger‑maintained `search_tsv` plus a GIN index; search uses it, with results equal to the legacy query. Broad terms are 6–15× faster on 200k rows. KI‑035 resolved.
+  - **T‑1032c:** `OrganizationInvite` with accept/decline/revoke/expiry. The grant is re‑checked with the inviter's current rights at acceptance; the invitee is notified through the outbox; every step is audited. KI‑041 resolved.
+  - **Caught in testing:** two state changes (expire, void) were being rolled back because a 409 was raised inside the atomic block. The conflict is now raised after commit.
+  - **Process slip:** one full run was invalid because source was edited during it. It was re‑run clean.
+- **Final tests:** 1839 passed, 1 skipped, 0 failed; check/drift clean; migrations rehearsed; Bandit 0 HIGH.
+- **Not committed.**
+
 ### Handoff → session 10
-1. `git status`: T‑1070d/e are uncommitted. **Do not commit.** `scripts/dev/test.sh` should give 1813 passed, 1 skipped.
-2. Next: **T‑1070f**, a stored `tsvector` (see the DEVELOPMENT_STATUS "Next task"). Hold T‑1070g (contract) for owner approval.
-3. After that: T‑1080 (lifecycle; settle KI‑050 there) → T‑1011 (MFA) → T‑1110 → T‑1120. T‑1091/T‑1092 are P3.
+1. `git status`: the owner committed T‑1070d/e (`89b230a`); T‑1070f, T‑1033, T‑1032c and KI‑050 are uncommitted. **Do not commit.** `scripts/dev/test.sh` should give 1839 passed, 1 skipped.
+2. Next: **T‑1060** (see the DEVELOPMENT_STATUS "Next task"). Begin with the PostGIS test image and Dockerfile GDAL, then an ADR for the location model and geocoding service. Hold T‑1070g (contract, which also drops `prop_fts_gin`) for owner approval.
+3. After that: T‑1080 (lifecycle) → T‑1011 (MFA) → T‑1110 → T‑1120 → T‑1032b (phase‑C contraction, gated on a clean prod reconcile). T‑1040, T‑1091 and T‑1092 come later.

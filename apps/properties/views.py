@@ -131,7 +131,7 @@ class PropertyViewSet(viewsets.ModelViewSet):
         if (min_score := int_param(params, 'min_score', max_value=100, clamp=False)) is not None:
             qs = qs.filter(ai_score__gte=min_score)
         if search_term := params.get('search', '').strip():
-            # Index-backed (prop_fts_gin); see ADR-015.
+            # Index-backed (prop_search_tsv_gin); see ADR-015 and T-1070f.
             from .text_search import apply_text_search
             qs = apply_text_search(qs, search_term)
         return qs

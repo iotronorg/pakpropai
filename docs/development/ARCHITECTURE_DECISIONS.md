@@ -573,3 +573,24 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - GB: EPC rating, tenure, lease years remaining, council tax band, ground rent.
   - US/CA: `{}`.
 - **Cache:** `MarketInfo` gained `listing_schema`. The cache prefix moved `market:v1:` → `market:v2:`, so old cached entries are never read.
+
+### ADR‑015 addendum — T‑1070f stored search document (2026-11-23)
+- **Decision:** `properties.search_tsv` (tsvector) is maintained by a `BEFORE INSERT OR UPDATE OF title, city, location, description, ref_no, search_tsv` trigger. `apply_text_search` filters and ranks on the column through `prop_search_tsv_gin`. The config and fields are unchanged (`simple`; title/city/location/description/ref_no), and results and order are tested equal to the legacy expression query.
+- **Why a trigger and not `save()`:** every writer stays correct without app changes: pre‑v2 pods during a rollout, `QuerySet.update`, raw SQL and admin bulk actions. The trigger also fires when `search_tsv` itself is written, so a stale value written back by a full model `save()` is recomputed, and nothing can store a wrong document.
+- **Why not a Postgres generated column:** adding one rewrites the whole table. A nullable column plus a batched backfill does not.
+- **Measured** (200k synthetic rows, 119k–169k matches): 828 → 124 ms, 2020 → 134 ms, 1741 → 147 ms. Ranking no longer recomputes `to_tsvector` per match (KI‑035).
+- **Contract:** the legacy expression index `prop_fts_gin` stays one release for old pods, and is dropped in T‑1070g. Changing the config or fields now means replacing the trigger function and re‑running the backfill.
+
+### ADR‑021 addendum — T‑1032c invitations (2026-11-23)
+- **Owner decision (KI‑041):** an invite grants nothing until the invitee accepts.
+- **Model:** `OrganizationInvite` (pending/accepted/declined/revoked/expired). It is separate from `OrganizationMembership`, so access checks, which all key on an active membership, never see a pending invite. A partial unique constraint allows one pending invite per org + user. It expires after `ORG_INVITE_TTL_DAYS` (default 7): expiry is evaluated on read and on respond, with no beat job.
+- **Policy:**
+  - `check_invite` runs at invite time; owner is never grantable, and org_admin is owner‑only.
+  - At acceptance, the membership is created through `invite_member` **with the inviter as actor**, so the grant is re‑checked against the inviter's current rights. An inviter who has left or been demoted voids the invite (status `revoked`, 409).
+  - Only the invitee can respond; another user's id → 404, which reveals nothing.
+  - Org managers list and revoke invites.
+  - Each step writes an `AuditLog` row (`membership.invite_created/accepted/declined/voided/revoked`). The invite itself creates no membership row.
+- **Notice:** a WhatsApp text through the outbox, in the same transaction, keyed `org_invite:<id>`, sent with the org's credentials.
+- **API change:** `POST /organizations/me/members/` returns the invite (`status: pending`) instead of a member. New endpoints: `GET/DELETE /organizations/me/invites/[{id}/]`, `GET /organizations/invites/`, `POST /organizations/invites/{id}/accept|decline/`.
+- **Transactions:** a refused response that changes state (expired, voided) commits that change and raises the 409 *after* the transaction, so the state change is not rolled back.
+

@@ -55,6 +55,8 @@ class InviteContractTest(_World):
     def test_invite_is_audited(self):
         r = _api(self.owner).post(MEMBERS, {'phone': self.invitee.phone, 'role': 'agent'})
         self.assertEqual(r.status_code, 201)
+        r = _api(self.invitee).post(f"/api/v1/organizations/invites/{r.data['id']}/accept/")
+        self.assertEqual(r.status_code, 200, r.data)
         m = OrganizationMembership.objects.get(user=self.invitee, organization=self.org)
         log = _audits(m, 'membership.invited').get()
         self.assertEqual(log.actor, self.owner)
@@ -68,6 +70,8 @@ class InviteContractTest(_World):
         m.deactivate()
         r = _api(self.owner).post(MEMBERS, {'phone': self.invitee.phone, 'role': 'agent'})
         self.assertEqual(r.status_code, 201)
+        r = _api(self.invitee).post(f"/api/v1/organizations/invites/{r.data['id']}/accept/")
+        self.assertEqual(r.status_code, 200, r.data)
         log = _audits(m, 'membership.reactivated').get()
         self.assertFalse(log.before['is_active'])
         self.assertEqual(log.after['role'], 'agent')

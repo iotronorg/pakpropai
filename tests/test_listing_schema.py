@@ -137,3 +137,41 @@ class ModelCleanTest(TestCase):
             p.full_clean()
         self.assertIn('attributes', cm.exception.message_dict)
         self.assertIsInstance(Property.attribute_schema_for('PK'), dict)
+
+
+class MarketFollowsCountryTest(TestCase):
+    """KI-050: a country change re-derives the listing's market."""
+
+    def test_model_save_rederives_market(self):
+        _, org = make_developer()
+        p = Property.objects.get(pk=make_property(org=org).pk)
+        self.assertEqual(p.market_id, 'PK')
+        p.country = 'GB'
+        p.save(update_fields=['country'])
+        self.assertEqual(Property.objects.get(pk=p.pk).market_id, 'GB')
+        p.country = 'ZZ'                              # no such market → NULL
+        p.save()
+        self.assertIsNone(Property.objects.get(pk=p.pk).market_id)
+        q = Property.objects.only('id', 'title').get(pk=p.pk)
+        q.title = 'x'
+        q.save(update_fields=['title'])               # country not touched
+        self.assertIsNone(Property.objects.get(pk=p.pk).market_id)
+
+    def test_unchanged_country_keeps_manual_market(self):
+        _, org = make_developer()
+        p = Property.objects.get(pk=make_property(org=org).pk)
+        Property.objects.filter(pk=p.pk).update(market_id='AE')
+        p = Property.objects.get(pk=p.pk)
+        p.title = 'renamed'
+        p.save()
+        self.assertEqual(Property.objects.get(pk=p.pk).market_id, 'AE')
+
+    def test_api_country_change(self):
+        dev, org = make_developer()
+        c = APIClient()
+        c.force_authenticate(dev)
+        p = make_property(org=org, owner=dev, attributes={'block': 'P5'})
+        r = c.patch(f'{URL}{p.pk}/', {'country': 'GB', 'currency': 'GBP',
+                                      'attributes': {'tenure': 'freehold'}}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(Property.objects.get(pk=p.pk).market_id, 'GB')

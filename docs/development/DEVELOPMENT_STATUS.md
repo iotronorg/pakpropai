@@ -1,16 +1,21 @@
 # Development Status
 
-_Last updated: 2026-11-23 (session 9)_
+_Last updated: 2026-11-23 (session 9, continued)_
 
 | Item | Value |
 |---|---|
-| Branch | `development`. The owner committed through session 8 (`c113704`). **Session 9 work (T‑1070d, T‑1070e) is uncommitted** |
+| Branch | `development`. The owner committed T‑1070d/e (`89b230a`). **Uncommitted:** T‑1070f, T‑1033, T‑1032c, KI‑050 |
 | Current milestone | **M1 — Core foundation** ([MILESTONE_01](milestones/MILESTONE_01_CORE_FOUNDATION.md)); M0 code‑complete, awaiting first GitHub Actions run |
 | M0 progress | All 17 tasks complete. Remaining exit criterion: CI green on GitHub Actions (owner pushes) |
-| M1 progress | 9 of 18 tasks done (T‑1010, T‑1020, T‑1021, T‑1022, T‑1030, T‑1031, T‑1050, T‑1090, T‑1100) plus subtasks T‑1032a and T‑1070a–e. T‑1060 blocked on a vendor decision; T‑1033 needs an owner policy sign‑off |
-| Test suite | **1813 passed, 1 skipped, 0 failed** (session 9 end). See [TESTING_STATUS](TESTING_STATUS.md) |
-| Last completed task | T‑1070e market attribute schema, after T‑1070d taxonomy + amenities (ADR‑023 addenda) |
-| Next task | **T‑1070f** stored `tsvector` column + trigger (KI‑035). Start in `apps/properties/text_search.py` (the `search_vector()` expression), migration `0022` (current GIN expression index) and ADR‑015. Plan: nullable `search_tsv` column filled by a Postgres trigger (no app writes, so it is rolling‑safe); batched backfill; build the GIN index concurrently on the column; switch `apply_text_search` to it; drop the old expression index only in a later release. Keep the `simple` config and the prefix/AND semantics; EXPLAIN on 200k rows as in T‑1100 |
+| M1 progress | 10 of 18 tasks done (T‑1010, T‑1020, T‑1021, T‑1022, T‑1030, T‑1031, T‑1033, T‑1050, T‑1090, T‑1100) plus subtasks T‑1032a, T‑1032c and T‑1070a–f |
+| Test suite | **1839 passed, 1 skipped, 0 failed** (session 9 end). See [TESTING_STATUS](TESTING_STATUS.md) |
+| Last completed task | T‑1032c org invitations (KI‑041), after T‑1070f, T‑1033 and KI‑050 |
+| Next task | **T‑1060** location hierarchy + PostGIS + Google geocoding (unblocked 2026‑11‑23). Design first, as an ADR: `Location` tree (country → region → city → locality → sub‑locality, market FK, aliases), a `Property.location_ref` FK + `geo` `PointField` with expand/backfill from `city`/`location`/lat‑lng, a geocoding service behind an interface (Google client, rate limit, cache, cost budget; tests mock HTTP), and a batched backfill command with a match report (M1 exit criterion "< X % unmatched"). **Prerequisites to do first:** switch `scripts/dev/test.sh` and CI to a PostGIS image (`postgis/postgis:15-3.4-alpine`) and add GDAL/GEOS to the Dockerfile; `django.contrib.gis` + `CREATE EXTENSION postgis` migration. **Operator:** `GOOGLE_MAPS_API_KEY` secret, PostGIS in every DB. Then T‑1080 lifecycle → T‑1011 MFA |
+
+## Owner decisions (2026-11-23)
+- **T‑1060:** geocoding vendor **Google Maps Geocoding**; PostGIS required in every environment.
+- **T‑1033 / KI‑032:** PII masking becomes a **per‑endpoint allow‑list**. Structured contact fields are allowed on lead/agent create, profile PATCH and member invite. Free‑text fields stay masked everywhere.
+- **KI‑050:** `save()` **re‑derives `market` when `country` changes**.
 
 ## Owner decisions (2026-11-21)
 - **No commits by the agent.**
@@ -19,13 +24,11 @@ _Last updated: 2026-11-23 (session 9)_
 ## Open questions (non‑blocking)
 - Branding: PakProp vs RealTron (README and PDF footer unchanged).
 - GitHub Actions has not run the updated workflow (no push).
-- T‑1060 needs a geocoding vendor and PostGIS in every environment.
-- **KI‑032 / T‑1033:** `PIIMaskingMiddleware` masks PII in every JSON write except a short exempt list. Which other endpoints (agent/lead create, profile PATCH) may receive raw phone/email needs an owner policy decision.
-- **KI‑050 (new):** should a listing's `market` follow a later `country` change, or should `country` be immutable after publish? This ties into lifecycle (T‑1080).
-- **KI‑041:** should an org invite need the invitee's acceptance (pending → accept/decline)? Today an existing user is added immediately.
+- T‑1060: Google Maps chosen. Before deploying it, the operator must provide `GOOGLE_MAPS_API_KEY` and PostGIS.
 
 ## Operator actions before deploying these changes
 See **[GO_LIVE_CHECKLIST](GO_LIVE_CHECKLIST.md)**: DB backup, `FIELD_ENCRYPTION_KEYS`, config‑row check. Summary:
+- **Session 9, continued** (checklist §18–§20): `properties 0035`–`0037` (stored search document; run before new pods serve), `organizations 0027` (invites). **API change:** member invites are now pending until accepted, so the frontend needs an accept flow. PII masking now uses per‑field rules on agent registration and member invites.
 - **Session 9** (checklist §16, §17): migrations `properties 0031`–`0034` (taxonomy and amenities; `0034` builds its index concurrently, so run it on a direct DB connection) and `markets 0003`/`0004` (attribute schemas). Run `sync_listing_taxonomy` after rollout. **Behaviour change:** PK/AE/GB listing writes that send `attributes` now reject unknown keys and invalid values. Check the existing non‑empty `attributes` first (§17).
 - **Session 8** (checklist §11 and **§12 UTC switch**): no migrations. Restart celery beat after deploy and review the periodic‑task rows (§12). **New: migrations `properties.0025`–`0028` (§13, §14), additive, rolling‑safe; run `sync_listing_size` after rollout (§14); `0029`/`0030` price history (§15).**
   - New member role‑change and ownership‑transfer endpoints; every member change is audited.

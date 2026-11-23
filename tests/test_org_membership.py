@@ -75,9 +75,17 @@ class OrgMembershipInviteTest(TestCase):
             'employment_type': 'internal',
         })
         self.assertEqual(r.status_code, 201)
-        self.assertEqual(r.data['user_phone'], '+923004444444')
-        self.assertEqual(r.data['role'], 'agent')
-        self.assertTrue(OrganizationMembership.objects.filter(user=self.invited, organization=self.org).exists())
+        self.assertEqual((r.data['invitee_phone'], r.data['role'], r.data['status']),
+                         ('+923004444444', 'agent', 'pending'))
+        # KI-041: no membership until the invitee accepts.
+        self.assertFalse(OrganizationMembership.objects.filter(user=self.invited, organization=self.org).exists())
+        invitee = APIClient()
+        invitee.force_authenticate(user=self.invited)
+        r = invitee.post(f"/api/v1/organizations/invites/{r.data['id']}/accept/")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['membership']['user_phone'], '+923004444444')
+        self.assertTrue(OrganizationMembership.objects.filter(user=self.invited, organization=self.org,
+                                                              is_active=True).exists())
 
     def test_invite_nonexistent_phone_returns_404(self):
         r = self.client.post('/api/v1/organizations/me/members/', {

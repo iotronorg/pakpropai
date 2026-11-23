@@ -1,5 +1,6 @@
 import uuid
 from django.contrib.postgres.indexes import GinIndex, OpClass
+from django.contrib.postgres.search import SearchVectorField
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from apps.markets.services import default_area_unit, default_country, default_currency  # ADR-019
@@ -279,6 +280,10 @@ class Property(models.Model):
                          help_text='Service/maintenance charge per year, in `currency`')
     attributes     = models.JSONField(default=dict, db_default={}, blank=True,
                          help_text='Market-specific attributes (validated by the market schema, T-1070f)')
+    # Stored full-text document (T-1070f, KI-035). Maintained only by the DB
+    # trigger from migration 0035 (also for QuerySet.update and pre-v2 pods);
+    # application code never writes it.
+    search_tsv    = SearchVectorField(null=True, editable=False)
     ai_score      = models.SmallIntegerField(null=True, blank=True)
     risk_level    = models.CharField(max_length=20, choices=RiskLevel.choices, null=True, blank=True)
     raw_docs      = models.JSONField(default=dict, blank=True)
@@ -308,7 +313,10 @@ class Property(models.Model):
             models.Index(fields=['is_active', 'created_at']),
             # ── Search indexes (T-1100, ADR-015; migration 0022) ──────────────
             # Full-text: the expression must match text_search.search_vector().
+            # Legacy expression index, used by pre-T-1070f pods; dropped in a
+            # later release (T-1070g) once no pod queries the expression.
             GinIndex(search_vector(), name='prop_fts_gin'),
+            GinIndex(fields=['search_tsv'], name='prop_search_tsv_gin'),     # 0037
             # Trigram on UPPER(col): serves Django's icontains/iexact SQL
             # (UPPER(col::text) LIKE/= UPPER(%s)) used by search, recs, API.
             GinIndex(OpClass(Upper('city'), name='gin_trgm_ops'), name='prop_city_trgm'),
@@ -449,6 +457,7 @@ class Property(models.Model):
         inst._taxonomy_loaded = (inst._taxonomy_state()
                                  if all(n in inst.__dict__ for n in ('property_type', 'category'))
                                  else 'deferred')
+        inst._country_loaded = inst.__dict__.get('country', 'deferred')
         return inst
 
     # ── Taxonomy sync (T-1070d) ─────────────────────────────────────────────
@@ -575,6 +584,12 @@ class Property(models.Model):
             if self.market_id is None:
                 from apps.markets.services import market_code_for_country
                 self.market_id = market_code_for_country(self.country)
+        elif self._country_changed(kwargs.get('update_fields')):
+            # KI-050: a listing moved to another country follows that market.
+            from apps.markets.services import market_code_for_country
+            self.market_id = market_code_for_country(self.country)
+            if kwargs.get('update_fields') is not None:
+                kwargs['update_fields'] = list(set(kwargs['update_fields']) | {'market'})
         if not self.ref_no:
             self.ref_no = self._build_ref_no()
         self._sync_size()
@@ -600,6 +615,16 @@ class Property(models.Model):
             self._price_loaded = self._price_state()
         if written is None or written & set(self._TAXONOMY_FIELDS):
             self._taxonomy_loaded = self._taxonomy_state()
+        if written is None or 'country' in written:
+            self._country_loaded = self.__dict__.get('country', 'deferred')
+
+    def _country_changed(self, update_fields) -> bool:
+        if update_fields is not None and 'country' not in update_fields:
+            return False
+        if 'country' not in self.__dict__:
+            return False                             # deferred and never assigned
+        loaded = getattr(self, '_country_loaded', 'deferred')
+        return loaded == 'deferred' or loaded != self.country
 
     def __str__(self):
         return f"[{self.ref_no}] {self.title} — {self.city}"

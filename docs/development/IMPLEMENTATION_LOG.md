@@ -284,3 +284,26 @@
   - `apps/properties/models.py`: `attribute_schema_for`, `attribute_errors`, check in `clean()`.
   - `serializers.py`: `_target_market`, `_validate_attributes` (only when `attributes`/`country` is written).
   - Tests: new `tests/test_listing_schema.py` (9). `tests/test_listing_schema_v2.py`: its fixture `possession: 'ready'` is now `'available'`, because the PK schema rejects `'ready'`, as intended.
+- **Owner decisions (2026‑11‑23)** recorded in DEVELOPMENT_STATUS and memory. They were then implemented:
+- **KI‑050:**
+  - `Property.from_db` snapshots `country`, and `save()` re‑derives `market` when it changes (`update_fields` extended).
+  - `tests/test_markets.py`: the old "not recomputed" test now asserts the new rule.
+  - New tests in `tests/test_listing_schema.py` (3).
+- **T‑1033:**
+  - `apps/compliance/middleware.py`: `_compile_allowlist` and `allowed_fields`; allow‑listed top‑level keys bypass masking, and the rest of the body is masked.
+  - `config/settings/base.py`: `PRIVACY_MASK_FIELD_ALLOWLIST`; two path exemptions removed.
+  - New `tests/test_pii_field_allowlist.py` (7).
+- **T‑1070f:**
+  - Migrations `properties.0035` (column + trigger), `0036` (backfill) and `0037` (concurrent GIN).
+  - `models.py`: `search_tsv` and its index.
+  - `text_search.py`: queries the column.
+  - `tests/test_search_indexes.py`: new index name, plus the 0037 shape.
+  - New `tests/test_search_tsv.py` (5).
+  - 200k‑row EXPLAIN ANALYZE benchmark (scratch script, not kept).
+- **T‑1032c:**
+  - `apps/organizations/models.py`: `OrganizationInvite`; migration `organizations.0027`.
+  - `membership.py`: `create_invite`, `respond_to_invite`/`_respond`, `revoke_invite`, `_lock_open_invite`, `_closed`, `_notify_invitee`.
+  - `serializers.py`: `OrgInviteSerializer`, `OrgInviteResponseSerializer`.
+  - `views.py`: members POST → invite; `OrgInviteListView`, `OrgInviteRevokeView`, `MyInvitesView`, `InviteRespondView`. `urls.py`: 5 routes.
+  - Settings: `ORG_INVITE_TTL_DAYS`.
+  - Tests: new `tests/test_org_invites.py` (12). `test_org_membership`, `test_membership_contract` (2) and `test_membership_consolidation` were updated for the accept step.

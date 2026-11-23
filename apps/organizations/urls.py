@@ -7,6 +7,7 @@ from .views import (
     OrgMembershipView,
     OrgMembershipDetailView,
     OrgOwnershipTransferView,
+    OrgInviteListView, OrgInviteRevokeView, MyInvitesView, InviteRespondView,
 )
 from .theme_views import OrgThemeView
 
@@ -22,6 +23,11 @@ urlpatterns = [
     path('me/theme/',                     OrgThemeView.as_view(),             name='org-theme'),
     path('me/members/',                   OrgMembershipView.as_view(),        name='org-members'),
     path('me/members/<int:membership_id>/', OrgMembershipDetailView.as_view(),      name='org-member-detail'),
+    path('me/invites/',                   OrgInviteListView.as_view(),        name='org-invites'),
+    path('me/invites/<int:invite_id>/',   OrgInviteRevokeView.as_view(),      name='org-invite-revoke'),
+    path('invites/',                      MyInvitesView.as_view(),            name='my-invites'),
+    path('invites/<int:invite_id>/accept/',  InviteRespondView.as_view(accept=True),  name='invite-accept'),
+    path('invites/<int:invite_id>/decline/', InviteRespondView.as_view(accept=False), name='invite-decline'),
     path('me/ownership/transfer/',        OrgOwnershipTransferView.as_view(), name='org-ownership-transfer'),
     path('<uuid:pk>/ownership/transfer/', OrgOwnershipTransferView.as_view(), name='admin-org-ownership-transfer'),
     path('<uuid:pk>/suspend/',            OrganizationSuspendView.as_view(),  name='org-suspend'),

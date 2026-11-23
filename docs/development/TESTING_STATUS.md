@@ -79,6 +79,11 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | 2026-11-23 | Working tree, session 9 end | `pytest tests/ apps/ -q` | **1813 passed, 1 skipped, 0 failed**, 201 subtests | 5m51s |
 | 2026-11-23 | Working tree, session 9 | `check` / `makemigrations --check` / OpenAPI budget test / `bandit -r apps/ -ll` | no issues / no changes / within budget (taxonomy view has an inline schema) / **0 HIGH** (Medium 14: 3 new B608 on constant‑only SQL, same pattern as `size_sync.py`) | — |
 | 2026-11-23 | Test DB `realtron_test` | `migrate properties 0030` → `migrate`; `migrate markets 0002` → `migrate`; `sync_listing_taxonomy --dry-run`; `Market.full_clean()` on every row | OK both ways; 35 amenities seeded; 0 drift; all seeded schemas valid | — |
+| 2026-11-23 | Working tree, session 9 continued (mid‑work) | `pytest tests/ apps/ -q` | 60 failed, 747 errors: **invalid run**. Source was edited (a new model without its migration) while the suite ran against the bind mount. Discarded and re‑run clean | 4m43s |
+| 2026-11-23 | Working tree, session 9 continued end (KI‑050, T‑1033, T‑1070f, T‑1032c) | `pytest tests/ apps/ -q` | **1839 passed, 1 skipped, 0 failed**, 206 subtests | 5m35s |
+| 2026-11-23 | Same | `check` / `makemigrations --check` / OpenAPI budget test / `bandit -r apps/ -ll` | no issues / no changes / within budget / **0 HIGH** (Medium 14) | — |
+| 2026-11-23 | Test DB `realtron_test` | `migrate properties 0034` → `migrate`; `migrate organizations 0026` → `migrate` | OK both ways | — |
+| 2026-11-23 | Test DB, 200k synthetic listings, `ANALYZE` | `EXPLAIN ANALYZE` legacy expression vs stored `search_tsv` (3 broad terms, 119k–169k matches) | 828→124 ms, 2020→134 ms, 1741→147 ms; new plan uses `prop_search_tsv_gin` | — |
 
 ## Tests added in sessions 2–8
 
@@ -132,3 +137,4 @@ Not measured yet (no coverage run executed). CI is configured with `--cov=apps`.
 - Gemini AFC multi‑round token counting is not verifiable without the provider (KI‑006 residual).
 - Inbound retries are tested by simulating broker redelivery (`apply(retries=n)`): Celery 5.4 eager mode does not execute retries (KI‑031). The DB‑starvation chaos run has not been repeated.
 - CI workflow changes were validated as YAML and the health script locally; the workflow has not been run on GitHub Actions.
+- Never edit source while a full suite is running: the container bind‑mounts the tree (see the invalid run on 2026‑11‑23).

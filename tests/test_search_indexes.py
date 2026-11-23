@@ -25,6 +25,7 @@ from tests.factories import make_client, make_org, make_property
 
 NEW_INDEXES = {
     'prop_fts_gin', 'prop_city_trgm', 'prop_location_trgm', 'prop_active_rank_idx',
+    'prop_search_tsv_gin',
 }
 
 
@@ -83,7 +84,7 @@ class PlannerUsesIndexTest(TestCase):
         # No is_active filter here: on a near-empty table the planner would
         # otherwise prefer the partial rank index and hide an expression mismatch.
         qs = apply_text_search(Property.objects.all(), 'modern apart')
-        self.assertIn('prop_fts_gin', _plan(qs))
+        self.assertIn('prop_search_tsv_gin', _plan(qs))      # stored column (T-1070f)
 
     def test_ref_no_search_uses_unique_index(self):
         qs = apply_text_search(Property.objects.all(), 'rt-lhr-2026-000000001')
@@ -227,4 +228,8 @@ class MigrationShapeTest(TestCase):
             op.index.name for op in mod.Migration.operations
             if isinstance(op, AddIndexConcurrently)
         }
-        self.assertEqual(names, NEW_INDEXES)
+        self.assertEqual(names, NEW_INDEXES - {'prop_search_tsv_gin'})
+        mod = importlib.import_module('apps.properties.migrations.0037_search_tsv_index')
+        self.assertFalse(mod.Migration.atomic)
+        self.assertEqual([op.index.name for op in mod.Migration.operations
+                          if isinstance(op, AddIndexConcurrently)], ['prop_search_tsv_gin'])
