@@ -2,10 +2,11 @@ import uuid
 from django.core.exceptions import ValidationError
 from django.db import models
 from apps.markets.services import default_currency  # ADR-019
+from apps.organizations.sandbox import SandboxFollowsOrg
 from django.conf import settings
 
 
-class Lead(models.Model):
+class Lead(SandboxFollowsOrg, models.Model):
 
     class Source(models.TextChoices):
         WHATSAPP       = 'whatsapp',       'WhatsApp'
@@ -118,13 +119,8 @@ class Lead(models.Model):
             models.Index(fields=['user', '-created_at']),
         ]
 
-    def save(self, *args, **kwargs):
-        # ADR-002: leads of a production org are live data. Unscoped (AI-queue)
-        # leads keep the caller-provided flag.
-        if self._state.adding and self.organization_id:
-            from apps.organizations.sandbox import org_is_sandbox
-            self.is_sandbox = org_is_sandbox(self.organization)
-        super().save(*args, **kwargs)
+    # ADR-002 / T-1040: ``is_sandbox`` is derived by ``SandboxFollowsOrg.save`` (on
+    # insert and when ``organization`` changes); unscoped leads are live.
 
     def clean(self):
         if self.budget_min is not None and self.budget_max is not None:

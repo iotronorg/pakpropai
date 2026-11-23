@@ -451,3 +451,14 @@
   - Lead routing skips terms whose membership is inactive.
 - **Tests updated:** the transfer conflict test now asserts that the transfer succeeds; the report‑only drift test gives the org a real owner; the two `AgentOrganizationMembership` model tests were removed.
 - **Fixed during testing:** TRUNCATE failures from the unmanaged legacy table's FKs.
+
+### 2026-11-23 — session 9 (twelfth part): T‑1040 lead/session sandbox flag
+- **Verified:** the owner committed T‑1032b‑1 (`4ccd24f`); the tree was clean.
+- **Added:**
+  - `apps/organizations/sandbox.py`: `contact_is_sandbox` and the `SandboxFollowsOrg` mixin;
+  - migrations `leads 0021_unscoped_leads_live` and `whatsapp 0013_unscoped_sessions_live`;
+  - `tests/test_sandbox_contacts.py` (8).
+- **Changed:**
+  - `Lead` and `WhatsAppSession` use the mixin; their insert‑only `save()` overrides are removed.
+  - `test_sandbox_visibility.test_unscoped_lead_keeps_default` became `test_unscoped_lead_is_live`.
+- **Decision note:** treating unscoped contacts as live follows ADR‑002 ("records without an org are decided by the caller"; private‑client listings are live). There is no platform sandbox, so this was not escalated.

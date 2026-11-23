@@ -2,10 +2,11 @@ import uuid
 from django.db import models
 
 from apps.core.crypto import EncryptedTextField
+from apps.organizations.sandbox import SandboxFollowsOrg
 from django.conf import settings
 
 
-class WhatsAppSession(models.Model):
+class WhatsAppSession(SandboxFollowsOrg, models.Model):
     """
     Persistent record of WhatsApp conversations.
     Redis holds the live session; this table is the audit log.
@@ -50,12 +51,7 @@ class WhatsAppSession(models.Model):
         db_table = 'whatsapp_sessions'
         ordering = ['-last_message_at']
 
-    def save(self, *args, **kwargs):
-        # ADR-002: sessions on a production org's number are live data.
-        if self._state.adding and self.organization_id:
-            from apps.organizations.sandbox import org_is_sandbox
-            self.is_sandbox = org_is_sandbox(self.organization)
-        super().save(*args, **kwargs)
+    # ADR-002 / T-1040: ``is_sandbox`` follows ``organization`` (SandboxFollowsOrg).
 
     def __str__(self):
         return f"WA Session: {self.phone} — {self.state}"

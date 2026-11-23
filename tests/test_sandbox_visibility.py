@@ -68,9 +68,9 @@ class DeriveOnInsertTest(TestCase):
         lead = make_lead(make_client(), org=_sandbox_org())
         self.assertTrue(lead.is_sandbox)
 
-    def test_unscoped_lead_keeps_default(self):
+    def test_unscoped_lead_is_live(self):        # T-1040 (KI-017)
         lead = make_lead(make_client())
-        self.assertTrue(lead.is_sandbox)
+        self.assertFalse(lead.is_sandbox)
 
     def test_session_of_production_org_is_live(self):
         session = WhatsAppSession.objects.create(phone='+923001234500', organization=_prod_org())

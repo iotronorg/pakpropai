@@ -267,3 +267,16 @@
    **Do not commit.**
 2. **After deploy:** `reconcile_memberships --apply`, then resolve the report‑only categories (GO_LIVE §29).
 3. Next: **T‑1040** (`is_sandbox` for leads with no organization, KI‑017). T‑1070g‑2 and T‑1032b‑2 wait for their releases. Open: KI‑055…KI‑059.
+
+- **Continued ("continue"): T‑1040.** Lead and session `is_sandbox` now follows the organization (insert and org change); no organization means live. Batched backfills. KI‑017 resolved; ADR‑002 addendum; GO_LIVE §30. Tests: 1954 passed, 1 skipped, 0 failed. **Not committed.**
+
+### Handoff → session 10 (supersedes the ones above)
+1. `git status`: the owner committed through T‑1032b‑1 (`4ccd24f`). Uncommitted: **T‑1040**:
+   - `apps/organizations/sandbox.py`;
+   - `Lead`/`WhatsAppSession`;
+   - `leads 0021`, `whatsapp 0013`;
+   - tests.
+
+   **Do not commit.**
+2. **M1:** all code tasks are done. T‑1070g‑2 and T‑1032b‑2 are staged and wait for a deployed release plus a clean production check (`check_listing_contract`, `reconcile_memberships`).
+3. **Next:** start **M2**. Create `milestones/MILESTONE_02_*.md` from PRD Phase 2 (as was done for M1), then **T‑2010**, the explicit Gemini tool loop. It also routes the KI‑059 call sites. Open: KI‑055…KI‑059.

@@ -274,3 +274,7 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
   - A freelancer removed from an org stops receiving its leads even if their collaboration terms are still `active`.
 - **After deploy:** run `python manage.py reconcile_memberships`, then `--apply`, and resolve the report‑only categories. This is needed before T‑1032b‑2 (see `apps/organizations/contract_migrations/README.md`).
 - **Next release (T‑1032b‑2):** move the staged files and make the listed code removals in the same change. Rehearse the rollback (`migrate organizations 0028`, `migrate agents 0015`) on staging.
+
+## 30. Session‑9 change: lead/session sandbox flag (T‑1040, ADR‑002 addendum)
+- **Migrations:** `leads 0021` and `whatsapp 0013` are data‑only backfills (batched by 5 000, non‑atomic, safe to re‑run). They only flip `is_sandbox` to `False`.
+- **Behaviour:** leads and sessions with no organization are now `is_sandbox=False`, and moving a lead or session into an org re‑derives the flag. No query filters leads or sessions on this flag today, so nothing becomes newly visible.

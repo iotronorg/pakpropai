@@ -743,3 +743,15 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - `CONTRACT_BLOCKERS` gate b‑2.
 - **b‑2 (staged):** `organizations/contract_migrations/0029` drops `admin_user_id` (and removes it from the state); `agents/contract_migrations/0016` drops `agent_organization_memberships`. Each refuses while any blocker is reported, and each reverse restores (the projection is refilled from owner memberships). The README lists the code removals that must ship in the same release. A guard test keeps `admin_user` out of every module except the projection's own.
 - **Rejected:** a DB trigger mirroring owner memberships into `admin_user` (as T‑1070g did). There is a single application write path, and the one‑to‑one constraint means the projection cannot be total anyway.
+
+### ADR‑002 addendum — Leads and WhatsApp sessions follow their organization (T‑1040, 2026‑11‑23)
+- **Context (KI‑017):**
+  - Leads and sessions derived the flag only on insert, and only when an org was set. Unscoped (AI‑queue) leads kept the default `True`.
+  - A lead that got its org later kept whatever it had (upsert with an org, agent assignment, the WhatsApp router moving a session to an org's number). A production org could therefore own "sandbox" leads that the go‑live provisioner had already passed over.
+- **Decision:**
+  - The `SandboxFollowsOrg` mixin (in `apps/organizations/sandbox.py`) derives `is_sandbox` on insert (any caller value is ignored) and on every save that changes `organization`.
+    - It is `update_fields`‑aware: it adds `is_sandbox` when `organization` is in the list, and does nothing when the org field was not loaded.
+  - `contact_is_sandbox(org_id)`: no organization means **live**. There is no platform‑level sandbox, and an unscoped lead is a real person on the shared number (as for private‑client listings).
+  - A change of the org's own `operational_mode` still does not re‑derive: going live is the provisioner's job.
+- **Data:** `leads 0021` and `whatsapp 0013` are batched, non‑atomic and idempotent. They set `False` for rows with no org or with a production org. Rows of non‑production orgs are untouched.
+- **Not covered:** `QuerySet.update(organization=…)` and `bulk_create` bypass `save()`. No such code exists today.
