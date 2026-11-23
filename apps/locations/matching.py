@@ -21,8 +21,10 @@ def link_listing(prop, *, force: bool = False) -> bool:
         return False
     if loc is None or loc.pk == prop.location_ref_id:
         return False
-    type(prop).objects.filter(pk=prop.pk).update(location_ref=loc)
+    type(prop).objects.filter(pk=prop.pk).update(location_ref=loc)   # trigger: public point
     prop.location_ref = loc
+    if all(f in prop.__dict__ for f in type(prop)._GEO_INPUTS):
+        prop.geo_lat, prop.geo_lng = prop._public_point()            # keep the instance in step
     return True
 
 

@@ -652,3 +652,18 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - switching the engine to `postgis` now: every deploy would need PostGIS first;
   - Python‑side haversine, as the pin resolver did: a full scan per request;
   - masking only in the serializer: radius filters on exact coordinates leak location.
+
+### ADR‑024 addendum — T‑1060c geocoding (2026‑11‑23)
+- **Decision:** geocode only `Location` nodes (city/locality/sub‑locality), never individual listings.
+  - A listing without its own coordinates takes its location's centroid through public‑point trigger v2 (`geo 0001`). It is always snapped, and `location_precision` stays approximate.
+  - Cost is bounded by the number of places, not by write volume. There is a daily request budget and a result cache.
+- **Provider:** Google Geocoding (owner's choice), behind a small interface (`geocode(query, country)`). Default off: `GEOCODING_ENABLED`, plus the key.
+- **Trust:**
+  - A result must be in the market's country and not coarser than the level asked for.
+  - It must be within 60 km of the nearest geocoded ancestor; this catches "DHA" matched in the wrong city.
+  - Partial matches go to review, and their centroid is not stored.
+  - Admin‑entered coordinates are `manual` and never overwritten.
+- **Google Maps Platform terms (owner/legal to confirm):**
+  - Coordinates may be cached for at most 30 consecutive days. Centroids are re‑geocoded after `GEOCODING_REFRESH_DAYS` (29), and the place id is kept.
+  - Geocoding results shown on a map must be shown on a Google map. If a frontend shows listing or location points on another map provider, that conflicts with the terms.
+- **Security:** the key is a query parameter. `requests` exceptions include the URL, so errors are logged and stored by type only, with no cause chained.

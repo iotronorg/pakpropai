@@ -460,16 +460,25 @@ class Property(models.Model):
     _SIZE_FIELDS = ('size_value', 'size_unit', 'size_m2')
     _TAXONOMY_FIELDS = ('category', 'subtype')
 
-    _GEO_INPUTS = ('latitude', 'longitude', 'listing_owner_type', 'location_precision')
+    _GEO_INPUTS = ('latitude', 'longitude', 'listing_owner_type', 'location_precision',
+                   'location_ref_id')
 
     def _public_point(self):
-        """Same rule as the 0042 trigger (apps.geo.sql), for the in-memory instance."""
+        """Same rule as the public-point trigger (apps.geo.sql v2), for the in-memory instance."""
         from decimal import ROUND_HALF_UP, Decimal
+
+        def snap(v):
+            return Decimal(str(v)).quantize(Decimal('0.01'), ROUND_HALF_UP).quantize(Decimal('0.000001'))
+
         if self.latitude is None or self.longitude is None:
-            return None, None
+            if not self.location_ref_id:
+                return None, None
+            from apps.locations.models import Location   # centroid fallback (T-1060c)
+            c = Location.objects.filter(pk=self.location_ref_id).values_list('latitude', 'longitude').first()
+            if not c or c[0] is None or c[1] is None:
+                return None, None
+            return snap(c[0]), snap(c[1])
         if self.listing_owner_type == self.ListingOwnerType.CLIENT or self.location_precision != 'exact':
-            q = Decimal('0.01')
-            snap = lambda v: Decimal(str(v)).quantize(q, ROUND_HALF_UP).quantize(Decimal('0.000001'))
             return snap(self.latitude), snap(self.longitude)
         return self.latitude, self.longitude
 
@@ -563,7 +572,7 @@ class Property(models.Model):
         update_fields = kwargs.get('update_fields')
         if update_fields is not None:
             touched = set(update_fields)
-            if geo_computed and touched & set(self._GEO_INPUTS):
+            if geo_computed and touched & (set(self._GEO_INPUTS) | {'location_ref'}):
                 touched |= {'geo_lat', 'geo_lng'}     # (the trigger recomputes them anyway)
             if touched & {'size_value', 'size_unit'}:
                 touched.add('size_m2')

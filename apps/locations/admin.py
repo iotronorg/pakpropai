@@ -14,12 +14,28 @@ class MergeForm(forms.Form):
 class LocationAdmin(admin.ModelAdmin):
     """Review queue: filter is_verified=No; verify, or merge into the right node."""
     list_display    = ('path', 'name', 'level', 'market', 'is_verified', 'is_active', 'source',
-                       'listing_count')
-    list_filter     = ('is_verified', 'level', 'market', 'source', 'is_active')
+                       'geocode_status', 'listing_count')
+    list_filter     = ('is_verified', 'level', 'market', 'source', 'is_active', 'geocode_status')
     search_fields   = ('name', 'path', 'match_key')
-    readonly_fields = ('path', 'match_key', 'created_at', 'updated_at')
+    readonly_fields = ('path', 'match_key', 'geocode_status', 'geocoded_at', 'geocode_place_id',
+                       'geocode_note', 'created_at', 'updated_at')
     autocomplete_fields = ('parent',)
-    actions         = ['mark_verified', 'merge_into']
+    actions         = ['mark_verified', 'merge_into', 'regeocode']
+
+    def save_model(self, request, obj, form, change):
+        # Coordinates typed by an admin are kept (never overwritten by geocoding).
+        if {'latitude', 'longitude'} & set(form.changed_data):
+            obj.geocode_status = Location.GeocodeStatus.MANUAL
+        super().save_model(request, obj, form, change)
+        if {'latitude', 'longitude'} & set(form.changed_data):
+            from apps.geo.geocoding import refresh_listing_points
+            refresh_listing_points(obj)
+
+    @admin.action(description='Queue selected for (re-)geocoding')
+    def regeocode(self, request, queryset):
+        n = queryset.exclude(geocode_status=Location.GeocodeStatus.MANUAL).update(
+            geocode_status=Location.GeocodeStatus.PENDING)
+        messages.success(request, f'{n} location(s) queued; the daily geocoding job picks them up.')
 
     def get_queryset(self, request):
         from django.db.models import Count

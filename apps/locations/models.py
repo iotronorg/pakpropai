@@ -44,6 +44,22 @@ class Location(models.Model):
                                    help_text='Other spellings; matched like the name')
     latitude    = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     longitude   = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    # Geocoding (T-1060c). Google terms: coordinates may be cached at most 30
+    # days (re-geocoded after GEOCODING_REFRESH_DAYS); the place id may be kept.
+    class GeocodeStatus(models.TextChoices):
+        PENDING  = 'pending',  'Not geocoded yet'
+        OK       = 'ok',       'Geocoded'
+        PARTIAL  = 'partial',  'Partial match (needs review; centroid not stored)'
+        REJECTED = 'rejected', 'Result failed sanity checks'
+        ZERO     = 'zero',     'No result'
+        ERROR    = 'error',    'Provider error'
+        MANUAL   = 'manual',   'Set by an admin (never re-geocoded)'
+
+    geocode_status   = models.CharField(max_length=10, choices=GeocodeStatus.choices,
+                                        default=GeocodeStatus.PENDING, db_default='pending')
+    geocoded_at      = models.DateTimeField(null=True, blank=True)
+    geocode_place_id = models.CharField(max_length=300, blank=True, default='', db_default='')
+    geocode_note     = models.CharField(max_length=200, blank=True, default='', db_default='')
     is_verified = models.BooleanField(default=True)
     is_active   = models.BooleanField(default=True)
     source      = models.CharField(max_length=10, choices=Source.choices, default=Source.ADMIN)
@@ -55,7 +71,8 @@ class Location(models.Model):
         ordering    = ['path']
         constraints = [models.UniqueConstraint(fields=['parent', 'slug'], name='uniq_location_slug_per_parent')]
         indexes     = [models.Index(fields=['market', 'level', 'match_key'], name='loc_market_level_key_idx'),
-                       models.Index(fields=['is_verified', 'level'], name='loc_review_idx')]
+                       models.Index(fields=['is_verified', 'level'], name='loc_review_idx'),
+                       models.Index(fields=['geocode_status', 'geocoded_at'], name='loc_geocode_idx')]
 
     def clean(self):
         errors = {}

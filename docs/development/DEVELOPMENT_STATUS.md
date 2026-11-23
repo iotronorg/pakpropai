@@ -4,13 +4,13 @@ _Last updated: 2026-11-23 (session 9, continued)_
 
 | Item | Value |
 |---|---|
-| Branch | `development`. The owner committed everything through T‑1060a and branding (`6fc5634`). **Uncommitted:** T‑1060b (owner committed T‑1070g‑1 as `493309b`) |
+| Branch | `development`. The owner committed everything through T‑1060a and branding (`6fc5634`). **Uncommitted:** T‑1060b, T‑1060c (owner committed T‑1070g‑1 as `493309b`) |
 | Current milestone | **M1 — Core foundation** ([MILESTONE_01](milestones/MILESTONE_01_CORE_FOUNDATION.md)); M0 code‑complete, awaiting first GitHub Actions run |
 | M0 progress | All 17 tasks complete. Remaining exit criterion: CI green on GitHub Actions (owner pushes) |
 | M1 progress | 10 of 18 tasks done (T‑1010, T‑1020, T‑1021, T‑1022, T‑1030, T‑1031, T‑1033, T‑1050, T‑1090, T‑1100) plus subtasks T‑1032a, T‑1032c and T‑1070a–f |
 | Test suite | **1839 passed, 1 skipped, 0 failed** (session 9 end). See [TESTING_STATUS](TESTING_STATUS.md) |
 | Last completed task | T‑1032c org invitations (KI‑041), after T‑1070f, T‑1033 and KI‑050 |
-| Next task | **T‑1060c** Google geocoding. A `Geocoder` interface plus a Google client (`GOOGLE_MAPS_API_KEY`; timeouts, rate limit, cache, a daily request budget). Flag `GEOCODING_ENABLED` defaults to off. Geocode **location centroids** (`Location.latitude/longitude`), not each listing. A listing without coordinates gets its location's centroid with precision approximate. A `geocode_locations` command reports matches and failures. Tests mock HTTP. **Operator:** the key. Then T‑1080 lifecycle → T‑1011 MFA |
+| Next task | **T‑1080** listing lifecycle: a status state machine (draft → pending review → active → under offer → sold/rented → expired/withdrawn/archived), with transition rules per role, audit, expiry by beat job, public visibility only for active/under offer, and an expand migration (status column with a DB default and a backfill from `is_active`). See PRD FR‑LST lifecycle. Then T‑1011 MFA → T‑1110 → T‑1120 → T‑1032b |
 
 ## Owner decisions (2026-11-23)
 - **T‑1070g approved.** It ships one release after the current changes: drop `area_marla`/`area_unit`/`area_sqm`, the `property_type` column and `prop_fts_gin`.

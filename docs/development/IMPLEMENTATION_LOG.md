@@ -348,3 +348,16 @@
   - `whatsapp/discovery_engine.py`: tier 2 now uses SQL;
   - `scripts/dev/test.sh`, `.github/workflows/ci.yml` and `docker-compose.yml` now use the PostGIS image;
   - the staged contract migrations were renumbered to 0045/0046.
+
+### 2026-11-23 — session 9 (sixth part): T‑1060c geocoding
+- **Added:**
+  - `apps/geo/geocoding.py`, `apps/geo/tasks.py`, the `geocode_locations` command, `apps/geo/migrations/0001_centroid_fallback.py`;
+  - `CREATE_TRIGGER_SQL_V2` in `apps/geo/sql.py` (v1 stays frozen for `properties 0042`);
+  - `locations 0003_location_geocode`;
+  - settings `GEOCODING_*` and `GOOGLE_MAPS_API_KEY`, and the beat job `geocode-locations`;
+  - `tests/test_geocoding.py` (10).
+- **Changed:**
+  - `Property._public_point()` now has the centroid fallback, and `location_ref` is among the geo inputs;
+  - `locations/matching.link_listing` refreshes the in‑memory point;
+  - `LocationAdmin`: geocode columns and filter, manual coordinates, re‑geocode action.
+- **Fixed during tests:** the coarse‑result check ignored nothing, so `{administrative_area_level_1, political}` passed. It now ignores the generic `political` tag.

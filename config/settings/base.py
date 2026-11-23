@@ -321,7 +321,16 @@ ORG_INVITE_TTL_DAYS = env.int('ORG_INVITE_TTL_DAYS', default=7)
 # `manage.py geo_setup` has created the extension + GiST index; until then
 # radius search uses an indexed bounding box + haversine in plain SQL.
 GEO_POSTGIS_ENABLED = env.bool('GEO_POSTGIS_ENABLED', default=False)
-GEO_MAX_RADIUS_KM   = env.float('GEO_MAX_RADIUS_KM', default=100.0)   # T-1032c, KI-041
+GEO_MAX_RADIUS_KM   = env.float('GEO_MAX_RADIUS_KM', default=100.0)
+
+# ── Geocoding of location centroids (T-1060c). Off until the owner sets the
+# key and enables it; paid per request, so a daily request budget applies.
+GEOCODING_ENABLED      = env.bool('GEOCODING_ENABLED', default=False)
+GOOGLE_MAPS_API_KEY    = env('GOOGLE_MAPS_API_KEY', default='')
+GEOCODING_DAILY_BUDGET = env.int('GEOCODING_DAILY_BUDGET', default=500)
+GEOCODING_TIMEOUT_S    = env.float('GEOCODING_TIMEOUT_S', default=5.0)
+GEOCODING_CACHE_DAYS   = env.int('GEOCODING_CACHE_DAYS', default=30)     # Google: ≤ 30 days
+GEOCODING_REFRESH_DAYS = env.int('GEOCODING_REFRESH_DAYS', default=29)   # re-geocode before 30   # T-1032c, KI-041
 CELERY_TASK_ROUTES = {
     # Outbound side effects
     'apps.core.tasks.dispatch_outbox_message':            {'queue': OUTBOX_CELERY_QUEUE},
@@ -357,6 +366,10 @@ CELERY_BEAT_SCHEDULE = {
     'purge-idempotency-records': {
         'task':     'apps.core.tasks.purge_idempotency_records',
         'schedule': 3600,   # hourly; rows live IDEMPOTENCY_TTL_HOURS (ADR-018)
+    },
+    'geocode-locations': {
+        'task':     'apps.geo.tasks.geocode_locations',
+        'schedule': 86400,  # daily; no-op unless GEOCODING_ENABLED (T-1060c)
     },
     'link-unmatched-listings': {
         'task':     'apps.locations.tasks.link_unmatched_listings',

@@ -205,3 +205,13 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
   4. If 0042 is ever rolled back and re‑applied, re‑run `geo_setup`.
 - **Privacy:** private‑seller and approximate listings expose only coordinates snapped to ~1 km, and only those are searchable. Exact coordinates are shown to the owner, the listing's organisation and staff.
 - **Infra (dev/CI only):** test runner, CI and the dev `docker-compose.yml` now use `postgis/postgis:15-3.4-alpine` (amd64; emulated on Apple Silicon). `docker/docker-compose.prod.yml` is unchanged; switching production to a PostGIS image is your decision.
+
+## 24. Session‑9 change: geocoding (T‑1060c)
+- **Migrations:** `locations 0003` (additive) and `geo 0001` (trigger v2, plus a non‑atomic re‑fire; no rows qualify until locations are geocoded).
+- **Off by default.** To enable:
+  1. Create a Google Cloud key restricted to the Geocoding API (and to the servers' egress IPs).
+  2. Set `GOOGLE_MAPS_API_KEY` as a secret, `GEOCODING_ENABLED=true`, and `GEOCODING_DAILY_BUDGET` (default 500 requests/day).
+  3. Run `python manage.py geocode_locations --dry-run`, then `geocode_locations --limit 200`.
+  4. Review *Admin → Locations*, filtered on geocode status partial/rejected/zero. Enter coordinates by hand where needed; these are kept as `manual`.
+  5. Restart celery beat (daily `geocode-locations`).
+- **Owner/legal:** confirm Google Maps Platform terms for the 30‑day coordinate cache (handled by re‑geocoding) and for display on non‑Google maps (a frontend constraint).
