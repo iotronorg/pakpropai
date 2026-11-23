@@ -176,3 +176,11 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 ## 20. Session‑9 change: PII masking allow‑list and market follows country (T‑1033, KI‑050)
 - **PII masking:** `/api/v1/agents/register/` and `/api/v1/organizations/me/members/` are no longer exempt as whole paths. Only the listed structured fields pass unmasked (`PRIVACY_MASK_FIELD_ALLOWLIST` in settings), so free text in those bodies (e.g. agent `bio`) is now masked. Agent profile edits (`/agents/me/`, `/agents/{id}/`) and org contact edits now keep real phone/email/ID values; before, they were masked.
 - **Listings:** changing a listing's `country` now moves it to that market (`market_id`). No migration is needed. Run `market_backfill_report` if you want to check existing rows.
+
+## 21. Session‑9 change: location hierarchy (T‑1060a, ADR‑024) and branding
+- **Migrations:**
+  - `locations.0001/0002`: new table plus seed.
+  - `properties.0038`: nullable FK plus a precision column with a DB default. The FK check scans the table once, while every value is NULL.
+  - `properties.0039`: concurrent index; run it on a direct DB connection.
+- **After rollout:** run `python manage.py match_listing_locations` (batched; prints coverage). Then work the review queue in *Admin → Locations* (filter "verified: No"): verify the real places and merge the misspellings. Restart celery beat so it picks up the hourly `link-unmatched-listings` job.
+- **Branding:** user‑facing text is now RealTron. The WhatsApp OTP template is approved by Meta, so **edit and re‑submit its body text ("Your RealTron AI code is …") in Meta Business Manager**. The code only sends parameters.

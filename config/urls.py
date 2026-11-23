@@ -39,6 +39,7 @@ urlpatterns = [
         path('payments/',     include('apps.payments.urls')),
         path('whatsapp/',     include('apps.whatsapp.urls')),
         path('properties/',   include('apps.properties.urls')),
+        path('locations/',    include('apps.locations.urls')),
         path('verification/', include('apps.verification.urls')),
         path('audit/',         include('apps.audit.urls')),
         path('reports/',       include('apps.reports.urls')),

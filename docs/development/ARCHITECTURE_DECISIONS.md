@@ -594,3 +594,27 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
 - **API change:** `POST /organizations/me/members/` returns the invite (`status: pending`) instead of a member. New endpoints: `GET/DELETE /organizations/me/invites/[{id}/]`, `GET /organizations/invites/`, `POST /organizations/invites/{id}/accept|decline/`.
 - **Transactions:** a refused response that changes state (expired, voided) commits that change and raises the 409 *after* the transaction, so the state change is not rolled back.
 
+## ADR‑024 — Location hierarchy: own tree, text matching first, geo and geocoding later
+- **Date:** 2026-11-23 (session 9) · Task T‑1060 · FR‑LST‑003, GAP‑013/041, TR‑05
+- **Context:** listings carry free‑text `city`/`location` plus optional lat/lng. The owner chose Google geocoding and PostGIS, but neither PostGIS nor a key exists in any environment yet.
+- **Decision:** split T‑1060 so that the first slice needs no new infrastructure.
+  - **T‑1060a, this ADR:** a `locations.Location` tree per market (country → region → city → locality → sub‑locality).
+    - A materialised slug `path` (unique) makes "this place and everything below it" one indexed prefix query. Renames rewrite descendant paths.
+    - Listings get a nullable `location_ref` FK (`SET_NULL`, index built concurrently) and `location_precision`. `city`/`location` stay as the listed text.
+    - **Matching** is deterministic text matching on a normalised key: case, punctuation, `ph`→`phase`, leading zeros, and joined single letters, so `D.H.A.` = `DHA`. Aliases count as names.
+      - A city is matched by name or alias.
+      - Under it: an exact locality or sub‑locality, else the longest locality that prefixes the text, whose remainder becomes a sub‑locality.
+      - An unknown place becomes an **unverified** node (`source=listing`). This is the review queue. Admin can verify it, or merge it: the merged name becomes an alias of the target, and listings and children move.
+    - **Where matching runs:** API create/update (only when the client sent no `location_id`, and on update only if the text or market changed), `match_listing_locations` (batched, with a coverage report for the M1 exit criterion), and an hourly beat job for writes from elsewhere (AI tool, scrapers, admin).
+    - **Not in `Property.save()`:** matching can create rows, and doing it in `save()` would add queries and side effects to every save, including test factories.
+  - **T‑1060b:** a PostGIS `geography(Point)` with a GiST index and radius/bbox search, plus privacy masking for private sellers. This is the step that requires PostGIS everywhere.
+  - **T‑1060c:** a Google geocoder behind an interface and a flag (default off) that geocodes **location centroids**, not each listing, to bound cost.
+- **Seed:** 5 countries; PK provinces/territories, the 24 cities of the ref‑number map and well‑known Lahore/Karachi/Islamabad localities; AE emirates; GB nations and major cities. The normaliser in the seed is a frozen copy, and a test keeps it equal to the live one.
+- **API:**
+  - `location_id` (write) and `location_ref` (read, `{id, name, level, path}`) on listings; a location must be in the listing's market;
+  - `?location_id=` matches the location and every descendant;
+  - `GET /locations/?market&parent&level&q` for browse and autocomplete. Unverified nodes are staff‑only.
+- **Rejected:**
+  - geocoding every listing: cost, and the text already names the place;
+  - `django-mptt` / `ltree`: a materialised path covers the queries without a new dependency or extension;
+  - auto‑verifying matched text: free text is noisy, so a human reviews new places.

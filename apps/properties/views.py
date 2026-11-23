@@ -39,6 +39,8 @@ _LIST_PARAMETERS = [
     OpenApiParameter('amenities', str, description=(
         'Comma-separated amenity keys; a listing must have all of them '
         '(at most 10).')),
+    OpenApiParameter('location_id', int, description=(
+        'Location id; matches it and every location under it (T-1060a).')),
     OpenApiParameter('legal_status', str, enum=Property.LegalStatus.values),
     OpenApiParameter('purpose', str, enum=Property.Purpose.values),
     OpenApiParameter('min_bedrooms', int, description='Inclusive (0-50).'),
@@ -72,7 +74,7 @@ class PropertyViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset().select_related(
-            'owner', 'organization', 'assigned_agent', 'listed_by_agent'
+            'owner', 'organization', 'assigned_agent', 'listed_by_agent', 'location_ref'
         ).prefetch_related('images', 'amenities')
         user = self.request.user
 
@@ -108,6 +110,13 @@ class PropertyViewSet(viewsets.ModelViewSet):
             qs = qs.filter(category=category)
         if (subtype := choice_param(params, 'subtype', [c[0] for c in Property.SUBTYPE_CHOICES])):
             qs = qs.filter(subtype=subtype)
+        if (loc_id := int_param(params, 'location_id', min_value=1, clamp=False)) is not None:
+            from apps.locations.models import Location
+            loc = Location.objects.filter(pk=loc_id).only('path').first()
+            if loc is None:
+                from rest_framework.exceptions import ValidationError
+                raise ValidationError({'location_id': 'Unknown location.'})
+            qs = qs.filter(loc.descendants_q('location_ref__path'))
         if (keys := amenity_keys_param(params)):
             from .taxonomy import filter_all_amenities
             qs = filter_all_amenities(qs, keys)
@@ -184,6 +193,9 @@ class PropertyViewSet(viewsets.ModelViewSet):
         from .price_history import price_change_context
         with price_change_context(user=user, source='api'):
             prop = serializer.save(**extra)
+        if 'location_ref' not in serializer.validated_data:
+            from apps.locations.matching import link_listing
+            link_listing(prop)
         try:
             from apps.properties.tasks import score_property_task
             score_property_task.delay(str(prop.id))
@@ -346,8 +358,13 @@ class PropertyViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         from .price_history import price_change_context
+        before = (serializer.instance.city, serializer.instance.location, serializer.instance.market_id)
         with price_change_context(user=self.request.user, source='api'):
-            serializer.save()
+            prop = serializer.save()
+        if 'location_ref' not in serializer.validated_data and \
+                (prop.city, prop.location, prop.market_id) != before:
+            from apps.locations.matching import link_listing
+            link_listing(prop, force=True)        # the text moved: re-match
 
     @extend_schema(responses=PriceHistorySerializer(many=True))
     @action(detail=True, methods=['get'], url_path='price-history')

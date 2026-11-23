@@ -307,3 +307,13 @@
   - `views.py`: members POST → invite; `OrgInviteListView`, `OrgInviteRevokeView`, `MyInvitesView`, `InviteRespondView`. `urls.py`: 5 routes.
   - Settings: `ORG_INVITE_TTL_DAYS`.
   - Tests: new `tests/test_org_invites.py` (12). `test_org_membership`, `test_membership_contract` (2) and `test_membership_consolidation` were updated for the accept step.
+
+### 2026-11-23 — session 9 (third part): owner decisions, branding, T‑1060a
+- **Decisions recorded:** T‑1070g approved for the next release; money stays in major units; no PostGIS or Google key yet; branding is RealTron.
+- **Branding:** README, seed data and the settings comment now say RealTron AI. The PDF already did. The Meta OTP template must be re‑submitted by the operator.
+- **T‑1060a (ADR‑024):**
+  - new app `apps/locations`: `models.py` (`Location`), `services.py` (`normalise`, `match_location`, `merge`), `matching.py` (`link_listing`, `link_unmatched`, `report`), `admin.py` (review queue with verify/merge actions, `templates/admin/locations/merge.html`), `views.py`/`urls.py` (`GET /api/v1/locations/`), `serializers.py`, `tasks.py`, and the `match_listing_locations` command;
+  - migrations: `locations 0001/0002` (seed), `properties 0038` (`location_ref`, `location_precision`) and `0039` (concurrent index);
+  - properties: `LocationRefField` (write `location_id`), `LocationRefOut` (read `location_ref`), a market check, `?location_id=` with descendants, matching on create and on update when the text changes;
+  - settings: the `apps.locations` app and the hourly beat `link-unmatched-listings`;
+  - tests: `tests/test_locations.py` (19).

@@ -173,6 +173,16 @@ class Property(models.Model):
     description   = models.TextField(blank=True)
     city          = models.CharField(max_length=100)
     location      = models.CharField(max_length=300)
+    # ── Location hierarchy (T-1060a, ADR-024). city/location stay as the
+    # listed text; location_ref is the matched node (set by the API, the
+    # match_listing_locations command and the hourly matcher, not by save()).
+    location_ref  = models.ForeignKey('locations.Location', on_delete=models.SET_NULL,
+                                      null=True, blank=True, related_name='listings',
+                                      db_index=False)       # index built concurrently (0039)
+    location_precision = models.CharField(
+                        max_length=12, choices=[('exact', 'Exact'), ('approximate', 'Approximate')],
+                        default='approximate', db_default='approximate',
+                        help_text='exact = coordinates are the property itself (FR-LST-003)')
 
     # Conversion factors to canonical square metres
     _SQM_FACTORS: dict = {
@@ -308,6 +318,7 @@ class Property(models.Model):
             models.Index(fields=['property_type']),
             models.Index(fields=['purpose', 'is_active'], name='prop_purpose_active_idx'),
             models.Index(fields=['category', 'is_active'], name='prop_category_active_idx'),
+            models.Index(fields=['location_ref', 'is_active'], name='prop_location_ref_idx'),
             models.Index(fields=['price']),
             models.Index(fields=['is_active', 'city']),
             models.Index(fields=['is_active', 'created_at']),

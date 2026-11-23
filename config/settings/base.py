@@ -45,6 +45,7 @@ LOCAL_APPS = [
     'apps.core',
     'apps.config',
     'apps.markets',
+    'apps.locations',
     'apps.users',
     'apps.organizations',
     'apps.properties',
@@ -350,6 +351,10 @@ CELERY_BEAT_SCHEDULE = {
         'task':     'apps.core.tasks.purge_idempotency_records',
         'schedule': 3600,   # hourly; rows live IDEMPOTENCY_TTL_HOURS (ADR-018)
     },
+    'link-unmatched-listings': {
+        'task':     'apps.locations.tasks.link_unmatched_listings',
+        'schedule': 3600,   # hourly; listings written outside the API (T-1060a)
+    },
     'expire-deal-locks': {
         'task':     'apps.escrow.tasks.expire_deal_locks',
         'schedule': 1800,  # every 30 minutes
@@ -450,7 +455,7 @@ WA_ACCESS_TOKEN    = env('WA_ACCESS_TOKEN', default='')
 WA_PHONE_NUMBER_ID = env('WA_PHONE_NUMBER_ID', default='')
 # Pre-approved Meta template for OTP (required for users outside 24-h session window).
 # Create in Meta Business Manager → WhatsApp → Message Templates.
-# Body example: "Your PakProp AI code is {{1}}. Expires in 5 minutes."
+# Body example: "Your RealTron AI code is {{1}}. Expires in 5 minutes."
 WA_OTP_TEMPLATE_NAME = env('WA_OTP_TEMPLATE_NAME', default='')
 
 # Twilio Voice

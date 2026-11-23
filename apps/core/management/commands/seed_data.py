@@ -35,10 +35,10 @@ class Command(BaseCommand):
         from apps.properties.models import Property
         from apps.leads.models import Lead
 
-        self.stdout.write(self.style.MIGRATE_HEADING('\n── Seeding PakProp AI local dev data ──\n'))
+        self.stdout.write(self.style.MIGRATE_HEADING('\n── Seeding RealTron AI local dev data ──\n'))
 
         # ── Users ──────────────────────────────────────────────────────────────
-        admin = self._make_user(User, PHONES['admin'],     'admin',     'PakProp Admin',   is_staff=True)
+        admin = self._make_user(User, PHONES['admin'],     'admin',     'RealTron Admin',   is_staff=True)
         agent_user = self._make_user(User, PHONES['agent'], 'agent',    'Ahmed Khan')
         dev_user   = self._make_user(User, PHONES['developer'], 'developer', 'Bahria Developments')
         client     = self._make_user(User, PHONES['client'], 'user',    'Ali Hassan')

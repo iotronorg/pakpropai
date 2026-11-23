@@ -1,6 +1,6 @@
-# PakProp AI — Backend API
+# RealTron AI — Backend API
 
-Django REST API powering PakProp AI — the trust infrastructure layer for Pakistani real estate.
+Django REST API powering RealTron AI — the trust infrastructure layer for Pakistani real estate.
 
 WhatsApp-first · AI-powered · Modular Django monolith
 
@@ -564,7 +564,7 @@ Meta Business Manager → WhatsApp → Message Templates → Create:
 - **Category:** Authentication
 - **Language:** English (or Urdu)
 - **Name:** (must match `WA_OTP_TEMPLATE_NAME` in your env)
-- **Body:** `Your PakProp AI code is {{1}}. Expires in 5 minutes.`
+- **Body:** `Your RealTron AI code is {{1}}. Expires in 5 minutes.`
 
 Wait for Meta approval — typically 1 to 24 hours.
 

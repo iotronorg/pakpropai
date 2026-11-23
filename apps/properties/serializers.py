@@ -1,4 +1,5 @@
 from django.db import transaction
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from .models import Amenity, PriceHistory, Property, PropertyImage
 from . import taxonomy
@@ -52,6 +53,33 @@ class AmenityKeysField(serializers.SlugRelatedField):
         super().__init__(**kwargs)
 
 
+class LocationRefField(serializers.PrimaryKeyRelatedField):
+    """Write a location id; omit it to let the server match city/location text (T-1060a)."""
+
+    def __init__(self, **kwargs):
+        from apps.locations.models import Location
+        kwargs.setdefault('queryset', Location.objects.filter(is_active=True))
+        kwargs.setdefault('source', 'location_ref')
+        kwargs.setdefault('required', False)
+        kwargs.setdefault('allow_null', True)
+        kwargs.setdefault('help_text', 'Location id (GET /locations/). Omit to match from city/location.')
+        super().__init__(**kwargs)
+
+
+@extend_schema_field({'type': 'object', 'nullable': True, 'properties': {
+    'id': {'type': 'integer'}, 'name': {'type': 'string'}, 'level': {'type': 'string'},
+    'path': {'type': 'string'}}})
+class LocationRefOut(serializers.Field):
+    """Matched location node (read-only), ``null`` when not linked yet."""
+
+    def __init__(self, **kwargs):
+        kwargs['read_only'] = True
+        super().__init__(**kwargs)
+
+    def to_representation(self, loc):
+        return {'id': loc.pk, 'name': loc.name, 'level': loc.level, 'path': loc.path}
+
+
 class ListingV2ValidationMixin:
     """Cross-field rules for listing schema v2 (T-1070a/b/d); partial updates merge the instance."""
 
@@ -75,6 +103,11 @@ class ListingV2ValidationMixin:
             self._validate_attributes(attrs)
         if 'amenities' in attrs:
             self._validate_amenities(attrs['amenities'], attrs)
+        if attrs.get('location_ref') is not None:
+            market = self._target_market(attrs)
+            if attrs['location_ref'].market_id != market:
+                raise serializers.ValidationError(
+                    {'location_id': f'Location is not in market {market}.'})
         return attrs
 
     def _target_market(self, attrs):
@@ -134,6 +167,7 @@ class PropertyListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for list views."""
     primary_image = serializers.SerializerMethodField()
     amenities     = AmenityKeysField(many=True, read_only=True)
+    location_ref  = LocationRefOut()
 
     class Meta:
         model  = Property
@@ -142,7 +176,7 @@ class PropertyListSerializer(serializers.ModelSerializer):
                   'area_marla', 'area_unit', 'area_sqm',
                   'price', 'country', 'currency',
                   'purpose', 'price_type', 'price_on_request', 'bedrooms', 'bathrooms',
-                  'category', 'subtype', 'amenities',
+                  'category', 'subtype', 'amenities', 'location_ref',
                   'property_type', 'construction_status', 'furnished_status',
                   'legal_status', 'ai_score', 'risk_level', 'primary_image', 'created_at')
         extra_kwargs = _SIZE_EXTRA_KWARGS
@@ -161,6 +195,8 @@ class PropertyDetailSerializer(ListingV2ValidationMixin, serializers.ModelSerial
     images        = PropertyImageSerializer(many=True, read_only=True)
     primary_image = serializers.SerializerMethodField()
     amenities     = AmenityKeysField(many=True, required=False)
+    location_id   = LocationRefField()
+    location_ref  = LocationRefOut()
 
     class Meta:
         model  = Property
@@ -169,6 +205,7 @@ class PropertyDetailSerializer(ListingV2ValidationMixin, serializers.ModelSerial
                   'area_marla', 'area_unit', 'area_sqm',
                   'price', 'country', 'currency',
                   'property_type', 'category', 'subtype', 'amenities',
+                  'location_id', 'location_ref', 'location_precision',
                   'furnished_status', 'construction_status',
                   'legal_status', 'ai_score', 'risk_level', 'assigned_agent',
                   'installment_available', 'raw_docs', 'ai_analysis',
@@ -196,6 +233,7 @@ class PropertyCreateSerializer(ListingV2ValidationMixin, serializers.ModelSerial
         queryset=User.objects.all(), required=False, allow_null=True
     )
     amenities = AmenityKeysField(many=True, required=False)
+    location_id = LocationRefField()
 
     class Meta:
         model  = Property
@@ -204,6 +242,7 @@ class PropertyCreateSerializer(ListingV2ValidationMixin, serializers.ModelSerial
                   'area_marla', 'area_unit',
                   'price', 'country', 'currency',
                   'property_type', 'category', 'subtype', 'amenities', 'furnished_status',
+                  'location_id', 'location_precision',
                   'construction_status', 'legal_status', 'assigned_agent', 'owner',
                   'purpose', 'bedrooms', 'bathrooms', 'floor', 'total_floors', 'year_built',
                   'parking_spaces', 'pets_allowed', 'price_type', 'price_negotiable',
@@ -253,3 +292,4 @@ class AmenitySerializer(serializers.ModelSerializer):
 
     def get_label(self, obj) -> str:
         return obj.label(self.context.get('lang') or 'en')
+

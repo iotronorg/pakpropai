@@ -113,7 +113,9 @@ class GetMarketTest(TestCase):
         self.assertEqual(get_market().code, 'PK')
 
     def test_registry_fallback_when_row_missing(self):
-        Market.objects.filter(code='CA').delete()   # unreferenced
+        from apps.locations.models import Location
+        Location.objects.filter(market_id='CA').delete()   # seeded country node (T-1060a)
+        Market.objects.filter(code='CA').delete()          # now unreferenced
         info = get_market('CA')
         self.assertFalse(info.from_db)
         self.assertEqual(info.default_currency, 'CAD')

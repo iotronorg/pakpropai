@@ -228,6 +228,6 @@
 - **Not committed.**
 
 ### Handoff → session 10
-1. `git status`: the owner committed T‑1070d/e (`89b230a`); T‑1070f, T‑1033, T‑1032c and KI‑050 are uncommitted. **Do not commit.** `scripts/dev/test.sh` should give 1839 passed, 1 skipped.
-2. Next: **T‑1060** (see the DEVELOPMENT_STATUS "Next task"). Begin with the PostGIS test image and Dockerfile GDAL, then an ADR for the location model and geocoding service. Hold T‑1070g (contract, which also drops `prop_fts_gin`) for owner approval.
-3. After that: T‑1080 (lifecycle) → T‑1011 (MFA) → T‑1110 → T‑1120 → T‑1032b (phase‑C contraction, gated on a clean prod reconcile). T‑1040, T‑1091 and T‑1092 come later.
+1. `git status`: the owner committed T‑1070d/e (`89b230a`). Uncommitted: T‑1070f, T‑1033, T‑1032c, KI‑050, the branding change and T‑1060a (`apps/locations/`, `properties 0038/0039`, `tests/test_locations.py`). **Do not commit.** `scripts/dev/test.sh` should give 1856 passed, 1 skipped.
+2. Next: **T‑1070g‑1** (approved; see the DEVELOPMENT_STATUS "Next task"), then g‑2 as a separate migration set that ships one release later.
+3. Then T‑1060b (PostGIS test image and point; deploy only once PostGIS exists), T‑1060c (Google, flag off, mocked), then T‑1080 → T‑1011 → T‑1110 → T‑1120 → T‑1032b.

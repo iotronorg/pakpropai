@@ -10,9 +10,13 @@ _Last updated: 2026-11-23 (session 9, continued)_
 | M1 progress | 10 of 18 tasks done (T‑1010, T‑1020, T‑1021, T‑1022, T‑1030, T‑1031, T‑1033, T‑1050, T‑1090, T‑1100) plus subtasks T‑1032a, T‑1032c and T‑1070a–f |
 | Test suite | **1839 passed, 1 skipped, 0 failed** (session 9 end). See [TESTING_STATUS](TESTING_STATUS.md) |
 | Last completed task | T‑1032c org invitations (KI‑041), after T‑1070f, T‑1033 and KI‑050 |
-| Next task | **T‑1060** location hierarchy + PostGIS + Google geocoding (unblocked 2026‑11‑23). Design first, as an ADR: `Location` tree (country → region → city → locality → sub‑locality, market FK, aliases), a `Property.location_ref` FK + `geo` `PointField` with expand/backfill from `city`/`location`/lat‑lng, a geocoding service behind an interface (Google client, rate limit, cache, cost budget; tests mock HTTP), and a batched backfill command with a match report (M1 exit criterion "< X % unmatched"). **Prerequisites to do first:** switch `scripts/dev/test.sh` and CI to a PostGIS image (`postgis/postgis:15-3.4-alpine`) and add GDAL/GEOS to the Dockerfile; `django.contrib.gis` + `CREATE EXTENSION postgis` migration. **Operator:** `GOOGLE_MAPS_API_KEY` secret, PostGIS in every DB. Then T‑1080 lifecycle → T‑1011 MFA |
+| Next task | **T‑1070g‑1** (approved): stop reading/writing `area_marla`/`area_unit`/`area_sqm`/`property_type` and `prop_fts_gin` (compute the API aliases from `size_*`/`category`; migrate scrapers, AI tools, audit, seed data, the `?type=` filter; remove the dual‑write sync). Add a `check_listing_contract` command that refuses while drift ≠ 0. Then **g‑2**: the drop migrations (columns; `DROP INDEX CONCURRENTLY prop_fts_gin`) in their own set, to deploy one release after g‑1. After that: T‑1060b (PostGIS test image + point/GiST/radius; needs PostGIS before deploy), T‑1060c (Google geocoder, flag off, HTTP mocked) → T‑1080 → T‑1011 |
 
 ## Owner decisions (2026-11-23)
+- **T‑1070g approved.** It ships one release after the current changes: drop `area_marla`/`area_unit`/`area_sqm`, the `property_type` column and `prop_fts_gin`.
+- **Money stays in major units;** no minor‑unit conversion.
+- **Geo infrastructure:** neither PostGIS nor a Google key exists yet. Build and test against a local PostGIS container with the Google client mocked; geocoding stays behind a flag that defaults to off.
+- **Branding:** user‑facing text says **RealTron**.
 - **T‑1060:** geocoding vendor **Google Maps Geocoding**; PostGIS required in every environment.
 - **T‑1033 / KI‑032:** PII masking becomes a **per‑endpoint allow‑list**. Structured contact fields are allowed on lead/agent create, profile PATCH and member invite. Free‑text fields stay masked everywhere.
 - **KI‑050:** `save()` **re‑derives `market` when `country` changes**.
@@ -22,9 +26,9 @@ _Last updated: 2026-11-23 (session 9, continued)_
 - **Approved:** encryption (T‑0010), artifact removal (T‑0011), CI deploy‑job fixes (KI‑008).
 
 ## Open questions (non‑blocking)
-- Branding: PakProp vs RealTron (README and PDF footer unchanged).
 - GitHub Actions has not run the updated workflow (no push).
-- T‑1060: Google Maps chosen. Before deploying it, the operator must provide `GOOGLE_MAPS_API_KEY` and PostGIS.
+- T‑1060a (location tree) is done and needs no new infrastructure. Before T‑1060b/c are deployed, the operator must provide PostGIS in every DB and `GOOGLE_MAPS_API_KEY`.
+- Meta: re‑submit the OTP template body with the RealTron name.
 
 ## Operator actions before deploying these changes
 See **[GO_LIVE_CHECKLIST](GO_LIVE_CHECKLIST.md)**: DB backup, `FIELD_ENCRYPTION_KEYS`, config‑row check. Summary:
