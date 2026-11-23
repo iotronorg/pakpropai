@@ -231,6 +231,7 @@ REST_FRAMEWORK = {
         'api_key':         '300/min',   # external developer API keys
         'otp_send':        '3/hour',
         'otp_daily':       '10/day',
+        'mfa_verify':      '20/min',    # T-1011; plus a per-user lockout after 5 wrong codes
         'ai_query':        '10/min',
         'fraud_check':     '20/min',
         'property_search': '30/min',
@@ -325,6 +326,11 @@ GEO_MAX_RADIUS_KM   = env.float('GEO_MAX_RADIUS_KM', default=100.0)
 
 # ── Geocoding of location centroids (T-1060c). Off until the owner sets the
 # key and enables it; paid per request, so a daily request budget applies.
+# ── MFA (T-1011, ADR-026). Required for staff and org owners/admins; enforced
+# only when MFA_ENFORCE is on (turn on after those users have enrolled).
+MFA_ENFORCE = env.bool('MFA_ENFORCE', default=False)
+MFA_ISSUER  = env('MFA_ISSUER', default='RealTron')
+
 # ── Listing lifecycle (T-1080). Review and TTL are per market (Market.settings:
 # listing_review_required, listing_ttl_days); both off unless configured.
 LISTING_EXPIRY_REMINDER_DAYS = env.int('LISTING_EXPIRY_REMINDER_DAYS', default=7)

@@ -129,10 +129,8 @@ class VerifyOTPView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        refresh = RefreshToken.for_user(user)
-        response = Response({'user': UserSerializer(user).data})
-        _set_auth_cookies(response, str(refresh.access_token), str(refresh), role=user.role)
-        return response
+        from .mfa import login_response              # T-1011: second factor when enrolled
+        return login_response(user, {'user': UserSerializer(user).data})
 
 
 class MeView(APIView):
@@ -168,6 +166,14 @@ class CookieTokenRefreshView(APIView):
             new_access = str(refresh.access_token)
         except TokenError as exc:
             response = Response({'error': str(exc)}, status=status.HTTP_401_UNAUTHORIZED)
+            _clear_auth_cookies(response)
+            return response
+        # T-1011: a session that skipped the second factor cannot be renewed.
+        from .mfa import token_acceptable
+        owner = User.objects.filter(pk=refresh.get(jwt_settings.USER_ID_CLAIM), is_active=True).first()
+        if owner is None or not token_acceptable(owner, refresh):
+            response = Response({'error': 'Multi-factor authentication required. Log in again.'},
+                                status=status.HTTP_401_UNAUTHORIZED)
             _clear_auth_cookies(response)
             return response
 
@@ -342,10 +348,8 @@ class PasswordLoginView(APIView):
         if not user.is_active:
             return Response({'detail': 'Account is inactive.'}, status=403)
 
-        refresh = RefreshToken.for_user(user)
-        response = Response(UserSerializer(user).data, status=200)
-        _set_auth_cookies(response, str(refresh.access_token), str(refresh), role=user.role)
-        return response
+        from .mfa import login_response              # T-1011: second factor when enrolled
+        return login_response(user, UserSerializer(user).data)
 
 
 class RegistrationOTPVerifyView(APIView):
@@ -437,10 +441,9 @@ class PasswordResetConfirmView(APIView):
         user.set_password(new_password)
         user.save(update_fields=['password'])
 
-        refresh = RefreshToken.for_user(user)
-        response = Response(UserSerializer(user).data, status=200)
-        _set_auth_cookies(response, str(refresh.access_token), str(refresh), role=user.role)
-        return response
+        # T-1011: a reset proves phone access only; an enrolled user still needs the second factor.
+        from .mfa import login_response
+        return login_response(user, UserSerializer(user).data)
 
 
 class PasswordChangeView(APIView):

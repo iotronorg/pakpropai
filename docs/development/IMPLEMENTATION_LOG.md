@@ -379,3 +379,18 @@
   - property admin: lifecycle actions and a transitions inline;
   - OpenAPI type hints on `get_primary_image`/`get_url`.
 - **Renumbered:** staged contract migrations to 0048/0049, depending on 0047; README and test updated.
+
+### 2026-11-23 — session 9 (eighth part): T‑1011 MFA
+- **Verified:** the owner committed T‑1080 (`4ec3d94`); the tree was clean.
+- **Added:**
+  - `apps/users/mfa.py`, `apps/users/mfa_views.py`, `apps/users/admin_mfa.py`, `templates/admin/login.html`;
+  - models `MFADevice`, `MFARecoveryCode` and `User.mfa_enabled` (`users 0014_mfa`);
+  - settings `MFA_ENFORCE`, `MFA_ISSUER`, throttle `mfa_verify`;
+  - `tests/test_mfa.py` (14).
+- **Changed:**
+  - `JWTCookieOrHeaderAuthentication` checks the `mfa` claim, plus `MfaLenientAuthentication`;
+  - the OTP, password, password‑reset and org‑registration logins go through `mfa.login_response`;
+  - the token refresh refuses non‑MFA sessions for enrolled or required users, and inactive users;
+  - user admin: `mfa_enabled` column and filter, *Reset MFA* action;
+  - `UsersConfig.ready` installs the admin login form.
+- **Found:** KI‑057 (cookie‑path CSRF failures are swallowed).

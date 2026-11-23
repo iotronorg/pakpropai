@@ -72,6 +72,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField(default=True)
     is_staff  = models.BooleanField(default=False)
     is_phone_verified = models.BooleanField(default=False)
+    # T-1011: a confirmed TOTP device exists (denormalised so token checks need no join).
+    mfa_enabled = models.BooleanField(default=False, db_default=False)
     last_active = models.DateTimeField(null=True, blank=True)
     created_at  = models.DateTimeField(auto_now_add=True)
 
@@ -151,3 +153,31 @@ class OTPCode(models.Model):
 
     def __str__(self):
         return f"OTP for {self.phone} — used={self.is_used}"
+
+
+class MFADevice(models.Model):
+    """TOTP authenticator (T-1011, ADR-026). One per user; the secret is encrypted at rest."""
+    user             = models.OneToOneField(User, on_delete=models.CASCADE, related_name='mfa_device')
+    secret           = EncryptedTextField(help_text='Base32 TOTP secret (RFC 6238)')
+    confirmed_at     = models.DateTimeField(null=True, blank=True)
+    # Highest 30-second step accepted: a code is usable once (no replay).
+    last_used_step   = models.BigIntegerField(default=0)
+    created_at       = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'user_mfa_devices'
+
+    def __str__(self):
+        return f"MFA {self.user_id} ({'confirmed' if self.confirmed_at else 'pending'})"
+
+
+class MFARecoveryCode(models.Model):
+    """Single-use recovery code; only a keyed HMAC is stored (T-1011)."""
+    user       = models.ForeignKey(User, on_delete=models.CASCADE, related_name='mfa_recovery_codes')
+    code_hash  = models.CharField(max_length=64)
+    used_at    = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'user_mfa_recovery_codes'
+        indexes  = [models.Index(fields=['user', 'code_hash'], name='mfa_recovery_lookup_idx')]

@@ -228,3 +228,14 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
   - `"listing_ttl_days": 90` makes listings published after that point expire, with a reminder 7 days before.
   - Restart celery beat (hourly `expire-listings`).
 - **Staged T‑1070g‑2** is now `contract_migrations/0048`/`0049`, depending on 0047.
+
+## 26. Session‑9 change: MFA (T‑1011, ADR‑026)
+- **Migration:** `users 0014`, additive (`users.mfa_enabled`, `user_mfa_devices`, `user_mfa_recovery_codes`).
+- **Frontend contract:** a login response may now be `{mfa_required, mfa_token}` (show a code prompt, then `POST /auth/mfa/verify/`) or, when enforced, `{mfa_enrollment_required, mfa_token}` (setup → QR → confirm, then show the recovery codes once). The header `X‑MFA‑Enrollment‑Required: true` means "prompt to enrol".
+- **Rollout:**
+  1. Deploy with `MFA_ENFORCE=false`.
+  2. All platform admins and org owners/admins enrol (*Admin → Users*, filter on `mfa_enabled`).
+  3. Set `MFA_ENFORCE=true`.
+  Staff who haven't enrolled by then cannot log in to the Django admin until they enrol in the app.
+- **Support:** lost device → recovery code; no codes left → *Admin → Users → Reset MFA* (audited), after verifying the person's identity out of band.
+- `MFA_ISSUER` (default `RealTron`) is the name shown in authenticator apps.

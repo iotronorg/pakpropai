@@ -583,9 +583,6 @@ class OrgRegistrationOTPVerifyView(APIView):
 
         from apps.users.services import OTPService
         from apps.users.models import User
-        from rest_framework_simplejwt.tokens import RefreshToken
-        from apps.users.views import _set_auth_cookies
-
         try:
             OTPService.verify(phone, code, purpose='org_registration')
         except ValueError as exc:
@@ -598,12 +595,10 @@ class OrgRegistrationOTPVerifyView(APIView):
         user.is_phone_verified = True
         user.save(update_fields=['is_phone_verified'])
 
-        refresh = RefreshToken.for_user(user)
+        from apps.users.mfa import login_response       # T-1011: owners need MFA
         from apps.users.serializers import UserSerializer
-        response = Response(UserSerializer(user).data, status=status.HTTP_200_OK)
-        _set_auth_cookies(response, str(refresh.access_token), str(refresh), role=user.role)
         logger.info("Org registration OTP verified, user auto-logged in: user=%s", user.id)
-        return response
+        return login_response(user, UserSerializer(user).data)
 
 
 def _member_payload(m, user=None):

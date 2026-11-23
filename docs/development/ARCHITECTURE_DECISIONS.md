@@ -679,3 +679,13 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - Owners and listing agents now also see their own non‑public listings on detail and with `?status=`.
 - **Expiry is per market** (`Market.settings.listing_ttl_days`) and **off by default**. Existing listings get no `expires_at`, so nothing vanishes on deploy. Reminders go out once, `LISTING_EXPIRY_REMINDER_DAYS` (7) before expiry, through `notify_user` (outbox).
 - **Not done here:** an outbox domain event per transition (no consumer exists yet; add a kind when one does); the "at least one image" publish rule (FR‑LST business rule, market‑configurable); the moderation queue of FR‑LST‑009.
+
+### ADR‑026 — MFA (T‑1011, 2026‑11‑23)
+- **Decision:** TOTP (RFC 6238, SHA‑1/30 s/6 digits) with recovery codes, implemented in the standard library (`apps/users/mfa.py`); no new dependency. The QR code uses the existing `qrcode` package.
+- **Scope:** required for platform staff (role admin, is_staff, superuser) and org owners and org admins; optional for everyone else. Enforcement is a flag (`MFA_ENFORCE`, default off) so these users can enrol before it bites. While it's off they log in as before, and the response says enrolment is required.
+- **One login gate:** every view that issues tokens calls `mfa.login_response`. An enrolled user gets a signed, single‑use, 5‑minute `mfa_token` instead of tokens. When enforced, a required user who has not enrolled gets an enrolment‑scoped `mfa_token` that only allows setup and confirm.
+- **Proof in the token:** tokens issued after the second factor carry `mfa: true`. The JWT authentication class and the refresh endpoint refuse a token without it for an enrolled user (and, when enforced, for a required user), so older sessions and any path that skipped the second step stop working. `MfaLenientAuthentication` (enrolment endpoints only) treats such a token as anonymous instead.
+- **Abuse limits:** a code step is accepted once (`last_used_step`); 5 wrong codes lock the second step for 15 minutes; the `mfa_verify` throttle is 20/min per IP. Recovery codes are stored as keyed HMACs (`blind_index`), and the TOTP secret is encrypted at rest.
+- **Django admin:** the login form asks for the authenticator code (or a recovery code). When enforced, staff without MFA must enrol through the app first.
+- **Recovery:** an admin action resets MFA (audited, all sessions revoked). Users for whom MFA is required cannot disable it themselves.
+- **Side effect:** the refresh endpoint now also refuses a refresh token for a deactivated user.

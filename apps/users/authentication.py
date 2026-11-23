@@ -10,7 +10,23 @@ class JWTCookieOrHeaderAuthentication(JWTAuthentication):
     is inherently CSRF-safe (cross-site scripts cannot set custom headers).
     """
 
+    # T-1011: reject tokens that skipped the second factor (apps.users.mfa).
+    mfa_strict = True
+
     def authenticate(self, request):
+        result = self._authenticate(request)
+        if result is None:
+            return None
+        user, token = result
+        from .mfa import token_acceptable
+        if not token_acceptable(user, token):
+            if not self.mfa_strict:
+                return None                                   # treated as anonymous
+            raise exceptions.AuthenticationFailed('Multi-factor authentication required. Log in again.',
+                                                  code='mfa_required')
+        return result
+
+    def _authenticate(self, request):
         raw_token = request.COOKIES.get('access_token')
         if raw_token:
             try:
@@ -23,6 +39,11 @@ class JWTCookieOrHeaderAuthentication(JWTAuthentication):
             except Exception:
                 pass
         return super().authenticate(request)
+
+
+class MfaLenientAuthentication(JWTCookieOrHeaderAuthentication):
+    """For MFA enrolment endpoints: a token lacking the second factor counts as anonymous."""
+    mfa_strict = False
 
     @staticmethod
     def _enforce_csrf(request):

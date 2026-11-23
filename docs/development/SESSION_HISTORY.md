@@ -228,12 +228,11 @@
 - **Not committed.**
 
 ### Handoff → session 10
-1. `git status`: the owner committed through T‑1060c (`d991ee7`). Uncommitted: **T‑1080**:
-   - `apps/properties/lifecycle*.py`;
-   - migrations 0045–0047;
-   - model, serializer, view and admin changes;
-   - staged contract migrations renumbered 0048/0049;
-   - `tests/test_listing_lifecycle.py`.
+1. `git status`: the owner committed through T‑1080 (`4ec3d94`). Uncommitted: **T‑1011**:
+   - `apps/users/mfa*.py`, `admin_mfa.py`, `templates/admin/login.html`;
+   - `users 0014`;
+   - auth class, login views and org registration changes;
+   - `tests/test_mfa.py`.
    **Do not commit.**
-2. **Deploy:** migrate before rollout (GO_LIVE §22–§25). Review and TTL stay off until set per market.
-3. Next: **T‑1011** MFA, then T‑1110 → T‑1120 → T‑1032b. Open from T‑1080: KI‑055 (agent edit rule), KI‑056.
+2. **Deploy:** GO_LIVE §26. Keep `MFA_ENFORCE=false` until admins and org owners have enrolled. The frontend must handle `mfa_required` and `mfa_enrollment_required` login responses.
+3. Next: **T‑1110** media pipeline hardening, then T‑1120 → T‑1032b. Open: KI‑055, KI‑056, KI‑057.
