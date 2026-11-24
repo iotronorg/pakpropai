@@ -543,3 +543,7 @@
 - **Added:** `apps/moderation` (two migrations), `apps/ai/_tools_moderation.py`, `apps/leads/privacy.py`, `DataExportFile` with status and download endpoints, `tests/test_moderation.py`, `tests/test_owner_decisions.py`.
 - **Changed:** `list_property` saves a draft; WhatsApp photo texts; `agent.system` 8; `Procfile`; lead, message, appointment, activity and voice serializers.
 - **Fixed:** a lister could archive a suspended listing and publish it again; merged leads kept the other lead's phone in the notes.
+
+### 2026-11-24 — session 19: T‑2016 context‑free FAQ answers
+- **Added:** `apps/ai/faq.py`, `tests/test_faq.py`. **Changed:** `apps/ai/service.py` no longer caches assistant replies.
+- **Fixed:** city names matched inside words ("transfer" → San Francisco, "plan" → Los Angeles), so such messages became searches; the request filter refused sign‑in tokens containing `--` (KI‑089).

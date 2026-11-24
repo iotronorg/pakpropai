@@ -904,3 +904,10 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
 - **KI‑074:** a lead with withdrawn consent and no other consented enquiry shows no phone in CRM lists, messages, appointments, activities, agent notifications and voice history; staff WhatsApp/voice and campaigns refuse or skip it. The thread still works.
 - **KI‑065:** gunicorn gthread, 2 workers × 8 threads, 120 s.
 - **KI‑081:** FX rates stay a manual import. Email provider and WhatsApp template stay go‑live items.
+
+### ADR‑042 — Context‑free FAQ answers (T‑2016, 2026‑11‑24; replaces the policy of ADR‑003)
+- **Decision:** a self‑contained general question of an organization's interactive chat is answered by its own prompt (`faq.answer` 1) from the question and the market knowledge only: no history, lead, user, organization settings or tools, and no user on the log row.
+- **Who goes there:** intent `general_query`, starts as a question, names a real estate topic; no digits, links, personal words, references to the conversation or inventory words. Everything else, and `NOT_FAQ`, unsafe or failed answers, goes to the assistant.
+- **Answer checks:** output guard, no links or addresses, every figure must be in the market facts.
+- **Reuse:** 24 h, same organization, market, prompt digest, knowledge text, and **the same words in the same order** (case, punctuation, articles and "please" aside). Embedding similarity is not used: it cannot tell filer from non‑filer or buyer from seller, and exact words also stop one user's wording from changing another's answer. The cost is a lower hit rate.
+- The switch stays `semantic_cache_enabled`, off by default.

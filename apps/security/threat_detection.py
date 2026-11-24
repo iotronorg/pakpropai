@@ -26,7 +26,14 @@ _SQL_PATTERNS = [
 ]
 
 
+# Signed and random tokens (base64url) contain "--" by chance. Without spaces,
+# quotes, brackets or ";" they cannot carry SQL.
+_OPAQUE_TOKEN = re.compile(r'[A-Za-z0-9_.:=-]{32,}')
+
+
 def _check_sql_injection(value: str) -> Optional[ThreatResult]:
+    if _OPAQUE_TOKEN.fullmatch(value):
+        return None
     matched = [p.pattern for p in _SQL_PATTERNS if p.search(value)]
     if matched:
         return ThreatResult(

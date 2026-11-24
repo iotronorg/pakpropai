@@ -279,14 +279,14 @@ class IntentClassifier:
     @staticmethod
     def _extract_city(lower: str, history: list | None) -> str:
         from apps.markets.registry import get_city_map
-        city_map = get_city_map()
+        city_map = get_city_map()      # whole words: "transfer" does not name "sf"
         for key, name in city_map.items():
-            if key in lower:
+            if re.search(rf'(?<!\w){re.escape(key)}(?!\w)', lower):
                 return name
         if history:
             recent = ' '.join(m.get('text', '').lower() for m in history[-6:])
             for key, name in city_map.items():
-                if key in recent:
+                if re.search(rf'(?<!\w){re.escape(key)}(?!\w)', recent):
                     return name
         return ''
 
@@ -558,39 +558,6 @@ class IntentClassifier:
 
 # ── AI Service Manager ────────────────────────────────────────────────────────
 
-# ── Semantic response cache policy ────────────────────────────────────────────
-#
-# The cache is keyed by message similarity only, so any reply stored in it can be
-# served to a *different* user of the same organization. Replies are generated
-# with the lead/user context injected by DynamicContextBuilder and may contain
-# personal data, live inventory or deal status. Caching is therefore:
-#   * disabled unless SystemConfig `semantic_cache_enabled` == 'true'
-#   * limited to intents in _SEMANTIC_CACHE_INTENTS (no inventory/deal/personal flows)
-#   * skipped for messages containing digits (amounts, sizes, IDs, phone numbers:
-#     embeddings are insensitive to numbers, so "5 crore" ≈ "6 crore")
-#   * namespaced by org + detected language
-# See KNOWN_ISSUES KI-005 for the residual risk when the flag is enabled.
-_SEMANTIC_CACHE_INTENTS = frozenset({'general_query'})
-_DIGIT_RE = re.compile(r'\d')
-
-
-def semantic_cache_scope(org_id: Optional[str], intent, message: str) -> Optional[str]:
-    """Return the cache namespace for this message, or None when caching is not allowed."""
-    if not org_id or not message:
-        return None
-    if getattr(intent, 'intent', None) not in _SEMANTIC_CACHE_INTENTS:
-        return None
-    if _DIGIT_RE.search(message):
-        return None
-    try:
-        from apps.config.services import SystemConfigService
-        if SystemConfigService.get('semantic_cache_enabled', 'false') != 'true':
-            return None
-    except Exception:
-        return None
-    return f"{org_id}:{getattr(intent, 'language', 'en')}"
-
-
 class AIServiceManager:
     """
     Orchestration layer between MessageRouter and RealTronAgent.
@@ -686,7 +653,6 @@ class AIServiceManager:
         start = time.time()
         started_at = timezone.now()
         from apps.ai import tracing
-        from apps.ai.usage import current_usage
 
         # ── 0. Answer to a pending action (T-2012): no model involved ──────────
         from apps.ai import confirmation
@@ -722,19 +688,12 @@ class AIServiceManager:
         tracing.note(intent=intent.intent)
         tracing.note_extra(language=intent.language)
 
-        # ── 2b. Semantic cache lookup (opt-in, non-personal intents only) ──────
-        cache_scope = semantic_cache_scope(org_id, intent, message)
-        if cache_scope:
-            from apps.ai.token_governor import SemanticResponseCache
-            cached = SemanticResponseCache.lookup(message, cache_scope)
-            if cached:
-                tracing.note(route='cache')
-                from apps.ai.tasks import record_token_usage
-                record_token_usage.delay(
-                    org_id=org_id, tokens_in=0, tokens_out=0,
-                    model='cache', intent=intent.intent, cache_hit=True,
-                )
-                return cached
+        # ── 2b. General question, answered without user context (T-2016, opt-in) ─
+        if interactive:
+            from apps.ai import faq
+            general = faq.answer(message, intent, organization)
+            if general is not None:
+                return self._finish_faq(general, user, intent, message, org_id, organization, start)
 
         logger.debug(
             "Intent classified: %s confidence=%.2f lang=%s phone=%s",
@@ -808,7 +767,6 @@ class AIServiceManager:
                     logger.warning("ComplianceEngine blocked reply action=%s phone=%s",
                                    verdict.action_taken, phone)
                     reply = verdict.human_reply
-                    output_ok = False   # never cache a blocked reply
             except Exception as exc:
                 logger.error("ComplianceEngine check failed: %s", exc)
                 tracing.note(grounding_result='error')
@@ -817,20 +775,8 @@ class AIServiceManager:
         if proposal is not None and proposal.prompt != reply:
             confirmation.withdraw(phone, organization)
 
-        # ── 6. Store in semantic cache + record token usage ────────────────────
-        if cache_scope and output_ok and not is_proposal and reply != _CANNED_FALLBACK:
-            from apps.ai.token_governor import SemanticResponseCache
-            SemanticResponseCache.store(message, cache_scope, reply)
-        usage = current_usage()
-        if org_id:
-            from apps.ai.tasks import record_token_usage
-            record_token_usage.delay(
-                org_id=org_id, tokens_in=usage.tokens_in, tokens_out=usage.tokens_out,
-                model=usage.model or 'llm', intent=intent.intent, cache_hit=False,
-            )
-            if usage.total:
-                from apps.ai.token_governor import SlidingWindowTokenBudget
-                SlidingWindowTokenBudget.record_tokens(org_id, usage.tokens_in, usage.tokens_out)
+        # ── 6. Record token usage ──────────────────────────────────────────────
+        self._record_usage(org_id, intent)
 
         elapsed = time.time() - start
         ai_requests_total.labels(intent=intent.intent, route='llm').inc()
@@ -1079,6 +1025,38 @@ class AIServiceManager:
             pass  # never block AI reply on billing failure
 
     # ── Logging ────────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _record_usage(org_id, intent):
+        if not org_id:
+            return
+        from apps.ai.tasks import record_token_usage
+        from apps.ai.token_governor import SlidingWindowTokenBudget
+        from apps.ai.usage import current_usage
+        usage = current_usage()
+        record_token_usage.delay(
+            org_id=org_id, tokens_in=usage.tokens_in, tokens_out=usage.tokens_out,
+            model=usage.model or 'llm', intent=intent.intent, cache_hit=False,
+        )
+        if usage.total:
+            SlidingWindowTokenBudget.record_tokens(org_id, usage.tokens_in, usage.tokens_out)
+
+    def _finish_faq(self, general, user, intent, message, org_id, organization, start) -> str:
+        from apps.ai import tracing
+        from apps.ai.tasks import record_token_usage
+        route = 'cache' if general.cached else 'llm'
+        tracing.note(route=route)
+        if general.cached:
+            record_token_usage.delay(org_id=org_id, tokens_in=0, tokens_out=0, model='cache',
+                                     intent=intent.intent, cache_hit=True)
+        else:
+            self._record_usage(org_id, intent)
+        elapsed = time.time() - start
+        ai_requests_total.labels(intent=intent.intent, route=route).inc()
+        ai_request_duration_seconds.labels(route=route).observe(elapsed)
+        self._log_interaction(user, intent, message, general.text, int(elapsed * 1000), direct=general.cached)
+        self._record_wa_token(organization)
+        return general.text
 
     @staticmethod
     def _log_interaction(user, intent, message: str, reply: str,

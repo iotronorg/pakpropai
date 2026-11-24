@@ -125,6 +125,14 @@ class LoginSecondStepTest(_Base):
     def _verify(self, token, code):
         return self.c.post(A + 'mfa/verify/', {'mfa_token': token, 'code': code}, format='json')
 
+    def test_token_with_double_dash_is_not_taken_for_sql(self):
+        from apps.security.threat_detection import _check_sql_injection
+        self.assertIsNone(_check_sql_injection('eyJ1IjoiMSJ9:1wTx--a' + 'b' * 30 + ':sig--nature'))
+        r = self._verify('eyJ1IjoiMSJ9:1wTx--a' + 'b' * 30 + ':sig--nature', '000000')
+        self.assertNotEqual(r.status_code, 403)
+        for attack in ("admin'--", '1--', "' OR 1=1--" + 'a' * 40, 'a' * 40 + ';', 'a' * 40 + " --", 'a' * 40 + "'--"):
+            self.assertIsNotNone(_check_sql_injection(attack), attack)
+
     def test_totp_replay_and_single_use_challenge(self):
         token = self._challenge()
         code = _code(self.user)

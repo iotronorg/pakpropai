@@ -365,3 +365,7 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - **Cloudinary:** delete old `gdpr_exports/` files (KI‑084).
 - **Frontend:** moderation screens, report button (`/api/v1/listing-reports/`), appeal form, export download; a lead's `phone` can be null (`contact_withheld`).
 - **Prompt:** `agent.system` is version 8; run the eval suite with a live model.
+
+## 43. Session‑19 change: FAQ answers (T‑2016, ADR‑042)
+- No migration. `semantic_cache_enabled` stays off until the answers were reviewed with a live model per market; then it may be set to `true`.
+- Market knowledge must be current: FAQ answers quote its rates.

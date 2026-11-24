@@ -112,8 +112,8 @@ class SystemConfig(models.Model):
         'feature_syndication':          'false',
         # Third-party portal scraping — off by default (ToS/IP risk, DEC-02).
         'scraper_search_enabled':     'false',
-        # Semantic response cache for LLM replies — off by default (cross-user
-        # leakage risk; see apps/ai/service.py semantic_cache_scope).
+        # Context-free answers to general questions, reused within an organization
+        # (apps/ai/faq.py, ADR-042).
         'semantic_cache_enabled':     'false',
         # Deal lock token amount bounds (in the org's local currency).
         # Admins can override per market. 0 means no lower/upper bound.

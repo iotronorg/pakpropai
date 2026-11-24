@@ -385,3 +385,11 @@
 1. `git status`: uncommitted work is T‑2014 and the owner decisions. **Do not commit.**
 2. Next: **T‑2016** (starting files in DEVELOPMENT_STATUS).
 3. Owner decisions still open: KI‑085; email provider and WhatsApp template (go‑live).
+
+## Session 19 — 2026-11-24
+- **Completed:** T‑2016 (ADR‑042). Fixed city matching and KI‑089 (tokens). Found KI‑087, KI‑088. **Tests:** 2324 passed, 1 skipped, 0 failed. **Not committed.**
+
+### Handoff → session 20 (supersedes the one above)
+1. `git status`: uncommitted work is T‑2016. **Do not commit.**
+2. Next: **T‑2070** (starting files in DEVELOPMENT_STATUS).
+3. Owner decisions open: KI‑085, KI‑089 (relax `;` and `--`); email provider and WhatsApp template (go‑live).
