@@ -750,10 +750,12 @@ class AIServiceManager:
             tracing.note_guard('output', 'blocked')
             reply = GuardrailEngine.fallback_error_reply(intent.language)
 
-        # ── 5b. Grounding check against the property in focus (T-0009) ─────────
+        # ── 5b. Grounding: the runtime already checked its own replies against this
+        # turn's sources (T-2013). The focus check (T-0009) covers the rest.
         if is_proposal:
             tracing.note(grounding_result='skipped')
-        if output_ok and not is_proposal and reply != _CANNED_FALLBACK:
+        if (output_ok and not is_proposal and reply != _CANNED_FALLBACK
+                and not tracing.noted('grounding_result')):
             try:
                 from apps.ai.compliance_filters import ComplianceEngine
                 verdict = ComplianceEngine.check_output(reply, org=organization, phone=phone)

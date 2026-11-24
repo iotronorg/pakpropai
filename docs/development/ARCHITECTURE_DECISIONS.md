@@ -800,3 +800,14 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - Cost is stored at the time of the turn; later price rows do not rewrite history.
   - A "conversation" in the report is one contact in one org within the period, until T‑2020. Qualified leads are non‑sandbox leads created in the period whose status is `qualified` now.
 - **Not done:** cost‑spike alerts, dashboards, and cost of one‑shot calls outside a turn. Per‑tool `timeout_ms` is still not enforced.
+
+### ADR‑032 — Grounding checker v2 (T‑2013, 2026‑11‑24)
+- **Context:** the T‑0009 check covered one listing in focus for 60 s, only the largest price, and city/instalments. Multi‑result replies, sizes, rooms and amenities were unchecked.
+- **Decision:**
+  - The runtime checks each model‑written reply against this turn's listing results, or the conversation's last results (30 min) when the turn has none. Own listings are re‑read from the database.
+  - Claims are checked per listing: a block naming a listing (title, else location) is compared with that listing; other blocks with all of them. Price tolerance 1 %, size 2 %.
+  - Numbers from non‑listing tools, the system prompt and the user's budget are not listing claims. A user's number cannot be confirmed as a listing's price. Tool arguments are never evidence.
+  - One regeneration without tools, then a facts‑only reply plus an offer of an agent. If the checker itself fails, the reply is not sent.
+  - The prompt's inventory sample carries names only.
+- **Supersedes** T‑0009 for runtime replies; the old check still runs when the runtime did not.
+- **Limits:** regex extraction. Negated or question lines skip the amenity, room and verification checks; words with no digits ("three bedrooms") and non‑English amenity names are not extracted; image replies and copilot drafts follow their own paths (drafts use the same runtime; images do not). Eval coverage is T‑2070.

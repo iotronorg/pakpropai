@@ -48,6 +48,9 @@ class LLMResult:
     ms: int = 0
     tool_calls: list = None
     steps: int = 0
+    grounding: str = ''
+    grounding_codes: list = None
+    citations: list = None
 
 
 # ── Providers + circuit breaker ───────────────────────────────────────────────
@@ -244,7 +247,8 @@ def chat(message: str, history: list, tools: list, system: P.Rendered | str, *,
         lambda b: runtime.run_turn(b, message, history, specs, system_text), what='chat')
     result = LLMResult(text=turn.text, provider=name, model=turn.model or backend.label, prompt=rendered,
                        prompt_tokens=turn.prompt_tokens, completion_tokens=turn.completion_tokens, ms=ms,
-                       tool_calls=turn.tool_calls, steps=turn.steps)
+                       tool_calls=turn.tool_calls, steps=turn.steps, grounding=turn.grounding,
+                       grounding_codes=turn.grounding_codes, citations=turn.citations)
     if log:                                   # the agent logs its own row (with usage totals)
         _log(result, interaction_type=interaction_type, user=user, input_preview=message)
     return result

@@ -96,9 +96,14 @@ class ComplianceService:
         # 4. Block WhatsApp sessions for this buyer
         try:
             from apps.whatsapp.models import WhatsAppSession
+            from django.db.models import Q
+            # The router stores session phones without '+' (KI-060): match the user and both spellings.
             buyer_phone = getattr(buyer_user, 'phone', None)
+            match = Q(user=buyer_user)
             if buyer_phone:
-                WhatsAppSession.objects.filter(phone=buyer_phone).update(
+                match |= Q(phone__in=[buyer_phone, buyer_phone.lstrip('+')])
+            if buyer_user is not None:
+                WhatsAppSession.objects.filter(match).update(
                     conversation_mode=WhatsAppSession.ConversationMode.BLOCKED,
                 )
         except Exception as exc:

@@ -202,7 +202,10 @@ class AITrace(models.Model):
     latency_ms       = models.PositiveIntegerField(default=0)
     tool_calls       = models.JSONField(default=list, blank=True)     # name/status/ms only, no arguments
     guard_results    = models.JSONField(default=list, blank=True)
-    grounding_result = models.CharField(max_length=10, blank=True, default='')   # passed | blocked | skipped | error
+    # passed | corrected | fallback | error (runtime, T-2013); skipped (proposal); blocked (legacy check)
+    grounding_result = models.CharField(max_length=10, blank=True, default='')
+    grounding_codes  = models.JSONField(default=list, blank=True)     # violation codes of the first draft
+    citations        = models.JSONField(default=list, blank=True)     # listing ids the reply used (FR-AI-007)
     fallback_used    = models.BooleanField(default=False)
     error            = models.CharField(max_length=80, blank=True, default='')
     created_at       = models.DateTimeField(auto_now_add=True)

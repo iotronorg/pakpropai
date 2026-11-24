@@ -31,10 +31,12 @@ from dataclasses import dataclass, field
 
 from django.conf import settings
 
+from . import grounding as G
 from . import tool_registry as R
 
 logger = logging.getLogger(__name__)
 
+GROUNDING_ERROR_REPLY = "I could not verify the details of that answer. Please try again in a moment."
 STEP_LIMIT_REPLY = "I couldn't complete that request. Please try rephrasing."
 
 
@@ -51,6 +53,9 @@ class TurnResult:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     terminal_tool: str = ''
+    grounding: str = ''            # passed | corrected | fallback | error (T-2013)
+    grounding_codes: list = field(default_factory=list)
+    citations: list = field(default_factory=list)
 
 
 def _history_messages(history: list) -> list:
@@ -92,6 +97,7 @@ def run_turn(backend, message: str, history: list, specs: list, system: str, *,
     messages = _history_messages(history) + [{'role': 'user', 'text': message}]
     turn = TurnResult(text='')
     committed = False
+    evidence = G.Evidence(message, history, system)
 
     for step_no in range(1, max_steps + 1):
         try:
@@ -105,6 +111,7 @@ def run_turn(backend, message: str, history: list, specs: list, system: str, *,
         turn.completion_tokens += step.completion_tokens
         if not step.tool_calls:
             turn.text = step.text
+            _ground(turn, evidence, backend, system, messages)
             return turn
 
         messages.append({'role': 'assistant', 'text': step.text, 'tool_calls': step.tool_calls,
@@ -135,6 +142,8 @@ def run_turn(backend, message: str, history: list, specs: list, system: str, *,
                                   side_effect=spec.side_effect)
                     if proposed or (spec.terminal and ok and _summary(result)):
                         terminal = (spec.name, _summary(result))
+            if record['status'] == 'ok':
+                evidence.add(result)
             turn.tool_calls.append(record)
             logger.info('ai.tool %s', json.dumps(record, default=str)[:500])
             messages.append({'role': 'tool', 'id': call.id, 'name': call.name, 'result': result})
@@ -145,6 +154,39 @@ def run_turn(backend, message: str, history: list, specs: list, system: str, *,
     logger.warning('ai.runtime: step limit (%d) reached without a final answer', max_steps)
     turn.text = STEP_LIMIT_REPLY
     return turn
+
+
+def _ground(turn: TurnResult, evidence, backend, system: str, messages: list) -> None:
+    """Check the model's reply; one regeneration, then facts only (T-2013, ADR-032)."""
+    if not turn.text.strip():
+        return
+    try:
+        verdict = G.check(turn.text, evidence)
+        turn.citations, turn.grounding = verdict.cited, 'passed'
+        if verdict.ok:
+            return
+        turn.grounding_codes = verdict.codes
+        logger.warning('ai.grounding violations=%s', verdict.codes)
+        retry = [*messages, {'role': 'assistant', 'text': turn.text},
+                 {'role': 'user', 'text': G.correction(verdict)}]
+        try:
+            step = backend.step(system, retry, [], timeout=settings.AI_TIMEOUT_S)
+            turn.steps += 1
+            turn.prompt_tokens += step.prompt_tokens
+            turn.completion_tokens += step.completion_tokens
+            second = G.check(step.text, evidence) if step.text.strip() and not step.tool_calls else None
+        except Exception as exc:
+            logger.warning('ai.grounding regeneration failed: %s', type(exc).__name__)
+            second = None
+        if second is not None and second.ok:
+            turn.text, turn.citations, turn.grounding = step.text, second.cited, 'corrected'
+            return
+        turn.text, turn.grounding = G.fallback(evidence), 'fallback'
+        turn.citations = [l.id for l in evidence.listings()[:5]]
+        G.record_violation(verdict, evidence)
+    except Exception as exc:                  # never send an unchecked reply
+        logger.error('ai.grounding check failed: %s', exc, exc_info=True)
+        turn.text, turn.grounding = GROUNDING_ERROR_REPLY, 'error'
 
 
 _REDACT = {'phone', 'cnic', 'national_id', 'email', 'name', 'owner_name'}

@@ -43,6 +43,11 @@ def note(**values) -> None:
         trace.values.update(values)
 
 
+def noted(key: str):
+    trace = _current.get()
+    return trace.values.get(key) if trace is not None else None
+
+
 def note_guard(stage: str, reason: str) -> None:
     trace = _current.get()
     if trace is not None:
@@ -53,6 +58,8 @@ def note_llm(result) -> None:
     """Provider, prompt and tool calls of a finished ``llm.chat`` turn (arguments dropped)."""
     keep = ('name', 'step', 'status', 'reason', 'side_effect', 'ms', 'pending_action')
     note(provider=result.provider, model=result.model,
+         grounding_result=result.grounding, grounding_codes=list(result.grounding_codes or ()),
+         citations=list(result.citations or ())[:20],
          tool_calls=[{k: c[k] for k in keep if k in c} for c in result.tool_calls or ()],
          **(result.prompt.ref if result.prompt else {}))
 

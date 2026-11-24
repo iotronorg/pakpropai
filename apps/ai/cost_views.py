@@ -106,7 +106,7 @@ class AICostReportView(APIView):
             unpriced_turns=Count('id', filter=Q(pricing=AITrace.Pricing.UNPRICED)),
             fallback_turns=Count('id', filter=Q(fallback_used=True)),
             guard_blocked_turns=Count('id', filter=~Q(guard_results=[])),
-            grounding_blocked_turns=Count('id', filter=Q(grounding_result='blocked')),
+            grounding_blocked_turns=Count('id', filter=Q(grounding_result__in=['blocked', 'fallback', 'error'])),
             failed_turns=Count('id', filter=~Q(error='')))
         qualified = leads.count()
         priced = traces.filter(pricing=AITrace.Pricing.PRICED)

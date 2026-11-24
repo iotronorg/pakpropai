@@ -487,3 +487,9 @@
 - **T‑2011 added:** `AITrace`, `ModelPrice` (`ai 0005`), `apps/ai/tracing.py`, `cost_views.py`, `tests/test_ai_traces.py`; per‑call usage records.
 - **T‑2011 changed:** `views.py` (org scope, real prices); thinking/cached token capture; failover marked in `llm._run`; erasure unlinks traces.
 - **Tests updated:** side‑effect guards and the deal‑lock AI tool tests confirm through `PendingAction`.
+
+### 2026-11-24 — session 10, continued: T‑2013 grounding checker v2; KI‑060
+- **Verified:** the owner committed T‑2011/T‑2012 (`25b2b5f`); the tree was clean.
+- **Added:** `apps/ai/grounding.py`; `AITrace.grounding_codes`/`citations` (`ai 0006`); `tests/test_grounding.py`.
+- **Changed:** `runtime.run_turn` (evidence, `_ground`), `LLMResult`/trace fields, service step 5b, `search_properties` rows carry `currency`, inventory sample without prices and limited to visible listings, cost report counts fallbacks.
+- **Fixed:** KI‑060 AML session block.

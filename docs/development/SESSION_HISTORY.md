@@ -307,3 +307,9 @@
 1. `git status`: uncommitted work is T‑2012 and T‑2011 (see IMPLEMENTATION_LOG). **Do not commit.**
 2. Next: **T‑2013** grounding checker v2. Start in `apps/ai/compliance_filters.py`, `apps/ai/service.py` `_process` (step 5b), and `apps/ai/runtime.py` (collect tool results as sources). Then T‑2020.
 3. Quick fix worth doing first: KI‑060 (AML session block). Owner/operator: enter `ModelPrice` rows (GO_LIVE §33).
+
+- **Continued ("continue"): T‑2013** (ADR‑032) and KI‑060. Found KI‑064. Tests: 2035 passed, 1 skipped, 0 failed. **Not committed.**
+
+### Handoff → session 11 (supersedes the one above)
+1. `git status`: uncommitted work is T‑2013 and KI‑060. **Do not commit.**
+2. Next: **T‑2020** (see DEVELOPMENT_STATUS for the starting files). KI‑064 is a small fix worth doing first.

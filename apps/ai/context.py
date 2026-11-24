@@ -106,22 +106,17 @@ class DynamicContextBuilder:
             # Live inventory sample — top 5 active properties
             try:
                 from apps.properties.models import Property
-                from apps.markets.services import currency_for_country, org_country
-                org_currency = currency_for_country(org_country(org))
                 sample = list(
                     Property.objects
-                    .filter(organization=org, is_active=True)
+                    .visible_to(org).filter(organization=org)
                     .order_by('-created_at')
-                    .values('title', 'city', 'location', 'price', 'currency')[:5]
+                    .values('title', 'city', 'location')[:5]
                 )
                 if sample:
-                    lines.append('Inventory sample (live):')
+                    # Names only: facts must come from a tool result (T-2013).
+                    lines.append('Inventory sample (call search_properties for any details):')
                     for p in sample:
-                        cur = p.get('currency') or org_currency
-                        price = f"{cur} {p['price']:,}" if p['price'] else 'POA'
-                        lines.append(
-                            f"  • {p['title']} — {p['location']}, {p['city']} · {price}"
-                        )
+                        lines.append(f"  • {p['title']} — {p['location']}, {p['city']}")
             except Exception:
                 pass
 

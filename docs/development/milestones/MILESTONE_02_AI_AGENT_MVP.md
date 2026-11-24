@@ -13,7 +13,7 @@
 | 4 | Agents receive enquiries within 1 minute and can reply | Not started |
 | 5 | Saved‑search alerts arrive within the configured frequency | Not started |
 | 6 | Criteria‑extraction F1 meets the Phase 2 baseline per launch language | Not started |
-| 7 | Zero critical hallucinations in the release eval suite; grounding checker live | Not started |
+| 7 | Zero critical hallucinations in the release eval suite; grounding checker live | Checker live (T‑2013); the eval suite is T‑2070 |
 | 8 | Side‑effect tools never execute without a confirmation record (tests) | Met for the existing tools (T‑2012); a test requires every committing registry tool to be confirmable. Enquiry, booking and saved‑search tools come later |
 | 9 | AI cost per conversation and per qualified lead from real token data | Built (T‑2011, `GET /ai/costs/`); needs operator‑entered `ModelPrice` rows |
 
@@ -23,7 +23,7 @@
 | T‑2010 ✅ | P1 | Explicit tool loop: the provider returns tool calls and the runtime executes them; tool registry with per‑tool policy; per‑step usage | AI spec §3.1/§3.2/§5 | T‑1120 |
 | T‑2011 ✅ | P1 | `AITrace` (per turn: prompt version, provider, tokens, cost, latency, tool calls, guard/grounding results, fallback) + `ModelPrice` cost | AI spec §10/§11 | T‑2010 |
 | T‑2012 ✅ | P1 | Durable `PendingAction` confirmations (replace the cache‑only proposals) | AI spec §5, MVP 8 | T‑2010 |
-| T‑2013 | P1 | Grounding checker v2 (claims vs cited sources; one regeneration then a safe fallback) | AI spec §3.1/§8.2, MVP 7 | T‑2010 |
+| T‑2013 ✅ | P1 | Grounding checker v2 (claims vs cited sources; one regeneration then a safe fallback) | AI spec §3.1/§8.2, MVP 7 | T‑2010 |
 | T‑2014 | P2 | Listing draft/moderation state; `draft_listing` tool draft‑only; moderation queue and user reports | KI‑025, G2 | T‑1080, T‑2012 |
 | T‑2016 | P2 | Context‑free FAQ path so the semantic cache can be enabled safely | ADR‑003 | T‑2010 |
 | T‑2020 | P1 | Durable `Conversation`/`Message` (Postgres, Redis window cache); conversation API (SSE); WhatsApp adapter on the runtime | FR‑AI‑001/002/004 | T‑2010 |

@@ -85,6 +85,7 @@ def search_properties(
                     'location': r.location,
                     'area_marla': str(r.area_marla) if r.area_marla else 'N/A',
                     'price': r.price or 0,
+                    'currency': r.currency or '',
                     'price_formatted': ('Price on request' if r.price_on_request
                                         else format_price(r.price, r.currency)),
                     'price_type': r.price_type,

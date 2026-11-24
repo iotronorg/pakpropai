@@ -299,3 +299,9 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - **API:** `GET /api/v1/ai/costs/`. In `/ai/token-usage/`, `estimated_usd_cost` and `estimated_savings_usd` can now be null.
 - **Budgets:** Gemini thinking tokens now count as output, so budgets may fill faster.
 - **Settings:** `AI_TRACE_RETENTION_DAYS` (400). Restart celery beat (`purge-ai-traces`).
+
+## 34. Session‑10 change: grounding checker v2 (T‑2013, ADR‑032)
+- **Migration:** `ai 0006` (two columns on `ai_traces`).
+- **Behaviour:** a reply with wrong listing facts costs one extra model call; after a second failure the user gets our records only. Own inventory in the prompt no longer includes prices.
+- **Watch after deploy:** `AITrace.grounding_result` (`corrected`, `fallback`, `error`) and `grounding_codes`; `ComplianceViolation` type `ungrounded_reply`. A high `fallback` rate points to false positives.
+- **AML (KI‑060):** review WhatsApp sessions of buyers blocked earlier; the block may not have applied.
