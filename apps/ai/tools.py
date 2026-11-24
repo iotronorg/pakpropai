@@ -13,6 +13,7 @@ from ._tools_financial import calculate_7e_tax, check_loan_eligibility  # noqa: 
 from ._tools_fraud import run_fraud_check                        # noqa: F401
 from ._tools_enquiries import create_enquiry                    # noqa: F401
 from ._tools_viewings import book_viewing, find_viewing_slots     # noqa: F401
+from ._tools_preferences import create_saved_search, remember_preferences, save_listing  # noqa: F401
 from ._tools_deals import initiate_deal_lock                     # noqa: F401
 
 # ─── Property Audit ──────────────────────────────────────────────────────────

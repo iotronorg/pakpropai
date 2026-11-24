@@ -525,3 +525,9 @@
 - **Fixed (security):** an agent without an organization could create an appointment on **any** lead id and read that lead's phone number; an agent who changed organization took the old organization's visits along.
 - **Fixed:** dashboard double booking; rescheduled visits were never reminded and could not be confirmed, completed or moved again; reminders ignored preferences; reschedule accepted past times and treated local times as UTC; the reminder promised CONFIRM/CANCEL replies nothing handled (KI‑076).
 - **Privacy:** erasure cancels upcoming visits and removes notes, names and feedback; export lists visits.
+
+### 2026-11-24 — session 16: T‑2040 favourites, saved searches, preferences
+- **Verified:** the owner committed T‑2060 (`b2407db`); the tree was clean at the start.
+- **Added:** `apps/preferences`, `apps/ai/_tools_preferences.py`, migrations `preferences/0001`, `notifications/0004`, `compliance/0004`, `tests/test_preferences.py`.
+- **Changed:** search tools use stated preferences; `notify_user` returns a bool; `agent.system` 6; erasure and export.
+- **Fixed during review:** `notify_user` swallows errors, so a failed alert would have marked listings as announced; a failed `remember_preferences` would have left the consent on.

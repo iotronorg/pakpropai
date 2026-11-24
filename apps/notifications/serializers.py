@@ -15,6 +15,6 @@ class NotificationPreferenceSerializer(serializers.ModelSerializer):
         fields = (
             'whatsapp_enabled', 'sms_enabled', 'email_enabled',
             'lead_updates', 'appointment_reminders', 'deal_updates',
-            'report_ready', 'marketing', 'updated_at',
+            'report_ready', 'saved_searches', 'marketing', 'updated_at',
         )
         read_only_fields = ('updated_at',)

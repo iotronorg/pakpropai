@@ -59,6 +59,7 @@ class UserNotificationPreference(models.Model):
     appointment_reminders = models.BooleanField(default=True, help_text='Upcoming visit reminders')
     deal_updates          = models.BooleanField(default=True, help_text='Deal lock and escrow notifications')
     report_ready          = models.BooleanField(default=True, help_text='Report generation completed')
+    saved_searches        = models.BooleanField(default=True, db_default=True, help_text='New matches for saved searches')
     marketing             = models.BooleanField(default=False, help_text='Promotional and marketing messages')
 
     updated_at = models.DateTimeField(auto_now=True)

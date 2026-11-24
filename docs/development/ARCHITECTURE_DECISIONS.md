@@ -868,3 +868,13 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - The assistant books only after the user's confirmation and only a time that is really free; the listing and UTC start are stored at proposal time.
   - Reminders a day and an hour before, to visitor and agent, by their preferences, claimed once per time; moving a visit resets them. Feedback (1–5) from each side after the visit; the visitor is asked once.
 - **Limits:** KI‑076, KI‑077; calendar sync and ICS are P2 (FR‑APT‑007). The lock protects all API paths; direct database or admin edits are not checked.
+
+### ADR‑038 — Favourites, saved searches and preference memory (T‑2040, 2026‑11‑24)
+- **Decision:**
+  - New app `apps/preferences`; everything is private to the person, under `/api/v1/me/`. Favourites keep only a link: a listing that is no longer public shows no data.
+  - A saved search stores prepared criteria and the consent (time, source). Unknown required amenities are refused instead of dropped, which would widen the alert.
+  - Alerts run every 15 minutes: one locked transaction per search marks listings (`AlertDelivery`, unique) and queues the notification; if that fails the marks roll back and it retries after an hour. Instant means at most hourly. Not announced: own, saved, dismissed, already announced, or anything from a pause. A withdrawn place or market pauses the search.
+  - `notify_user` now returns whether it worked. Alerts have their own preference (`saved_searches`) and a signed stop link that can only pause that search.
+  - Preferences need the `ai_memory` consent, which has its own endpoint because withdrawing deletes the profile. Only structured criteria fields; no free text, no accessibility needs. Items are stated or inferred (3+ saved listings, 60 % agreement), and deleted after `PREFERENCE_RETENTION_DAYS` (180).
+  - The assistant uses only stated items, only to fill a missing place or purpose or "my budget", and must say so. `create_saved_search` and `remember_preferences` run after YES on criteria frozen at proposal time; `save_listing` is reversible and needs no confirmation.
+- **Limits:** KI‑078…KI‑080.

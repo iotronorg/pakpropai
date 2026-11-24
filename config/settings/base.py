@@ -59,6 +59,7 @@ LOCAL_APPS = [
     'apps.leads',
     'apps.enquiries',
     'apps.viewings',
+    'apps.preferences',
     'apps.escrow',
     'apps.reports',
     'apps.audit',
@@ -253,6 +254,9 @@ REST_FRAMEWORK = {
 # The web app: links in emails, checkout returns, referral links.
 FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:3000')
 
+# T-2040: preference items not confirmed for this long are deleted
+PREFERENCE_RETENTION_DAYS = env.int('PREFERENCE_RETENTION_DAYS', default=180)
+
 # ── Email (T-2050) ────────────────────────────────────────────────────────────
 # Any SMTP provider. Without EMAIL_HOST no email is queued.
 EMAIL_HOST          = env('EMAIL_HOST', default='')
@@ -283,6 +287,9 @@ SPECTACULAR_SETTINGS = {
         'AgentEmploymentTypeEnum': 'apps.agents.models.Agent.EmploymentType',
         'MembershipEmploymentTypeEnum': 'apps.organizations.models.OrganizationMembership.EmploymentType',
         'AreaUnitEnum': 'apps.properties.models.Property.AreaUnit',   # size_unit + deprecated area_unit
+        'FavouriteKindEnum': 'apps.preferences.models.Favourite.Kind',
+        'AlertChannelEnum': 'apps.preferences.models.SavedSearch.Channel',
+        'AlertFrequencyEnum': 'apps.preferences.models.SavedSearch.Frequency',
     },
     # ADR-017 error envelope, added to every /api/ JSON error body.
     'APPEND_COMPONENTS': {'schemas': {'ErrorEnvelope': {
@@ -451,6 +458,14 @@ CELERY_BEAT_SCHEDULE = {
     'daily-agent-performance-snapshot': {
         'task':     'apps.agents.tasks.refresh_agent_performance_snapshots',
         'schedule': 86400,  # every 24 hours
+    },
+    'saved-search-alerts': {
+        'task':     'apps.preferences.tasks.send_saved_search_alerts',
+        'schedule': 900,    # every 15 minutes (T-2040)
+    },
+    'purge-stale-preferences': {
+        'task':     'apps.preferences.tasks.purge_stale_preferences',
+        'schedule': 86400,
     },
     'appointment-reminders': {
         'task':     'apps.leads.tasks.send_appointment_reminders',

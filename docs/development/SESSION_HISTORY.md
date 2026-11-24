@@ -358,3 +358,12 @@
 1. `git status`: uncommitted work is T‑2060. **Do not commit.**
 2. Next: **T‑2040** (starting files in DEVELOPMENT_STATUS).
 3. Owner decisions still open: KI‑065, KI‑066, KI‑074; email provider.
+
+## Session 16 — 2026-11-24
+- **Completed:** T‑2040 (ADR‑038). Found KI‑078…KI‑080.
+- **Tests:** 2242 passed, 1 skipped, 0 failed. **Not committed.**
+
+### Handoff → session 17 (supersedes the one above)
+1. `git status`: uncommitted work is T‑2040. **Do not commit.**
+2. Next: **T‑2041** (starting files in DEVELOPMENT_STATUS).
+3. Owner decisions still open: KI‑065, KI‑066, KI‑074; email provider; WhatsApp template.

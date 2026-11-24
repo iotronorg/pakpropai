@@ -93,7 +93,7 @@ Priority: P0 (blocker) → P3.
 | T‑2020 | [x] | P1 | Durable Conversation/Message, SSE conversation API, WhatsApp adapter on the runtime | ADR‑033. `apps/conversations`: encrypted messages linked to `AITrace`/`PendingAction`, session state, Redis window rebuilt from Postgres, retention per market. API: list/open/read/delete, messages (JSON or SSE), state/shortlist. 31 tests |
 | T‑2030 | [x] | P1 | `SearchCriteria` extraction + clarification, SearchService v2, ranking with explanations | ADR‑034. `properties/criteria.py`, `properties/listing_search.py`, `POST /api/v1/search/`, tools `search_listings`/`update_session_criteria`/`get_listing`. 42 tests. Extraction accuracy (golden set) is T‑2070 |
 | T‑2031 | [x] | P1 | Public listing read API | ADR‑035. `GET /api/v1/public/listings/search/` and `/{slug_or_id}/`; explicit field list, ETag and 60 s public cache. 22 tests |
-| T‑2040 | [ ] | P2 | Preferences with consent, favourites, saved searches + alerts | |
+| T‑2040 | [x] | P2 | Preferences with consent, favourites, saved searches + alerts | ADR‑038. `apps/preferences`; tools `save_listing`, `create_saved_search`, `remember_preferences`. `tests/test_preferences.py` |
 | T‑2041 | [ ] | P2 | Consumer comparison | |
 | T‑2050 | [x] | P1 | Enquiries → leads, threads, email notifications | ADR‑036. `apps/enquiries`, `create_enquiry` tool, outbox email. Attachments and report/block are split out to T‑2051. 40 tests |
 | T‑2051 | [ ] | P2 | Thread attachments and report/block (rest of FR‑COM‑001/007) | KI‑072 |

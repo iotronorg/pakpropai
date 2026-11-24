@@ -130,7 +130,78 @@ def _book_viewing(a: dict):
     return f'Shall I book this viewing with {E.lister_name(listing)}?', '\n'.join(lines + [E.CONSENT_TEXT])
 
 
-_BUILDERS = {'book_viewing': _book_viewing, 'create_enquiry': _create_enquiry, 'list_property': _list_property, 'connect_to_agent': _connect_to_agent,
+def _current_search():
+    """The criteria of the user's last search, validated again."""
+    from apps.preferences import alerts as A
+    from apps.properties import criteria as C
+
+    from ._tools_listings import _state
+    if _ctx_user.get() is None:
+        raise Refused('The user must sign in or register on WhatsApp first.')
+    state = _state()
+    try:
+        return A.clean(dict((state.active_criteria or {}) if state else {}))
+    except (C.CriteriaInvalid, C.LocationAmbiguous):
+        raise Refused('There is no complete search yet. Search first (a place is needed).') from None
+
+
+def _create_saved_search(a: dict):
+    import json
+
+    from apps.preferences import alerts as A
+    from apps.preferences.models import SavedSearch
+    crit = _current_search()
+    a['frequency'] = (a.get('frequency') or 'daily').strip().lower()
+    a['channel'] = (a.get('channel') or 'whatsapp').strip().lower()
+    if a['frequency'] not in SavedSearch.Frequency.values or a['channel'] not in SavedSearch.Channel.values:
+        raise Refused('Frequency is instant, daily or weekly; channel is whatsapp, email or in_app.')
+    if a['channel'] == 'email' and not (_ctx_user.get().email or '').strip():
+        raise Refused('The user has no email address. Offer whatsapp or in_app.')
+    a['criteria'] = json.dumps(A.dump(crit), sort_keys=True)
+    lines = [f'🔎 {A.describe(crit)}', f"🔔 {a['frequency'].title()}, by {a['channel'].replace('_', '-')}",
+             *_criteria_lines(crit), 'You can stop these alerts at any time.']
+    return 'Shall I alert you about new matching listings?', '\n'.join(lines)
+
+
+def _criteria_lines(crit) -> list[str]:
+    """Every condition, so the user sees exactly what is stored."""
+    from apps.locations.models import Location
+    d = crit.model_dump(mode='json', exclude_defaults=True, exclude={
+        'market', 'missing_required', 'confidence', 'unsupported_requests', 'location'})
+    out = []
+    names = [*Location.objects.filter(pk__in=crit.location.location_ids).values_list('name', flat=True)]
+    names += [crit.location.free_text] if crit.location.free_text else []
+    names += ['map area'] if crit.location.geo else []
+    if names:
+        out.append(f"• location: {', '.join(names)}")
+    for key, value in d.items():
+        if isinstance(value, dict):
+            value = ', '.join(f'{k} {v}' for k, v in value.items() if v not in (None, '', []))
+        elif isinstance(value, list):
+            value = ', '.join(map(str, value))
+        out.append(f"• {key.replace('_', ' ')}: {value}")
+    return out
+
+
+def _remember_preferences(a: dict):
+    import json
+
+    from apps.preferences import services as P
+    from apps.properties import criteria as C
+    crit = _current_search()
+    d = crit.model_dump(mode='json', exclude_defaults=True)
+    if crit.amenities_required:                 # remembered as a wish, not a hard rule
+        d['amenities_preferred'] = list(dict.fromkeys([*crit.amenities_required, *crit.amenities_preferred]))[:20]
+    values = P.clean(crit.market, {k: d[k] for k in P.KEYS if k in d})
+    if not values:
+        raise Refused('There is nothing to remember yet.')
+    a['criteria'] = json.dumps({'market': crit.market, **values}, sort_keys=True)
+    shown = C.parse({'market': crit.market, **values})
+    return 'Shall I remember these preferences?', '\n'.join([*_criteria_lines(shown), P.MEMORY_TEXT])
+
+
+_BUILDERS = {'create_saved_search': _create_saved_search, 'remember_preferences': _remember_preferences,
+             'book_viewing': _book_viewing, 'create_enquiry': _create_enquiry, 'list_property': _list_property, 'connect_to_agent': _connect_to_agent,
              'generate_property_audit': _generate_property_audit,
              'initiate_deal_lock': _initiate_deal_lock}
 

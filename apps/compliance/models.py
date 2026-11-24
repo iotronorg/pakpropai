@@ -9,6 +9,7 @@ class ConsentRecord(models.Model):
         MARKETING     = 'marketing',     'Marketing Communications'
         ANALYTICS     = 'analytics',     'Analytics & Product Improvement'
         AI_PROCESSING = 'ai_processing', 'AI Conversation Processing'
+        AI_MEMORY     = 'ai_memory',     'AI Preference Memory'
 
     id         = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user       = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,

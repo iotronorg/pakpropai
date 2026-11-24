@@ -167,6 +167,14 @@ class RTBFOrchestrator:
             logger.error("RTBF: enquiry erasure failed user=%s: %s", user.id, exc)
             errors['enquiries'] = str(exc)
 
+        # 5e — Favourites, saved searches, preference profile (T-2040)
+        try:
+            from apps.preferences.services import erase_user as erase_preferences
+            scope['preferences_deleted'] = erase_preferences(user)
+        except Exception as exc:
+            logger.error("RTBF: preference erasure failed user=%s: %s", user.id, exc)
+            errors['preferences'] = str(exc)
+
         # 6 — User anonymization
         try:
             user.is_active = False

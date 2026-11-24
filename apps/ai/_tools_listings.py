@@ -4,6 +4,7 @@ Search tools over ``SearchCriteria`` (T-2030): ``search_listings``,
 the server validates them, asks for what is missing, and ranks.
 """
 import logging
+import re
 
 from apps.markets.services import org_country
 from apps.properties import criteria as C
@@ -11,7 +12,7 @@ from apps.properties import listing_search as S
 from apps.properties.public_listings import public_text
 from apps.properties.taxonomy import ALL_SUBTYPES, SUBTYPES, classify_type_text
 
-from ._tools_context import _ctx_conversation, _ctx_message, _ctx_org, _ctx_phone
+from ._tools_context import _ctx_conversation, _ctx_message, _ctx_org, _ctx_phone, _ctx_user
 
 logger = logging.getLogger(__name__)
 
@@ -122,8 +123,32 @@ _UNSUPPORTED = {'subjective_or_protected': 'not something we can judge or filter
                 'no_data': 'we have no distance data for this; ask for a named area instead'}
 
 
+_MY_BUDGET = re.compile(r'\b(?:my|usual|same|mere?|mera) budget\b', re.I)
+
+
+def _from_profile(raw: dict) -> list[str]:
+    """
+    Fill a missing place or purpose, and "my budget", from the user's own stated
+    preferences (needs their consent). Returns the fields that were filled.
+    """
+    from apps.preferences.services import stated
+    need = [k for k in ('location', 'purpose') if not raw.get(k)]
+    if raw.get('any_purpose') and 'purpose' in need:
+        need.remove('purpose')
+    if _MY_BUDGET.search(_ctx_message.get() or '') and not (raw.get('price') or {}).get('max'):
+        need.append('price')
+    user = _ctx_user.get()
+    if not need or not getattr(user, 'pk', None):
+        return []
+    mine = stated(user, raw.get('market') or org_country(_ctx_org.get()))
+    used = [k for k in need if mine.get(k)]
+    raw.update({k: mine[k] for k in used})
+    return used
+
+
 def _run(base: dict, args: dict, asked=()) -> dict:
     raw = _patch(base, args)
+    remembered = _from_profile(raw)
     requested = C.unsupported(_ctx_message.get() or '')
     raw['unsupported_requests'] = [u.model_dump() for u in requested]
     raw.pop('missing_required', None)
@@ -146,6 +171,9 @@ def _run(base: dict, args: dict, asked=()) -> dict:
     found = S.execute(crit, viewer_org=_ctx_org.get(), limit=LIMIT)
     out = {'count': found.total, 'criteria': echo, 'ranking_version': found.ranking_version,
            'properties': [_row(h.listing, h) for h in found.hits]}
+    if remembered:
+        out['from_saved_preferences'] = remembered
+        out['instruction'] = 'Say which conditions came from the saved preferences and let the user change them.'
     if assumed:
         values = {'price.currency': crit.price.currency, 'price.period': f'per {crit.price.period}',
                   'size.unit': crit.size.unit}

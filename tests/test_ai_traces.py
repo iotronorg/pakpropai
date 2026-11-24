@@ -88,7 +88,7 @@ class TurnTraceTest(TestCase):
         price()
         _, t = self.turn()
         self.assertEqual((t.route, t.intent, t.provider, t.model), ('llm', 'general_query', 'gemini', 'm'))
-        self.assertEqual((t.prompt_name, t.prompt_version, len(t.prompt_digest)), ('agent.system', 5, 12))
+        self.assertEqual((t.prompt_name, t.prompt_version, len(t.prompt_digest)), ('agent.system', 6, 12))
         self.assertEqual((t.tokens_in, t.tokens_out, t.llm_calls), (1000, 100, 1))
         self.assertEqual((t.pricing, t.cost, t.currency), (P.PRICED, Decimal('0.0014'), 'USD'))
         self.assertEqual((t.grounding_result, t.user, t.error), ('passed', self.user, ''))

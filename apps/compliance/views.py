@@ -40,7 +40,8 @@ class ConsentView(APIView):
         _require_gdpr(request)
         purpose = request.data.get('purpose')
         revoke  = request.data.get('revoke', False)
-        valid_purposes = [c.value for c in ConsentRecord.Purpose]
+        # AI memory has its own endpoint, which also deletes the profile (T-2040).
+        valid_purposes = [c.value for c in ConsentRecord.Purpose if c != ConsentRecord.Purpose.AI_MEMORY]
         if purpose not in valid_purposes:
             return Response(
                 {'detail': f"Invalid purpose. Choose from: {valid_purposes}"},

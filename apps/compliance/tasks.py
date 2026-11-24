@@ -78,6 +78,10 @@ def generate_data_export(request_id: str):
         from apps.leads.models import Appointment
         data['viewings'] = list(Appointment.objects.filter(lead__user=user).values(
             'id', 'property__ref_no', 'scheduled_at', 'duration_minutes', 'status', 'participants'))
+        data['favourites'] = list(user.favourites.values('listing__ref_no', 'kind', 'note', 'created_at'))
+        data['saved_searches'] = list(user.saved_searches.values(
+            'name', 'criteria', 'frequency', 'channel', 'is_active', 'consented_at', 'consent_via'))
+        data['preferences'] = list(user.preference_items.values('market', 'key', 'value', 'source', 'updated_at'))
         payload = json.dumps(data, default=str)
         import cloudinary.uploader
         result = cloudinary.uploader.upload(

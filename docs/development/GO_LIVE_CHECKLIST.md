@@ -342,3 +342,11 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - **Organization managers** now see visits by the lead's organization, not by the agent's current one.
 - **Beat:** the existing 15‑minute `appointment-reminders` job also sends day‑before reminders and feedback requests.
 - **Prompt:** `agent.system` is version 5; run the eval suite with a live model.
+
+## 40. Session‑16 change: favourites, saved searches, preferences (T‑2040, ADR‑038)
+- **Migrations:** `preferences/0001`, `notifications/0004` (column with a database default), `compliance/0004` (choices only).
+- **Beat:** restart it: `saved-search-alerts` (15 min) and `purge-stale-preferences` (daily). Deploy workers before beat.
+- **Settings:** `PREFERENCE_RETENTION_DAYS` (180). `FRONTEND_URL` is used in the stop link.
+- **Frontend:** `/saved-searches/<id>?stop=<token>` must POST the token to `/api/v1/saved-search-stop/` (no sign‑in); send `alert_consent: true`; show the memory consent text.
+- **Before launch:** legal review of the memory and alert consent texts per market; WhatsApp template (KI‑078).
+- **Prompt:** `agent.system` is version 6; run the eval suite with a live model.

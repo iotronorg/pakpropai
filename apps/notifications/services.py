@@ -21,6 +21,7 @@ _EVENT_PREF_FIELD = {
     'appointment_reminders': 'appointment_reminders',
     'deal_updates':          'deal_updates',
     'report_ready':          'report_ready',
+    'saved_searches':        'saved_searches',
     'marketing':             'marketing',
 }
 
@@ -33,10 +34,11 @@ def notify_user(
     event_type: str = 'lead_updates',
     send_email: bool = False,
     path: str = '',
-) -> None:
+) -> bool:
     """
     Create a Notification record (the in-app inbox) and deliver it by WhatsApp and/or
     email as the user's preferences allow. ``path`` is the page the email links to.
+    Never raises; False means it failed (the caller may retry).
     """
     try:
         from .models import Notification, UserNotificationPreference
@@ -73,5 +75,7 @@ def notify_user(
                 f"notify_user: delivery skipped for {getattr(user, 'phone', '?')} "
                 f"(channel_allowed={channel_allowed}, event={event_type}={event_allowed})"
             )
+        return True
     except Exception as exc:
         logger.warning(f"notify_user failed for {getattr(user, 'phone', '?')}: {exc}")
+        return False

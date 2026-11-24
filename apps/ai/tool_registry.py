@@ -83,6 +83,12 @@ REGISTRY: dict[str, ToolSpec] = {s.name: s for s in (
     ToolSpec('find_viewing_slots', flag='feature_talk_to_agent'),
     ToolSpec('book_viewing', side_effect=CONTACT_SHARE, requires_confirmation=True,
              flag='feature_talk_to_agent', terminal=True),
+    # Reversible, the user's own list: no confirmation (AI spec §5).
+    ToolSpec('save_listing', side_effect=SESSION, flag='feature_property_search'),
+    ToolSpec('create_saved_search', side_effect=LOW, requires_confirmation=True,
+             flag='feature_property_search', terminal=True),
+    ToolSpec('remember_preferences', side_effect=LOW, requires_confirmation=True,
+             flag='feature_property_search', terminal=True),
     ToolSpec('initiate_deal_lock', side_effect=FINANCIAL, requires_confirmation=True,
              flag='feature_deal_lock', flag_default=False),
     ToolSpec('generate_property_audit', side_effect=LOW, requires_confirmation=True,
