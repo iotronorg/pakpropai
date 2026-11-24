@@ -237,6 +237,7 @@ REST_FRAMEWORK = {
         'ai_daily':        env('AI_DAILY_MESSAGE_LIMIT', default='200/day'),   # T-2020, web chat
         'fraud_check':     '20/min',
         'property_search': '30/min',
+        'public_listings': env('PUBLIC_LISTINGS_RATE', default='120/min'),   # per IP (T-2031)
         'report_generate': '5/hour',
         'bulk_operation':  '10/min',
         'score_property':    '15/min',

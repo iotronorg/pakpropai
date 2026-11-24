@@ -28,7 +28,7 @@
 | T‑2016 | P2 | Context‑free FAQ path so the semantic cache can be enabled safely | ADR‑003 | T‑2010 |
 | T‑2020 ✅ | P1 | Durable `Conversation`/`Message` (Postgres, Redis window cache); conversation API (SSE); WhatsApp adapter on the runtime | FR‑AI‑001/002/004 | T‑2010 |
 | T‑2030 ✅ | P1 | `SearchCriteria` extraction and clarification; SearchService v2 (filters + geo + text) and ranking with explanations; `search_listings`/`get_listing` tools | FR‑AI‑003, FR‑SRCH‑*, FR‑REC‑001/003, MVP 2 | T‑2010 |
-| T‑2031 | P1 | Public listing read API | GAP‑002 | T‑2030 |
+| T‑2031 ✅ | P1 | Public listing read API | GAP‑002 | T‑2030 |
 | T‑2040 | P2 | Preference profile with consent; favourites (`save_listing`); saved searches and alerts (email, WhatsApp) | FR‑AI‑008, FR‑REC‑002/004, MVP 5 | T‑2030, T‑2012 |
 | T‑2041 | P2 | Consumer comparison (`compare_listings`) | FR‑CMP‑001/002 | T‑2030 |
 | T‑2050 | P1 | Enquiries → leads (`create_enquiry` with consent); in‑app threads; email notifications | FR‑COM‑001–003, MVP 4 | T‑2012 ✅ |

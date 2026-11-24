@@ -319,3 +319,9 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - **API:** `POST /api/v1/search/` is public, 30/min per IP or user.
 - **Optional:** set `Market.settings["ranking_weights"]` per market.
 - **Security (KI‑067):** array JSON bodies no longer crash the security middleware.
+
+## 37. Session‑13 change: public listing API (T‑2031, ADR‑035)
+- **No migration.** New public endpoints under `/api/v1/public/listings/`.
+- **Setting:** `PUBLIC_LISTINGS_RATE` (`120/min` per IP). A server‑rendered frontend shares one IP: raise it or cache in front.
+- **Proxy:** per‑IP limits need the real client IP behind the proxy.
+- **Before launch:** run `manage.py sanitize_images` for images from before T‑1110 (KI‑071) and have the field list reviewed for privacy.

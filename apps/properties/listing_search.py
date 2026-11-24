@@ -366,8 +366,9 @@ def _explain(p, c, names, weights, labels, keys, as_of):
 
 def summary(p: Property) -> dict:
     """Public listing facts shared by search results, chat cards and the AI tools."""
+    from .public_listings import public_text
     return {
-        'id': str(p.pk), 'ref_no': p.ref_no, 'title': p.title, 'city': p.city, 'location': p.location,
+        'id': str(p.pk), 'ref_no': p.ref_no, 'title': public_text(p, p.title), 'city': p.city, 'location': p.location,
         'price': None if p.price_on_request else p.price, 'currency': p.currency, 'price_type': p.price_type,
         'purpose': p.purpose, 'category': p.category, 'subtype': p.subtype, 'size': size_text(p),
         'bedrooms': p.bedrooms, 'bathrooms': p.bathrooms,
@@ -407,7 +408,7 @@ def relaxations(c: SearchCriteria, viewer_org=None) -> list[dict]:
 
 
 def execute(c: SearchCriteria, *, viewer_org=None, sort: str = 'relevance', limit: int = 20, cursor: str = '',
-            with_facets: bool = False) -> SearchResult:
+            with_facets: bool = False, with_relaxations: bool = True) -> SearchResult:
     """``c`` must come from ``criteria.prepare``."""
     if sort not in SORTS:
         raise ValueError('sort')
@@ -438,7 +439,7 @@ def execute(c: SearchCriteria, *, viewer_org=None, sort: str = 'relevance', limi
         next_cursor = signing.dumps({'k': rows[-1].sort_key, 'i': str(rows[-1].pk), 't': as_of.isoformat(),
                                      'd': digest}, salt=_SALT)
     return SearchResult(hits, total, c, version, next_cursor, facets(base) if with_facets else None,
-                        relaxations(c, viewer_org) if not total else [])
+                        relaxations(c, viewer_org) if with_relaxations and not total else [])
 
 
 _POSITION = re.compile(r'#?(\d{1,2})')

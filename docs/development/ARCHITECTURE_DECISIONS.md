@@ -837,3 +837,12 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - Cursors are signed, expire after a day, and are bound to the criteria, sort, ranking version and viewer.
 - **Assistant:** `search_listings`, `update_session_criteria` and `get_listing` replace `search_properties`, so **chat no longer scrapes portals** (FR‑SRCH‑011) and no longer asks the model for verdicts. The old service code stays.
 - **Limits:** no semantic search, POI distance, polygon or FX; alerts are T‑2040; extraction accuracy is measured in T‑2070.
+
+### ADR‑035 — Public listing read API (T‑2031, 2026‑11‑24)
+- **Decision:**
+  - `GET /api/v1/public/listings/search/` maps query parameters to `SearchCriteria` and uses the same engine as `POST /search/`; `GET …/{slug_or_id}/` accepts an id, a reference number or a slug.
+  - The slug is derived (title + reference number). The reference number identifies the listing, so old slugs keep working after a title change; the answer carries the canonical slug. No column, no migration.
+  - Fields are listed one by one and an exact‑set test guards them. Never shown: owner, staff, contacts, exact coordinates, scores, raw documents, hidden prices and their deposit or service charge, attributes outside the market schema, unsanitised images.
+  - Phone numbers and emails are removed from the title, description and alt text of listings that do not belong to an organization (also in search results and the assistant's tools).
+  - Credentials are ignored, so every caller gets the same answer. `Cache-Control: public, max-age=60`, weak ETag, 304. A withdrawn listing can stay in a cache for up to 60 s. Not‑public is always 404.
+- **Limits:** contact redaction is a pattern (10–15 digits, emails); numbers written in words pass. No sitemap or 410 for past listings (SEO pages are P2).

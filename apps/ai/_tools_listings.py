@@ -8,6 +8,7 @@ import logging
 from apps.markets.services import org_country
 from apps.properties import criteria as C
 from apps.properties import listing_search as S
+from apps.properties.public_listings import public_text
 from apps.properties.taxonomy import ALL_SUBTYPES, SUBTYPES, classify_type_text
 
 from ._tools_context import _ctx_conversation, _ctx_message, _ctx_org, _ctx_phone
@@ -302,7 +303,7 @@ def get_listing(listing: str) -> dict:
             return {'found': False, 'error': 'Listing not found or no longer available.'}
         row = _row(p)
         row.update(
-            description=(p.description or '')[:800], floor=p.floor, total_floors=p.total_floors,
+            description=public_text(p, p.description)[:800], floor=p.floor, total_floors=p.total_floors,
             year_built=p.year_built, parking_spaces=p.parking_spaces, pets_allowed=p.pets_allowed,
             installments=p.installment_available, status=p.status)
         if not p.price_on_request:

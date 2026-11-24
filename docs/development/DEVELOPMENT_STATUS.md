@@ -4,14 +4,14 @@ _Last updated: 2026-11-24 (session 10)_
 
 | Item | Value |
 |---|---|
-| Branch | `development`. The owner committed through T‑2020 (`bcd33b6`). **Uncommitted:** T‑2030, KI‑067 |
+| Branch | `development`. The owner committed through T‑2030 (`1ae9c4d`). **Uncommitted:** T‑2031, KI‑070 |
 | Current milestone | **M2 — AI agent MVP** ([MILESTONE_02](milestones/MILESTONE_02_AI_AGENT_MVP.md)), started 2026‑11‑23. M1 code complete (contracts T‑1070g‑2 / T‑1032b‑2 release‑gated); M0 awaiting the first GitHub Actions run |
 | M0 progress | All 17 tasks complete. Remaining exit criterion: CI green on GitHub Actions (owner pushes) |
 | M1 progress | 16 of 18 tasks done (T‑1010, T‑1011, T‑1020, T‑1021, T‑1022, T‑1030, T‑1031, T‑1033, T‑1040, T‑1050, T‑1060, T‑1080, T‑1090, T‑1100, T‑1110, T‑1120) plus subtasks T‑1032a, T‑1032c, T‑1070a–f and T‑1070g‑1 |
-| M2 progress | 6 of 15 tasks done (T‑2010, T‑2011, T‑2012, T‑2013, T‑2020, T‑2030) |
-| Test suite | **2108 passed, 1 skipped, 0 failed** (session 12, T‑2030). See [TESTING_STATUS](TESTING_STATUS.md) |
-| Last completed task | T‑2030 search criteria, search v2, ranking and tools (ADR‑034); KI‑067 fixed |
-| Next task | **T‑2031** public listing read API (`public/listings/{slug_or_id}`, GAP‑002). Start in `apps/properties/listing_search.py` (`summary`, `find`), `apps/properties/search_views.py` and `apps/properties/views.py`. Open: KI‑055…KI‑059, KI‑065, KI‑066, KI‑068…KI‑070 |
+| M2 progress | 7 of 15 tasks done (T‑2010, T‑2011, T‑2012, T‑2013, T‑2020, T‑2030, T‑2031) |
+| Test suite | **2130 passed, 1 skipped, 0 failed** (session 13, T‑2031). See [TESTING_STATUS](TESTING_STATUS.md) |
+| Last completed task | T‑2031 public listing read API (ADR‑035); KI‑070 fixed |
+| Next task | **T‑2050** enquiries → leads, threads, email notifications (see [MILESTONE_02](milestones/MILESTONE_02_AI_AGENT_MVP.md)). Start in `apps/ai/tools.py` (`connect_to_agent`), `apps/ai/proposals.py`, `apps/leads/utils.py` and the `POST /api/v1/enquiries/` contract in the API requirements. Open: KI‑055…KI‑059, KI‑065, KI‑066, KI‑068, KI‑069, KI‑071 |
 
 ## Owner decisions (2026-11-23)
 - **T‑1032b:** staged like T‑1070g (b‑1 now, drops in a later release behind the reconcile gate); `Agent.organization` kept as a derived primary‑org pointer.
@@ -34,7 +34,7 @@ _Last updated: 2026-11-24 (session 10)_
 
 ## Operator actions before deploying these changes
 See **[GO_LIVE_CHECKLIST](GO_LIVE_CHECKLIST.md)**: DB backup, `FIELD_ENCRYPTION_KEYS`, config‑row check. Summary:
-- **Session 10** (checklist §32–§36): migrations `ai 0004`–`0007`, `conversations 0001`–`0002` (additive). Enter `ModelPrice` rows. Behaviour: agent hand‑off and audit requests now always ask for YES.
+- **Session 10** (checklist §32–§37): migrations `ai 0004`–`0007`, `conversations 0001`–`0002` (additive). Enter `ModelPrice` rows. Behaviour: agent hand‑off and audit requests now always ask for YES.
 - **Session 9, continued** (checklist §18–§20): `properties 0035`–`0037` (stored search document; run before new pods serve), `organizations 0027` (invites). **API change:** member invites are now pending until accepted, so the frontend needs an accept flow. PII masking now uses per‑field rules on agent registration and member invites.
 - **Session 9** (checklist §16, §17): migrations `properties 0031`–`0034` (taxonomy and amenities; `0034` builds its index concurrently, so run it on a direct DB connection) and `markets 0003`/`0004` (attribute schemas). Run `sync_listing_taxonomy` after rollout. **Behaviour change:** PK/AE/GB listing writes that send `attributes` now reject unknown keys and invalid values. Check the existing non‑empty `attributes` first (§17).
 - **Session 8** (checklist §11 and **§12 UTC switch**): no migrations. Restart celery beat after deploy and review the periodic‑task rows (§12). **New: migrations `properties.0025`–`0028` (§13, §14), additive, rolling‑safe; run `sync_listing_size` after rollout (§14); `0029`/`0030` price history (§15).**

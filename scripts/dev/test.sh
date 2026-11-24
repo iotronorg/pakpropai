@@ -44,8 +44,9 @@ fi
 
 # The image's init scripts restart the server once (CREATE EXTENSION postgis
 # in template DBs), so wait for the init to finish, then for readiness.
+# `grep -c` reads all input. `grep -q` (or output to /dev/null) may exit early, and with pipefail a long log then fails the pipe (KI-070).
 for _ in $(seq 1 120); do
-  docker logs "$PG" 2>&1 | grep -q "PostgreSQL init process complete" && break
+  docker logs "$PG" 2>&1 | grep -c "PostgreSQL init process complete" >/dev/null && break
   sleep 1
 done
 for _ in $(seq 1 60); do

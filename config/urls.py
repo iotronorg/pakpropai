@@ -40,6 +40,7 @@ urlpatterns = [
         path('payments/',     include('apps.payments.urls')),
         path('whatsapp/',     include('apps.whatsapp.urls')),
         path('properties/',   include('apps.properties.urls')),
+        path('public/listings/', include('apps.properties.public_urls')),
         path('search/',       SearchView.as_view(), name='listing-search'),
         path('locations/',    include('apps.locations.urls')),
         path('verification/', include('apps.verification.urls')),

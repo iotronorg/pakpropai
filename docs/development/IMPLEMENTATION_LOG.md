@@ -506,3 +506,9 @@
 - **Changed:** tool registry and system prompt v3; runtime records criteria, results and matches; chat cards carry score, reasons and trade‑offs; the classifier no longer sends `purpose=buy` or `city=Unknown` when the user did not say; grounding accepts recorded deposits and service charges.
 - **Tests edited:** names and prompt version in `test_runtime`, `test_ai_side_effect_guards`, `test_llm`, `test_ai_traces`; the web follow‑up test in `test_conversations` now checks the new tool.
 - **Fixed:** KI‑067. **Found:** KI‑068, KI‑069, KI‑070.
+
+### 2026-11-24 — session 13: T‑2031 public listing read API; KI‑070
+- **Verified:** the owner committed T‑2030 (`1ae9c4d`); the tree was clean.
+- **Added:** `properties/public_listings.py`, `public_views.py`, `public_urls.py`, `tests/test_public_listings.py`.
+- **Changed:** `listing_search.summary` and `get_listing` redact private contacts; `execute(with_relaxations=)`; settings rate; URLs.
+- **Fixed:** KI‑070 (`scripts/dev/test.sh`), and its earlier wrong diagnosis. **Found:** KI‑071.
