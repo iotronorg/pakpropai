@@ -64,7 +64,7 @@ class ListPropertyConfirmationTest(TestCase):
     def test_yes_executes_the_stored_call_once(self):
         _turn(self.user, 'list my house')
         list_property(**LISTING)
-        self.assertIn('listed successfully', _reply(self.user, 'yes'))
+        self.assertIn('Draft saved', _reply(self.user, 'yes'))
         self.assertIsNone(_reply(self.user, 'yes'))
         self.assertEqual(self._count(), 1)
 

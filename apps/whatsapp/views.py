@@ -224,9 +224,11 @@ class NotificationListView(APIView):
             except Exception:
                 qs = qs.none()
 
+        # People who stopped sharing their number are listed without it (KI-074).
+        hidden = _hidden_phones(request.user)
         # Filters
         if phone := request.query_params.get('phone'):
-            qs = qs.filter(phone__startswith=phone.lstrip('+'))
+            qs = qs.filter(phone__startswith=phone.lstrip('+')).exclude(phone__in=hidden)
         if state := request.query_params.get('state'):
             qs = qs.filter(state=state)
 
@@ -239,7 +241,7 @@ class NotificationListView(APIView):
         results = [
             {
                 'id':             str(s.id),
-                'phone':          s.phone,
+                'phone':          None if s.phone in hidden else s.phone,
                 'user_id':        str(s.user_id) if s.user_id else None,
                 'state':          s.state,
                 'message_count':  s.message_count,
@@ -255,6 +257,16 @@ class NotificationListView(APIView):
             'offset':  offset,
             'results': results,
         })
+
+
+def _hidden_phones(user) -> set:
+    from apps.core.permissions import get_admin_org
+    from apps.leads.models import Lead
+    from apps.leads.privacy import withheld_phones
+    if user.role == 'agent' and getattr(user, 'agent_profile', None):
+        return withheld_phones(user.agent_profile.assigned_leads.all())
+    org = get_admin_org(user) if user.role == 'developer' else None
+    return withheld_phones(Lead.objects.filter(organization=org)) if org else set()
 
 
 class NotificationDetailView(APIView):
@@ -328,7 +340,7 @@ class NotificationDetailView(APIView):
         return Response({
             'session': {
                 'id':             str(session.id),
-                'phone':          session.phone,
+                'phone':          None if session.phone in _hidden_phones(request.user) else session.phone,
                 'user_id':        str(session.user_id) if session.user_id else None,
                 'state':          session.state,
                 'message_count':  session.message_count,

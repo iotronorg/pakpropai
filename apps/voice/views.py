@@ -145,6 +145,10 @@ class VoiceOutboundInitiateView(APIView):
         except Lead.DoesNotExist:
             return Response({'detail': 'Lead not found.'}, status=404)
 
+        from apps.leads.privacy import withheld
+        if withheld(lead):
+            return Response({'detail': 'This person stopped sharing contact details.'}, status=409)
+
         try:
             cfg = (org or lead.organization).voice_config
         except Exception:

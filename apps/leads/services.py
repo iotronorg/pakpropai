@@ -122,7 +122,8 @@ def assign_agent_to_lead(lead, agent, actor=None, auto: bool = False) -> None:
     try:
         if agent.user:
             from apps.notifications.services import notify_user
-            client_phone = lead.user.phone
+            from .privacy import phone_text
+            client_phone = phone_text(lead)
             notify_user(
                 agent.user,
                 title="New Lead Assigned",

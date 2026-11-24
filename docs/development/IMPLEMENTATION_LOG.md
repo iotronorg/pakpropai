@@ -537,3 +537,9 @@
 - **Added:** `apps/properties/comparison.py`, `comparison_views.py`, `apps/markets/fx.py`, `FxRate` (`markets/0005`), `import_fx_rates`, tool `compare_listings`, `tests/test_comparison.py`.
 - **Changed:** `agent.system` 7; grounding knows per‑listing derived amounts.
 - **Fixed:** grounding read "10,000,000, PKR 150,000" as one amount, so the second was never checked (older bug).
+
+### 2026-11-24 — session 18: T‑2014 moderation and owner decisions
+- **Verified:** the owner committed T‑2041 (`5486a0e`); the tree was clean.
+- **Added:** `apps/moderation` (two migrations), `apps/ai/_tools_moderation.py`, `apps/leads/privacy.py`, `DataExportFile` with status and download endpoints, `tests/test_moderation.py`, `tests/test_owner_decisions.py`.
+- **Changed:** `list_property` saves a draft; WhatsApp photo texts; `agent.system` 8; `Procfile`; lead, message, appointment, activity and voice serializers.
+- **Fixed:** a lister could archive a suspended listing and publish it again; merged leads kept the other lead's phone in the notes.

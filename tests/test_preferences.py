@@ -350,10 +350,8 @@ class ProfileTest(Base):
         S.keep(self.user, self.make(), note='corner')
         A.create(self.user, CRIT)
         req = DataExportRequest.objects.create(user=self.user)
-        with patch('cloudinary.uploader.upload', return_value={'secure_url': 'https://x', 'public_id': 'x'}) as up:
-            generate_data_export.apply(args=[str(req.pk)])
-        body = up.call_args.args[0]
-        data = json.loads(body.getvalue() if hasattr(body, 'getvalue') else body)
+        generate_data_export.apply(args=[str(req.pk)])
+        data = json.loads(req.file.payload)
         self.assertEqual((data['favourites'][0]['note'], len(data['saved_searches']), data['preferences'][0]['key']),
                          ('corner', 1, 'purpose'))
 

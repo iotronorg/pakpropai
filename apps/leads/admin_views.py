@@ -101,7 +101,7 @@ class MergeLeadsView(APIView):
         Appointment.objects.filter(lead=secondary).update(lead=primary)
 
         if secondary.notes:
-            merged_notes = f"{primary.notes}\n\n[Merged from {secondary.user.phone}]:\n{secondary.notes}".strip()
+            merged_notes = f"{primary.notes}\n\n[Merged from lead {secondary.pk}]:\n{secondary.notes}".strip()
             primary.notes = merged_notes
 
         if (secondary.score or 0) > (primary.score or 0):

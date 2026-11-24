@@ -24,6 +24,7 @@ from apps.core.views import metrics_view
 from apps.organizations.theme_views import ThemeConfigView
 from apps.properties.comparison_views import CompareView
 from apps.properties.search_views import SearchView
+from apps.moderation.views import ReportListingView
 from apps.preferences.views import StopAlertsView
 from apps.viewings.views import AvailabilityView, SlotListView
 from drf_spectacular.views import SpectacularAPIView
@@ -39,6 +40,8 @@ urlpatterns = [
         path('organizations/', include('apps.organizations.urls')),
         path('leads/',        include('apps.leads.urls')),
         path('enquiries/',    include('apps.enquiries.urls')),
+        path('moderation/',   include('apps.moderation.urls')),
+        path('listing-reports/', ReportListingView.as_view(), name='report-listing'),
         path('me/',           include('apps.preferences.urls')),
         path('saved-search-stop/', StopAlertsView.as_view(), name='saved-search-stop'),
         path('viewings/',     include('apps.viewings.urls')),

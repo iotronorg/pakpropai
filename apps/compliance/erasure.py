@@ -175,6 +175,22 @@ class RTBFOrchestrator:
             logger.error("RTBF: preference erasure failed user=%s: %s", user.id, exc)
             errors['preferences'] = str(exc)
 
+        # 5f — Listing reports and appeals (T-2014)
+        try:
+            from apps.moderation.services import erase_user as erase_moderation
+            scope['reports_redacted'] = erase_moderation(user)
+        except Exception as exc:
+            logger.error("RTBF: moderation erasure failed user=%s: %s", user.id, exc)
+            errors['moderation'] = str(exc)
+
+        # 5g — Prepared data exports (KI-066)
+        try:
+            from apps.compliance.models import DataExportFile
+            scope['export_files_deleted'] = DataExportFile.objects.filter(request__user=user).delete()[0]
+        except Exception as exc:
+            logger.error("RTBF: export file erasure failed user=%s: %s", user.id, exc)
+            errors['export_files'] = str(exc)
+
         # 6 — User anonymization
         try:
             user.is_active = False

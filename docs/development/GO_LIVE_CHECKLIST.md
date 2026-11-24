@@ -356,3 +356,12 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - **FX:** choose a source (KI‑081), then import daily: `manage.py import_fx_rates rates.csv --as-of YYYY-MM-DD --source NAME`. `FX_MAX_AGE_DAYS` is 7.
 - **Frontend:** show "approximate" with the `fx` date and source next to converted prices.
 - **Prompt:** `agent.system` is version 7; run the eval suite with a live model.
+
+## 42. Session‑18 change: moderation, exports, CRM privacy (T‑2014, ADR‑040/041)
+- **Migrations:** `moderation/0001`–`0002` (queues listings already waiting), `compliance/0005` (new table).
+- **Staffing:** name moderators (super, ops or compliance admins) and agree the deadline (`MODERATION_SLA_HOURS`, 24). Private listings are not public without them.
+- **Beat:** restart it: `moderation-overdue`, `purge-data-exports`.
+- **Web tier:** `Procfile` now runs threaded gunicorn (2×8, 120 s); size the database connections for 16 web threads and load‑test before launch. The platform's own start command must match.
+- **Cloudinary:** delete old `gdpr_exports/` files (KI‑084).
+- **Frontend:** moderation screens, report button (`/api/v1/listing-reports/`), appeal form, export download; a lead's `phone` can be null (`contact_withheld`).
+- **Prompt:** `agent.system` is version 8; run the eval suite with a live model.

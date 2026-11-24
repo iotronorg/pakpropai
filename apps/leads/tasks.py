@@ -8,6 +8,8 @@ from apps.notifications.delivery import enqueue_whatsapp_text
 
 AUTO_ASSIGN_DELAY_MINUTES = 30  # min age before a lead qualifies for auto-assign
 
+from apps.leads.privacy import phone_text, withheld
+
 logger = logging.getLogger(__name__)
 
 STALE_DAYS    = 7
@@ -107,7 +109,7 @@ def _send_client_reengagement(lead) -> None:
 
     try:
         user = lead.user
-        if not user or not user.phone:
+        if not user or not user.phone or withheld(lead):
             return
 
         city   = lead.city_interest or 'your area of interest'
@@ -164,7 +166,7 @@ def send_stale_lead_reminders():
             continue
         try:
             org = agent.organization or leads[0].organization
-            names = ', '.join(l.user.phone for l in leads[:5])
+            names = ', '.join(phone_text(l) for l in leads[:5])
             more  = f" (+{len(leads) - 5} more)" if len(leads) > 5 else ""
             msg = (
                 f"⏰ *Follow-up Reminder*\n\n"

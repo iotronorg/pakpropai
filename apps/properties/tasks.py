@@ -155,9 +155,10 @@ def _notify_matching_leads(prop) -> int:
                 Q(budget_max__gte=prop.price, budget_currency=prop.currency)
             )
 
+        from apps.leads.privacy import withheld
         sent = 0
         for lead in candidates[:_MAX_ALERT_RECIPIENTS]:
-            if not lead.user or not lead.user.phone:
+            if not lead.user or not lead.user.phone or withheld(lead):
                 continue
             try:
                 area_str  = prop.size_display()

@@ -1,9 +1,18 @@
 from rest_framework import serializers
+
+from . import privacy
 from .models import Lead, LeadActivity, LeadScoreHistory, Appointment, ConversationMessage
 
 
+def _person_phone(person, lead) -> str | None:
+    if person is None or (person.pk == lead.user_id and privacy.withheld(lead)):
+        return None
+    return person.phone
+
+
 class LeadSerializer(serializers.ModelSerializer):
-    phone             = serializers.CharField(source='user.phone', read_only=True)
+    phone             = serializers.SerializerMethodField(help_text='null: the person stopped sharing it')
+    contact_withheld  = serializers.SerializerMethodField()
     name              = serializers.CharField(source='user.name', read_only=True, allow_null=True)
     intent_score      = serializers.IntegerField(source='score', read_only=True)
     score_factors     = serializers.JSONField(read_only=True)
@@ -16,7 +25,15 @@ class LeadSerializer(serializers.ModelSerializer):
     )
     wa_session_id = serializers.SerializerMethodField()
 
-    def get_wa_session_id(self, obj):
+    def get_phone(self, obj) -> str | None:
+        return privacy.phone(obj)
+
+    def get_contact_withheld(self, obj) -> bool:
+        return privacy.withheld(obj)
+
+    def get_wa_session_id(self, obj) -> str | None:
+        if privacy.withheld(obj):
+            return None
         from apps.whatsapp.models import WhatsAppSession
         session = (
             WhatsAppSession.objects
@@ -37,7 +54,7 @@ class LeadSerializer(serializers.ModelSerializer):
             'organization',
             'assigned_agent_id', 'assigned_agent_name',
             'last_contacted_at', 'created_at',
-            'wa_session_id',
+            'wa_session_id', 'contact_withheld',
         )
         read_only_fields = (
             'id', 'phone', 'name', 'intent', 'intent_score',
@@ -52,8 +69,11 @@ class LeadSerializer(serializers.ModelSerializer):
 
 
 class ConversationMessageSerializer(serializers.ModelSerializer):
-    sender_phone = serializers.CharField(source='sender.phone', read_only=True, allow_null=True)
+    sender_phone = serializers.SerializerMethodField()
     sender_name  = serializers.CharField(source='sender.name',  read_only=True, allow_null=True)
+
+    def get_sender_phone(self, m) -> str | None:
+        return _person_phone(m.sender, m.lead)
 
     class Meta:
         model  = ConversationMessage
@@ -62,7 +82,7 @@ class ConversationMessageSerializer(serializers.ModelSerializer):
 
 
 class AppointmentSerializer(serializers.ModelSerializer):
-    lead_phone      = serializers.CharField(source='lead.user.phone', read_only=True)
+    lead_phone      = serializers.SerializerMethodField()
     lead_name       = serializers.CharField(source='lead.user.name', read_only=True, allow_null=True)
     agent_name      = serializers.CharField(source='agent.name', read_only=True, allow_null=True)
     property_title  = serializers.CharField(source='property.title', read_only=True, allow_null=True)
@@ -80,6 +100,9 @@ class AppointmentSerializer(serializers.ModelSerializer):
         )
         read_only_fields = ('id', 'lead_phone', 'lead_name', 'agent_name', 'property_title',
                             'timezone', 'reminder_sent_at', 'created_by', 'created_at', 'updated_at')
+
+    def get_lead_phone(self, a) -> str | None:
+        return privacy.phone(a.lead)
 
     def validate(self, attrs):
         request = self.context.get('request')
@@ -121,8 +144,11 @@ class AppointmentSerializer(serializers.ModelSerializer):
 
 
 class LeadActivitySerializer(serializers.ModelSerializer):
-    actor_phone = serializers.CharField(source='actor.phone', read_only=True, allow_null=True)
+    actor_phone = serializers.SerializerMethodField()
     actor_name  = serializers.CharField(source='actor.name',  read_only=True, allow_null=True)
+
+    def get_actor_phone(self, a) -> str | None:
+        return _person_phone(a.actor, a.lead)
 
     class Meta:
         model  = LeadActivity

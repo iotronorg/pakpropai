@@ -4,7 +4,10 @@ import io
 import logging
 
 from django.http import Http404, HttpResponse
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
@@ -13,7 +16,7 @@ from rest_framework.response import Response
 from apps.core.permissions import IsAdminUser, IsAdminOrOrgAdmin, get_user_org
 
 from .models import (
-    ConsentRecord, DataExportRequest, DataDeletionRequest,
+    ConsentRecord, DataExportFile, DataExportRequest, DataDeletionRequest,
     PIIDetectionEvent, PrivacyAuditLog,
     ComplianceSanctionRecord, SanctionScreeningResult,
 )
@@ -74,6 +77,32 @@ class DataExportView(APIView):
             {'id': str(req.id), 'status': req.status},
             status=status.HTTP_202_ACCEPTED,
         )
+
+
+class DataExportStatusView(APIView):
+    """State of one's own export."""
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses=OpenApiTypes.OBJECT)
+    def get(self, request, request_id):
+        req = get_object_or_404(DataExportRequest, pk=request_id, user=request.user)
+        f = DataExportFile.objects.filter(request=req).only('expires_at').first()
+        return Response({'id': str(req.pk), 'status': req.status, 'requested_at': req.requested_at,
+                         'expires_at': f.expires_at if f else None})
+
+
+class DataExportDownloadView(APIView):
+    """The file, for the person it is about only."""
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={(200, 'application/json'): OpenApiTypes.BINARY})
+    def get(self, request, request_id):
+        f = get_object_or_404(DataExportFile, request_id=request_id, request__user=request.user,
+                              expires_at__gt=timezone.now())
+        logger.info('data_export.downloaded request=%s', request_id)
+        return HttpResponse(f.payload, content_type='application/json', headers={
+            'Content-Disposition': f'attachment; filename="realtron-data-{request_id}.json"',
+            'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff'})
 
 
 class DataDeletionView(APIView):

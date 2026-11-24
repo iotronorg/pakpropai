@@ -24,7 +24,26 @@ def _list_property(a: dict):
         lines.append(f"🏷️ {', '.join(extras)}")
     if a.get('description'):
         lines.append(f"📝 {a['description']}")
-    return 'Please confirm you want to publish this listing:', '\n'.join(lines)
+    return 'Please confirm you want to save this listing as a draft:', '\n'.join(lines)
+
+
+def _submit_listing(a: dict):
+    from apps.properties.listing_search import price_text, size_text
+    from apps.properties.lifecycle import publish_problems
+
+    from ._tools_moderation import own_draft
+    user = _ctx_user.get()
+    if user is None:
+        raise Refused('The user must sign in or register on WhatsApp first.')
+    p = own_draft(user, a.get('listing') or '')
+    if p is None:
+        raise Refused('The user has no such draft listing.')
+    if problems := publish_problems(p):
+        raise Refused('The draft is incomplete: ' + ', '.join(problems))
+    a['listing'] = str(p.pk)
+    lines = [f'📋 {p.title}', f'💰 {price_text(p)}', size_text(p), f'📷 {p.images.count()} photo(s)',
+             'Our team checks it before it becomes public.']
+    return 'Shall I send this listing for review?', '\n'.join(x for x in lines if x)
 
 
 def _connect_to_agent(a: dict):
@@ -200,7 +219,7 @@ def _remember_preferences(a: dict):
     return 'Shall I remember these preferences?', '\n'.join([*_criteria_lines(shown), P.MEMORY_TEXT])
 
 
-_BUILDERS = {'create_saved_search': _create_saved_search, 'remember_preferences': _remember_preferences,
+_BUILDERS = {'submit_listing': _submit_listing, 'create_saved_search': _create_saved_search, 'remember_preferences': _remember_preferences,
              'book_viewing': _book_viewing, 'create_enquiry': _create_enquiry, 'list_property': _list_property, 'connect_to_agent': _connect_to_agent,
              'generate_property_audit': _generate_property_audit,
              'initiate_deal_lock': _initiate_deal_lock}

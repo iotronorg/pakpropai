@@ -1,6 +1,10 @@
 import json
 import logging
+from datetime import timedelta
+
 from celery import shared_task
+from django.conf import settings
+from django.db import transaction
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -52,8 +56,8 @@ def execute_rtbf_erasure(self, request_id: str):
 
 @shared_task
 def generate_data_export(request_id: str):
-    """Serialize all PII for the user and upload to Cloudinary. Sets status=ready."""
-    from apps.compliance.models import DataExportRequest
+    """Everything we hold about the person, stored encrypted for a private download (KI-066)."""
+    from apps.compliance.models import DataExportFile, DataExportRequest
     req = DataExportRequest.objects.get(id=request_id)
     req.status = 'processing'
     req.save(update_fields=['status'])
@@ -71,7 +75,6 @@ def generate_data_export(request_id: str):
                 Lead.objects.filter(user=user).values('id', 'created_at', 'status', 'intent')
             ),
         }
-        # Facts and consents only: message text is an open owner decision (KI-066).
         from apps.enquiries.models import Enquiry
         data['enquiries'] = list(Enquiry.objects.filter(user=user).values(
             'id', 'subject', 'kind', 'status', 'created_at', 'consented_at', 'consent_version', 'consent_revoked_at'))
@@ -82,23 +85,38 @@ def generate_data_export(request_id: str):
         data['saved_searches'] = list(user.saved_searches.values(
             'name', 'criteria', 'frequency', 'channel', 'is_active', 'consented_at', 'consent_via'))
         data['preferences'] = list(user.preference_items.values('market', 'key', 'value', 'source', 'updated_at'))
+        data['listing_reports'] = list(user.listing_reports.values('listing__ref_no', 'category', 'text', 'created_at'))
+        from apps.conversations.models import Message
+        data['assistant_messages'] = [
+            {'conversation': str(m.conversation_id), 'channel': m.conversation.channel, 'role': m.role,
+             'text': m.content, 'created_at': m.created_at}
+            for m in Message.objects.filter(conversation__user=user).select_related('conversation')
+            .order_by('conversation', 'seq').iterator()]
+        from apps.leads.models import ConversationMessage
+        data['thread_messages'] = list(ConversationMessage.objects.filter(enquiry__user=user).order_by(
+            'created_at').values('enquiry_id', 'direction', 'body', 'created_at'))
         payload = json.dumps(data, default=str)
-        import cloudinary.uploader
-        result = cloudinary.uploader.upload(
-            payload.encode(),
-            resource_type='raw',
-            public_id=f'gdpr_exports/{user.id}_{request_id}',
-            type='private',
-        )
-        req.file_url     = result.get('secure_url', '')
-        req.status       = 'ready'
-        req.completed_at = timezone.now()
-        req.save(update_fields=['status', 'file_url', 'completed_at'])
+        with transaction.atomic():
+            DataExportFile.objects.update_or_create(request=req, defaults={
+                'payload': payload, 'expires_at': timezone.now() + timedelta(days=settings.DATA_EXPORT_DAYS)})
+            req.status       = 'ready'
+            req.completed_at = timezone.now()
+            req.save(update_fields=['status', 'completed_at'])
     except Exception:
         logger.exception('generate_data_export failed request_id=%s', request_id)
         req.status = 'pending'
         req.save(update_fields=['status'])
         raise
+
+
+@shared_task
+def purge_data_exports():
+    from apps.compliance.models import DataExportFile, DataExportRequest
+    ids = list(DataExportFile.objects.filter(expires_at__lte=timezone.now()).values_list('pk', flat=True))
+    with transaction.atomic():
+        DataExportRequest.objects.filter(pk__in=ids).update(status=DataExportRequest.Status.EXPIRED)
+        DataExportFile.objects.filter(pk__in=ids).delete()
+    return len(ids)
 
 
 @shared_task(bind=True, autoretry_for=(Exception,), max_retries=3, default_retry_delay=300)

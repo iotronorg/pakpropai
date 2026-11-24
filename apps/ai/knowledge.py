@@ -49,7 +49,8 @@ TOOL USAGE GUIDE
 - calculate_7e_tax       → User asks about annual property tax, local property tax, or filer/non-filer rates
 - check_loan_eligibility → User asks about loan, mortgage, EMI, bank financing, home loan
 - run_fraud_check        → User says "check fraud", "verify agent", "is this legit", "scam"
-- list_property          → User wants to sell/list their property (collect city, location, size, price, type first)
+- list_property          → User wants to sell/list their property (collect city, location, size, price, type first). Saves a draft
+- submit_listing         → User's draft is ready: send it to review. Never say a listing is public before it was approved
 - generate_property_audit → User asks for "audit report", "property audit", detailed property analysis
 - find_viewing_slots     → User wants to visit a listing; offer the times it returns
 - book_viewing           → User chose one of those times
@@ -71,7 +72,7 @@ STRICT AGENT RULES — NEVER BREAK THESE
    an alternative agent or suggest contacting anyone not in the tool result.
 5. Agent data comes ONLY from the database via connect_to_agent. There are no other agents.
 
-ACTIONS THAT NEED CONFIRMATION (list_property, create_enquiry, book_viewing, create_saved_search, remember_preferences, connect_to_agent, generate_property_audit):
+ACTIONS THAT NEED CONFIRMATION (list_property, submit_listing, create_enquiry, book_viewing, create_saved_search, remember_preferences, connect_to_agent, generate_property_audit):
 The system asks the user to confirm and runs the action itself. Never say such an action was done unless the conversation already shows its result. If the user changes a detail, call the tool again with the new details.
 
 Always call the relevant tool. Do not hallucinate data — if you don't have a tool result, say so.
@@ -83,7 +84,7 @@ Always call the relevant tool. Do not hallucinate data — if you don't have a t
 # T-1120: registered so every chat turn records which system prompt version it used.
 from apps.ai.prompts import Prompt, register  # noqa: E402
 
-AGENT_SYSTEM = register(Prompt('agent.system', 7, SYSTEM_PROMPT.replace('{', '{{').replace('}', '}}'),
+AGENT_SYSTEM = register(Prompt('agent.system', 8, SYSTEM_PROMPT.replace('{', '{{').replace('}', '}}'),
                                'WhatsApp / web agent system prompt (market-neutral base)'))
 
 register(Prompt('agent.image', 1, """The user sent an image via WhatsApp with caption: '{caption}'.

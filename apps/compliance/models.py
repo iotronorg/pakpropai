@@ -1,5 +1,7 @@
 import uuid
 from django.db import models
+
+from apps.core.crypto import EncryptedTextField
 from django.conf import settings
 
 
@@ -48,6 +50,19 @@ class DataExportRequest(models.Model):
 
     def __str__(self):
         return f"Export({self.user.phone}) — {self.status}"
+
+
+class DataExportFile(models.Model):
+    """The export itself, encrypted in our database and deleted when it expires (KI-066)."""
+    request    = models.OneToOneField(DataExportRequest, on_delete=models.CASCADE, primary_key=True, related_name='file')
+    payload    = EncryptedTextField()
+    expires_at = models.DateTimeField(db_index=True)
+
+    class Meta:
+        db_table = 'compliance_data_export_files'
+
+    def __str__(self):
+        return f'Export file {self.request_id}'
 
 
 class DataDeletionRequest(models.Model):

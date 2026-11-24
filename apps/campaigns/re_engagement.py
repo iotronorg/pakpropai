@@ -62,7 +62,8 @@ class ReEngagementScanner:
         if org is not None:
             qs = qs.filter(organization=org)
 
-        return qs
+        from apps.leads.privacy import contactable
+        return contactable(qs)
 
 
 class LeadContextBuilder:

@@ -24,7 +24,7 @@
 | T‑2011 ✅ | P1 | `AITrace` (per turn: prompt version, provider, tokens, cost, latency, tool calls, guard/grounding results, fallback) + `ModelPrice` cost | AI spec §10/§11 | T‑2010 |
 | T‑2012 ✅ | P1 | Durable `PendingAction` confirmations (replace the cache‑only proposals) | AI spec §5, MVP 8 | T‑2010 |
 | T‑2013 ✅ | P1 | Grounding checker v2 (claims vs cited sources; one regeneration then a safe fallback) | AI spec §3.1/§8.2, MVP 7 | T‑2010 |
-| T‑2014 | P2 | Listing draft/moderation state; `draft_listing` tool draft‑only; moderation queue and user reports | KI‑025, G2 | T‑1080, T‑2012 |
+| T‑2014 ✅ | P2 | Listing draft/moderation state; `draft_listing` tool draft‑only; moderation queue and user reports | KI‑025, G2 | T‑1080, T‑2012 |
 | T‑2016 | P2 | Context‑free FAQ path so the semantic cache can be enabled safely | ADR‑003 | T‑2010 |
 | T‑2020 ✅ | P1 | Durable `Conversation`/`Message` (Postgres, Redis window cache); conversation API (SSE); WhatsApp adapter on the runtime | FR‑AI‑001/002/004 | T‑2010 |
 | T‑2030 ✅ | P1 | `SearchCriteria` extraction and clarification; SearchService v2 (filters + geo + text) and ranking with explanations; `search_listings`/`get_listing` tools | FR‑AI‑003, FR‑SRCH‑*, FR‑REC‑001/003, MVP 2 | T‑2010 |

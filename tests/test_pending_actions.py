@@ -95,7 +95,7 @@ class RuntimeGateTest(Base):
 class ConfirmTest(Base):
     def test_record_of_an_executed_action(self):
         a = self.propose()
-        self.assertIn('listed successfully', confirmation.resolve_reply(PHONE, 'Yes', self.user))
+        self.assertIn('Draft saved', confirmation.resolve_reply(PHONE, 'Yes', self.user))
         a.refresh_from_db()
         self.assertEqual((a.status, a.confirmed_via, a.awaiting_reply), (S.EXECUTED, 'message', False))
         self.assertTrue(a.confirmed_at and a.resolved_at and a.result['listing_id'])
@@ -207,7 +207,7 @@ class ServiceTest(Base):
     def test_yes_is_handled_without_the_model(self):
         self.run_service('list my house', self.chat_proposing())
         reply, agent = self.run_service('yes', AssertionError('model called'))
-        self.assertIn('listed successfully', reply)
+        self.assertIn('Draft saved', reply)
         agent.chat.assert_not_called()
 
     def test_summary_the_user_never_saw_is_withdrawn(self):

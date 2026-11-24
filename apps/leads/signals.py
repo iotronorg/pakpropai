@@ -63,11 +63,12 @@ def _fire_hot_lead_alert(lead) -> None:
         if not agent or not agent.user or not agent.user.phone:
             return
         from apps.notifications.delivery import enqueue_whatsapp_text
+        from .privacy import phone_text
         city   = lead.city_interest or 'Not specified'
         intent = lead.get_intent_display() if lead.intent else 'Not specified'
         msg = (
             f"🔥 *Hot Lead Alert!*\n\n"
-            f"Lead *{lead.user.phone}* just scored *{lead.score}/100* — they're ready to convert.\n\n"
+            f"Lead *{phone_text(lead)}* just scored *{lead.score}/100* — they're ready to convert.\n\n"
             f"📍 City: {city}\n"
             f"🎯 Intent: {intent}\n\n"
             "Follow up NOW before the moment passes! ⚡"

@@ -441,10 +441,11 @@ class OrgAIStatsView(APIView):
             .order_by('-created_at')[:15]
         )
 
+        from apps.leads.privacy import phone as lead_phone
         conversations = [
             {
                 'lead_id':    str(m.lead_id),
-                'lead_phone': m.lead.user.phone,
+                'lead_phone': lead_phone(m.lead),
                 'lead_name':  getattr(m.lead.user, 'name', None),
                 'lead_score': m.lead.score,
                 'lead_status': m.lead.status,

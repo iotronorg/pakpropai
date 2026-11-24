@@ -307,7 +307,7 @@ BASE_URL=https://<your-project>.up.railway.app
 **5. Railway reads your `Procfile` and starts:**
 
 ```
-web:    gunicorn config.wsgi --workers 2 --timeout 60 --bind 0.0.0.0:$PORT
+web:    gunicorn config.wsgi --worker-class gthread --workers 2 --threads 8 --timeout 120 --bind 0.0.0.0:$PORT
 worker: celery -A config worker --loglevel=info --concurrency 2
 beat:   celery -A config beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
 ```
@@ -393,7 +393,7 @@ services:
     restart: always
     command: >
       sh -c "python manage.py migrate --noinput &&
-             gunicorn config.wsgi --workers 2 --timeout 60 --bind 0.0.0.0:8000"
+             gunicorn config.wsgi --worker-class gthread --workers 2 --threads 8 --timeout 120 --bind 0.0.0.0:8000"
     volumes:
       - media_files:/app/media
     ports:

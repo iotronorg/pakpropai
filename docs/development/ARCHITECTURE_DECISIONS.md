@@ -888,3 +888,19 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - `FxRate` holds daily units per USD with source; conversion is for display, labelled approximate with the oldest date used, and not done with rates older than 7 days. Stored prices are never changed.
   - `compare_listings` is read‑only. Derived amounts are grounded per listing and currency, not in the turn‑wide list.
 - **Limits:** KI‑081, KI‑082. No `fx/rates` endpoint and no cross‑currency filters (FR‑SRCH‑009); narrative and running costs are P2 (FR‑CMP‑003/004).
+
+### ADR‑040 — Listing moderation (T‑2014, 2026‑11‑24)
+- **Decision (owner):** private people's listings wait for review; organization listings publish directly unless an automated check flags them. `listing_review_required` still reviews everyone in a market.
+- **How:**
+  - One rule, `lifecycle.review_required`, for every path. An approval is bound to a digest of the text, so an unchanged listing can be renewed without a second review. A suspended listing cannot return through the archive.
+  - Checks give codes only (prohibited content, external link, price outlier against 10+ comparables, possible duplicate); a person decides. A flagged edit hides a public listing until reviewed; another text edit of a private listing is queued without hiding it.
+  - One open item per listing, opened and closed by a signal on `ListingTransition`, so Django admin decisions count too. Priority, 24 h deadline, one overdue notice.
+  - A decision needs the digest the moderator saw (409 if changed), a reason for reject/suspend, and never concerns the moderator's own listing. Reporters are not named. Reports never hide a listing; one appeal per suspension.
+  - `list_property` saves a draft; `submit_listing` sends it to review; both run only after confirmation.
+- **Limits:** KI‑086.
+
+### ADR‑041 — Owner decisions of 2026‑11‑24
+- **KI‑066:** data exports include assistant chats and thread messages, stored encrypted (`DataExportFile`), downloadable by the person for `DATA_EXPORT_DAYS` (7), then deleted. Cloudinary is no longer used.
+- **KI‑074:** a lead with withdrawn consent and no other consented enquiry shows no phone in CRM lists, messages, appointments, activities, agent notifications and voice history; staff WhatsApp/voice and campaigns refuse or skip it. The thread still works.
+- **KI‑065:** gunicorn gthread, 2 workers × 8 threads, 120 s.
+- **KI‑081:** FX rates stay a manual import. Email provider and WhatsApp template stay go‑live items.

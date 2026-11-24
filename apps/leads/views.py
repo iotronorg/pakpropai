@@ -2,7 +2,7 @@ import logging
 import re
 
 from django.db import transaction
-from django.db.models import Avg, Q
+from django.db.models import Avg, BooleanField, Case, Q, When
 from django.utils import timezone
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
@@ -36,7 +36,9 @@ class LeadViewSet(viewsets.ModelViewSet):
         return super().create(request, *args, **kwargs)
 
     def get_queryset(self):
-        qs = Lead.objects.select_related('user', 'assigned_agent')
+        from .privacy import withheld_q
+        qs = Lead.objects.select_related('user', 'assigned_agent').annotate(
+            contact_withheld=Case(When(withheld_q(), then=True), default=False, output_field=BooleanField()))
         role = self.request.user.role
 
         if role == 'admin':
@@ -138,6 +140,10 @@ class LeadViewSet(viewsets.ModelViewSet):
         if not body:
             return Response({'detail': 'body is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        from .privacy import withheld
+        if withheld(lead):
+            return Response({'detail': 'This person stopped sharing contact details. Answer in the thread.'},
+                            status=status.HTTP_409_CONFLICT)
         phone = lead.user.phone.lstrip('+')
         wa_id = ''
         try:

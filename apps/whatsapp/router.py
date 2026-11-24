@@ -292,12 +292,12 @@ class MessageRouter:
                 if _photo_count:
                     _msg = (
                         f"Done! {_photo_count} photo{'s' if _photo_count > 1 else ''} added "
-                        f"to your listing.\n\nYour property is live and visible to buyers. "
+                        f"to your draft.\n\nSay *submit my listing* to send it for review. "
                         "Type *menu* for more options."
                     )
                 else:
                     _msg = (
-                        "Listing complete with no photos.\n\n"
+                        "Draft saved with no photos. Say *submit my listing* to send it for review.\n\n"
                         "You can always add photos later from the web portal. "
                         "Type *menu* for more options."
                     )
@@ -375,8 +375,8 @@ class MessageRouter:
                 SessionManager.update(phone, state='IDLE', context={})
                 return (
                     f"Photo {photo_count}/{cls._MAX_WA_PHOTOS} added. "
-                    f"Maximum reached — your listing is complete with {photo_count} photos. "
-                    "Buyers can view them online.\n\nType *menu* for more options."
+                    f"Maximum reached — your draft has {photo_count} photos. "
+                    "Say *submit my listing* to send it for review.\n\nType *menu* for more options."
                 )
 
             SessionManager.update(phone, state='LISTING_PHOTOS', context={

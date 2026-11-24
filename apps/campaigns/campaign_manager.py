@@ -217,9 +217,10 @@ class CampaignOrchestrator:
         from apps.leads.models import Lead
         from apps.campaigns.models import CampaignRecipient
 
-        qs = Lead.objects.filter(
+        from apps.leads.privacy import contactable
+        qs = contactable(Lead.objects.filter(
             organization=campaign.organization,
-        ).select_related('user').exclude(user__phone='')
+        )).select_related('user').exclude(user__phone='')
 
         af = campaign.audience_filter
         if af in self._STATUS_FILTERS:
@@ -262,6 +263,12 @@ class CampaignOrchestrator:
 
         campaign = recipient.campaign
         tier     = campaign.messaging_tier
+
+        from apps.leads.privacy import withheld
+        if withheld(recipient.lead):             # consent withdrawn after the list was built (KI-074)
+            recipient.delivery_status = CampaignRecipient.DeliveryStatus.SKIPPED
+            recipient.save(update_fields=['delivery_status'])
+            return
 
         if not rate_limiter.acquire(str(campaign.organization_id), tier):
             raise RateLimitExceeded(

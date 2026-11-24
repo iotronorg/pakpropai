@@ -14,6 +14,7 @@ from ._tools_fraud import run_fraud_check                        # noqa: F401
 from ._tools_enquiries import create_enquiry                    # noqa: F401
 from ._tools_viewings import book_viewing, find_viewing_slots     # noqa: F401
 from ._tools_preferences import create_saved_search, remember_preferences, save_listing  # noqa: F401
+from ._tools_moderation import submit_listing  # noqa: F401
 from ._tools_deals import initiate_deal_lock                     # noqa: F401
 
 # ─── Property Audit ──────────────────────────────────────────────────────────
@@ -209,7 +210,7 @@ def list_property(
     description: str = '',
 ) -> dict:
     """
-    Publish a new property listing on RealTron AI for buyers to discover.
+    Save the user's property as a draft listing. It is not public: after photos, submit_listing sends it to review.
     ONLY call this tool when you have collected ALL required information:
     city, location, area size (in marla), asking price (in PKR), and property type.
     If any required field is missing, ask the user for it first before calling this tool.
@@ -255,6 +256,7 @@ def list_property(
                 construction_status=construction_status or None,
                 description=description,
                 legal_status=Property.LegalStatus.UNVERIFIED,
+                status=Property.Status.DRAFT,          # T-2014: never public without a review
             )
 
         # Queue async AI scoring
@@ -293,8 +295,8 @@ def list_property(
             'title':          title,
             'price_formatted': format_price(price, prop.currency),
             'message': (
-                'Property listed successfully. AI scoring is running in the background. '
-                'Your listing is now visible to buyers.'
+                'Draft saved. It is not visible to buyers yet: say *submit my listing* when it is ready '
+                'and our team will review it.'
                 + ('\n\nYou can now send up to 5 photos of your property — just send them now. '
                    'Type *done* when finished or to skip photos.' if on_whatsapp else
                    '\n\nYou can add photos from your listings page.')

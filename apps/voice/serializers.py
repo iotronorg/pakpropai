@@ -15,6 +15,14 @@ class VoiceCallSessionSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+    def to_representation(self, obj):
+        from apps.leads.privacy import withheld
+        data = super().to_representation(obj)
+        if obj.lead_id and withheld(obj.lead):           # KI-074
+            data['to_phone' if obj.direction == VoiceCallSession.Direction.OUTBOUND else 'from_phone'] = _MASKED
+        return data
+
+
 class OrgVoiceConfigSerializer(serializers.ModelSerializer):
     auth_token = serializers.SerializerMethodField()
 

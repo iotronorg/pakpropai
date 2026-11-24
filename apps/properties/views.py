@@ -290,8 +290,11 @@ class PropertyViewSet(viewsets.ModelViewSet):
         from .lifecycle import TransitionError, initial_status, on_create
         try:
             from apps.markets.services import default_country, market_code_for_country
-            like = _P(market_id=market_code_for_country(
-                serializer.validated_data.get('country') or default_country()))
+            names = {f.name for f in _P._meta.concrete_fields} | {f.attname for f in _P._meta.concrete_fields}
+            like = _P(**{k: v for k, v in {**serializer.validated_data, **extra}.items() if k in names},
+                      **({} if serializer.validated_data.get('market') else {'market_id': market_code_for_country(
+                          serializer.validated_data.get('country') or default_country())}))
+            like._normalise_size_and_taxonomy()
             extra['status'] = initial_status(serializer.validated_data.pop('status', None), like, user)
         except TransitionError as exc:
             raise _transition_api_error(exc)
@@ -514,6 +517,8 @@ class PropertyViewSet(viewsets.ModelViewSet):
                     transition(prop, to, actor=self.request.user, reason='is_active via API')
                 except TransitionError as exc:
                     raise _transition_api_error(exc)
+            from apps.moderation.services import after_edit
+            after_edit(prop, self.request.user)
         if 'location_ref' not in serializer.validated_data and \
                 (prop.city, prop.location, prop.market_id) != before:
             from apps.locations.matching import link_listing

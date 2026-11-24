@@ -4,6 +4,8 @@ from . import views
 urlpatterns = [
     path('consent/',              views.ConsentView.as_view(),             name='compliance-consent'),
     path('export/',               views.DataExportView.as_view(),          name='compliance-export'),
+    path('export/<uuid:request_id>/', views.DataExportStatusView.as_view(), name='compliance-export-status'),
+    path('export/<uuid:request_id>/download/', views.DataExportDownloadView.as_view(), name='compliance-export-download'),
     path('my-data/',              views.DataDeletionView.as_view(),        name='compliance-deletion'),
     path('privacy-audit/',        views.PrivacyAuditLogView.as_view(),     name='privacy-audit-log'),
     path('privacy-audit/export/', views.PrivacyAuditExportView.as_view(),  name='privacy-audit-export'),

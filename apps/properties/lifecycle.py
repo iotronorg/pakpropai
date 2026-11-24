@@ -13,8 +13,9 @@ preconditions, sets the timestamps, and the model writes the
 
 Market settings (``Market.settings``, admin-editable; both off by default):
 
-* ``listing_review_required`` (bool): owners submit to ``pending_review``;
-  staff approve to ``published``.
+* ``listing_review_required`` (bool): every lister submits to ``pending_review``.
+  Without it, private people's listings and flagged ones do (T-2014,
+  ``apps.moderation``); staff approve to ``published``.
 * ``listing_ttl_days`` (int): a publish sets ``expires_at``; the daily job
   moves overdue listings to ``expired`` and reminds owners
   ``LISTING_EXPIRY_REMINDER_DAYS`` before. Renew = expired → published.
@@ -36,7 +37,7 @@ S = Property.Status
 ALLOWED: dict[str, frozenset] = {
     S.DRAFT:          frozenset({S.PENDING_REVIEW, S.PUBLISHED, S.ARCHIVED}),
     S.PENDING_REVIEW: frozenset({S.PUBLISHED, S.DRAFT, S.ARCHIVED, S.SUSPENDED}),
-    S.PUBLISHED:      frozenset({S.UNDER_OFFER, S.SOLD, S.LET, S.EXPIRED, S.ARCHIVED, S.DRAFT,
+    S.PUBLISHED:      frozenset({S.PENDING_REVIEW, S.UNDER_OFFER, S.SOLD, S.LET, S.EXPIRED, S.ARCHIVED, S.DRAFT,
                                  S.SUSPENDED}),
     S.UNDER_OFFER:    frozenset({S.PUBLISHED, S.SOLD, S.LET, S.ARCHIVED, S.SUSPENDED}),
     S.SOLD:           frozenset({S.ARCHIVED}),
@@ -96,7 +97,10 @@ def market_settings(prop) -> dict:
 
 
 def review_required(prop) -> bool:
-    return bool(market_settings(prop).get('listing_review_required', False))
+    if market_settings(prop).get('listing_review_required', False):
+        return True
+    from apps.moderation.services import needs_review
+    return needs_review(prop)
 
 
 def ttl_days(prop) -> int | None:
@@ -149,6 +153,8 @@ def _check(prop, to, actor, *, system: bool):
     staff = system or is_staff(actor)
     if not system and not can_manage(actor, prop):
         raise TransitionForbidden('You cannot change this listing.')
+    if frm == S.PUBLISHED and to == S.PENDING_REVIEW and not staff:
+        raise InvalidTransition('This listing is already public.')
     if to == S.EXPIRED and not system:
         raise InvalidTransition('Listings expire automatically.')
     if (to == S.SUSPENDED or frm == S.SUSPENDED and to != S.ARCHIVED) and not staff:
@@ -156,7 +162,7 @@ def _check(prop, to, actor, *, system: bool):
     if to == S.PUBLISHED and frm in _FRESH_PUBLISH_FROM and not staff and review_required(prop):
         if frm == S.PENDING_REVIEW:
             raise TransitionForbidden('Waiting for review by a moderator.')
-        raise InvalidTransition('This market reviews listings first: move it to pending_review.')
+        raise InvalidTransition('This listing is reviewed first: move it to pending_review.')
     if to == S.SOLD and prop.purpose not in _SALE_PURPOSES:
         raise InvalidTransition("Only a listing for sale can be marked 'sold'.")
     if to == S.LET and prop.purpose not in _LET_PURPOSES:

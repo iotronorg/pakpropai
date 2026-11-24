@@ -60,6 +60,7 @@ LOCAL_APPS = [
     'apps.enquiries',
     'apps.viewings',
     'apps.preferences',
+    'apps.moderation',
     'apps.escrow',
     'apps.reports',
     'apps.audit',
@@ -254,6 +255,12 @@ REST_FRAMEWORK = {
 # The web app: links in emails, checkout returns, referral links.
 FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:3000')
 
+# KI-066: days a prepared data export can be downloaded
+DATA_EXPORT_DAYS = env.int('DATA_EXPORT_DAYS', default=7)
+
+# T-2014: hours moderators have to decide
+MODERATION_SLA_HOURS = env.int('MODERATION_SLA_HOURS', default=24)
+
 # T-2041: FX rates older than this are not used for approximate conversion
 FX_MAX_AGE_DAYS = env.int('FX_MAX_AGE_DAYS', default=7)
 
@@ -290,6 +297,10 @@ SPECTACULAR_SETTINGS = {
         'AgentEmploymentTypeEnum': 'apps.agents.models.Agent.EmploymentType',
         'MembershipEmploymentTypeEnum': 'apps.organizations.models.OrganizationMembership.EmploymentType',
         'AreaUnitEnum': 'apps.properties.models.Property.AreaUnit',   # size_unit + deprecated area_unit
+        'ModerationStatusEnum': 'apps.moderation.models.ModerationItem.Status',
+        'ModerationReasonEnum': 'apps.moderation.models.ModerationItem.Reason',
+        'CategoryEnum': 'apps.properties.models.Property.Category',
+        'ReportCategoryEnum': 'apps.moderation.models.UserReport.Category',
         'FavouriteKindEnum': 'apps.preferences.models.Favourite.Kind',
         'AlertChannelEnum': 'apps.preferences.models.SavedSearch.Channel',
         'AlertFrequencyEnum': 'apps.preferences.models.SavedSearch.Frequency',
@@ -461,6 +472,14 @@ CELERY_BEAT_SCHEDULE = {
     'daily-agent-performance-snapshot': {
         'task':     'apps.agents.tasks.refresh_agent_performance_snapshots',
         'schedule': 86400,  # every 24 hours
+    },
+    'purge-data-exports': {
+        'task':     'apps.compliance.tasks.purge_data_exports',
+        'schedule': 86400,
+    },
+    'moderation-overdue': {
+        'task':     'apps.moderation.tasks.notify_overdue_moderation',
+        'schedule': 3600,
     },
     'saved-search-alerts': {
         'task':     'apps.preferences.tasks.send_saved_search_alerts',
