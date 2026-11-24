@@ -349,3 +349,12 @@
 1. `git status`: uncommitted work is T‑2050. **Do not commit.**
 2. Next: **T‑2060** (starting files in DEVELOPMENT_STATUS).
 3. Owner decisions still open: KI‑065, KI‑066, KI‑074; email provider.
+
+## Session 15 — 2026-11-24
+- **Completed:** T‑2060 (ADR‑037). Found KI‑076, KI‑077.
+- **Tests:** 2207 passed, 1 skipped, 0 failed. **Not committed.**
+
+### Handoff → session 16 (supersedes the one above)
+1. `git status`: uncommitted work is T‑2060. **Do not commit.**
+2. Next: **T‑2040** (starting files in DEVELOPMENT_STATUS).
+3. Owner decisions still open: KI‑065, KI‑066, KI‑074; email provider.

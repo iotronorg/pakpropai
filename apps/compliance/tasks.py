@@ -75,6 +75,9 @@ def generate_data_export(request_id: str):
         from apps.enquiries.models import Enquiry
         data['enquiries'] = list(Enquiry.objects.filter(user=user).values(
             'id', 'subject', 'kind', 'status', 'created_at', 'consented_at', 'consent_version', 'consent_revoked_at'))
+        from apps.leads.models import Appointment
+        data['viewings'] = list(Appointment.objects.filter(lead__user=user).values(
+            'id', 'property__ref_no', 'scheduled_at', 'duration_minutes', 'status', 'participants'))
         payload = json.dumps(data, default=str)
         import cloudinary.uploader
         result = cloudinary.uploader.upload(

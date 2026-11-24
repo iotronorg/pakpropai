@@ -1,7 +1,8 @@
 import logging
 import re
 
-from django.db.models import Avg
+from django.db import transaction
+from django.db.models import Avg, Q
 from django.utils import timezone
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
@@ -11,6 +12,7 @@ from drf_spectacular.utils import extend_schema
 
 from apps.core.idempotency import IDEMPOTENCY_PARAMETER, idempotent
 from apps.core.permissions import get_user_org
+from apps.viewings.views import FeedbackSerializer, ViewingRefused, save_feedback
 from .models import Lead, LeadActivity, LeadScoreHistory, Appointment, ConversationMessage
 from .serializers import (AppointmentSerializer, ConversationMessageSerializer,
                           LeadSerializer, LeadActivitySerializer, LeadScoreHistorySerializer)
@@ -258,6 +260,8 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         return super().create(request, *args, **kwargs)
 
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return Appointment.objects.none()
         qs = Appointment.objects.select_related(
             'lead__user', 'property', 'agent', 'created_by'
         )
@@ -271,7 +275,8 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             org = get_user_org(self.request.user)
             if not org:
                 return qs.none()
-            qs = qs.filter(agent__organization=org)
+            # By the lead: an agent who moved does not take an organization's visits along (T-2060).
+            qs = qs.filter(Q(lead__organization=org) | Q(lead__organization__isnull=True, agent__organization=org))
         # admin sees all
 
         params = self.request.query_params
@@ -286,8 +291,30 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             ).order_by('scheduled_at')
         return qs
 
+    def _save(self, serializer, **extra):
+        """Under the agent's calendar lock, so it cannot be double-booked (T-2060)."""
+        from apps.viewings import services as V
+        old, new = serializer.instance, serializer.validated_data
+        get = lambda field, default=None: new.get(field, getattr(old, field, default))
+        agent, start = get('agent'), get('scheduled_at')
+        moved = old is None or {'agent', 'scheduled_at', 'duration_minutes', 'status'} & new.keys()
+        with transaction.atomic():
+            if agent and moved and get('status', Appointment.Status.SCHEDULED) in V.ACTIVE and start > timezone.now():
+                V.lock_agent(agent.pk)
+                try:
+                    V.check_free(agent.pk, start, get('duration_minutes', 60), exclude=old.pk if old else None)
+                except V.ViewingError as exc:
+                    raise ViewingRefused(exc) from exc
+            appt = serializer.save(**extra)
+            if old is not None and 'scheduled_at' in new:
+                V.reset_reminders(appt)
+                appt.save(update_fields=['reminder_sent_at', 'day_reminder_sent_at', 'feedback_requested_at'])
+
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+        self._save(serializer, created_by=self.request.user)
+
+    def perform_update(self, serializer):
+        self._save(serializer)
 
     def _transition(self, request, pk, allowed_from, new_status, extra=None):
         appt = self.get_object()
@@ -308,28 +335,28 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         try:
             from apps.notifications.services import notify_user
             prop_title = appt.property.title if appt.property else "Property visit"
-            from apps.markets.services import format_local
-            scheduled  = format_local(appt.scheduled_at, appt.lead.organization, '%d %b %Y %H:%M')
+            from apps.viewings.services import local_text, zone
+            scheduled  = local_text(appt.scheduled_at, zone(appt))
             if new_status == 'confirmed':
                 notify_user(
                     appt.lead.user,
                     title="Appointment Confirmed",
                     message=f"✅ Your appointment for {prop_title} on {scheduled} has been confirmed.",
-                    event_type='appointment_reminders',
+                    event_type='appointment_reminders', send_email=True, path=f'/viewings/{appt.pk}',
                 )
             elif new_status == 'cancelled':
                 notify_user(
                     appt.lead.user,
                     title="Appointment Cancelled",
                     message=f"❌ Your appointment for {prop_title} on {scheduled} has been cancelled.",
-                    event_type='appointment_reminders',
+                    event_type='appointment_reminders', send_email=True, path=f'/viewings/{appt.pk}',
                 )
             elif new_status == 'rescheduled':
                 notify_user(
                     appt.lead.user,
                     title="Appointment Rescheduled",
                     message=f"🔄 Your appointment for {prop_title} has been rescheduled to {scheduled}.",
-                    event_type='appointment_reminders',
+                    event_type='appointment_reminders', send_email=True, path=f'/viewings/{appt.pk}',
                 )
         except Exception:
             pass
@@ -337,7 +364,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def confirm(self, request, pk=None):
         return self._transition(request, pk,
-                                allowed_from={Appointment.Status.SCHEDULED},
+                                allowed_from={Appointment.Status.SCHEDULED, Appointment.Status.RESCHEDULED},
                                 new_status=Appointment.Status.CONFIRMED)
 
     @action(detail=True, methods=['post'])
@@ -359,17 +386,51 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         if not dt:
             return Response({'detail': 'Invalid datetime format. Use ISO 8601.'},
                             status=status.HTTP_400_BAD_REQUEST)
-        return self._transition(request, pk,
-                                allowed_from={Appointment.Status.SCHEDULED,
-                                              Appointment.Status.CONFIRMED},
-                                new_status=Appointment.Status.RESCHEDULED,
-                                extra={'scheduled_at': dt})
+        if timezone.is_naive(dt):
+            from apps.viewings.services import zone
+            dt = dt.replace(tzinfo=zone(self.get_object()))     # local time at the property
+        if dt <= timezone.now():
+            return Response({'detail': 'scheduled_at must be in the future.'}, status=status.HTTP_400_BAD_REQUEST)
+        from apps.viewings import services as V
+        appt = self.get_object()
+        with transaction.atomic():
+            if appt.agent_id:
+                V.lock_agent(appt.agent_id)
+                try:
+                    V.check_free(appt.agent_id, dt, appt.duration_minutes, exclude=appt.pk)
+                except V.ViewingError as exc:
+                    raise ViewingRefused(exc) from exc
+            return self._transition(request, pk, allowed_from=set(V.ACTIVE),
+                                    new_status=Appointment.Status.RESCHEDULED,
+                                    extra={'scheduled_at': dt, 'reminder_sent_at': None,
+                                           'day_reminder_sent_at': None, 'feedback_requested_at': None})
 
     @action(detail=True, methods=['post'])
     def complete(self, request, pk=None):
         return self._transition(request, pk,
                                 allowed_from={Appointment.Status.CONFIRMED,
+                                              Appointment.Status.RESCHEDULED,
                                               Appointment.Status.SCHEDULED},
                                 new_status=Appointment.Status.COMPLETED)
+
+    @action(detail=True, methods=['post'], url_path='no-show')
+    def no_show(self, request, pk=None):
+        """The visitor did not come."""
+        if self.get_object().scheduled_at > timezone.now():
+            return Response({'detail': 'The appointment has not started.'}, status=status.HTTP_400_BAD_REQUEST)
+        return self._transition(request, pk,
+                                allowed_from={Appointment.Status.CONFIRMED,
+                                              Appointment.Status.RESCHEDULED,
+                                              Appointment.Status.SCHEDULED},
+                                new_status=Appointment.Status.NO_SHOW)
+
+    @extend_schema(request=FeedbackSerializer, responses=FeedbackSerializer(many=True))
+    @action(detail=True, methods=['get', 'post'])
+    def feedback(self, request, pk=None):
+        """GET: feedback of both sides. POST: the agent's own."""
+        appt = self.get_object()
+        if request.method == 'POST':
+            return save_feedback(request, appt, 'agent')
+        return Response(FeedbackSerializer(appt.feedback.order_by('side'), many=True).data)
 
 

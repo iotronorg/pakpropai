@@ -50,9 +50,9 @@ class AppointmentIdempotencyTest(TestCase):
         return (api or self.api).post(APPTS, payload, format='json', **headers)
 
     def test_without_key_each_post_creates(self):
-        payload = self._payload()
-        self.assertEqual(self._post(payload).status_code, 201)
-        self.assertEqual(self._post(payload).status_code, 201)
+        self.assertEqual(self._post(self._payload()).status_code, 201)
+        self.assertEqual(self._post(self._payload()).status_code, 409)     # same agent and time (T-2060)
+        self.assertEqual(self._post(self._payload(180)).status_code, 201)
         self.assertEqual(Appointment.objects.count(), 2)
         self.assertEqual(IdempotencyRecord.objects.count(), 0)
 

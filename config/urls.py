@@ -23,6 +23,7 @@ from apps.core.urls import api_urlpatterns as core_api_urlpatterns
 from apps.core.views import metrics_view
 from apps.organizations.theme_views import ThemeConfigView
 from apps.properties.search_views import SearchView
+from apps.viewings.views import AvailabilityView, SlotListView
 from drf_spectacular.views import SpectacularAPIView
 
 urlpatterns = [
@@ -36,6 +37,9 @@ urlpatterns = [
         path('organizations/', include('apps.organizations.urls')),
         path('leads/',        include('apps.leads.urls')),
         path('enquiries/',    include('apps.enquiries.urls')),
+        path('viewings/',     include('apps.viewings.urls')),
+        path('viewing-slots/', SlotListView.as_view(), name='viewing-slots'),
+        path('availability/', AvailabilityView.as_view(), name='availability'),
         path('threads/',      include('apps.enquiries.thread_urls')),
         path('agents/',       include('apps.agents.urls')),
         path('deals/',        include('apps.escrow.urls')),

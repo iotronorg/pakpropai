@@ -97,5 +97,5 @@ Priority: P0 (blocker) → P3.
 | T‑2041 | [ ] | P2 | Consumer comparison | |
 | T‑2050 | [x] | P1 | Enquiries → leads, threads, email notifications | ADR‑036. `apps/enquiries`, `create_enquiry` tool, outbox email. Attachments and report/block are split out to T‑2051. 40 tests |
 | T‑2051 | [ ] | P2 | Thread attachments and report/block (rest of FR‑COM‑001/007) | KI‑072 |
-| T‑2060 | [ ] | P1 | Availability, booking, reminders, feedback | |
+| T‑2060 | [x] | P1 | Availability, viewing slots, booking, reminders, feedback | ADR‑037. `apps/viewings`, `find_viewing_slots` and `book_viewing` tools. 37 tests, including a real three‑thread booking race |
 | T‑2070 | [ ] | P1 | Eval suites + CI gate; kill switch | |

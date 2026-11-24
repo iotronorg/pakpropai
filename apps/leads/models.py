@@ -1,3 +1,4 @@
+import builtins
 import uuid
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -201,6 +202,15 @@ class Appointment(models.Model):
     status            = models.CharField(max_length=20, choices=Status.choices, default=Status.SCHEDULED)
     notes             = models.TextField(blank=True)
     reminder_sent_at  = models.DateTimeField(null=True, blank=True)
+    # T-2060 (FR-APT-003…006)
+    enquiry           = models.ForeignKey('enquiries.Enquiry', on_delete=models.SET_NULL, null=True, blank=True,
+                                          related_name='appointments')
+    timezone          = models.CharField(max_length=64, blank=True, default='', db_default='', help_text='IANA zone of the property')
+    location          = models.CharField(max_length=300, blank=True, default='', db_default='', help_text='Where to meet (shown to the visitor)')
+    meeting_url       = models.URLField(blank=True, default='', db_default='', help_text='Virtual viewing link')
+    participants      = models.JSONField(default=list, blank=True, db_default=[], help_text='Names of other visitors')
+    day_reminder_sent_at  = models.DateTimeField(null=True, blank=True)
+    feedback_requested_at = models.DateTimeField(null=True, blank=True)
     created_by        = models.ForeignKey(
                             settings.AUTH_USER_MODEL,
                             on_delete=models.SET_NULL,
@@ -217,6 +227,11 @@ class Appointment(models.Model):
             models.Index(fields=['scheduled_at']),
             models.Index(fields=['status']),
         ]
+
+    @builtins.property      # `property` is a field of this model
+    def ends_at(self):
+        from datetime import timedelta
+        return self.scheduled_at + timedelta(minutes=self.duration_minutes)
 
     def __str__(self):
         return f"Appointment [{self.status}] — {self.lead} @ {self.scheduled_at:%Y-%m-%d %H:%M}"

@@ -58,6 +58,7 @@ LOCAL_APPS = [
     'apps.verification',
     'apps.leads',
     'apps.enquiries',
+    'apps.viewings',
     'apps.escrow',
     'apps.reports',
     'apps.audit',

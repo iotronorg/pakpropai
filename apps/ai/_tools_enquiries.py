@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 @guarded
 def create_enquiry(listing: str, message: str) -> dict:
     """
-    Send the user's enquiry about one listing to its lister. Call it when the user wants to contact the lister or agent of a specific listing, or asks to visit it.
+    Send the user's enquiry about one listing to its lister. Call it when the user wants to contact the lister or agent of a specific listing.
 
     Args:
         listing: Listing id, reference number (RT-...), or its position in the last results, e.g. '2'

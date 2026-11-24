@@ -6,7 +6,6 @@ from django.utils import timezone
 from django.db import transaction
 from apps.notifications.delivery import enqueue_whatsapp_text
 
-REMINDER_WINDOW_MINUTES  = 60
 AUTO_ASSIGN_DELAY_MINUTES = 30  # min age before a lead qualifies for auto-assign
 
 logger = logging.getLogger(__name__)
@@ -190,57 +189,9 @@ def send_stale_lead_reminders():
 
 @shared_task
 def send_appointment_reminders():
-    """
-    Every 15 min: send WA reminder to clients with an appointment starting within 1 hour.
-    """
-    from .models import Appointment
-
-    now        = timezone.now()
-    window_end = now + timedelta(minutes=REMINDER_WINDOW_MINUTES)
-
-    due = Appointment.objects.filter(
-        scheduled_at__gt=now,
-        scheduled_at__lte=window_end,
-        reminder_sent_at__isnull=True,
-        status__in=(Appointment.Status.SCHEDULED, Appointment.Status.CONFIRMED),
-    ).select_related('lead__user', 'lead__organization', 'property', 'agent__user')
-
-    sent = 0
-    for appt in due:
-        try:
-            client = appt.lead.user
-            if not client or not client.phone:
-                continue
-
-            # KI-047: in the market's local time (scheduled_at is stored in UTC)
-            from apps.markets.services import format_local
-            time_str   = format_local(appt.scheduled_at, appt.lead.organization, '%I:%M %p')
-            date_str   = format_local(appt.scheduled_at, appt.lead.organization, '%A, %d %B %Y')
-            prop_title = appt.property.title if appt.property else 'the property'
-            agent_name = appt.agent.display_name if appt.agent else 'your agent'
-
-            msg = (
-                f"🏠 *Visit Reminder*\n\n"
-                f"You have a property visit scheduled:\n\n"
-                f"📍 *{prop_title}*\n"
-                f"📅 {date_str}\n"
-                f"🕐 {time_str}\n"
-                f"👤 Agent: {agent_name}\n\n"
-                "Reply *CONFIRM* to confirm or *CANCEL* to cancel your visit."
-            )
-
-            with transaction.atomic():  # T-1022a: queued together with the sent marker
-                enqueue_whatsapp_text(
-                    client.phone, msg,
-                    key=f'appt_reminder:{appt.pk}:{appt.scheduled_at.isoformat()}',
-                    organization=appt.lead.organization,
-                    expires_at=appt.scheduled_at,  # a reminder after the visit is noise
-                )
-                appt.reminder_sent_at = now
-                appt.save(update_fields=['reminder_sent_at'])
-            sent += 1
-        except Exception as exc:
-            logger.warning(f"Appointment reminder failed for appt {appt.pk}: {exc}")
-
+    """Every 15 min: visit reminders (a day and an hour before) and feedback requests (T-2060)."""
+    from apps.viewings.services import request_feedback, send_reminders
+    sent = send_reminders()
+    request_feedback()
     logger.info(f"send_appointment_reminders: sent {sent} reminder(s)")
     return sent

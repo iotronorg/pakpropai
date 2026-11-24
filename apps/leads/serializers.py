@@ -66,17 +66,20 @@ class AppointmentSerializer(serializers.ModelSerializer):
     lead_name       = serializers.CharField(source='lead.user.name', read_only=True, allow_null=True)
     agent_name      = serializers.CharField(source='agent.name', read_only=True, allow_null=True)
     property_title  = serializers.CharField(source='property.title', read_only=True, allow_null=True)
+    duration_minutes = serializers.IntegerField(min_value=5, max_value=480, required=False)
+    participants    = serializers.ListField(child=serializers.CharField(max_length=80), max_length=5, required=False)
 
     class Meta:
         model  = Appointment
         fields = (
             'id', 'lead', 'lead_phone', 'lead_name', 'property', 'property_title',
             'agent', 'agent_name', 'scheduled_at', 'duration_minutes',
-            'status', 'notes', 'reminder_sent_at', 'created_by',
+            'status', 'notes', 'location', 'meeting_url', 'participants', 'timezone',
+            'reminder_sent_at', 'created_by',
             'created_at', 'updated_at',
         )
         read_only_fields = ('id', 'lead_phone', 'lead_name', 'agent_name', 'property_title',
-                            'reminder_sent_at', 'created_by', 'created_at', 'updated_at')
+                            'timezone', 'reminder_sent_at', 'created_by', 'created_at', 'updated_at')
 
     def validate(self, attrs):
         request = self.context.get('request')
@@ -86,12 +89,20 @@ class AppointmentSerializer(serializers.ModelSerializer):
         from apps.core.permissions import get_user_org
         org = get_user_org(request.user)
 
-        if org is None:
-            return attrs
-
         lead  = attrs.get('lead')
         agent = attrs.get('agent')
         prop  = attrs.get('property')
+
+        if org is None:
+            # A freelancer may only use their own leads, calendar and listings (T-2060).
+            me = getattr(request.user, 'agent_profile', None)
+            if lead and (me is None or lead.assigned_agent_id != me.pk):
+                raise serializers.ValidationError({'lead': 'This lead is not assigned to you.'})
+            if agent and (me is None or agent.pk != me.pk):
+                raise serializers.ValidationError({'agent': 'You can only use your own calendar.'})
+            if prop and (me is None or prop.listed_by_agent_id != me.pk):
+                raise serializers.ValidationError({'property': 'This is not your listing.'})
+            return attrs
 
         if lead and lead.organization_id != org.id:
             raise serializers.ValidationError(

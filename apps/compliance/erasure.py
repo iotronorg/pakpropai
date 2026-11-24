@@ -151,6 +151,14 @@ class RTBFOrchestrator:
             logger.error("RTBF: conversation erasure failed user=%s: %s", user.id, exc)
             errors['ai_conversations'] = str(exc)
 
+        # 5c2 — Viewings (T-2060); before 5d, so the agent is told about cancelled visits
+        try:
+            from apps.viewings.services import erase_user as erase_viewings
+            scope['viewings_redacted'] = erase_viewings(user)
+        except Exception as exc:
+            logger.error("RTBF: viewing erasure failed user=%s: %s", user.id, exc)
+            errors['viewings'] = str(exc)
+
         # 5d — Enquiries and in-app threads (T-2050)
         try:
             from apps.enquiries.services import erase_user as erase_enquiries

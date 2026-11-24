@@ -334,3 +334,11 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - **Frontend:** show the consent text and send `contact_consent: true`; pages for `/threads/<id>`.
 - **Before launch:** audit old CRM messages (KI‑073), decide KI‑074, approve a WhatsApp template (KI‑075), have the consent text reviewed for each market.
 - **Prompt:** `agent.system` is version 4; run the eval suite with a live model.
+
+## 39. Session‑15 change: viewings (T‑2060, ADR‑037)
+- **Migrations:** `leads/0023` (columns with database defaults, so old workers keep working), `viewings/0001`.
+- **Behaviour change:** dashboard bookings that overlap another active appointment of the agent are refused with 409; durations are limited to 5–480 minutes.
+- **Agents must enter their hours** (`PUT /api/v1/availability/`), or their listings show no slots.
+- **Organization managers** now see visits by the lead's organization, not by the agent's current one.
+- **Beat:** the existing 15‑minute `appointment-reminders` job also sends day‑before reminders and feedback requests.
+- **Prompt:** `agent.system` is version 5; run the eval suite with a live model.

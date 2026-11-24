@@ -98,7 +98,39 @@ def _create_enquiry(a: dict):
     return f'Shall I send this enquiry to {E.lister_name(listing)}?', '\n'.join(lines)
 
 
-_BUILDERS = {'create_enquiry': _create_enquiry, 'list_property': _list_property, 'connect_to_agent': _connect_to_agent,
+def _book_viewing(a: dict):
+    from apps.enquiries import services as E
+    from apps.properties.public_listings import public_text
+    from apps.viewings import services as V
+
+    from ._tools_viewings import parse_start, resolve
+    user = _ctx_user.get()
+    if user is None:
+        raise Refused('The user must sign in or register on WhatsApp first.')
+    listing = resolve(a['listing'])
+    if listing is None:
+        raise Refused('Listing not found or no longer available.')
+    tz = V.listing_timezone(listing)
+    try:
+        E.check_allowed(user, listing)
+        start = parse_start(a['start'], tz)
+        slot = V.slot_at(listing, start, user)
+    except E.EnquiryError as exc:
+        raise Refused(str(exc)) from None
+    except (ValueError, OverflowError):
+        slot = None
+    if slot is None:
+        raise Refused('That time is not free. Call find_viewing_slots and offer its times.')
+    a['listing'], a['start'] = str(listing.pk), slot.start.isoformat()
+    a['note'] = (a.get('note') or '').strip()[:500]
+    lines = [f'🏠 {public_text(listing, listing.title)} — {listing.location}, {listing.city} ({listing.ref_no})',
+             f'📅 {V.local_text(slot.start, tz)}, {slot.minutes} minutes']
+    if a['note']:
+        lines.append(f"💬 {a['note']}")
+    return f'Shall I book this viewing with {E.lister_name(listing)}?', '\n'.join(lines + [E.CONSENT_TEXT])
+
+
+_BUILDERS = {'book_viewing': _book_viewing, 'create_enquiry': _create_enquiry, 'list_property': _list_property, 'connect_to_agent': _connect_to_agent,
              'generate_property_audit': _generate_property_audit,
              'initiate_deal_lock': _initiate_deal_lock}
 

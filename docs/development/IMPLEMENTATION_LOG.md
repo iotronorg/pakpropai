@@ -518,3 +518,10 @@
 - **Added:** `apps/enquiries` (models, services, views, URLs, migration), `apps/ai/_tools_enquiries.py`, `leads/0022`, outbox kind `notification.email`, `tests/test_enquiries.py`.
 - **Fixed:** WhatsApp messages filed under another organization's lead (KI‑073); `upsert_lead` and `connect_to_agent` failing or crossing organizations when a person has several leads; `FRONTEND_URL` missing from settings; lead merge keeps threads.
 - **Privacy:** erasure deletes enquiries and redacts replies; export lists enquiry facts and consents, not message text (KI‑066).
+
+### 2026-11-24 — session 15: T‑2060 viewings
+- **Verified:** the owner committed T‑2050 (`c17784e`); the tree was clean.
+- **Added:** `apps/viewings`, `apps/ai/_tools_viewings.py`, `leads/0023`, `viewings/0001`, `tests/test_viewings.py`; appointment `no-show` and `feedback` actions.
+- **Fixed (security):** an agent without an organization could create an appointment on **any** lead id and read that lead's phone number; an agent who changed organization took the old organization's visits along.
+- **Fixed:** dashboard double booking; rescheduled visits were never reminded and could not be confirmed, completed or moved again; reminders ignored preferences; reschedule accepted past times and treated local times as UTC; the reminder promised CONFIRM/CANCEL replies nothing handled (KI‑076).
+- **Privacy:** erasure cancels upcoming visits and removes notes, names and feedback; export lists visits.

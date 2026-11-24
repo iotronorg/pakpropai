@@ -858,3 +858,13 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - Notifications contain no message text or contact details, and are sent once per unread burst (again after 1 h). Email goes through the outbox to any SMTP provider; address and preferences are checked at delivery.
 - **Kept:** the owner's rule that free‑text messages are PII‑masked on input (T‑1033): emails and `+` phone numbers typed in a message are never stored.
 - **Limits:** KI‑072…KI‑075. Email addresses are not verified, which is why emails carry no content.
+
+### ADR‑037 — Availability and viewings (T‑2060, 2026‑11‑24)
+- **Decision:**
+  - Agents keep weekly rules and dated exceptions in wall‑clock time with an IANA zone; slots are computed in UTC, not stored (no `ViewingSlot` table). A slot id is `<listing>@<UTC start>` and is checked again when booked. Times skipped by a clock change give no slot.
+  - Who shows a listing: the visitor's assigned agent at that organization, else the listing's agent, else any active member agent with hours. Private owners have no slots; the thread is used.
+  - Every change of an agent's calendar (visitor booking, reschedule, dashboard create, edit, reschedule) takes a row lock on the agent and checks for overlap. Dashboard double bookings now get 409.
+  - A booking creates or continues a consented enquiry, so consent, blocking and limits are those of ADR‑036. Limits: 2 h notice, 60 days ahead, 5 upcoming per person, one per listing, no overlap.
+  - The assistant books only after the user's confirmation and only a time that is really free; the listing and UTC start are stored at proposal time.
+  - Reminders a day and an hour before, to visitor and agent, by their preferences, claimed once per time; moving a visit resets them. Feedback (1–5) from each side after the visit; the visitor is asked once.
+- **Limits:** KI‑076, KI‑077; calendar sync and ICS are P2 (FR‑APT‑007). The lock protects all API paths; direct database or admin edits are not checked.
