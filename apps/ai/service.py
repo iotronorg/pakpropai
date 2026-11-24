@@ -342,7 +342,9 @@ class IntentClassifier:
                 break
 
         # Purpose
-        purpose = 'rent' if re.search(r'\b(rent|rental|kiraya|lease)\b', lower, re.I) else 'buy'
+        # Left empty when the user did not say: the search tool asks (T-2030).
+        purpose = ('rent' if re.search(r'\b(rent|rental|renting|kiraya|kiraye|lease)\b', lower)
+                   else 'buy' if re.search(r'\b(buy|buying|purchase|for sale|khareed\w*|kharid\w*)\b', lower) else '')
 
         # Bedrooms (T-1070a): "3 bed", "4 bedroom", "2 BHK", "3br"
         m = re.search(r'\b(\d{1,2})\s*-?\s*(?:bed(?:room)?s?|br|bhk)\b', lower)
@@ -538,7 +540,7 @@ class IntentClassifier:
     @staticmethod
     def _normalise_search_query(sf: 'PropertySearchFilter') -> str:
         """Produce a compact normalised string the LLM can act on without ambiguity."""
-        parts = [f"city={sf.city}"]
+        parts = [f"city={sf.city}"] if sf.city != 'Unknown' else []
         if sf.location:
             parts.append(f"location={sf.location}")
         if sf.property_type:

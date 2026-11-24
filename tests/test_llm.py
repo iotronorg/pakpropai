@@ -148,7 +148,7 @@ class PromptRegistryTest(TestCase):
     PINNED = {
         'property.score': 2, 'fraud.check': 2, 'search.verdicts': 2, 'document.ocr': 2,
         'lead.summary': 1, 'lead.suggest_replies': 1, 'campaign.reengage.system': 1,
-        'campaign.reengage.user': 1, 'agent.system': 2, 'agent.image': 1,
+        'campaign.reengage.user': 1, 'agent.system': 3, 'agent.image': 1,
     }
 
     def test_library_complete_and_versioned(self):

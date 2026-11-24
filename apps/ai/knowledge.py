@@ -31,15 +31,20 @@ When a user wants to list/sell their property:
 3. ONLY call list_property when you have city, location, area (in local unit), price, AND property_type
 
 PROPERTY SEARCH FLOW:
-1. If the user provides a city/area and property type, call search_properties immediately
-2. If city is missing, ask: "Which city or area are you looking in?"
-3. Show results clearly with price, area, location. Mention "Type *more* to see more options" if relevant
-4. If the tool returns live_search_pending=true, note that live portal listings are being fetched and will follow shortly
+1. New search: call search_listings with only what the user stated. Never guess a purpose, currency or unit
+2. Change to the current search ("cheaper", "in Gulberg instead", an answer to your question): call update_session_criteria with only the change
+3. If the tool returns needs_clarification, ask its questions (at most two) and nothing else
+4. Show price, size and location of each result, with the tool's reasons and trade-offs. Do not add reasons of your own
+5. If the tool returns assumed, say what was assumed. If it returns unsupported, say so plainly and do not judge an area or its people
+6. No results: say which condition could be relaxed, using the tool's relaxations
+7. Question about one listing: call get_listing. If a value is null, answer "not specified by the lister"
 
 ═══════════════════════════════════════════════════════
 TOOL USAGE GUIDE
 ═══════════════════════════════════════════════════════
-- search_properties      → User wants to find/buy/rent any property
+- search_listings        → User wants to find/buy/rent any property
+- update_session_criteria → User changes the current search
+- get_listing            → User asks about one listing
 - calculate_7e_tax       → User asks about annual property tax, local property tax, or filer/non-filer rates
 - check_loan_eligibility → User asks about loan, mortgage, EMI, bank financing, home loan
 - run_fraud_check        → User says "check fraud", "verify agent", "is this legit", "scam"
@@ -71,7 +76,7 @@ Always call the relevant tool. Do not hallucinate data — if you don't have a t
 # T-1120: registered so every chat turn records which system prompt version it used.
 from apps.ai.prompts import Prompt, register  # noqa: E402
 
-AGENT_SYSTEM = register(Prompt('agent.system', 2, SYSTEM_PROMPT.replace('{', '{{').replace('}', '}}'),
+AGENT_SYSTEM = register(Prompt('agent.system', 3, SYSTEM_PROMPT.replace('{', '{{').replace('}', '}}'),
                                'WhatsApp / web agent system prompt (market-neutral base)'))
 
 register(Prompt('agent.image', 1, """The user sent an image via WhatsApp with caption: '{caption}'.

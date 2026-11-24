@@ -137,7 +137,7 @@ def begin_turn(conv: Conversation, text: str, client_id=None) -> tuple[Message, 
 
 
 def finish_turn(conv: Conversation, message: Message, reply: str, *, trace=None, in_window=True,
-                citations=(), criteria=None, results=None, language='') -> Message:
+                citations=(), criteria=None, results=None, matches=None, language='') -> Message:
     pending = None
     if trace is not None and trace.tool_calls:
         pending = next((c.get('pending_action') for c in trace.tool_calls if c.get('pending_action')), None)
@@ -147,7 +147,7 @@ def finish_turn(conv: Conversation, message: Message, reply: str, *, trace=None,
     with transaction.atomic():
         Message.objects.filter(pk=message.pk).update(status=Message.Status.DONE, in_window=in_window)
         answer = _insert(conv, role=Message.Role.ASSISTANT, content=reply, reply_to=message, trace=trace,
-                         in_window=in_window, citations=list(citations)[:20], pending_action_id=pending)
+                         in_window=in_window, citations=list(citations)[:20], matches=matches or {}, pending_action_id=pending)
         fields = {'last_message_at': timezone.now()}
         if language:
             fields['language'] = language[:10]

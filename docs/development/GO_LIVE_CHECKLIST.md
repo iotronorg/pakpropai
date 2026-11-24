@@ -312,3 +312,10 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - **Encryption:** message text uses `FIELD_ENCRYPTION_KEYS`; losing the keys loses the chats.
 - **Workers (KI‑065):** choose threaded or ASGI workers before exposing web chat; disable proxy buffering for `/api/v1/conversations/*/messages/`.
 - **Privacy notice:** chats are now kept in the database; update the notice before launch.
+
+## 36. Session‑12 change: search v2 (T‑2030, ADR‑034)
+- **Migration:** `conversations 0002` (one column with a database default).
+- **Behaviour:** the assistant uses the new search tools (system prompt v3); portal scraping no longer runs from chat even when enabled. Review replies with a real provider before launch.
+- **API:** `POST /api/v1/search/` is public, 30/min per IP or user.
+- **Optional:** set `Market.settings["ranking_weights"]` per market.
+- **Security (KI‑067):** array JSON bodies no longer crash the security middleware.

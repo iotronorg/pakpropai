@@ -58,6 +58,7 @@ class TurnResult:
     citations: list = field(default_factory=list)
     results: list | None = None    # listing ids of the last search this turn
     criteria: dict | None = None
+    matches: dict = field(default_factory=dict)    # listing id -> score, reasons, tradeoffs
 
 
 def _history_messages(history: list) -> list:
@@ -146,9 +147,12 @@ def run_turn(backend, message: str, history: list, specs: list, system: str, *,
                         terminal = (spec.name, _summary(result))
             if record['status'] == 'ok':
                 evidence.add(result)
-                if isinstance(result, dict) and isinstance(result.get('properties'), list):
+                if (isinstance(result, dict) and isinstance(result.get('properties'), list)
+                        and not result.get('detail')):          # a search, not one listing's facts
                     turn.results = [str(r['id']) for r in result['properties'] if r.get('id')]
-                    turn.criteria = dict(args)
+                    turn.criteria = result['criteria'] if 'criteria' in result else dict(args)
+                    turn.matches.update({str(r['id']): {k: r[k] for k in ('match_score', 'reasons', 'tradeoffs')}
+                                         for r in result['properties'] if r.get('id') and 'match_score' in r})
             turn.tool_calls.append(record)
             logger.info('ai.tool %s', json.dumps(record, default=str)[:500])
             messages.append({'role': 'tool', 'id': call.id, 'name': call.name, 'result': result})

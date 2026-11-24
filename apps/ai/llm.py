@@ -53,6 +53,7 @@ class LLMResult:
     citations: list = None
     results: list = None           # listing ids of this turn's last search (None = no search)
     criteria: dict = None
+    matches: dict = None
 
 
 # ── Providers + circuit breaker ───────────────────────────────────────────────
@@ -251,7 +252,7 @@ def chat(message: str, history: list, tools: list, system: P.Rendered | str, *,
                        prompt_tokens=turn.prompt_tokens, completion_tokens=turn.completion_tokens, ms=ms,
                        tool_calls=turn.tool_calls, steps=turn.steps, grounding=turn.grounding,
                        grounding_codes=turn.grounding_codes, citations=turn.citations,
-                       results=turn.results, criteria=turn.criteria)
+                       results=turn.results, criteria=turn.criteria, matches=turn.matches)
     if log:                                   # the agent logs its own row (with usage totals)
         _log(result, interaction_type=interaction_type, user=user, input_preview=message)
     return result

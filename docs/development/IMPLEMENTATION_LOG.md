@@ -499,3 +499,10 @@
 - **Added:** `apps/conversations` (models, store, API, purge task, admin metadata), migrations `conversations 0001` and `ai 0007`, `tests/test_conversations.py`.
 - **Changed:** `AIServiceManager.process` stores turns; `RealTronAgent` history reads the store; `conversation_key` follows the current conversation; `PendingAction.conversation`; search results and criteria recorded per turn; web chats do not trigger WhatsApp side effects; listing summary text says "phone number".
 - **Fixed:** KI‑062, KI‑063 residual, KI‑064. **Found:** KI‑065, KI‑066.
+
+### 2026-11-24 — session 12: T‑2030 search criteria, search v2, tools; KI‑067
+- **Verified:** the owner committed T‑2020 (`bcd33b6`); the tree was clean.
+- **Added:** `properties/criteria.py`, `properties/listing_search.py`, `properties/search_views.py`, `ai/_tools_listings.py`, migration `conversations 0002`, `tests/test_listing_search.py`.
+- **Changed:** tool registry and system prompt v3; runtime records criteria, results and matches; chat cards carry score, reasons and trade‑offs; the classifier no longer sends `purpose=buy` or `city=Unknown` when the user did not say; grounding accepts recorded deposits and service charges.
+- **Tests edited:** names and prompt version in `test_runtime`, `test_ai_side_effect_guards`, `test_llm`, `test_ai_traces`; the web follow‑up test in `test_conversations` now checks the new tool.
+- **Fixed:** KI‑067. **Found:** KI‑068, KI‑069, KI‑070.

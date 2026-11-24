@@ -22,6 +22,7 @@ from django.conf.urls.static import static
 from apps.core.urls import api_urlpatterns as core_api_urlpatterns
 from apps.core.views import metrics_view
 from apps.organizations.theme_views import ThemeConfigView
+from apps.properties.search_views import SearchView
 from drf_spectacular.views import SpectacularAPIView
 
 urlpatterns = [
@@ -39,6 +40,7 @@ urlpatterns = [
         path('payments/',     include('apps.payments.urls')),
         path('whatsapp/',     include('apps.whatsapp.urls')),
         path('properties/',   include('apps.properties.urls')),
+        path('search/',       SearchView.as_view(), name='listing-search'),
         path('locations/',    include('apps.locations.urls')),
         path('verification/', include('apps.verification.urls')),
         path('audit/',         include('apps.audit.urls')),

@@ -21,6 +21,7 @@ from rest_framework.throttling import UserRateThrottle
 from rest_framework.views import APIView
 
 from apps.core.throttles import AiQueryThrottle
+from apps.properties.search_views import ListingSummarySerializer
 
 from . import store
 from .models import Conversation, ConversationState, Message
@@ -64,19 +65,10 @@ class ConversationSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'channel', 'is_open', 'created_at', 'last_message_at']
 
 
-class ListingCardSerializer(serializers.Serializer):
-    id = serializers.UUIDField()
-    title = serializers.CharField()
-    city = serializers.CharField()
-    location = serializers.CharField()
-    price = serializers.IntegerField(allow_null=True)
-    currency = serializers.CharField()
-    price_type = serializers.CharField()
-    purpose = serializers.CharField()
-    size = serializers.CharField(allow_blank=True)
-    bedrooms = serializers.IntegerField(allow_null=True)
-    bathrooms = serializers.IntegerField(allow_null=True)
-    verified = serializers.BooleanField()
+class ListingCardSerializer(ListingSummarySerializer):
+    match_score = serializers.IntegerField(allow_null=True)
+    reasons = serializers.ListField(child=serializers.CharField())
+    tradeoffs = serializers.ListField(child=serializers.CharField())
 
 
 class MessagePendingSerializer(serializers.Serializer):
@@ -131,10 +123,11 @@ def _own(request, pk) -> Conversation:
                              pk=pk, user=request.user)
 
 
-def cards(ids, org=None) -> list[dict]:
+def cards(ids, org=None, matches=None) -> list[dict]:
     """Current facts of the cited listings that are still visible, in citation order."""
     import uuid
 
+    from apps.properties.listing_search import summary
     from apps.properties.models import Property
     valid = []
     for i in ids:
@@ -143,18 +136,14 @@ def cards(ids, org=None) -> list[dict]:
         except ValueError:                # third-party result
             continue
     found = {str(p.pk): p for p in Property.objects.visible_to(org).filter(pk__in=valid)}
-    return ListingCardSerializer([{
-        'id': p.pk, 'title': p.title, 'city': p.city, 'location': p.location,
-        'price': None if p.price_on_request else p.price, 'currency': p.currency,
-        'price_type': p.price_type, 'purpose': p.purpose,
-        'size': f'{float(p.size_value):g} {p.size_unit}' if p.size_value and p.size_unit else '',
-        'bedrooms': p.bedrooms, 'bathrooms': p.bathrooms,
-        'verified': p.legal_status == Property.LegalStatus.VERIFIED,
-    } for i in valid if (p := found.get(i))], many=True).data
+    blank = {'match_score': None, 'reasons': [], 'tradeoffs': []}
+    return ListingCardSerializer([{**summary(p), **blank, **((matches or {}).get(i) or {})}
+                                  for i in valid if (p := found.get(i))], many=True).data
 
 
 def _turn_payload(conv, answer) -> dict:
-    return {'message': MessageSerializer(answer).data, 'cards': cards(answer.citations, conv.organization)}
+    return {'message': MessageSerializer(answer).data,
+            'cards': cards(answer.citations, conv.organization, answer.matches)}
 
 
 # ── Views ─────────────────────────────────────────────────────────────────────

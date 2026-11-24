@@ -70,7 +70,7 @@ def note_llm(result) -> None:
          tool_calls=[{k: c[k] for k in keep if k in c} for c in result.tool_calls or ()],
          **(result.prompt.ref if result.prompt else {}))
     if result.results is not None:
-        note_extra(results=result.results, criteria=result.criteria)
+        note_extra(results=result.results, criteria=result.criteria, matches=result.matches)
 
 
 def price_for(model: str, on):

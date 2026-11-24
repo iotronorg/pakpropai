@@ -822,3 +822,18 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - Web: own conversations only (404 otherwise), one turn at a time, `client_message_id` for retries, 10/min and 200/day per user, blocked users refused. Web tools never send WhatsApp follow‑ups or change the WhatsApp session.
   - Retention: `Market.settings["conversation_retention_days"]`, else `CONVERSATION_RETENTION_DAYS` (365). Deleting cascades to messages, state and pending actions.
 - **Not included:** org‑side access to conversations, attachments, org‑hosted web chat, merging `WhatsAppMessage`/`ConversationMessage` (FR‑COM‑009), rolling summaries. PII masking still applies to message text.
+
+### ADR‑034 — SearchCriteria and search v2 (T‑2030, 2026‑11‑24)
+- **Context:** search took PK‑shaped arguments (marla, city text), ranked by `ai_score`, and scraped portals when enabled.
+- **Decision:**
+  - One `SearchCriteria` (AI spec §4.1, strict pydantic) validated by `criteria.prepare`; one `listing_search.execute` for REST, AI tools and later alerts.
+  - Hard filters first. The score is computed in SQL from weighted factors; only factors the criteria make meaningful count. Weights: `Market.settings["ranking_weights"]`; `ranking_version` names them. No paid boost; `sponsored` is always false for now.
+  - Reasons (top 3) and one trade‑off are templates over stored fields.
+  - Price filters compare one currency and one period (per year ↔ per month × 12). Price‑on‑request listings never match a price filter or a price order, so a hidden price cannot be probed.
+  - Place names resolve on the location tree; a shared name is ambiguous (REST 422, the assistant asks). Unmatched listings fall back to their own text.
+  - Markets that are `inactive` are refused; `beta` markets are searchable.
+  - Clarification is decided by the server: location is required, purpose is asked once, at most two questions. Defaults are returned as `assumed` and stated to the user.
+  - Subjective or protected wording and "near a metro" are removed from filters and ranking and reported as unsupported (heuristic, English plus a few Urdu words).
+  - Cursors are signed, expire after a day, and are bound to the criteria, sort, ranking version and viewer.
+- **Assistant:** `search_listings`, `update_session_criteria` and `get_listing` replace `search_properties`, so **chat no longer scrapes portals** (FR‑SRCH‑011) and no longer asks the model for verdicts. The old service code stays.
+- **Limits:** no semantic search, POI distance, polygon or FX; alerts are T‑2040; extraction accuracy is measured in T‑2070.

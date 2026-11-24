@@ -175,13 +175,13 @@ class RegistryTest(TestCase):
             self.assertEqual(s.schema['name'], name)
         self.assertEqual(R.REGISTRY['initiate_deal_lock'].side_effect, R.FINANCIAL)
         self.assertTrue(R.REGISTRY['connect_to_agent'].terminal and R.REGISTRY['connect_to_agent'].commits)
-        self.assertFalse(R.REGISTRY['search_properties'].commits)
+        self.assertFalse(R.REGISTRY['search_listings'].commits)
 
     def test_enabled_tools_follow_flags(self):
         names = {s.name for s in R.enabled_tools({'feature_deal_lock': False, 'feature_scam_check': False})}
         self.assertNotIn('initiate_deal_lock', names)
         self.assertNotIn('run_fraud_check', names)
-        self.assertIn('search_properties', names)
+        self.assertIn('search_listings', names)
         self.assertNotIn('initiate_deal_lock', {s.name for s in R.enabled_tools({})})   # default off
 
     def test_patched_tool_module_is_used(self):
@@ -245,4 +245,4 @@ class OpenAIStepTest(TestCase):
         self.assertEqual([m['role'] for m in msgs], ['system', 'assistant', 'tool'])
         self.assertEqual(msgs[1]['tool_calls'][0]['function']['arguments'], '{"city": "D"}')
         with self.assertRaises(R.ToolArgsInvalid):                      # unparsable args → rejected
-            R.validate_args(R.REGISTRY['search_properties'], '{oops')
+            R.validate_args(R.REGISTRY['search_listings'], '{oops')

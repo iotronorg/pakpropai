@@ -186,6 +186,8 @@ class ThreatDetectionEngine:
         authenticated_org_id: str,
     ) -> Optional[ThreatResult]:
         candidates = []
+        if not isinstance(body_data, dict):      # a JSON array or scalar body (KI-067)
+            body_data = {'': body_data}
 
         for val in list(query_params.values()) + list(body_data.values()):
             if isinstance(val, str):

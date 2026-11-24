@@ -63,6 +63,7 @@ class Message(models.Model):
                                         related_name='reply')
     client_id    = models.UUIDField(null=True, blank=True)         # client_message_id (retry safety)
     citations    = models.JSONField(default=list, blank=True)      # listing ids
+    matches      = models.JSONField(default=dict, db_default={}, blank=True)   # listing id -> score, reasons, trade-offs
     # prompt version, model, tokens, latency and tool calls (PRD C.1 acceptance 3)
     trace        = models.ForeignKey('ai.AITrace', on_delete=models.SET_NULL, null=True, blank=True,
                                      related_name='messages')

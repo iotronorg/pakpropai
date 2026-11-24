@@ -137,6 +137,8 @@ class Evidence:
         rows = _rows(result)
         if rows:
             self.rows += [{k: r.get(k) for k in _KEEP} for r in rows]
+            for r in rows:                     # recorded amounts other than the price
+                self._collect_numbers([r.get('deposit'), r.get('service_charge')])
             self._listings = None
         else:
             self._collect_numbers(result)

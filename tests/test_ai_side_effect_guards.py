@@ -111,7 +111,7 @@ class DealLockFrozenTest(TestCase):
         from apps.ai.agent import RealTronAgent
         names = {fn.__name__ for fn in RealTronAgent()._get_tools(tool_module)}
         self.assertNotIn('initiate_deal_lock', names)
-        self.assertIn('search_properties', names)
+        self.assertIn('search_listings', names)
 
     def test_initiate_endpoint_disabled_by_default(self):
         api = APIClient()

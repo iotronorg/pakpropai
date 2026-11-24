@@ -114,7 +114,7 @@ class DynamicContextBuilder:
                 )
                 if sample:
                     # Names only: facts must come from a tool result (T-2013).
-                    lines.append('Inventory sample (call search_properties for any details):')
+                    lines.append('Inventory sample (call search_listings for any details):')
                     for p in sample:
                         lines.append(f"  • {p['title']} — {p['location']}, {p['city']}")
             except Exception:

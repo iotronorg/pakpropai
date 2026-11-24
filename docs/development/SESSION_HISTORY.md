@@ -322,3 +322,12 @@
 1. `git status`: uncommitted work is T‑2020, KI‑062, KI‑064. **Do not commit.**
 2. Next: **T‑2030** (starting files in DEVELOPMENT_STATUS).
 3. Owner: KI‑065 (web workers) and KI‑066 (chat text in exports) need decisions before web chat goes live.
+
+## Session 12 — 2026-11-24
+- **Completed:** T‑2030 (ADR‑034) and KI‑067. Found KI‑068, KI‑069 and KI‑070.
+- **Tests:** 2108 passed, 1 skipped, 0 failed. **Not committed.**
+
+### Handoff → session 13 (supersedes the one above)
+1. `git status`: uncommitted work is T‑2030 and KI‑067. **Do not commit.**
+2. Next: **T‑2031** (starting files in DEVELOPMENT_STATUS).
+3. Owner decisions still open: KI‑065, KI‑066.

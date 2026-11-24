@@ -254,10 +254,12 @@ class WebApiTest(Base):
         self.assertEqual(SessionManager.get(PHONE)['state'], 'IDLE')
 
     def test_web_search_sends_no_whatsapp_follow_up(self):
-        self.scripted(calls(('search_properties', {'city': 'Lahore'})), final('Nothing found.'))
-        with patch('apps.properties.search.PropertySearchService.search', return_value=[]) as search:
+        self.scripted(calls(('search_listings', {'location': 'Lahore', 'purpose': 'buy'})), final('Nothing found.'))
+        with patch('apps.notifications.delivery.enqueue_whatsapp_text') as send, \
+                patch('apps.properties.tasks.warm_search_cache.delay') as warm:
             self.send(self.web(), 'houses please')
-        self.assertEqual(search.call_args.kwargs['phone'], '')
+        send.assert_not_called()
+        warm.assert_not_called()
 
     def test_search_fills_state_and_cards_and_shortlist(self):
         org = make_org(operational_mode='production')
