@@ -22,6 +22,7 @@ from django.conf.urls.static import static
 from apps.core.urls import api_urlpatterns as core_api_urlpatterns
 from apps.core.views import metrics_view
 from apps.organizations.theme_views import ThemeConfigView
+from apps.properties.comparison_views import CompareView
 from apps.properties.search_views import SearchView
 from apps.preferences.views import StopAlertsView
 from apps.viewings.views import AvailabilityView, SlotListView
@@ -50,6 +51,7 @@ urlpatterns = [
         path('whatsapp/',     include('apps.whatsapp.urls')),
         path('properties/',   include('apps.properties.urls')),
         path('public/listings/', include('apps.properties.public_urls')),
+        path('compare/',      CompareView.as_view(), name='listing-compare'),
         path('search/',       SearchView.as_view(), name='listing-search'),
         path('locations/',    include('apps.locations.urls')),
         path('verification/', include('apps.verification.urls')),

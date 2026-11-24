@@ -7,7 +7,7 @@ from apps.markets.pk import AREA_UNIT as PK_AREA_UNIT, CURRENCY as PK_CURRENCY
 from apps.markets.services import format_price
 from .confirmation import guarded
 from ._tools_context import _ctx_conversation, _ctx_user, _ctx_phone, set_context  # noqa: F401
-from ._tools_listings import get_listing, search_listings, update_session_criteria  # noqa: F401
+from ._tools_listings import compare_listings, get_listing, search_listings, update_session_criteria  # noqa: F401
 from ._tools_search import search_properties                     # noqa: F401
 from ._tools_financial import calculate_7e_tax, check_loan_eligibility  # noqa: F401
 from ._tools_fraud import run_fraud_check                        # noqa: F401

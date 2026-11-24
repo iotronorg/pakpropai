@@ -8,7 +8,10 @@ behaviour that is code (calculators, parsers, document types, prompts) stays
 in the ``apps/markets/<cc>/`` packs. Read through ``apps.markets.services``,
 not directly, so the cache and the registry fallback apply.
 """
+from decimal import Decimal
+
 from django.core.exceptions import ValidationError
+from django.core.validators import MinValueValidator, RegexValidator
 from django.db import models
 
 
@@ -69,3 +72,24 @@ class Market(models.Model):
 
     def __str__(self):
         return f'{self.code} — {self.name} [{self.status}]'
+
+
+class FxRate(models.Model):
+    """Daily snapshot for approximate display conversion only; stored prices never change (T-2041)."""
+    currency = models.CharField(max_length=3, validators=[RegexValidator(r'^[A-Z]{3}$', 'ISO 4217, upper-case.')])
+    per_usd  = models.DecimalField(max_digits=20, decimal_places=8, validators=[MinValueValidator(Decimal('0.00000001'))],
+                                   help_text='Units of this currency for 1 USD')
+    as_of    = models.DateField()
+    source   = models.CharField(max_length=100)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'fx_rates'
+        ordering = ['-as_of', 'currency']
+        constraints = [
+            models.UniqueConstraint(fields=['currency', 'as_of'], name='fx_rate_once_a_day'),
+            models.CheckConstraint(condition=models.Q(per_usd__gt=0), name='fx_rate_positive'),
+        ]
+
+    def __str__(self):
+        return f'{self.currency} {self.per_usd} @ {self.as_of}'

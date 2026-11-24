@@ -878,3 +878,13 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - Preferences need the `ai_memory` consent, which has its own endpoint because withdrawing deletes the profile. Only structured criteria fields; no free text, no accessibility needs. Items are stated or inferred (3+ saved listings, 60 % agreement), and deleted after `PREFERENCE_RETENTION_DAYS` (180).
   - The assistant uses only stated items, only to fill a missing place or purpose or "my budget", and must say so. `create_saved_search` and `remember_preferences` run after YES on criteria frozen at proposal time; `save_listing` is reversible and needs no confirmation.
 - **Limits:** KI‑078…KI‑080.
+
+### ADR‑039 — Comparison and approximate FX (T‑2041, 2026‑11‑24)
+- **Decision:**
+  - `GET /api/v1/public/listings/compare/` (anonymous, cacheable, same answer for everyone) and `GET /api/v1/compare/` (signed in; organization sandbox listings; own stated preferences only with `use_preferences=true` and consent). 2–4 listings; unavailable ones are listed. The agent‑only `properties/compare/` is unchanged.
+  - Only stored facts and arithmetic: rents per month, price per m², amenities diff, age, verification. Null means not specified. A hidden price is hidden in every derived value and gives "unknown" in the match.
+  - The match uses the search engine's own filter one condition at a time, so it agrees with search; answers are yes, no or unknown.
+  - "Best" values exist only when every listing has a comparable value and one clearly wins. There is no overall winner.
+  - `FxRate` holds daily units per USD with source; conversion is for display, labelled approximate with the oldest date used, and not done with rates older than 7 days. Stored prices are never changed.
+  - `compare_listings` is read‑only. Derived amounts are grounded per listing and currency, not in the turn‑wide list.
+- **Limits:** KI‑081, KI‑082. No `fx/rates` endpoint and no cross‑currency filters (FR‑SRCH‑009); narrative and running costs are P2 (FR‑CMP‑003/004).

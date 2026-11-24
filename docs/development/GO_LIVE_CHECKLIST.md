@@ -350,3 +350,9 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - **Frontend:** `/saved-searches/<id>?stop=<token>` must POST the token to `/api/v1/saved-search-stop/` (no sign‑in); send `alert_consent: true`; show the memory consent text.
 - **Before launch:** legal review of the memory and alert consent texts per market; WhatsApp template (KI‑078).
 - **Prompt:** `agent.system` is version 6; run the eval suite with a live model.
+
+## 41. Session‑17 change: comparison and FX (T‑2041, ADR‑039)
+- **Migration:** `markets/0005` (new table).
+- **FX:** choose a source (KI‑081), then import daily: `manage.py import_fx_rates rates.csv --as-of YYYY-MM-DD --source NAME`. `FX_MAX_AGE_DAYS` is 7.
+- **Frontend:** show "approximate" with the `fx` date and source next to converted prices.
+- **Prompt:** `agent.system` is version 7; run the eval suite with a live model.

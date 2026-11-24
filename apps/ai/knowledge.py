@@ -45,6 +45,7 @@ TOOL USAGE GUIDE
 - search_listings        → User wants to find/buy/rent any property
 - update_session_criteria → User changes the current search
 - get_listing            → User asks about one listing
+- compare_listings       → User wants to compare listings, or asks which is cheaper or bigger
 - calculate_7e_tax       → User asks about annual property tax, local property tax, or filer/non-filer rates
 - check_loan_eligibility → User asks about loan, mortgage, EMI, bank financing, home loan
 - run_fraud_check        → User says "check fraud", "verify agent", "is this legit", "scam"
@@ -82,7 +83,7 @@ Always call the relevant tool. Do not hallucinate data — if you don't have a t
 # T-1120: registered so every chat turn records which system prompt version it used.
 from apps.ai.prompts import Prompt, register  # noqa: E402
 
-AGENT_SYSTEM = register(Prompt('agent.system', 6, SYSTEM_PROMPT.replace('{', '{{').replace('}', '}}'),
+AGENT_SYSTEM = register(Prompt('agent.system', 7, SYSTEM_PROMPT.replace('{', '{{').replace('}', '}}'),
                                'WhatsApp / web agent system prompt (market-neutral base)'))
 
 register(Prompt('agent.image', 1, """The user sent an image via WhatsApp with caption: '{caption}'.

@@ -531,3 +531,9 @@
 - **Added:** `apps/preferences`, `apps/ai/_tools_preferences.py`, migrations `preferences/0001`, `notifications/0004`, `compliance/0004`, `tests/test_preferences.py`.
 - **Changed:** search tools use stated preferences; `notify_user` returns a bool; `agent.system` 6; erasure and export.
 - **Fixed during review:** `notify_user` swallows errors, so a failed alert would have marked listings as announced; a failed `remember_preferences` would have left the consent on.
+
+### 2026-11-24 — session 17: T‑2041 comparison
+- **Verified:** the owner committed T‑2040 (`65c6fe6`); the tree was clean.
+- **Added:** `apps/properties/comparison.py`, `comparison_views.py`, `apps/markets/fx.py`, `FxRate` (`markets/0005`), `import_fx_rates`, tool `compare_listings`, `tests/test_comparison.py`.
+- **Changed:** `agent.system` 7; grounding knows per‑listing derived amounts.
+- **Fixed:** grounding read "10,000,000, PKR 150,000" as one amount, so the second was never checked (older bug).

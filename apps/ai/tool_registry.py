@@ -72,6 +72,7 @@ REGISTRY: dict[str, ToolSpec] = {s.name: s for s in (
     ToolSpec('search_listings', flag='feature_property_search'),
     ToolSpec('update_session_criteria', side_effect=SESSION, flag='feature_property_search'),
     ToolSpec('get_listing', flag='feature_property_search'),
+    ToolSpec('compare_listings', flag='feature_property_search'),
     ToolSpec('list_property', side_effect=LOW, requires_confirmation=True, flag='feature_property_listing'),
     ToolSpec('run_fraud_check', flag='feature_scam_check'),
     ToolSpec('calculate_7e_tax', flag='feature_tax_advice'),

@@ -55,6 +55,7 @@ class Listing:
     installments: bool | None = None
     verified: bool | None = None
     text: str = ''                        # the lister's own words
+    amounts: list = field(default_factory=list)   # (amount, currency) derived for this listing only (comparison)
 
     @property
     def words(self) -> str:
@@ -85,6 +86,9 @@ def collect(rows: list[dict]) -> list[Listing]:
                 own[str(uuid.UUID(str(r.get('id'))))] = r
             except ValueError:
                 continue
+    amounts: dict[str, list] = {}
+    for r in rows:
+        amounts.setdefault(str(r.get('id') or ''), []).extend(r.get('amounts') or ())
     out = {}
     for p in Property.objects.filter(pk__in=own, is_active=True).prefetch_related('amenities'):
         out[str(p.pk)] = Listing(
@@ -94,7 +98,8 @@ def collect(rows: list[dict]) -> list[Listing]:
             size_label=f'{float(p.size_value):g} {p.size_unit}' if p.size_value and p.size_unit else '',
             bedrooms=p.bedrooms, bathrooms=p.bathrooms, amenities={a.key for a in p.amenities.all()},
             installments=p.installment_available,
-            verified=p.legal_status == Property.LegalStatus.VERIFIED, text=p.description or '')
+            verified=p.legal_status == Property.LegalStatus.VERIFIED, text=p.description or '',
+            amounts=[] if p.price_on_request else amounts.get(str(p.pk), []))
     for r in rows:
         key = str(r.get('id') or '')
         if r.get('source') == 'pakprop' or not key or key in out:
@@ -119,7 +124,7 @@ def _last_key() -> str:
 
 
 _KEEP = ('id', 'source', 'title', 'city', 'location', 'price', 'currency', 'area_marla',
-         'bedrooms', 'bathrooms')
+         'bedrooms', 'bathrooms', 'amounts')
 
 
 class Evidence:
@@ -178,7 +183,7 @@ _UNITS = {'crore': 10**7, 'cr': 10**7, 'karor': 10**7, 'lakh': 10**5, 'lac': 10*
 _CUR = {**_PREFIX_TO_ISO, **_WORD_TO_CURRENCY, 'rupee': PK_CURRENCY, 'rupees': PK_CURRENCY, 'روپے': PK_CURRENCY}
 _MONEY_RE = re.compile(
     r'(?:(?P<pre>(?<!\w)(?:pkr|rs|₨|aed|usd|gbp|eur|sar|inr|cad|aud|sgd)|[$£€₹])\.?\s*)?'
-    r'(?<![\w.,])(?P<num>\d[\d,]*(?:\.\d+)?)'
+    r'(?<![\w.,])(?P<num>\d(?:[\d,]*\d)?(?:\.\d+)?)'
     r'(?:\s*(?P<unit>crores?|cr|karor|lakhs?|lacs?|million|mn|billion|thousand|k|کروڑ|لاکھ|مليون)(?!\w))?'
     r'(?:\s*(?P<post>pkr|rs|aed|usd|gbp|eur|sar|inr|cad|aud|sgd|rupees|dirhams?|روپے|درهم)(?!\w))?'
     r'(?P<tail>\s*(?:%|marla|kanal|sq\b|sqft|sqm|sq\.|m²))?', re.I)
@@ -341,6 +346,9 @@ def _check_line(line, pool, single, verdict, other, user_money, user_sizes, term
         if match:
             if cur and not any(not l.currency or l.currency == cur for l in match):
                 add(f'currency: {cur} is not the currency of this listing')
+            continue
+        if any(_close(amount, Decimal(str(n)), PRICE_TOLERANCE) and cur in ('', c)
+               for l in pool for n, c in l.amounts):
             continue
         if any(_close(amount, o, PRICE_TOLERANCE) for o in other):
             continue

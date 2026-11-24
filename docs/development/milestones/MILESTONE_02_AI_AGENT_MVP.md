@@ -30,7 +30,7 @@
 | T‑2030 ✅ | P1 | `SearchCriteria` extraction and clarification; SearchService v2 (filters + geo + text) and ranking with explanations; `search_listings`/`get_listing` tools | FR‑AI‑003, FR‑SRCH‑*, FR‑REC‑001/003, MVP 2 | T‑2010 |
 | T‑2031 ✅ | P1 | Public listing read API | GAP‑002 | T‑2030 |
 | T‑2040 ✅ | P2 | Preference profile with consent; favourites (`save_listing`); saved searches and alerts (email, WhatsApp) | FR‑AI‑008, FR‑REC‑002/004, MVP 5 | T‑2030, T‑2012 |
-| T‑2041 | P2 | Consumer comparison (`compare_listings`) | FR‑CMP‑001/002 | T‑2030 |
+| T‑2041 ✅ | P2 | Consumer comparison (`compare_listings`) | FR‑CMP‑001/002 | T‑2030 |
 | T‑2050 ✅ | P1 | Enquiries → leads (`create_enquiry` with consent); in‑app threads; email notifications | FR‑COM‑001–003, MVP 4 | T‑2012 ✅ |
 | T‑2060 ✅ | P1 | Availability, slot booking (`find_viewing_slots`/`book_viewing`), reminders, feedback | FR‑APT‑001–006 | T‑2012 ✅ |
 | T‑2070 | P1 | Eval suites (EN/UR/Roman Urdu) with a CI gate; kill switch per market/org (provider failover done in T‑1120) | AI spec §9, MVP 6/7 | T‑2010, T‑2030 |

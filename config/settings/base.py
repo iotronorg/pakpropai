@@ -254,6 +254,9 @@ REST_FRAMEWORK = {
 # The web app: links in emails, checkout returns, referral links.
 FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:3000')
 
+# T-2041: FX rates older than this are not used for approximate conversion
+FX_MAX_AGE_DAYS = env.int('FX_MAX_AGE_DAYS', default=7)
+
 # T-2040: preference items not confirmed for this long are deleted
 PREFERENCE_RETENTION_DAYS = env.int('PREFERENCE_RETENTION_DAYS', default=180)
 

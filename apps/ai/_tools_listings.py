@@ -342,3 +342,65 @@ def get_listing(listing: str) -> dict:
     except Exception as exc:
         logger.error('get_listing failed: %s', exc, exc_info=True)
         return {'found': False, 'error': 'Listing temporarily unavailable.'}
+
+
+def compare_listings(listings: str, currency: str = '') -> dict:
+    """
+    Compare 2 to 4 listings side by side. Call it when the user asks which is better, cheaper or bigger, or to compare.
+
+    Args:
+        listings: Comma-separated listing ids, reference numbers (RT-...) or positions in the last results, e.g. '1,3'
+        currency: ISO code, only if the user asked to see prices in it
+    """
+    from apps.preferences.services import stated
+    from apps.properties import comparison as K
+    try:
+        state = _state()
+        org, shown = _ctx_org.get(), (state.last_results or []) if state else []
+        refs = [r.strip() for r in (listings or '').split(',') if r.strip()]
+        ids = list(dict.fromkeys(p.pk for p in (S.find(r, org, shown) for r in refs[:K.MAX + 1]) if p))
+        if len(ids) > K.MAX:
+            return {'found': False, 'error': f'At most {K.MAX} listings can be compared. Ask which ones.'}
+        rows = K.load(ids, org)
+        if len(rows) < K.MIN:
+            return {'found': False, 'error': 'Two available listings are needed. Ask the user which ones.'}
+        market = rows[0].market_id or rows[0].country
+        raw = dict((state.active_criteria or {}) if state else {})
+        raw.pop('missing_required', None)
+        user, source = _ctx_user.get(), 'current search'
+        if not raw and getattr(user, 'pk', None):
+            raw, source = {**stated(user, market)}, 'saved preferences'
+            raw = {**raw, 'market': market} if raw else {}
+        crit = None
+        if raw:
+            try:
+                crit, _ = C.prepare(C.parse(raw))
+            except (C.CriteriaInvalid, C.LocationAmbiguous):
+                crit = None
+        code = (currency or '').strip().upper()
+        out = K.compare(rows, currency=code if re.fullmatch('[A-Z]{3}', code) else '', criteria=crit, viewer_org=org)
+        by_id = {i['id']: i for i in out.pop('items')}
+        properties = []
+        for n, p in enumerate(rows, 1):
+            item = by_id[str(p.pk)]
+            item['amounts'] = [[m[k], c] for m in (item['price'], item['price_per_m2']) if m
+                               for k, c in (('amount', m['currency']), ('converted', out['currency'])) if m[k]]
+            item['price_compared'] = item.pop('price')
+            properties.append({**item, **_row(p), 'label': n})
+        best = {k: next(n for n, p in enumerate(rows, 1) if str(p.pk) == v) for k, v in out.pop('best').items() if v}
+        missing = [r for r in refs if S.find(r, org, shown) is None]
+        result = {'found': True, 'detail': True, 'properties': properties, 'best': best, **out,
+                  'instruction': 'Compare using only these values, naming each listing by its title. Call one the '
+                                 'cheapest, largest or newest only if "best" says so. null = not specified; '
+                                 'match "unknown" = the listing does not say. A converted price is approximate: '
+                                 'give its date. Do not recommend one overall.'}
+        if out['fx']:
+            result['fx'] = {**out['fx'], 'as_of': out['fx']['as_of'].isoformat()}
+        if crit is not None:
+            result['match_against'] = source
+        if missing:
+            result['not_found'] = missing
+        return result
+    except Exception as exc:
+        logger.error('compare_listings failed: %s', exc, exc_info=True)
+        return {'found': False, 'error': 'Comparison temporarily unavailable.'}

@@ -94,7 +94,7 @@ Priority: P0 (blocker) → P3.
 | T‑2030 | [x] | P1 | `SearchCriteria` extraction + clarification, SearchService v2, ranking with explanations | ADR‑034. `properties/criteria.py`, `properties/listing_search.py`, `POST /api/v1/search/`, tools `search_listings`/`update_session_criteria`/`get_listing`. 42 tests. Extraction accuracy (golden set) is T‑2070 |
 | T‑2031 | [x] | P1 | Public listing read API | ADR‑035. `GET /api/v1/public/listings/search/` and `/{slug_or_id}/`; explicit field list, ETag and 60 s public cache. 22 tests |
 | T‑2040 | [x] | P2 | Preferences with consent, favourites, saved searches + alerts | ADR‑038. `apps/preferences`; tools `save_listing`, `create_saved_search`, `remember_preferences`. `tests/test_preferences.py` |
-| T‑2041 | [ ] | P2 | Consumer comparison | |
+| T‑2041 | [x] | P2 | Consumer comparison | ADR‑039. `apps/properties/comparison*.py`, `apps/markets/fx.py`, tool `compare_listings`. `tests/test_comparison.py` |
 | T‑2050 | [x] | P1 | Enquiries → leads, threads, email notifications | ADR‑036. `apps/enquiries`, `create_enquiry` tool, outbox email. Attachments and report/block are split out to T‑2051. 40 tests |
 | T‑2051 | [ ] | P2 | Thread attachments and report/block (rest of FR‑COM‑001/007) | KI‑072 |
 | T‑2060 | [x] | P1 | Availability, viewing slots, booking, reminders, feedback | ADR‑037. `apps/viewings`, `find_viewing_slots` and `book_viewing` tools. 37 tests, including a real three‑thread booking race |
