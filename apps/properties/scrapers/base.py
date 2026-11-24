@@ -40,6 +40,7 @@ class PropertyResult:
     # Size as listed (T-1070b); area_marla stays the marla-equivalent used for matching.
     size_value:           Optional[float] = None
     size_unit:            Optional[str]   = None
+    verified:             bool            = False   # legal_status == verified (KI-064)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -64,7 +65,7 @@ class PropertyResult:
         if self.bedrooms:
             area = f"{area} {self.bedrooms} bed".strip()
         score  = f" | Score {self.ai_score}/100" if self.ai_score else ""
-        badge  = " [verified]" if self.source == 'pakprop' else f" [{self.source}]"
+        badge  = f" [{self.source}]" if self.source != 'pakprop' else " [verified]" if self.verified else ""
 
         tags = []
         if self.purpose in ('rent_long', 'rent_short'):

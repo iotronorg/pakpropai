@@ -811,3 +811,14 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - The prompt's inventory sample carries names only.
 - **Supersedes** T‑0009 for runtime replies; the old check still runs when the runtime did not.
 - **Limits:** regex extraction. Negated or question lines skip the amenity, room and verification checks; words with no digits ("three bedrooms") and non‑English amenity names are not extracted; image replies and copilot drafts follow their own paths (drafts use the same runtime; images do not). Eval coverage is T‑2070.
+
+### ADR‑033 — Durable conversations and conversation API (T‑2020, 2026‑11‑24)
+- **Context:** chat history lived only in Redis (24 h, per org + phone), and there was no web chat API.
+- **Decision:**
+  - `apps.conversations`: `Conversation`, `Message` (content encrypted, ordered by `seq`), `ConversationState`. Written only through `store`. Postgres is the source; Redis holds the 40‑message window and is rebuilt on loss.
+  - `key` is the scope used by history, confirmations, grounding and traces: `<org|global>:<phone>` on WhatsApp, `global:web-<id>` on web. A context variable carries the current conversation, so web and WhatsApp never share a history or a pending "yes". One open conversation per key; a reset, or a different user on the number, opens a new one.
+  - `AIServiceManager.process` stores the user message first, then the reply with its trace, citations and pending action. Storage failures are logged and never cost a WhatsApp reply; the web API returns 503. Non‑interactive calls only read. Guard‑blocked turns are kept but not shown to the model again.
+  - SSE sends `accepted`, `pending_action`, `card`, `final` or `error`. No token streaming: the grounding check (ADR‑032) needs the full reply.
+  - Web: own conversations only (404 otherwise), one turn at a time, `client_message_id` for retries, 10/min and 200/day per user, blocked users refused. Web tools never send WhatsApp follow‑ups or change the WhatsApp session.
+  - Retention: `Market.settings["conversation_retention_days"]`, else `CONVERSATION_RETENTION_DAYS` (365). Deleting cascades to messages, state and pending actions.
+- **Not included:** org‑side access to conversations, attachments, org‑hosted web chat, merging `WhatsAppMessage`/`ConversationMessage` (FR‑COM‑009), rolling summaries. PII masking still applies to message text.

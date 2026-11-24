@@ -1,5 +1,5 @@
 import logging
-from ._tools_context import _ctx_org, _ctx_phone
+from ._tools_context import _ctx_conversation, _ctx_org, _ctx_phone
 from apps.markets.services import format_price
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,9 @@ def search_properties(
     """
     try:
         from apps.properties.search import PropertySearchService
-        phone = _ctx_phone.get() or ''
+        # A web chat must not trigger WhatsApp follow-ups or touch that session's focus (T-2020).
+        conversation = _ctx_conversation.get()
+        phone = '' if conversation is not None and conversation.channel == 'web' else _ctx_phone.get() or ''
         results = PropertySearchService.search(
             city=city,
             location=location,

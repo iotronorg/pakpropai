@@ -90,7 +90,7 @@ Priority: P0 (blocker) → P3.
 | T‑2013 | [x] | P1 | Grounding checker v2 | ADR‑032. `apps/ai/grounding.py`, run by the runtime on every model‑written reply: price, currency, size, bedrooms, bathrooms, amenities, instalments, city and verification against the listings given to the model (re‑read from the DB), per listing. One regeneration, then a facts‑only reply with an offer of an agent. Invented listings without a tool call are caught. Citations and violation codes on `AITrace`. 20 grounding tests + KI‑060 test |
 | T‑2014 | [ ] | P2 | Listing draft/moderation state (KI‑025), moderation queue, user reports | |
 | T‑2016 | [ ] | P2 | Context‑free FAQ path so the semantic cache can be enabled safely | |
-| T‑2020 | [ ] | P1 | Durable Conversation/Message, SSE conversation API, WhatsApp adapter on the runtime | |
+| T‑2020 | [x] | P1 | Durable Conversation/Message, SSE conversation API, WhatsApp adapter on the runtime | ADR‑033. `apps/conversations`: encrypted messages linked to `AITrace`/`PendingAction`, session state, Redis window rebuilt from Postgres, retention per market. API: list/open/read/delete, messages (JSON or SSE), state/shortlist. 31 tests |
 | T‑2030 | [ ] | P1 | `SearchCriteria` extraction + clarification, SearchService v2, ranking with explanations | |
 | T‑2031 | [ ] | P1 | Public listing read API | |
 | T‑2040 | [ ] | P2 | Preferences with consent, favourites, saved searches + alerts | |

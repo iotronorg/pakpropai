@@ -26,6 +26,7 @@ class Trace:
     started: float = field(default_factory=time.monotonic)
     values: dict = field(default_factory=dict)
     guards: list = field(default_factory=list)
+    extra: dict = field(default_factory=dict)      # for the conversation store, not AITrace columns
 
 
 _current: contextvars.ContextVar[Trace | None] = contextvars.ContextVar('ai_trace', default=None)
@@ -48,6 +49,12 @@ def noted(key: str):
     return trace.values.get(key) if trace is not None else None
 
 
+def note_extra(**values) -> None:
+    trace = _current.get()
+    if trace is not None:
+        trace.extra.update(values)
+
+
 def note_guard(stage: str, reason: str) -> None:
     trace = _current.get()
     if trace is not None:
@@ -62,6 +69,8 @@ def note_llm(result) -> None:
          citations=list(result.citations or ())[:20],
          tool_calls=[{k: c[k] for k in keep if k in c} for c in result.tool_calls or ()],
          **(result.prompt.ref if result.prompt else {}))
+    if result.results is not None:
+        note_extra(results=result.results, criteria=result.criteria)
 
 
 def price_for(model: str, on):
@@ -96,7 +105,8 @@ def cost_of(records, on=None):
     return AITrace.Pricing.PRICED, total.quantize(Decimal('1e-8')), currencies.pop()
 
 
-def save(trace: Trace, *, phone: str, user=None, organization=None, interactive: bool = True) -> None:
+def save(trace: Trace, *, phone: str, user=None, organization=None, interactive: bool = True):
+    """The stored AITrace, or None when it could not be written."""
     from apps.core.crypto import blind_index
 
     from .confirmation import conversation_key
@@ -109,7 +119,7 @@ def save(trace: Trace, *, phone: str, user=None, organization=None, interactive:
             pricing, cost, currency = cost_of(usage.records)
             values = dict(trace.values)
             values['model'] = (values.get('model') or usage.model)[:80]
-            AITrace.objects.create(
+            return AITrace.objects.create(
                 organization=organization if getattr(organization, 'pk', None) else None,
                 user=user if getattr(user, 'pk', None) else None,
                 conversation_ref=blind_index(conversation_key(phone, organization)),
@@ -120,6 +130,7 @@ def save(trace: Trace, *, phone: str, user=None, organization=None, interactive:
                 guard_results=trace.guards, **values)
     except Exception as exc:
         logger.error('AITrace write failed: %s', exc, exc_info=True)
+        return None
 
 
 def purge() -> int:

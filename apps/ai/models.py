@@ -96,7 +96,8 @@ class PendingAction(models.Model):
 
     id               = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     # "<org id or 'global'>:<phone>", the same scope as the conversation history.
-    # Replaced by a Conversation FK in T-2020.
+    conversation     = models.ForeignKey('conversations.Conversation', on_delete=models.CASCADE,
+                                         null=True, blank=True, related_name='pending_actions')
     conversation_key = models.CharField(max_length=80, db_index=True)
     organization     = models.ForeignKey('organizations.Organization', on_delete=models.CASCADE,
                                          null=True, blank=True, related_name='ai_pending_actions')
@@ -132,7 +133,10 @@ class PendingAction(models.Model):
 
     @property
     def phone(self) -> str:
-        return self.conversation_key.split(':', 1)[1]
+        contact = self.conversation_key.split(':', 1)[1]
+        if contact.startswith('web-'):           # web chats have no phone in the key
+            return (self.user.phone or '').lstrip('+') if self.user else ''
+        return contact
 
 
 class ModelPrice(models.Model):

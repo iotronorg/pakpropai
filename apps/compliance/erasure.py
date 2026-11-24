@@ -140,6 +140,17 @@ class RTBFOrchestrator:
             logger.error("RTBF: AI record erasure failed user=%s: %s", user.id, exc)
             errors['ai_records'] = str(exc)
 
+        # 5c — Assistant conversations, and the text kept on per-call AI logs (KI-062)
+        try:
+            from apps.ai.models import AIInteraction
+            from apps.conversations.store import erase_user
+            scope['ai_conversations_deleted'] = erase_user(user)
+            scope['ai_interactions_redacted'] = AIInteraction.objects.filter(user=user).update(
+                input_data={}, output_data={}, user=None)
+        except Exception as exc:
+            logger.error("RTBF: conversation erasure failed user=%s: %s", user.id, exc)
+            errors['ai_conversations'] = str(exc)
+
         # 6 — User anonymization
         try:
             user.is_active = False

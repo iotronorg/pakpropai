@@ -209,7 +209,6 @@ class ServiceTest(Base):
         reply, agent = self.run_service('yes', AssertionError('model called'))
         self.assertIn('listed successfully', reply)
         agent.chat.assert_not_called()
-        agent._save_history.assert_called_once()
 
     def test_summary_the_user_never_saw_is_withdrawn(self):
         self.run_service('list my house', self.chat_proposing(reply='All done!'))

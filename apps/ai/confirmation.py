@@ -29,7 +29,7 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from ._tools_context import (
-    _ctx_grant, _ctx_interactive, _ctx_org, _ctx_phone, _ctx_turn, _ctx_user, set_context,
+    _ctx_conversation, _ctx_grant, _ctx_interactive, _ctx_org, _ctx_phone, _ctx_turn, _ctx_user, set_context,
 )
 
 logger = logging.getLogger(__name__)
@@ -73,6 +73,9 @@ def is_negative(message: str) -> bool:
 
 
 def conversation_key(phone: str, org=None) -> str:
+    current = _ctx_conversation.get()
+    if current is not None:
+        return current.key
     return f"{org.pk if org is not None else 'global'}:{phone}"
 
 
@@ -107,6 +110,7 @@ def propose(spec, args: dict) -> dict:
     prompt = f'{question}\n\n{summary}\n\nReply *YES* to confirm or *NO* to cancel.'
     fields = dict(
         conversation_key=conversation_key(phone, org), organization=org,
+        conversation=_ctx_conversation.get(),
         user=user if getattr(user, 'pk', None) else None, turn_id=_ctx_turn.get() or '',
         tool=spec.name, side_effect=spec.side_effect, args=json.dumps(args),
         args_hash=args_hash(spec.name, args), prompt=prompt,
@@ -190,12 +194,14 @@ def _execute(action) -> dict:
     if args_hash(action.tool, args) != action.args_hash:
         logger.error('ai.pending id=%s args hash mismatch; refusing', action.pk)
         return unavailable
+    token = _ctx_conversation.set(action.conversation)
     set_context(action.user, action.phone, org=action.organization)
     _ctx_grant.set(action.args_hash)
     try:
         return spec.fn(**args)
     finally:
         set_context(None, '')
+        _ctx_conversation.reset(token)
 
 
 def decline(action) -> None:

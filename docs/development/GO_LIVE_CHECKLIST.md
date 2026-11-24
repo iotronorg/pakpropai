@@ -305,3 +305,10 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - **Behaviour:** a reply with wrong listing facts costs one extra model call; after a second failure the user gets our records only. Own inventory in the prompt no longer includes prices.
 - **Watch after deploy:** `AITrace.grounding_result` (`corrected`, `fallback`, `error`) and `grounding_codes`; `ComplianceViolation` type `ungrounded_reply`. A high `fallback` rate points to false positives.
 - **AML (KI‑060):** review WhatsApp sessions of buyers blocked earlier; the block may not have applied.
+
+## 35. Session‑11 change: durable conversations (T‑2020, ADR‑033)
+- **Migrations:** `conversations 0001`, `ai 0007` (additive). Existing Redis history is not copied: open chats lose their last 24 h of context once.
+- **Settings:** `CONVERSATION_RETENTION_DAYS` (365; confirm per market with legal), `AI_DAILY_MESSAGE_LIMIT` (`200/day`). Restart celery beat (`purge-conversations`).
+- **Encryption:** message text uses `FIELD_ENCRYPTION_KEYS`; losing the keys loses the chats.
+- **Workers (KI‑065):** choose threaded or ASGI workers before exposing web chat; disable proxy buffering for `/api/v1/conversations/*/messages/`.
+- **Privacy notice:** chats are now kept in the database; update the notice before launch.

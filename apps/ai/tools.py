@@ -6,7 +6,7 @@ logger = logging.getLogger(__name__)
 from apps.markets.pk import AREA_UNIT as PK_AREA_UNIT, CURRENCY as PK_CURRENCY
 from apps.markets.services import format_price
 from .confirmation import guarded
-from ._tools_context import _ctx_user, _ctx_phone, set_context  # noqa: F401
+from ._tools_context import _ctx_conversation, _ctx_user, _ctx_phone, set_context  # noqa: F401
 from ._tools_search import search_properties                     # noqa: F401
 from ._tools_financial import calculate_7e_tax, check_loan_eligibility  # noqa: F401
 from ._tools_fraud import run_fraud_check                        # noqa: F401
@@ -269,8 +269,11 @@ def list_property(
             pass
 
         # Enter LISTING_PHOTOS state so the next WhatsApp image goes to this property
+        # (WhatsApp only: a web chat must not change the state of the user's WhatsApp session.)
         phone = _ctx_phone.get()
-        if phone:
+        conversation = _ctx_conversation.get()
+        on_whatsapp = conversation is None or conversation.channel == 'whatsapp'
+        if phone and on_whatsapp:
             try:
                 from apps.whatsapp.sessions import SessionManager
                 SessionManager.update(phone, state='LISTING_PHOTOS', context={
@@ -287,9 +290,10 @@ def list_property(
             'price_formatted': format_price(price, prop.currency),
             'message': (
                 'Property listed successfully. AI scoring is running in the background. '
-                'Your listing is now visible to buyers.\n\n'
-                'You can now send up to 5 photos of your property — just send them now. '
-                'Type *done* when finished or to skip photos.'
+                'Your listing is now visible to buyers.'
+                + ('\n\nYou can now send up to 5 photos of your property — just send them now. '
+                   'Type *done* when finished or to skip photos.' if on_whatsapp else
+                   '\n\nYou can add photos from your listings page.')
             ),
         }
     except Exception as exc:

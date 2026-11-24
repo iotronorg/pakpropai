@@ -313,3 +313,12 @@
 ### Handoff → session 11 (supersedes the one above)
 1. `git status`: uncommitted work is T‑2013 and KI‑060. **Do not commit.**
 2. Next: **T‑2020** (see DEVELOPMENT_STATUS for the starting files). KI‑064 is a small fix worth doing first.
+
+## Session 11 — 2026-11-24
+- **Completed:** KI‑064, T‑2020 (ADR‑033), KI‑062 and the KI‑063 residual. Found KI‑065 and KI‑066.
+- **Tests:** 2066 passed, 1 skipped, 0 failed. **Not committed.**
+
+### Handoff → session 12 (supersedes the one above)
+1. `git status`: uncommitted work is T‑2020, KI‑062, KI‑064. **Do not commit.**
+2. Next: **T‑2030** (starting files in DEVELOPMENT_STATUS).
+3. Owner: KI‑065 (web workers) and KI‑066 (chat text in exports) need decisions before web chat goes live.

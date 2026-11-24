@@ -56,6 +56,8 @@ class TurnResult:
     grounding: str = ''            # passed | corrected | fallback | error (T-2013)
     grounding_codes: list = field(default_factory=list)
     citations: list = field(default_factory=list)
+    results: list | None = None    # listing ids of the last search this turn
+    criteria: dict | None = None
 
 
 def _history_messages(history: list) -> list:
@@ -144,6 +146,9 @@ def run_turn(backend, message: str, history: list, specs: list, system: str, *,
                         terminal = (spec.name, _summary(result))
             if record['status'] == 'ok':
                 evidence.add(result)
+                if isinstance(result, dict) and isinstance(result.get('properties'), list):
+                    turn.results = [str(r['id']) for r in result['properties'] if r.get('id')]
+                    turn.criteria = dict(args)
             turn.tool_calls.append(record)
             logger.info('ai.tool %s', json.dumps(record, default=str)[:500])
             messages.append({'role': 'tool', 'id': call.id, 'name': call.name, 'result': result})

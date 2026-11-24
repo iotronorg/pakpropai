@@ -34,7 +34,7 @@ def _connect_to_agent(a: dict):
         lines.append(f"🏠 {a['property_type']}")
     if a.get('budget_pkr'):
         lines.append(f"💰 Budget: {PK_CURRENCY} {a['budget_pkr']:,}")
-    lines.append('Your WhatsApp number will be shared with the matched agent.')
+    lines.append('Your phone number will be shared with the matched agent.')
     return 'Shall I connect you with a verified agent?', '\n'.join(lines)
 
 

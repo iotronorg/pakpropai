@@ -51,6 +51,7 @@ LOCAL_APPS = [
     'apps.organizations',
     'apps.properties',
     'apps.ai',
+    'apps.conversations',
     'apps.payments',
     'apps.notifications',
     'apps.whatsapp',
@@ -233,6 +234,7 @@ REST_FRAMEWORK = {
         'otp_daily':       '10/day',
         'mfa_verify':      '20/min',    # T-1011; plus a per-user lockout after 5 wrong codes
         'ai_query':        '10/min',
+        'ai_daily':        env('AI_DAILY_MESSAGE_LIMIT', default='200/day'),   # T-2020, web chat
         'fraud_check':     '20/min',
         'property_search': '30/min',
         'report_generate': '5/hour',
@@ -350,6 +352,7 @@ GEOCODING_CACHE_DAYS   = env.int('GEOCODING_CACHE_DAYS', default=30)     # Googl
 GEOCODING_REFRESH_DAYS = env.int('GEOCODING_REFRESH_DAYS', default=29)   # re-geocode before 30   # T-1032c, KI-041
 AI_PENDING_ACTION_TTL_MIN        = env.int('AI_PENDING_ACTION_TTL_MIN', default=30)       # T-2012
 AI_PENDING_ACTION_RETENTION_DAYS = env.int('AI_PENDING_ACTION_RETENTION_DAYS', default=90)
+CONVERSATION_RETENTION_DAYS = env.int('CONVERSATION_RETENTION_DAYS', default=365)  # T-2020; per market in Market.settings
 AI_TRACE_RETENTION_DAYS          = env.int('AI_TRACE_RETENTION_DAYS', default=400)      # T-2011
 
 CELERY_TASK_ROUTES = {
@@ -391,6 +394,10 @@ CELERY_BEAT_SCHEDULE = {
     'purge-pending-actions': {
         'task':     'apps.ai.tasks.purge_pending_actions',
         'schedule': 3600,   # hourly: expire, fail interrupted, apply retention (T-2012)
+    },
+    'purge-conversations': {
+        'task':     'apps.conversations.tasks.purge_conversations',
+        'schedule': 86400,  # daily; retention per market (T-2020)
     },
     'purge-ai-traces': {
         'task':     'apps.ai.tasks.purge_ai_traces',
@@ -687,6 +694,8 @@ PRIVACY_MASK_EXEMPT_PATHS = [
 _AGENT_CONTACT = ['phone', 'whatsapp_number', 'email', 'license_number',
                   'national_id_number', 'tax_id_number']
 PRIVACY_MASK_FIELD_ALLOWLIST = [
+    {'path': r'^/api/v1/conversations/[0-9a-f-]{36}/messages/$', 'methods': ['POST'],
+     'fields': ['client_message_id']},                        # an id; `text` stays masked
     {'path': r'^/api/v1/organizations/me/members/$', 'methods': ['POST'],
      'fields': ['phone']},                                    # invite looks the user up by phone
     {'path': r'^/api/v1/agents/register/$', 'methods': ['POST'],

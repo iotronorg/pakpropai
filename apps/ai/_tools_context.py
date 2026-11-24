@@ -13,6 +13,9 @@ _ctx_grant = contextvars.ContextVar('agent_grant', default='')
 # False when the reply is not shown to the user (copilot drafts, voice, evals).
 _ctx_interactive = contextvars.ContextVar('agent_interactive', default=True)
 
+# The Conversation being handled (T-2020); set by AIServiceManager.process / confirmation only.
+_ctx_conversation = contextvars.ContextVar('agent_conversation', default=None)
+
 
 def set_context(user, phone: str, org=None, message: str = '', interactive: bool = True):
     _ctx_user.set(user)

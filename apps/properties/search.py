@@ -341,6 +341,7 @@ class PropertySearchService:
                 price_on_request    = p.price_on_request,
                 bedrooms            = p.bedrooms,
                 bathrooms           = p.bathrooms,
+                verified            = p.legal_status == Property.LegalStatus.VERIFIED,
                 amenities           = sorted(a.key for a in p.amenities.all()),
             )
             for p in qs.order_by('-ai_score', '-created_at')[:10]

@@ -493,3 +493,9 @@
 - **Added:** `apps/ai/grounding.py`; `AITrace.grounding_codes`/`citations` (`ai 0006`); `tests/test_grounding.py`.
 - **Changed:** `runtime.run_turn` (evidence, `_ground`), `LLMResult`/trace fields, service step 5b, `search_properties` rows carry `currency`, inventory sample without prices and limited to visible listings, cost report counts fallbacks.
 - **Fixed:** KI‑060 AML session block.
+
+### 2026-11-24 — session 11: T‑2020 durable conversations; KI‑062, KI‑064
+- **Verified:** the owner committed T‑2013/KI‑060 (`7cc4269`); the tree was clean.
+- **Added:** `apps/conversations` (models, store, API, purge task, admin metadata), migrations `conversations 0001` and `ai 0007`, `tests/test_conversations.py`.
+- **Changed:** `AIServiceManager.process` stores turns; `RealTronAgent` history reads the store; `conversation_key` follows the current conversation; `PendingAction.conversation`; search results and criteria recorded per turn; web chats do not trigger WhatsApp side effects; listing summary text says "phone number".
+- **Fixed:** KI‑062, KI‑063 residual, KI‑064. **Found:** KI‑065, KI‑066.

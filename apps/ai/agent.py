@@ -3,32 +3,17 @@ RealTron AI Agent — the core intelligence of the platform.
 
 Architecture:
 - Backend-agnostic: uses AIBackend abstraction (Gemini or Ollama)
-- Conversation history persisted in Redis (24h TTL, last 20 turns)
+- Conversation history in Postgres with a Redis window (apps.conversations, T-2020)
 - Real estate domain knowledge embedded in system prompt
 - Switch backend via AI_BACKEND env var: 'gemini' | 'local'
 """
 import logging
 import time
 
-from django.conf import settings
-from django.core.cache import cache
-
 from apps.ai.backends import get_backend
 from apps.verification.ai import detect_doc_type, ocr_prompt, parse_ocr_response, format_doc_summary
 
 logger = logging.getLogger(__name__)
-
-HISTORY_TTL = 86400       # 24 hours
-MAX_TURNS   = 20          # keep last 20 user+model turns (40 entries)
-
-
-def _history_key(phone: str, org=None) -> str:
-    """
-    Scopes conversation history to org+phone so different organizations
-    sharing the same phone number don't bleed context into each other.
-    """
-    scope = str(org.id) if org is not None else 'global'
-    return f"ai:conv:{scope}:{phone}"
 
 
 class RealTronAgent:
@@ -80,10 +65,7 @@ class RealTronAgent:
 
         # Greetings get an instant structured reply — no model call needed
         if self._is_greeting(message):
-            reply = self._greeting_reply(message)
-            history = self._load_history(phone, organization)
-            self._save_history(phone, organization, history, message, reply)
-            return reply
+            return self._greeting_reply(message)
 
         from apps.ai.knowledge import AGENT_SYSTEM
         from apps.ai.prompts import Rendered
@@ -107,7 +89,6 @@ class RealTronAgent:
             logger.error(f"Backend chat failed phone={phone}: {exc}", exc_info=True)
             reply = self._error_reply()
 
-        self._save_history(phone, organization, history, message, reply)
         self._log(user, message, reply, int((time.time() - start) * 1000), result)
         return reply
 
@@ -132,8 +113,7 @@ class RealTronAgent:
             logger.error(f"Image analysis failed: {exc}")
             reply = "Unable to analyze the image right now. Please describe what you need help with."
 
-        history = self._load_history(phone, organization)
-        self._save_history(phone, organization, history, f"[image: {caption or 'no caption'}]", reply)
+        self._record_media(phone, organization, user, f"[image: {caption or 'no caption'}]", reply)
         return reply
 
     def verify_document_image(self, phone: str, image_bytes: bytes, mime_type: str,
@@ -190,8 +170,7 @@ class RealTronAgent:
         except Exception as exc:
             logger.error(f"DocumentScan save failed: {exc}")
 
-        history = self._load_history(phone, org=None)
-        self._save_history(phone, None, history, f"[document: {caption or doc_type}]", summary)
+        self._record_media(phone, organization, user, f"[document: {caption or doc_type}]", summary)
         return summary
 
     def transcribe_audio(self, audio_bytes: bytes, mime_type: str) -> str:
@@ -226,22 +205,19 @@ class RealTronAgent:
         return ''
 
     def clear_history(self, phone: str, org=None):
-        cache.delete(_history_key(phone, org))
+        from apps.conversations import store
+        store.reset(phone, org)
 
-    # ─── History management ───────────────────────────────────────────────────
+    # ─── History (apps.conversations, T-2020) ─────────────────────────────────
 
     def _load_history(self, phone: str, org=None) -> list:
-        data = cache.get(_history_key(phone, org))
-        return data if isinstance(data, list) else []
+        from apps.conversations import store
+        return store.window(store.find(phone, org))
 
-    def _save_history(self, phone: str, org, old_history: list, user_msg: str, model_reply: str):
-        updated = old_history + [
-            {'role': 'user',  'text': user_msg[:2000]},
-            {'role': 'model', 'text': model_reply[:2000]},
-        ]
-        if len(updated) > MAX_TURNS * 2:
-            updated = updated[-(MAX_TURNS * 2):]
-        cache.set(_history_key(phone, org), updated, HISTORY_TTL)
+    @staticmethod
+    def _record_media(phone: str, org, user, text: str, reply: str):
+        from apps.conversations import store
+        store.add_exchange(phone, org, user, text, reply)
 
     # ─── Greeting detection ───────────────────────────────────────────────────
 

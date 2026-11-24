@@ -49,6 +49,7 @@ urlpatterns = [
         path('compliance/',    include('apps.compliance.urls')),
         path('observability/', include('apps.observability.urls')),
         path('ai/', include('apps.ai.urls')),
+        path('conversations/', include('apps.conversations.urls')),
         path('pending-actions/', include('apps.ai.pending_urls')),
         path('provisioning/', include('apps.whatsapp.provisioning_urls')),
         path('security/',     include('apps.security.urls')),

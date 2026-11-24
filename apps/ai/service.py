@@ -36,6 +36,7 @@ import re
 import time
 from typing import Optional
 
+from django.db import transaction
 from django.utils import timezone
 
 from apps.core.metrics import ai_requests_total, ai_request_duration_seconds
@@ -614,26 +615,70 @@ class AIServiceManager:
         user=None,
         organization=None,
         interactive:  bool = True,
+        conversation=None,
+        user_message=None,
     ) -> str:
         """
         Process one inbound message for a specific org/lead context.
         Drop-in replacement for RealTronAgent.chat().
 
         interactive=False when the reply is not sent to the user as chat (copilot
-        drafts, voice, evals): nothing can be confirmed or proposed (T-2012).
+        drafts, voice, evals): nothing can be confirmed, proposed or stored (T-2012/T-2020).
+
+        conversation / user_message: the web API's, already stored (T-2020). Without
+        them the contact's open WhatsApp conversation is used.
         """
         from apps.ai import tracing
         from apps.ai.usage import start_capture
         start_capture()
+        from apps.ai._tools_context import _ctx_conversation
         trace = tracing.begin()
+        if interactive and conversation is None:
+            conversation = self._open_conversation(phone, user, organization)
+        token = _ctx_conversation.set(conversation)
+        row = None
         try:
-            return self._process(phone, message, user, organization, interactive)
-        except Exception as exc:
-            tracing.note(error=type(exc).__name__[:80])
-            raise
+            try:
+                if interactive and conversation is not None and user_message is None:
+                    user_message = self._store(lambda s: s.begin_turn(conversation, message)[0])
+                reply = self._process(phone, message, user, organization, interactive)
+            except Exception as exc:
+                tracing.note(error=type(exc).__name__[:80])
+                if user_message is not None:
+                    self._store(lambda s: s.fail_turn(user_message))
+                raise
+            finally:
+                row = tracing.save(trace, phone=phone, user=user, organization=organization,
+                                   interactive=interactive)
+            if user_message is not None:
+                self._store(lambda s: s.finish_turn(
+                    conversation, user_message, reply, trace=row,
+                    in_window=trace.values.get('route') not in ('guard_blocked', 'throttled'),
+                    citations=trace.values.get('citations') or (), **trace.extra))
+            return reply
         finally:
-            tracing.save(trace, phone=phone, user=user, organization=organization,
-                         interactive=interactive)
+            _ctx_conversation.reset(token)
+
+    @staticmethod
+    def _open_conversation(phone, user, organization):
+        from apps.conversations import store
+        try:
+            with transaction.atomic():
+                return store.open_whatsapp(phone, user, organization)
+        except Exception as exc:
+            logger.error('conversation open failed: %s', exc, exc_info=True)
+            return None
+
+    @staticmethod
+    def _store(write):
+        """A storage failure is logged; it never costs the user their reply."""
+        from apps.conversations import store
+        try:
+            with transaction.atomic():
+                return write(store)
+        except Exception as exc:
+            logger.error('conversation write failed: %s', exc, exc_info=True)
+            return None
 
     def _process(self, phone, message, user, organization, interactive) -> str:
         start = time.time()
@@ -647,9 +692,6 @@ class AIServiceManager:
             answer = confirmation.resolve_reply(phone, message, user, organization)
             if answer is not None:
                 tracing.note(route='confirmation')
-                agent = self._get_agent()
-                agent._save_history(phone, organization, agent._load_history(phone, org=organization),
-                                    message, answer)
                 self._record_wa_token(organization)
                 return answer
 
@@ -676,6 +718,7 @@ class AIServiceManager:
         history = agent._load_history(phone, org=organization)
         intent  = IntentClassifier.classify(message, history)
         tracing.note(intent=intent.intent)
+        tracing.note_extra(language=intent.language)
 
         # ── 2b. Semantic cache lookup (opt-in, non-personal intents only) ──────
         cache_scope = semantic_cache_scope(org_id, intent, message)
@@ -705,7 +748,6 @@ class AIServiceManager:
                 elapsed = time.time() - start
                 ai_requests_total.labels(intent=intent.intent, route='direct').inc()
                 ai_request_duration_seconds.labels(route='direct').observe(elapsed)
-                agent._save_history(phone, organization, history, message, direct_reply)
                 self._log_interaction(user, intent, message, direct_reply,
                                       int(elapsed * 1000), direct=True)
                 self._record_wa_token(organization)
