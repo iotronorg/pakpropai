@@ -23,6 +23,7 @@ class UsageTotals:
     cached_tokens: int = 0
     calls: int = 0
     models: list[str] = field(default_factory=list)
+    records: list[tuple] = field(default_factory=list)   # (model, in, out, cached, reported) per call
     reported: bool = False   # True once at least one provider call reported usage
 
     @property
@@ -59,7 +60,10 @@ def record_usage(model: str, tokens_in: int | None, tokens_out: int | None,
     totals.calls += 1
     if model:
         totals.models.append(model)
-    if tokens_in is None and tokens_out is None:
+    reported = not (tokens_in is None and tokens_out is None)
+    totals.records.append((model or '', int(tokens_in or 0), int(tokens_out or 0),
+                           int(cached_tokens or 0), reported))
+    if not reported:
         return
     totals.tokens_in += int(tokens_in or 0)
     totals.tokens_out += int(tokens_out or 0)
@@ -73,10 +77,14 @@ def record_gemini_response(model: str, response) -> None:
     if meta is None:
         record_usage(model, None, None)
         return
+    out = getattr(meta, 'candidates_token_count', None)
+    thoughts = getattr(meta, 'thoughts_token_count', None)
+    if isinstance(thoughts, int) and thoughts:      # thinking tokens are billed as output
+        out = (out or 0) + thoughts
     record_usage(
         model,
         getattr(meta, 'prompt_token_count', None),
-        getattr(meta, 'candidates_token_count', None),
+        out,
         getattr(meta, 'cached_content_token_count', None),
     )
 
@@ -87,8 +95,10 @@ def record_openai_response(model: str, response) -> None:
     if usage is None:
         record_usage(model, None, None)
         return
+    cached = getattr(getattr(usage, 'prompt_tokens_details', None), 'cached_tokens', None)
     record_usage(
         model,
         getattr(usage, 'prompt_tokens', None),
         getattr(usage, 'completion_tokens', None),
+        cached if isinstance(cached, int) else 0,
     )

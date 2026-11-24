@@ -1,5 +1,5 @@
 """
-T-0007 — side-effect AI tools require server-side confirmation; deal lock frozen.
+T-0007 / T-2012 — side-effect AI tools require server-side confirmation; deal lock frozen.
 """
 from django.test import TestCase
 from django.urls import reverse
@@ -21,16 +21,28 @@ def _turn(user, message):
     set_context(user, PHONE, org=None, message=message)
 
 
+def _reply(user, message):
+    """The user's next message, as AIServiceManager.process handles it."""
+    return confirmation.resolve_reply(PHONE, message, user, None)
+
+
 class AffirmativeParsingTest(TestCase):
 
     def test_affirmatives(self):
-        for msg in ('yes', 'YES!', 'haan', 'ji haan', 'ok', 'confirm', 'theek hai', 'ہاں'):
+        for msg in ('yes', 'YES!', 'haan', 'ji haan', 'ok', 'confirm', 'theek hai', 'ہاں', 'Yes please', 'yes 👍'):
             self.assertTrue(confirmation.is_affirmative(msg), msg)
 
     def test_non_affirmatives(self):
-        for msg in ('no', 'nahi', "yes but don't publish", 'not yet', '', 'maybe',
+        for msg in ('no', 'nahi', "yes but don't publish", 'not yet', '', 'maybe', 'please',
+                    'yes how much is the fee?', 'ok show me flats in Karachi', '👍',
                     'list my 10 marla house in DHA for 2.5 crore please'):
             self.assertFalse(confirmation.is_affirmative(msg), msg)
+
+    def test_negatives(self):
+        for msg in ('no', 'No thanks', 'cancel', 'nahi', 'نہیں', 'don’t'):
+            self.assertTrue(confirmation.is_negative(msg), msg)
+        for msg in ('no make it 3 crore', 'thanks', 'yes', ''):
+            self.assertFalse(confirmation.is_negative(msg), msg)
 
 
 class ListPropertyConfirmationTest(TestCase):
@@ -38,78 +50,48 @@ class ListPropertyConfirmationTest(TestCase):
     def setUp(self):
         self.user = make_client(phone='+923001234598')
 
-    def test_first_call_only_proposes(self):
-        _turn(self.user, 'list my house: 10 marla DHA 6, 2.5 crore')
-        result = list_property(**LISTING)
-        self.assertTrue(result['confirmation_required'])
+    def _count(self):
+        return Property.objects.filter(owner=self.user).count()
+
+    def test_calls_only_propose_even_when_repeated_after_yes(self):
+        for msg in ('list my house: 10 marla DHA 6, 2.5 crore', 'yes', 'yes'):
+            _turn(self.user, msg)
+            result = list_property(**LISTING)          # the model calling the tool
+            self.assertTrue(result['confirmation_required'])
         self.assertIn('PKR 25,000,000', result['message'])
-        self.assertFalse(Property.objects.filter(owner=self.user).exists())
+        self.assertEqual(self._count(), 0)
 
-    def test_same_turn_repeat_cannot_self_confirm(self):
-        _turn(self.user, 'yes')  # even an affirmative message in the proposing turn
-        list_property(**LISTING)
-        result = list_property(**LISTING)
-        self.assertTrue(result['confirmation_required'])
-        self.assertFalse(Property.objects.filter(owner=self.user).exists())
-
-    def test_confirmed_in_next_turn_creates_listing(self):
+    def test_yes_executes_the_stored_call_once(self):
         _turn(self.user, 'list my house')
         list_property(**LISTING)
-        _turn(self.user, 'yes')
-        result = list_property(**LISTING)
-        self.assertTrue(result['success'], result)
-        self.assertEqual(Property.objects.filter(owner=self.user).count(), 1)
+        self.assertIn('listed successfully', _reply(self.user, 'yes'))
+        self.assertIsNone(_reply(self.user, 'yes'))
+        self.assertEqual(self._count(), 1)
 
-    def test_negative_reply_does_not_create(self):
+    def test_negative_reply_declines(self):
         _turn(self.user, 'list my house')
         list_property(**LISTING)
-        _turn(self.user, 'no')
-        result = list_property(**LISTING)
-        self.assertTrue(result['confirmation_required'])
-        self.assertFalse(Property.objects.filter(owner=self.user).exists())
+        self.assertIn('cancelled', _reply(self.user, 'no'))
+        self.assertIsNone(_reply(self.user, 'yes'))
+        self.assertEqual(self._count(), 0)
 
-    def test_changed_details_need_fresh_confirmation(self):
+    def test_changed_details_replace_the_proposal(self):
         _turn(self.user, 'list my house')
         list_property(**LISTING)
-        _turn(self.user, 'yes')
-        result = list_property(**{**LISTING, 'price': 30_000_000})
-        self.assertTrue(result['confirmation_required'])
-        self.assertFalse(Property.objects.filter(owner=self.user).exists())
-
-    def test_confirmation_is_single_use(self):
-        _turn(self.user, 'list my house')
-        list_property(**LISTING)
-        _turn(self.user, 'yes')
-        list_property(**LISTING)
-        _turn(self.user, 'yes')
-        result = list_property(**LISTING)
-        self.assertTrue(result['confirmation_required'])
-        self.assertEqual(Property.objects.filter(owner=self.user).count(), 1)
+        _turn(self.user, 'make it 3 crore')
+        list_property(**{**LISTING, 'price': 30_000_000})
+        _reply(self.user, 'yes')
+        self.assertEqual(Property.objects.get(owner=self.user).price, 30_000_000)
 
 
 class ConnectToAgentConfirmationTest(TestCase):
 
-    def setUp(self):
-        self.user = make_client(phone='+923001234597')
-
-    def test_llm_call_requires_confirmation(self):
-        _turn(self.user, 'I might want help buying')
+    def test_call_requires_confirmation(self):
+        user = make_client(phone='+923001234597')
+        _turn(user, 'connect me to an agent in Lahore')
         result = connect_to_agent(city='Lahore', intent='buy')
         self.assertTrue(result['confirmation_required'])
         self.assertIn('number will be shared', result['message'])
-
-    def test_explicit_user_request_path_is_not_blocked(self):
-        _turn(self.user, 'connect me to an agent in Lahore')
-        confirmation.mark_explicit_request()
-        result = connect_to_agent(city='Lahore', intent='buy')
-        self.assertNotIn('confirmation_required', result)
-
-    def test_explicit_flag_reset_on_next_turn(self):
-        _turn(self.user, 'connect me to an agent')
-        confirmation.mark_explicit_request()
-        _turn(self.user, 'what about Karachi')
-        result = connect_to_agent(city='Karachi', intent='buy')
-        self.assertTrue(result['confirmation_required'])
 
 
 class DealLockFrozenTest(TestCase):
@@ -176,10 +158,12 @@ class AuditToolGuardAndDisclaimerTest(TestCase):
         self.assertFalse(PropertyAudit.objects.exists())
 
     def test_confirmed_audit_has_disclaimer_and_provenance(self):
+        from unittest.mock import patch
+        from apps.ai.models import PendingAction
         _turn(self.user, 'audit it')
-        self._generate()
-        _turn(self.user, 'yes')
-        result = self._generate()
+        proposal = self._generate()
+        with patch('apps.audit.pdf.generate_audit_pdf'):
+            result = confirmation.confirm(PendingAction.objects.get(pk=proposal['pending_action_id']), 'message')
         self.assertTrue(result['success'], result)
         summary = result['whatsapp_summary']
         self.assertIn('Not a valuation', summary)

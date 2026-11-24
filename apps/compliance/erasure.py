@@ -129,6 +129,17 @@ class RTBFOrchestrator:
             logger.error("RTBF: CampaignRecipient anonymization failed user=%s: %s", user.id, exc)
             errors['campaign_recipients'] = str(exc)
 
+        # 5b — AI confirmations (arguments, summaries) and trace links
+        try:
+            from apps.ai.models import AITrace, PendingAction
+            deleted, _ = PendingAction.objects.filter(user=user).delete()
+            scope['ai_pending_actions_deleted'] = deleted
+            scope['ai_traces_unlinked'] = AITrace.objects.filter(user=user).update(
+                user=None, conversation_ref='')
+        except Exception as exc:
+            logger.error("RTBF: AI record erasure failed user=%s: %s", user.id, exc)
+            errors['ai_records'] = str(exc)
+
         # 6 — User anonymization
         try:
             user.is_active = False

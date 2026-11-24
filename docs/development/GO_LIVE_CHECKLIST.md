@@ -286,3 +286,16 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
   - Agent‑contact and audit replies are verbatim tool output on every provider.
   - Token usage now includes every round of a multi‑tool turn, so budgets fill faster than before: this is the true cost.
 - **Watch after deploy:** `AIInteraction.output_data.tool_calls` (statuses `rejected` or `error`) and the `ai.tool` log lines. A rise in `rejected` / `invalid_args` points to a schema or prompt problem.
+
+## 32. Session‑10 change: durable confirmations (T‑2012, ADR‑030)
+- **Migration:** `ai 0004` (new table). `FIELD_ENCRYPTION_KEYS` must be set.
+- **Behaviour:** agent hand‑off and literal audit requests now ask for YES; a bare YES counts only right after the summary. Proposals pending in the old cache are dropped at deploy.
+- **Settings:** `AI_PENDING_ACTION_TTL_MIN` (30), `AI_PENDING_ACTION_RETENTION_DAYS` (90). Restart celery beat (`purge-pending-actions`).
+- **API:** `GET /api/v1/pending-actions/`, `POST …/{id}/confirm/`, `POST …/{id}/decline/`.
+
+## 33. Session‑10 change: AI traces and cost (T‑2011, ADR‑031)
+- **Migration:** `ai 0005` (new tables).
+- **Before relying on costs:** add a `ModelPrice` row in the admin for every model in use (`GEMINI_MODEL`, `AI_OPENAI_MODEL`, the local model at 0), from the provider's current price list.
+- **API:** `GET /api/v1/ai/costs/`. In `/ai/token-usage/`, `estimated_usd_cost` and `estimated_savings_usd` can now be null.
+- **Budgets:** Gemini thinking tokens now count as output, so budgets may fill faster.
+- **Settings:** `AI_TRACE_RETENTION_DAYS` (400). Restart celery beat (`purge-ai-traces`).

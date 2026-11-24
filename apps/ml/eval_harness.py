@@ -132,6 +132,7 @@ class EvalHarness:
             raw = svc.process(
                 phone='eval-judge',
                 message=_JUDGE_SYSTEM + '\n\n' + judge_prompt,
+                interactive=False,
             )
             # Extract JSON from response
             start = raw.find('{')
@@ -155,7 +156,7 @@ class EvalHarness:
     @staticmethod
     def _call_base(svc, input_msg: str) -> str:
         try:
-            return svc.process(phone='eval-base', message=input_msg)
+            return svc.process(phone='eval-base', message=input_msg, interactive=False)
         except Exception:
             logger.warning('EvalHarness: base model call failed', exc_info=True)
             return ''

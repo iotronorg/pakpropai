@@ -36,6 +36,8 @@ import re
 import time
 from typing import Optional
 
+from django.utils import timezone
+
 from apps.core.metrics import ai_requests_total, ai_request_duration_seconds
 
 logger = logging.getLogger(__name__)
@@ -611,20 +613,53 @@ class AIServiceManager:
         message:      str,
         user=None,
         organization=None,
+        interactive:  bool = True,
     ) -> str:
         """
         Process one inbound message for a specific org/lead context.
         Drop-in replacement for RealTronAgent.chat().
+
+        interactive=False when the reply is not sent to the user as chat (copilot
+        drafts, voice, evals): nothing can be confirmed or proposed (T-2012).
         """
-        start = time.time()
-        from apps.ai.usage import current_usage, start_capture
+        from apps.ai import tracing
+        from apps.ai.usage import start_capture
         start_capture()
+        trace = tracing.begin()
+        try:
+            return self._process(phone, message, user, organization, interactive)
+        except Exception as exc:
+            tracing.note(error=type(exc).__name__[:80])
+            raise
+        finally:
+            tracing.save(trace, phone=phone, user=user, organization=organization,
+                         interactive=interactive)
+
+    def _process(self, phone, message, user, organization, interactive) -> str:
+        start = time.time()
+        started_at = timezone.now()
+        from apps.ai import tracing
+        from apps.ai.usage import current_usage
+
+        # ── 0. Answer to a pending action (T-2012): no model involved ──────────
+        from apps.ai import confirmation
+        if interactive:
+            answer = confirmation.resolve_reply(phone, message, user, organization)
+            if answer is not None:
+                tracing.note(route='confirmation')
+                agent = self._get_agent()
+                agent._save_history(phone, organization, agent._load_history(phone, org=organization),
+                                    message, answer)
+                self._record_wa_token(organization)
+                return answer
 
         # ── 1. Guardrail: input check ──────────────────────────────────────────
         from apps.ai.guardrails import GuardrailEngine
         guard = GuardrailEngine.check_input(message)
         if not guard.safe:
             logger.info("Guardrail blocked: %s", guard.reason)
+            tracing.note(route='guard_blocked')
+            tracing.note_guard('input', guard.reason)
             return guard.fallback_reply
 
         org_id = str(organization.id) if organization else None
@@ -633,12 +668,14 @@ class AIServiceManager:
         if organization and org_id:
             throttle_reply = self._check_token_throttle(organization, org_id)
             if throttle_reply:
+                tracing.note(route='throttled')
                 return throttle_reply
 
         # ── 2. Intent pre-classification (deterministic, no LLM) ──────────────
         agent   = self._get_agent()
         history = agent._load_history(phone, org=organization)
         intent  = IntentClassifier.classify(message, history)
+        tracing.note(intent=intent.intent)
 
         # ── 2b. Semantic cache lookup (opt-in, non-personal intents only) ──────
         cache_scope = semantic_cache_scope(org_id, intent, message)
@@ -646,6 +683,7 @@ class AIServiceManager:
             from apps.ai.token_governor import SemanticResponseCache
             cached = SemanticResponseCache.lookup(message, cache_scope)
             if cached:
+                tracing.note(route='cache')
                 from apps.ai.tasks import record_token_usage
                 record_token_usage.delay(
                     org_id=org_id, tokens_in=0, tokens_out=0,
@@ -660,8 +698,10 @@ class AIServiceManager:
 
         # ── 3. High-confidence direct route (pure Python, no LLM) ─────────────
         if intent.confidence >= _DIRECT_ROUTE_CONFIDENCE:
-            direct_reply = self._try_direct_route(intent, phone, user, organization)
+            direct_reply = self._try_direct_route(intent, phone, user, organization,
+                                                  interactive=interactive)
             if direct_reply:
+                tracing.note(route='direct')
                 elapsed = time.time() - start
                 ai_requests_total.labels(intent=intent.intent, route='direct').inc()
                 ai_request_duration_seconds.labels(route='direct').observe(elapsed)
@@ -689,23 +729,35 @@ class AIServiceManager:
                 phone, enriched_message, user,
                 organization=organization,
                 extra_context=extra_context,
+                **({} if interactive else {'interactive': False}),
                 fallback_fn=lambda: _CANNED_FALLBACK,
             )
         except Exception as exc:
             logger.error("agent.chat failed phone=%s: %s", phone, exc, exc_info=True)
             reply = _CANNED_FALLBACK
+        if reply == _CANNED_FALLBACK:
+            tracing.note(error='llm_unavailable')
+
+        # A proposal shown verbatim restates the user's own details: it is not a
+        # claim about the listing in focus, so grounding does not apply to it.
+        proposal = confirmation.proposed_since(phone, organization, started_at) if interactive else None
+        is_proposal = proposal is not None and proposal.prompt == reply
 
         # ── 5. Output guardrail ────────────────────────────────────────────────
         output_ok = GuardrailEngine.check_output(reply)
         if not output_ok:
             logger.warning("LLM output failed guard — using fallback phone=%s", phone)
+            tracing.note_guard('output', 'blocked')
             reply = GuardrailEngine.fallback_error_reply(intent.language)
 
         # ── 5b. Grounding check against the property in focus (T-0009) ─────────
-        if output_ok and reply != _CANNED_FALLBACK:
+        if is_proposal:
+            tracing.note(grounding_result='skipped')
+        if output_ok and not is_proposal and reply != _CANNED_FALLBACK:
             try:
                 from apps.ai.compliance_filters import ComplianceEngine
                 verdict = ComplianceEngine.check_output(reply, org=organization, phone=phone)
+                tracing.note(grounding_result='passed' if verdict.safe else 'blocked')
                 if not verdict.safe:
                     logger.warning("ComplianceEngine blocked reply action=%s phone=%s",
                                    verdict.action_taken, phone)
@@ -713,9 +765,14 @@ class AIServiceManager:
                     output_ok = False   # never cache a blocked reply
             except Exception as exc:
                 logger.error("ComplianceEngine check failed: %s", exc)
+                tracing.note(grounding_result='error')
+
+        # The user must have seen exactly what they would be confirming.
+        if proposal is not None and proposal.prompt != reply:
+            confirmation.withdraw(phone, organization)
 
         # ── 6. Store in semantic cache + record token usage ────────────────────
-        if cache_scope and output_ok and reply != _CANNED_FALLBACK:
+        if cache_scope and output_ok and not is_proposal and reply != _CANNED_FALLBACK:
             from apps.ai.token_governor import SemanticResponseCache
             SemanticResponseCache.store(message, cache_scope, reply)
         usage = current_usage()
@@ -771,13 +828,14 @@ class AIServiceManager:
         phone:        str,
         user=None,
         organization=None,
+        interactive:  bool = True,
     ) -> Optional[str]:
         """
         Attempt a direct Python tool call for deterministic intents.
         Returns formatted reply string, or None to fall through to LLM.
         """
         from apps.ai._tools_context import set_context
-        set_context(user, phone, org=organization)
+        set_context(user, phone, org=organization, interactive=interactive)
 
         from apps.markets.services import org_country as _org_country
         org_country = _org_country(organization)
@@ -956,12 +1014,9 @@ class AIServiceManager:
     def _direct_property_audit(audit_input, language: str) -> Optional[str]:
         if language and not language.startswith('en'):
             return None  # let LLM respond in user's language
-        from apps.ai.confirmation import mark_explicit_request
         from apps.ai.tools import generate_property_audit
-        # Deterministic route: the user's own message asked for the audit.
-        mark_explicit_request()
         result = generate_property_audit(**audit_input.to_tool_kwargs())
-        if not result.get('success'):
+        if not result.get('success') and not result.get('confirmation_required'):
             return None
         return result.get('whatsapp_summary')
 

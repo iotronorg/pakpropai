@@ -1,4 +1,5 @@
 import logging
+from .confirmation import guarded
 from ._tools_context import _ctx_user, _ctx_phone, _ctx_org
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,7 @@ def _get_org_payment_info(org):
     return jazz, easypaisa, bank_no, bank_name
 
 
+@guarded
 def initiate_deal_lock(
     property_id: str,
     token_amount: int,

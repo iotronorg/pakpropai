@@ -478,3 +478,12 @@
   - Tool calls are stored in `AIInteraction.output_data`.
   - `tests/test_llm.py` fakes moved to `step()`.
 - **Removed:** `GeminiBackend.chat` (AFC) and its history helper; the Ollama chat loop, `_run_tool`, `_TERMINAL_TOOLS`, `MAX_TOOL_ROUNDS`; the abstract `chat()`.
+
+### 2026-11-24 — session 10: T‑2012 durable confirmations; T‑2011 AI traces and cost
+- **Verified:** the owner committed T‑2010 (`9aa6cd8`); the tree was clean; baseline subset 68 passed.
+- **T‑2012 added:** `PendingAction` (`ai 0004`), `apps/ai/proposals.py`, `pending_views.py`, `pending_urls.py`, `tests/test_pending_actions.py`; `confirmation.py` rewritten.
+- **T‑2012 changed:** runtime gate; `@guarded` tools; `process`/`chat` `interactive` flag; router closes or withdraws proposals; `agent.system` prompt v2; erasure deletes pending actions.
+- **T‑2012 removed:** `RealTronAgent._is_agent_request`/`_handle_agent_request`, `confirmation.mark_explicit_request`/`check`.
+- **T‑2011 added:** `AITrace`, `ModelPrice` (`ai 0005`), `apps/ai/tracing.py`, `cost_views.py`, `tests/test_ai_traces.py`; per‑call usage records.
+- **T‑2011 changed:** `views.py` (org scope, real prices); thinking/cached token capture; failover marked in `llm._run`; erasure unlinks traces.
+- **Tests updated:** side‑effect guards and the deal‑lock AI tool tests confirm through `PendingAction`.

@@ -380,6 +380,11 @@ class DealLockAIToolCurrencyTest(TestCase):
             token_amount=amount,
             payment_method=method,
         )
+        # T-2012: the call only proposes; the user's confirmation executes it.
+        if result.get('confirmation_required'):
+            from apps.ai import confirmation
+            from apps.ai.models import PendingAction
+            result = confirmation.confirm(PendingAction.objects.get(pk=result['pending_action_id']), 'message')
         # Clear context after each call
         set_context(None, '', org=None)
         return result

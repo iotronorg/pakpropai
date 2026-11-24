@@ -5,6 +5,7 @@ logger = logging.getLogger(__name__)
 
 from apps.markets.pk import AREA_UNIT as PK_AREA_UNIT, CURRENCY as PK_CURRENCY
 from apps.markets.services import format_price
+from .confirmation import guarded
 from ._tools_context import _ctx_user, _ctx_phone, set_context  # noqa: F401
 from ._tools_search import search_properties                     # noqa: F401
 from ._tools_financial import calculate_7e_tax, check_loan_eligibility  # noqa: F401
@@ -13,6 +14,7 @@ from ._tools_deals import initiate_deal_lock                     # noqa: F401
 
 # ─── Property Audit ──────────────────────────────────────────────────────────
 
+@guarded
 def generate_property_audit(
     city: str,
     location: str,
@@ -46,20 +48,6 @@ def generate_property_audit(
 
         phone = _ctx_phone.get() or ''
         user  = _ctx_user.get()
-
-        from apps.ai.confirmation import check as confirm_check
-        pending = confirm_check(
-            'generate_property_audit',
-            {'city': city, 'location': location, 'estimated_value_pkr': estimated_value_pkr,
-             'property_type': property_type},
-            summary=(f"📊 Audit report for {property_type} — {location}, {city}\n"
-                     f"💰 Value you provided: {PK_CURRENCY} {int(estimated_value_pkr or 0):,}\n"
-                     "Indicative estimate only — not a valuation."),
-            question='Shall I generate this property audit report?',
-        )
-        if pending:
-            pending['whatsapp_summary'] = pending['message']
-            return pending
 
         audit_data = AuditEngine.run(
             city=city,
@@ -205,6 +193,7 @@ def generate_property_audit(
 
 # ─── List Property ────────────────────────────────────────────────────────────
 
+@guarded
 def list_property(
     city: str,
     location: str,
@@ -242,18 +231,6 @@ def list_property(
         if user is None:
             return {'success': False,
                     'error': 'Please register on WhatsApp first so the listing can be linked to you.'}
-
-        from apps.ai.confirmation import check as confirm_check
-        pending = confirm_check(
-            'list_property',
-            {'city': city, 'location': location, 'area_marla': area_marla,
-             'price': price, 'property_type': property_type},
-            summary=(f"📋 {title}\n💰 {PK_CURRENCY} {int(price or 0):,}"
-                     + (f"\n📝 {description[:200]}" if description else '')),
-            question='Please confirm you want to publish this listing:',
-        )
-        if pending:
-            return pending
 
         from apps.properties.price_history import price_change_context
         from apps.properties.taxonomy import classify_type_text
@@ -322,6 +299,7 @@ def list_property(
 
 # ─── Connect to Agent ─────────────────────────────────────────────────────────
 
+@guarded
 def connect_to_agent(
     city: str = '',
     intent: str = 'buy',
@@ -349,19 +327,6 @@ def connect_to_agent(
 
         phone = _ctx_phone.get() or ''
         user  = _ctx_user.get()
-
-        # Sharing the user's number with an agent needs their confirmation.
-        from apps.ai.confirmation import check as confirm_check
-        pending = confirm_check(
-            'connect_to_agent',
-            {'city': city, 'intent': intent},
-            summary=(f"🤝 {intent.title()} enquiry"
-                     + (f" in {specific_area + ', ' if specific_area else ''}{city}" if city else '')
-                     + "\nYour WhatsApp number will be shared with the matched agent."),
-            question='Shall I connect you with a verified agent?',
-        )
-        if pending:
-            return pending
 
         # Build queryset — verified + active + available agents only
         qs = Agent.objects.filter(

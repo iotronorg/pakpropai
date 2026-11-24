@@ -92,6 +92,7 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | 2026-11-23 | Working tree, session 9 eleventh part (T‑1032b‑1) | `pytest tests/ apps/ -q` | **1946 passed, 1 skipped, 0 failed**, 224 subtests. `organizations 0028`/`agents 0015` rehearsed back to 0027/0014 and forward. Staged b‑2 (`organizations 0029`, `agents 0016`) applied and unapplied on a scratch copy. `reconcile_memberships --fail-on-drift` clean; `check`/`makemigrations --check` clean. The first run had 16 TransactionTestCase flush failures, caused by FKs on the now‑unmanaged legacy table; fixed by dropping them in 0015 | 6m38s |
 | 2026-11-23 | Working tree, session 9 twelfth part (T‑1040) | `pytest tests/ apps/ -q` | **1954 passed, 1 skipped, 0 failed**, 224 subtests; `leads 0021`/`whatsapp 0013` rehearsed back and forward; `check`/`makemigrations --check` clean | 6m43s |
 | 2026-11-23 | Working tree, session 9 thirteenth part (T‑2010) | `pytest tests/ apps/ -q` | **1966 passed, 1 skipped, 0 failed**, 224 subtests; scripted fake providers for the loop/failover; Gemini/OpenAI `step()` against SDK‑shaped fakes (real `google.genai.types`); `check`/`makemigrations --check` clean | 8m43s |
+| 2026-11-24 | Working tree, session 10 (T‑2012, T‑2011) | `pytest tests/ apps/ -q` | **2014 passed, 1 skipped, 0 failed**, 224 subtests; `ai 0004`/`0005` applied, rolled back to 0003 and re‑applied on a scratch DB; `check`/`makemigrations --check` clean; Bandit HIGH 0 on `apps/ai`. An earlier run the same day was stopped and discarded (source edited while it ran) | 7m12s |
 | 2026-11-23 | Same | `check` / `makemigrations --check` / OpenAPI budget test / `bandit -r apps/ -ll` | no issues / no changes / within budget / **0 HIGH** (Medium 14) | — |
 | 2026-11-23 | Test DB `realtron_test` | `migrate properties 0034` → `migrate`; `migrate organizations 0026` → `migrate` | OK both ways | — |
 | 2026-11-23 | Test DB, 200k synthetic listings, `ANALYZE` | `EXPLAIN ANALYZE` legacy expression vs stored `search_tsv` (3 broad terms, 119k–169k matches) | 828→124 ms, 2020→134 ms, 1741→147 ms; new plan uses `prop_search_tsv_gin` | — |
@@ -144,6 +145,7 @@ Not measured yet (no coverage run executed). CI is configured with `--cov=apps`.
 
 ## Not covered / gaps
 - Outbound WhatsApp is tested with `requests.post` patched; no test hits Meta. The tests used to patch `WhatsAppClient` methods at class level, which hid KI‑033; new tests go through the real client.
+- Pending‑action claims are tested with a stale second instance, not with two concurrent threads.
 - No test runs against a real LLM provider (all tests mock or use local backend paths).
 - Gemini AFC multi‑round token counting is not verifiable without the provider (KI‑006 residual).
 - Inbound retries are tested by simulating broker redelivery (`apply(retries=n)`): Celery 5.4 eager mode does not execute retries (KI‑031). The DB‑starvation chaos run has not been repeated.

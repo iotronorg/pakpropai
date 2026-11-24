@@ -116,6 +116,9 @@ def _run(op, *, what: str):
             logger.warning('llm.%s provider=%s failed: %s', what, name, type(exc).__name__)
             continue
         _ok(name)
+        if errors:
+            from . import tracing
+            tracing.note(fallback_used=True)
         return name, backend, out, int((time.monotonic() - started) * 1000)
     raise LLMUnavailable(f'no AI provider answered ({"; ".join(errors) or "none configured"})')
 

@@ -14,15 +14,15 @@
 | 5 | Saved‑search alerts arrive within the configured frequency | Not started |
 | 6 | Criteria‑extraction F1 meets the Phase 2 baseline per launch language | Not started |
 | 7 | Zero critical hallucinations in the release eval suite; grounding checker live | Not started |
-| 8 | Side‑effect tools never execute without a confirmation record (tests) | Partly: cache‑only confirmations (M0, T‑0007); durable record is T‑2012 |
-| 9 | AI cost per conversation and per qualified lead from real token data | Partly: real token capture (M0) and provenance (T‑1120); cost table is T‑2011 |
+| 8 | Side‑effect tools never execute without a confirmation record (tests) | Met for the existing tools (T‑2012); a test requires every committing registry tool to be confirmable. Enquiry, booking and saved‑search tools come later |
+| 9 | AI cost per conversation and per qualified lead from real token data | Built (T‑2011, `GET /ai/costs/`); needs operator‑entered `ModelPrice` rows |
 
 ## Tasks
 | ID | P | Deliverable | Ref | Depends on |
 |---|---|---|---|---|
 | T‑2010 ✅ | P1 | Explicit tool loop: the provider returns tool calls and the runtime executes them; tool registry with per‑tool policy; per‑step usage | AI spec §3.1/§3.2/§5 | T‑1120 |
-| T‑2011 | P1 | `AITrace` (per turn: prompt version, provider, tokens, cost, latency, tool calls, guard/grounding results, fallback) + `ModelPrice` cost | AI spec §10/§11 | T‑2010 |
-| T‑2012 | P1 | Durable `PendingAction` confirmations (replace the cache‑only proposals) | AI spec §5, MVP 8 | T‑2010 |
+| T‑2011 ✅ | P1 | `AITrace` (per turn: prompt version, provider, tokens, cost, latency, tool calls, guard/grounding results, fallback) + `ModelPrice` cost | AI spec §10/§11 | T‑2010 |
+| T‑2012 ✅ | P1 | Durable `PendingAction` confirmations (replace the cache‑only proposals) | AI spec §5, MVP 8 | T‑2010 |
 | T‑2013 | P1 | Grounding checker v2 (claims vs cited sources; one regeneration then a safe fallback) | AI spec §3.1/§8.2, MVP 7 | T‑2010 |
 | T‑2014 | P2 | Listing draft/moderation state; `draft_listing` tool draft‑only; moderation queue and user reports | KI‑025, G2 | T‑1080, T‑2012 |
 | T‑2016 | P2 | Context‑free FAQ path so the semantic cache can be enabled safely | ADR‑003 | T‑2010 |
@@ -31,8 +31,8 @@
 | T‑2031 | P1 | Public listing read API | GAP‑002 | T‑2030 |
 | T‑2040 | P2 | Preference profile with consent; favourites (`save_listing`); saved searches and alerts (email, WhatsApp) | FR‑AI‑008, FR‑REC‑002/004, MVP 5 | T‑2030, T‑2012 |
 | T‑2041 | P2 | Consumer comparison (`compare_listings`) | FR‑CMP‑001/002 | T‑2030 |
-| T‑2050 | P1 | Enquiries → leads (`create_enquiry` with consent); in‑app threads; email notifications | FR‑COM‑001–003, MVP 4 | T‑2012 |
-| T‑2060 | P1 | Availability, slot booking (`find_viewing_slots`/`book_viewing`), reminders, feedback | FR‑APT‑001–006 | T‑2012 |
+| T‑2050 | P1 | Enquiries → leads (`create_enquiry` with consent); in‑app threads; email notifications | FR‑COM‑001–003, MVP 4 | T‑2012 ✅ |
+| T‑2060 | P1 | Availability, slot booking (`find_viewing_slots`/`book_viewing`), reminders, feedback | FR‑APT‑001–006 | T‑2012 ✅ |
 | T‑2070 | P1 | Eval suites (EN/UR/Roman Urdu) with a CI gate; kill switch per market/org (provider failover done in T‑1120) | AI spec §9, MVP 6/7 | T‑2010, T‑2030 |
 | T‑2080 | — | Closed beta with launch agencies | Release | owner |
 

@@ -780,3 +780,23 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - Confirmations are still enforced inside the tools (cache‑based, T‑0007); T‑2012 makes them durable and runtime‑enforced.
   - The `_is_agent_request` keyword bypass stays until then.
   - Per‑tool `timeout_ms` is declared but not enforced; tools run synchronously in the request (T‑2011/T‑2020).
+
+### ADR‑030 — Durable confirmations (T‑2012, 2026‑11‑24)
+- **Context:** proposals lived in the cache, keyed by phone and tool (not org). Execution needed the model to call the tool again with the same arguments. Two keyword routes skipped confirmation altogether. Supersedes ADR‑005's mechanism.
+- **Decision:**
+  - The runtime turns a `requires_confirmation` call into a `PendingAction` and ends the turn with its summary verbatim. Later calls in the same step are skipped.
+  - The **stored** arguments run, never ones the model sends later. Args and prompt are encrypted; an args hash is verified at execution, and the feature flag and market are re‑checked.
+  - Only the very next message can confirm by text, and only if the whole message is a yes. Anything else, including an image, agent takeover or reset, closes that window. The API can still confirm by id until expiry (30 min).
+  - One open action per conversation (partial unique index). Execution is at most once (conditional pending → executing update); a crash mid‑run is marked failed, not retried.
+  - If the reply sent differs from the stored prompt, the action is withdrawn. Proposals skip the grounding check (they restate the user's own details) but not the output guard.
+  - A tool without a proposal builder (`apps/ai/proposals.py`) cannot be proposed: it fails closed.
+- **Consequences:** asking for an agent or an audit now takes an extra YES. The agent route needs a working model. Prompts are English only until the message catalogue exists. If WhatsApp delivery of the summary fails, the action stays open until expiry.
+- **Later:** `conversation_key` becomes a `Conversation` FK in T‑2020; new committing tools must add a builder.
+
+### ADR‑031 — AI traces and cost (T‑2011, 2026‑11‑24)
+- **Decision:**
+  - One `AITrace` per assistant turn, written by `AIServiceManager.process`. It is a separate table from `AIInteraction` (per call, with text) and holds no message text, tool arguments or phone.
+  - `ModelPrice` rows are entered by operators with an effective date; none are seeded. A turn with any unreported or unpriced call, or with mixed currencies, has no cost, and the report shows how many such turns there are.
+  - Cost is stored at the time of the turn; later price rows do not rewrite history.
+  - A "conversation" in the report is one contact in one org within the period, until T‑2020. Qualified leads are non‑sandbox leads created in the period whose status is `qualified` now.
+- **Not done:** cost‑spike alerts, dashboards, and cost of one‑shot calls outside a turn. Per‑tool `timeout_ms` is still not enforced.

@@ -71,3 +71,17 @@ def alert_security_violation(phone: str, organization_id: str, violation_type: s
             notify_user(admin, title=title, message=message, event_type='lead_updates')
         except Exception as exc:
             logger.error("alert_security_violation: notify admin %s failed: %s", admin_id, exc)
+
+
+@shared_task(name='apps.ai.tasks.purge_pending_actions', ignore_result=True)
+def purge_pending_actions() -> int:
+    """Expire/retire PendingAction rows (T-2012)."""
+    from apps.ai.confirmation import purge
+    return purge()
+
+
+@shared_task(name='apps.ai.tasks.purge_ai_traces', ignore_result=True)
+def purge_ai_traces() -> int:
+    """Delete AITrace rows past retention (T-2011)."""
+    from apps.ai.tracing import purge
+    return purge()

@@ -27,7 +27,7 @@ For legal/tax matters always add: "Consult a registered lawyer or certified prof
 PROPERTY LISTING FLOW — FOLLOW THIS EXACTLY:
 When a user wants to list/sell their property:
 1. Ask for ALL missing required fields one at a time: city → location/area → size (in the local unit) → price → property type
-2. Confirm the details with the user before calling list_property
+2. Then call list_property: the system shows the user a summary and asks them to reply YES. Do not ask for a separate confirmation
 3. ONLY call list_property when you have city, location, area (in local unit), price, AND property_type
 
 PROPERTY SEARCH FLOW:
@@ -59,6 +59,9 @@ STRICT AGENT RULES — NEVER BREAK THESE
    an alternative agent or suggest contacting anyone not in the tool result.
 5. Agent data comes ONLY from the database via connect_to_agent. There are no other agents.
 
+ACTIONS THAT NEED CONFIRMATION (list_property, connect_to_agent, generate_property_audit):
+The system asks the user to confirm and runs the action itself. Never say such an action was done unless the conversation already shows its result. If the user changes a detail, call the tool again with the new details.
+
 Always call the relevant tool. Do not hallucinate data — if you don't have a tool result, say so.
 
 [Market-specific knowledge for this organisation's country is injected below by the system.]
@@ -68,7 +71,7 @@ Always call the relevant tool. Do not hallucinate data — if you don't have a t
 # T-1120: registered so every chat turn records which system prompt version it used.
 from apps.ai.prompts import Prompt, register  # noqa: E402
 
-AGENT_SYSTEM = register(Prompt('agent.system', 1, SYSTEM_PROMPT.replace('{', '{{').replace('}', '}}'),
+AGENT_SYSTEM = register(Prompt('agent.system', 2, SYSTEM_PROMPT.replace('{', '{{').replace('}', '}}'),
                                'WhatsApp / web agent system prompt (market-neutral base)'))
 
 register(Prompt('agent.image', 1, """The user sent an image via WhatsApp with caption: '{caption}'.

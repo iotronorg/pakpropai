@@ -31,7 +31,7 @@ COMMITTING = {LOW, CONTACT_SHARE, BOOKING, FINANCIAL}
 class ToolSpec:
     name: str
     side_effect: str = NONE
-    requires_confirmation: bool = False   # enforced inside the tool (apps.ai.confirmation; T-2012 makes it durable)
+    requires_confirmation: bool = False   # proposed as a PendingAction, never run by the model (T-2012)
     flag: str = ''                        # SystemConfig feature_* key ('' = always on)
     flag_default: bool = True
     terminal: bool = False                # return whatsapp_summary / message verbatim

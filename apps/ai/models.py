@@ -2,6 +2,8 @@ import uuid
 from django.db import models
 from django.conf import settings
 
+from apps.core.crypto import EncryptedTextField
+
 
 class TokenUsageRecord(models.Model):
     id         = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -74,3 +76,142 @@ class AIInteraction(models.Model):
 
     def __str__(self):
         return f"{self.interaction_type} — {self.model_used} ({self.prompt_tokens}+{self.response_tokens} tokens)"
+
+class PendingAction(models.Model):
+    """
+    A side-effect tool call waiting for (or resolved by) the user's explicit
+    confirmation (T-2012, ADR-030, MVP acceptance 8).
+
+    Written by ``apps.ai.confirmation`` only. The stored arguments are what
+    runs: the model cannot change them after the user has seen ``prompt``.
+    """
+    class Status(models.TextChoices):
+        PENDING    = 'pending',    'Pending'
+        EXECUTING  = 'executing',  'Executing'
+        EXECUTED   = 'executed',   'Executed'
+        FAILED     = 'failed',     'Failed'
+        DECLINED   = 'declined',   'Declined'
+        SUPERSEDED = 'superseded', 'Superseded'
+        EXPIRED    = 'expired',    'Expired'
+
+    id               = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # "<org id or 'global'>:<phone>", the same scope as the conversation history.
+    # Replaced by a Conversation FK in T-2020.
+    conversation_key = models.CharField(max_length=80, db_index=True)
+    organization     = models.ForeignKey('organizations.Organization', on_delete=models.CASCADE,
+                                         null=True, blank=True, related_name='ai_pending_actions')
+    user             = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                         null=True, blank=True, related_name='ai_pending_actions')
+    turn_id          = models.CharField(max_length=32, blank=True, default='')
+    tool             = models.CharField(max_length=60)
+    side_effect      = models.CharField(max_length=20)
+    args             = EncryptedTextField()             # JSON
+    args_hash        = models.CharField(max_length=64)
+    prompt           = EncryptedTextField()             # exactly what the user was shown
+    status           = models.CharField(max_length=12, choices=Status.choices, default=Status.PENDING)
+    # True only until the next message: a later bare "yes" answers something else.
+    awaiting_reply   = models.BooleanField(default=True)
+    confirmed_via    = models.CharField(max_length=10, blank=True, default='')   # message | api
+    result           = models.JSONField(default=dict, blank=True)                # non-personal outcome only
+    created_at       = models.DateTimeField(auto_now_add=True)
+    expires_at       = models.DateTimeField()
+    confirmed_at     = models.DateTimeField(null=True, blank=True)
+    resolved_at      = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'ai_pending_actions'
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['user', 'status'], name='ai_pending_user_status'),
+                   models.Index(fields=['created_at'], name='ai_pending_created')]
+        constraints = [models.UniqueConstraint(fields=['conversation_key'],
+                                               condition=models.Q(status='pending'),
+                                               name='ai_pending_one_per_conversation')]
+
+    def __str__(self):
+        return f'{self.tool} [{self.status}]'
+
+    @property
+    def phone(self) -> str:
+        return self.conversation_key.split(':', 1)[1]
+
+
+class ModelPrice(models.Model):
+    """
+    What a provider charges for a model (T-2011), entered by operators from the
+    provider's price list. Nothing is seeded: an unpriced call has no cost
+    rather than a guessed one. A price change is a new row.
+    """
+    model           = models.CharField(max_length=80)
+    effective_from  = models.DateField()
+    currency        = models.CharField(max_length=3, default='USD')
+    input_per_mtok  = models.DecimalField(max_digits=12, decimal_places=6)
+    cached_per_mtok = models.DecimalField(max_digits=12, decimal_places=6, null=True, blank=True,
+                                          help_text='Cached input; empty = same as input')
+    output_per_mtok = models.DecimalField(max_digits=12, decimal_places=6)
+
+    class Meta:
+        db_table = 'ai_model_prices'
+        ordering = ['model', '-effective_from']
+        constraints = [
+            models.UniqueConstraint(fields=['model', 'effective_from'], name='ai_model_price_unique'),
+            models.CheckConstraint(condition=models.Q(input_per_mtok__gte=0, output_per_mtok__gte=0)
+                                   & (models.Q(cached_per_mtok__isnull=True) | models.Q(cached_per_mtok__gte=0)),
+                                   name='ai_model_price_non_negative'),
+        ]
+
+    def __str__(self):
+        return f'{self.model} from {self.effective_from}'
+
+
+class AITrace(models.Model):
+    """One assistant turn: route, prompt, usage, cost, checks (AI spec §10). No message text."""
+    class Route(models.TextChoices):
+        LLM           = 'llm',           'Model'
+        DIRECT        = 'direct',        'Deterministic'
+        CONFIRMATION  = 'confirmation',  'Confirmation reply'
+        CACHE         = 'cache',         'Semantic cache'
+        GUARD_BLOCKED = 'guard_blocked', 'Blocked input'
+        THROTTLED     = 'throttled',     'Budget throttle'
+
+    class Pricing(models.TextChoices):
+        NO_CALLS = 'no_calls', 'No model calls'
+        PRICED   = 'priced',   'Priced'
+        UNPRICED = 'unpriced', 'Price or usage missing'
+
+    id               = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization     = models.ForeignKey('organizations.Organization', on_delete=models.CASCADE,
+                                         null=True, blank=True, related_name='ai_traces')
+    user             = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+                                         null=True, blank=True, related_name='ai_traces')
+    conversation_ref = models.CharField(max_length=64, blank=True, default='')   # keyed hash, not the phone
+    interactive      = models.BooleanField(default=True)
+    route            = models.CharField(max_length=15, choices=Route.choices, default=Route.LLM)
+    intent           = models.CharField(max_length=60, blank=True, default='')
+    prompt_name      = models.CharField(max_length=80, blank=True, default='')
+    prompt_version   = models.PositiveSmallIntegerField(null=True, blank=True)
+    prompt_digest    = models.CharField(max_length=12, blank=True, default='')
+    provider         = models.CharField(max_length=20, blank=True, default='')
+    model            = models.CharField(max_length=80, blank=True, default='')
+    llm_calls        = models.PositiveSmallIntegerField(default=0)
+    tokens_in        = models.PositiveIntegerField(default=0)
+    tokens_out       = models.PositiveIntegerField(default=0)
+    cached_tokens    = models.PositiveIntegerField(default=0)
+    pricing          = models.CharField(max_length=10, choices=Pricing.choices, default=Pricing.NO_CALLS)
+    cost             = models.DecimalField(max_digits=14, decimal_places=8, null=True, blank=True)
+    currency         = models.CharField(max_length=3, blank=True, default='')
+    latency_ms       = models.PositiveIntegerField(default=0)
+    tool_calls       = models.JSONField(default=list, blank=True)     # name/status/ms only, no arguments
+    guard_results    = models.JSONField(default=list, blank=True)
+    grounding_result = models.CharField(max_length=10, blank=True, default='')   # passed | blocked | skipped | error
+    fallback_used    = models.BooleanField(default=False)
+    error            = models.CharField(max_length=80, blank=True, default='')
+    created_at       = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'ai_traces'
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['organization', 'created_at'], name='ai_trace_org_created'),
+                   models.Index(fields=['created_at'], name='ai_trace_created')]
+
+    def __str__(self):
+        return f'{self.route} {self.model} {self.created_at:%Y-%m-%d %H:%M}'

@@ -14,6 +14,8 @@ feeds the results back, for at most ``AI_MAX_TOOL_STEPS`` model calls.
 * Tools marked ``terminal`` (agent contact, audit PDF) end the turn with the
   tool's own ``whatsapp_summary``/``message`` verbatim: the model never
   re-phrases database facts such as agent phone numbers.
+* Tools with ``requires_confirmation`` are never executed here: the call becomes a
+  ``PendingAction`` and the turn ends with its summary verbatim (T-2012, ADR-030).
 * Invalid calls (unknown tool, disabled tool, bad arguments) become error
   results the model can recover from; a tool that raises becomes
   ``{'error': ...}`` and is logged.
@@ -70,7 +72,11 @@ def _summary(result) -> str | None:
 def _execute(spec: R.ToolSpec, args: dict):
     started = time.monotonic()
     try:
-        result = spec.fn(**args)
+        if spec.requires_confirmation:
+            from .confirmation import propose
+            result = propose(spec, args)
+        else:
+            result = spec.fn(**args)
         ok = not (isinstance(result, dict) and result.get('error'))
     except Exception as exc:                     # a tool bug must not end the conversation
         logger.error("tool '%s' raised: %s", spec.name, exc, exc_info=True)
@@ -103,11 +109,14 @@ def run_turn(backend, message: str, history: list, specs: list, system: str, *,
 
         messages.append({'role': 'assistant', 'text': step.text, 'tool_calls': step.tool_calls,
                          'raw': step.raw, 'provider': getattr(backend, 'name', '')})
-        terminal = None
+        terminal, proposed = None, False
         for call in step.tool_calls:
             record = {'id': call.id, 'name': call.name, 'step': step_no}
             spec = by_name.get(call.name)
-            if spec is None:
+            if proposed:                         # the user must answer the proposal first
+                result = {'error': 'Waiting for the user to confirm the previous action.'}
+                record.update(status='skipped', reason='awaiting_confirmation')
+            elif spec is None:
                 result = {'error': f'Unknown or unavailable tool: {call.name}'}
                 record.update(status='rejected', reason='unknown_tool')
             else:
@@ -118,10 +127,13 @@ def run_turn(backend, message: str, history: list, specs: list, system: str, *,
                     record.update(status='rejected', reason='invalid_args', side_effect=spec.side_effect)
                 else:
                     result, ok, ms = _execute(spec, args)
-                    committed = committed or (ok and spec.commits)
-                    record.update(status='ok' if ok else 'error', args=_redact(args), ms=ms,
+                    proposed = isinstance(result, dict) and bool(result.get('confirmation_required'))
+                    committed = committed or (ok and spec.commits and not proposed)
+                    if proposed:
+                        record['pending_action'] = result.get('pending_action_id')
+                    record.update(status='proposed' if proposed else 'ok' if ok else 'error', args=_redact(args), ms=ms,
                                   side_effect=spec.side_effect)
-                    if spec.terminal and ok and _summary(result):
+                    if proposed or (spec.terminal and ok and _summary(result)):
                         terminal = (spec.name, _summary(result))
             turn.tool_calls.append(record)
             logger.info('ai.tool %s', json.dumps(record, default=str)[:500])
@@ -135,7 +147,7 @@ def run_turn(backend, message: str, history: list, specs: list, system: str, *,
     return turn
 
 
-_REDACT = {'phone', 'cnic', 'national_id', 'email', 'name'}
+_REDACT = {'phone', 'cnic', 'national_id', 'email', 'name', 'owner_name'}
 
 
 def _redact(args: dict) -> dict:

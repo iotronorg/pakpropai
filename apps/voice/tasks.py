@@ -56,11 +56,12 @@ def transcribe_and_respond(self, call_sid: str) -> None:
 
     # 5. Generate AI reply (voice-optimised — short)
     try:
-        from apps.ai.service import AIServiceManager
+        from apps.ai.service import get_service_manager
         phone         = session.from_phone
         org           = session.organization
         voice_message = f"[VOICE MODE — reply ≤ 20 words] {text}"
-        reply = AIServiceManager.process(phone=phone, message=voice_message, organization=org)
+        reply = get_service_manager().process(phone=phone, message=voice_message,
+                                              organization=org, interactive=False)
     except Exception as exc:
         logger.warning("AI reply failed for call_sid=%s: %s", call_sid, exc)
         return

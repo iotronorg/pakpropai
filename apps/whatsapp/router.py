@@ -154,6 +154,7 @@ class MessageRouter:
 
         # ── AGENT_MANAGED: broadcast to agent room, skip LLM entirely ─────────
         if session_db.conversation_mode == WhatsAppSession.ConversationMode.AGENT_MANAGED:
+            cls._close_confirmation(phone, org)
             _raw_body = message_data.get('text', {}).get('body', '') or f'[{msg_type}]'
             cls._broadcast_to_agent_room(message_data, session_db, org, msg_type)
             cls._log_inbound(message_data, session_db, _raw_body, msg_type)
@@ -195,6 +196,7 @@ class MessageRouter:
                 org=org,
             )
             if image_bytes:
+                cls._close_confirmation(phone, org)
                 from .sessions import SessionManager as _SM
                 _sess = _SM.get(phone)
                 if _sess.get('state') == 'LISTING_PHOTOS':
@@ -215,6 +217,7 @@ class MessageRouter:
                 org=org,
             )
             if doc_bytes and mime.startswith('image/'):
+                cls._close_confirmation(phone, org)
                 reply = cls._handle_image(phone, doc_bytes, mime, caption, user, org)
                 cls._send_and_log(phone, reply, session_db, org=org)
                 cls._log_inbound(message_data, session_db, caption or '[document]', msg_type)
@@ -250,6 +253,7 @@ class MessageRouter:
             try:
                 text = _sanitize(raw_text)
             except ValueError:
+                cls._close_confirmation(phone, org)
                 logger.warning(f"Injection attempt from {phone}: {raw_text[:100]!r}")
                 cls._send_and_log(
                     phone,
@@ -270,6 +274,8 @@ class MessageRouter:
         if text_lower in ('reset', '/start', 'menu', 'main menu'):
             from apps.ai.agent import get_agent
             get_agent().clear_history(phone, org=org)
+            from apps.ai.confirmation import withdraw
+            withdraw(phone, org)
             cls._send_and_log(phone, cls._greeting(), session_db, org=org)
             return
 
@@ -277,6 +283,7 @@ class MessageRouter:
         from .sessions import SessionManager as _SM
         _sess = _SM.get(phone)
         if _sess.get('state') == 'LISTING_PHOTOS':
+            cls._close_confirmation(phone, org)
             _done_words = {'done', 'skip', 'finish', 'khatam', 'bas', 'ok',
                            'okay', 'no', 'cancel', 'quit', 'end', 'stop'}
             if text_lower in _done_words or text_lower.startswith('done'):
@@ -325,6 +332,12 @@ class MessageRouter:
             )
 
         cls._send_and_log(phone, reply, session_db, org=org)
+
+    @staticmethod
+    def _close_confirmation(phone: str, org=None):
+        """This message is not handled by the AI service, so it did not answer its proposal."""
+        from apps.ai.confirmation import close_reply_window
+        close_reply_window(phone, org)
 
     # ─── Listing photo upload ────────────────────────────────────────────────
 

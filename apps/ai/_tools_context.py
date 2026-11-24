@@ -8,14 +8,17 @@ _ctx_org     = contextvars.ContextVar('agent_org',     default=None)
 # turn" from "confirmed in a later turn" (apps/ai/confirmation.py).
 _ctx_turn    = contextvars.ContextVar('agent_turn',    default='')
 _ctx_message = contextvars.ContextVar('agent_message', default='')
-# Set only by deterministic Python handlers acting on the user's literal request.
-_ctx_explicit_request = contextvars.ContextVar('agent_explicit_request', default=False)
+# Args hash of the one confirmed call allowed to run (apps/ai/confirmation.py only).
+_ctx_grant = contextvars.ContextVar('agent_grant', default='')
+# False when the reply is not shown to the user (copilot drafts, voice, evals).
+_ctx_interactive = contextvars.ContextVar('agent_interactive', default=True)
 
 
-def set_context(user, phone: str, org=None, message: str = ''):
+def set_context(user, phone: str, org=None, message: str = '', interactive: bool = True):
     _ctx_user.set(user)
     _ctx_phone.set(phone)
     _ctx_org.set(org)
     _ctx_turn.set(uuid.uuid4().hex)
     _ctx_message.set(message or '')
-    _ctx_explicit_request.set(False)
+    _ctx_grant.set('')
+    _ctx_interactive.set(interactive)

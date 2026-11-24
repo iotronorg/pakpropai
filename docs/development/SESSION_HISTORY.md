@@ -298,3 +298,12 @@
    **Do not commit.**
 2. Next: **T‑2012** durable `PendingAction` confirmations, enforced by the runtime for `requires_confirmation` tools; then remove the `_is_agent_request` bypass. Then T‑2011 (AITrace + cost).
 3. **Open:** KI‑055…KI‑059. KI‑059 (OCR, STT and intent classifier not on the router) is not closed by T‑2010.
+
+## Session 10 — 2026-11-24 — T‑2012, T‑2011
+- **Completed:** T‑2012 (ADR‑030) and T‑2011 (ADR‑031). Found KI‑060…KI‑063 (061 and 063 fixed).
+- **Tests:** 2014 passed, 1 skipped, 0 failed. **Not committed.**
+
+### Handoff → session 11 (supersedes the ones above)
+1. `git status`: uncommitted work is T‑2012 and T‑2011 (see IMPLEMENTATION_LOG). **Do not commit.**
+2. Next: **T‑2013** grounding checker v2. Start in `apps/ai/compliance_filters.py`, `apps/ai/service.py` `_process` (step 5b), and `apps/ai/runtime.py` (collect tool results as sources). Then T‑2020.
+3. Quick fix worth doing first: KI‑060 (AML session block). Owner/operator: enter `ModelPrice` rows (GO_LIVE §33).

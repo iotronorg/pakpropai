@@ -209,6 +209,7 @@ class CopilotRecommendationEngine:
                 phone=session.phone,
                 message=prompt,
                 organization=org,
+                interactive=False,      # a draft for the agent; the client never sees it
             )
             if suggested:
                 return RecommendationItem(

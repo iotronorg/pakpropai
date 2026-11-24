@@ -348,6 +348,10 @@ GEOCODING_DAILY_BUDGET = env.int('GEOCODING_DAILY_BUDGET', default=500)
 GEOCODING_TIMEOUT_S    = env.float('GEOCODING_TIMEOUT_S', default=5.0)
 GEOCODING_CACHE_DAYS   = env.int('GEOCODING_CACHE_DAYS', default=30)     # Google: ≤ 30 days
 GEOCODING_REFRESH_DAYS = env.int('GEOCODING_REFRESH_DAYS', default=29)   # re-geocode before 30   # T-1032c, KI-041
+AI_PENDING_ACTION_TTL_MIN        = env.int('AI_PENDING_ACTION_TTL_MIN', default=30)       # T-2012
+AI_PENDING_ACTION_RETENTION_DAYS = env.int('AI_PENDING_ACTION_RETENTION_DAYS', default=90)
+AI_TRACE_RETENTION_DAYS          = env.int('AI_TRACE_RETENTION_DAYS', default=400)      # T-2011
+
 CELERY_TASK_ROUTES = {
     # Outbound side effects
     'apps.core.tasks.dispatch_outbox_message':            {'queue': OUTBOX_CELERY_QUEUE},
@@ -383,6 +387,14 @@ CELERY_BEAT_SCHEDULE = {
     'purge-idempotency-records': {
         'task':     'apps.core.tasks.purge_idempotency_records',
         'schedule': 3600,   # hourly; rows live IDEMPOTENCY_TTL_HOURS (ADR-018)
+    },
+    'purge-pending-actions': {
+        'task':     'apps.ai.tasks.purge_pending_actions',
+        'schedule': 3600,   # hourly: expire, fail interrupted, apply retention (T-2012)
+    },
+    'purge-ai-traces': {
+        'task':     'apps.ai.tasks.purge_ai_traces',
+        'schedule': 86400,  # daily; AI_TRACE_RETENTION_DAYS (T-2011)
     },
     'expire-listings': {
         'task':     'apps.properties.tasks.expire_listings',

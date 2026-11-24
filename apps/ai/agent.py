@@ -56,12 +56,14 @@ class RealTronAgent:
         return [spec.fn for spec in self._get_specs()]
 
     def chat(self, phone: str, message: str, user=None, organization=None,
-             extra_context: str = '') -> str:
+             extra_context: str = '', interactive: bool = True) -> str:
         """
         Process a WhatsApp text message. Returns the agent's reply.
 
         extra_context — optional string appended to the system prompt.
         Populated by AIServiceManager with dynamic org/lead/market context.
+        interactive — False when the reply is not shown to the user (copilot,
+        voice, evals): side-effect tools are then not offered (T-2012).
         """
         from apps.ai import llm
         if not llm.any_configured():           # T-1120: any provider in AI_PROVIDER_ORDER
@@ -71,22 +73,15 @@ class RealTronAgent:
                 "Get a free key at: aistudio.google.com"
             )
 
-        from apps.ai import tools as tool_module
+        from apps.ai import tools as tool_module, tracing
 
-        tool_module.set_context(user, phone, org=organization, message=message)
+        tool_module.set_context(user, phone, org=organization, message=message,
+                                interactive=interactive)
 
         # Greetings get an instant structured reply — no model call needed
         if self._is_greeting(message):
             reply = self._greeting_reply(message)
             history = self._load_history(phone, organization)
-            self._save_history(phone, organization, history, message, reply)
-            return reply
-
-        # Agent requests are handled directly in Python — local models hallucinate
-        # agent details when this is left to the model, so we bypass it entirely.
-        if self._is_agent_request(message):
-            history = self._load_history(phone, organization)
-            reply = self._handle_agent_request(message, history, tool_module)
             self._save_history(phone, organization, history, message, reply)
             return reply
 
@@ -99,13 +94,16 @@ class RealTronAgent:
 
         history = self._load_history(phone, organization)
         start   = time.time()
-        tools   = self._get_specs(organization)
+        tools   = [s for s in self._get_specs(organization)
+                   if interactive or not s.requires_confirmation]
 
         result = None
         try:
             result = llm.chat(message, history, tools, system_prompt, user=user, log=False)
             reply = result.text
+            tracing.note_llm(result)
         except Exception as exc:
+            tracing.note(error=type(exc).__name__[:80])
             logger.error(f"Backend chat failed phone={phone}: {exc}", exc_info=True)
             reply = self._error_reply()
 
@@ -317,121 +315,6 @@ class RealTronAgent:
             f"{lines}\n\n"
             "What are you looking for today? 🏠"
         )
-
-    # ─── Agent request detection (bypass model to prevent hallucination) ────────
-
-    # Words that express intent to connect/find someone
-    _AGENT_INTENT_WORDS = {
-        'connect', 'find', 'refer', 'get', 'need', 'want',
-        'talk', 'speak', 'contact', 'assign', 'help', 'send',
-        'chahiye', 'milao', 'dhundo', 'batao',
-    }
-
-    # Words that identify the target as a person/agent role
-    _AGENT_ROLE_WORDS = {
-        'agent', 'someone', 'person', 'anybody', 'anyone', 'somebody',
-        'dealer', 'broker', 'consultant', 'representative', 'rep',
-        'salesperson', 'sales person', 'sales agent',
-        'property agent', 'estate agent', 'property dealer',
-        'banda', 'koi', 'kisi',
-    }
-
-    # High-confidence standalone phrases — match regardless of other words
-    _AGENT_STANDALONE_PHRASES = {
-        'talk to agent', 'talk to an agent',
-        'agent chahiye', 'agent se baat', 'agent se milao',
-        'mujhe agent chahiye', 'dealer chahiye', 'broker chahiye',
-        'property wala', 'koi agent', 'koi banda',
-        'kisi se baat', 'kisi se milao',
-    }
-
-    @classmethod
-    def _is_agent_request(cls, message: str) -> bool:
-        msg = message.strip().lower()
-        # High-confidence exact phrases
-        if any(phrase in msg for phrase in cls._AGENT_STANDALONE_PHRASES):
-            return True
-        # Combination: any intent word + any role word anywhere in the message
-        has_intent = any(w in msg for w in cls._AGENT_INTENT_WORDS)
-        has_role   = any(w in msg for w in cls._AGENT_ROLE_WORDS)
-        return has_intent and has_role
-
-    @staticmethod
-    def _handle_agent_request(message: str, history: list, tool_module) -> str:
-        """
-        Call connect_to_agent directly from Python — no model involved.
-        Extracts city/intent/budget from the message using simple keyword rules.
-        This is the only reliable way to prevent local models from hallucinating
-        agent names and phone numbers.
-        """
-        import re
-
-        from apps.ai.confirmation import mark_explicit_request
-        # The user literally asked for an agent; that request is the consent.
-        mark_explicit_request()
-        msg = message.lower()
-
-        # ── City extraction ────────────────────────────────────────────────────
-        city = ''
-        city_map = {
-            'lahore': 'Lahore', 'karachi': 'Karachi',
-            'islamabad': 'Islamabad', 'rawalpindi': 'Rawalpindi',
-            'peshawar': 'Peshawar', 'quetta': 'Quetta',
-            'multan': 'Multan', 'faisalabad': 'Faisalabad',
-            'sialkot': 'Sialkot', 'gujranwala': 'Gujranwala',
-            'hyderabad': 'Hyderabad', 'bahawalpur': 'Bahawalpur',
-        }
-        for key, name in city_map.items():
-            if key in msg:
-                city = name
-                break
-
-        # If not in message, try last few history turns
-        # History format: [{'role': 'user'|'model', 'text': '...'}, ...]
-        if not city and history:
-            recent = ' '.join(m.get('text', '') for m in history[-6:]).lower()
-            for key, name in city_map.items():
-                if key in recent:
-                    city = name
-                    break
-
-        # ── Intent extraction ──────────────────────────────────────────────────
-        intent = 'buy'
-        if any(w in msg for w in ('sell', 'bechna', 'bech', 'selling')):
-            intent = 'sell'
-        elif any(w in msg for w in ('rent', 'kiraya', 'lease', 'renting')):
-            intent = 'rent'
-        elif any(w in msg for w in ('invest', 'investment')):
-            intent = 'invest'
-
-        # ── Budget extraction ──────────────────────────────────────────────────
-        budget_pkr = 0
-        crore_match = re.search(r'(\d+(?:\.\d+)?)\s*crore', msg)
-        lakh_match  = re.search(r'(\d+(?:\.\d+)?)\s*lakh', msg)
-        if crore_match:
-            budget_pkr = int(float(crore_match.group(1)) * 10_000_000)
-        elif lakh_match:
-            budget_pkr = int(float(lakh_match.group(1)) * 100_000)
-
-        # ── Area extraction ────────────────────────────────────────────────────
-        area_keywords = [
-            'dha', 'bahria', 'gulberg', 'johar', 'model town', 'defence',
-            'clifton', 'f-7', 'f-6', 'f-10', 'g-11', 'i-8', 'blue area',
-            'cantt', 'cantonment', 'saddar', 'liberty', 'mall road',
-        ]
-        specific_area = ''
-        for kw in area_keywords:
-            if kw in msg:
-                specific_area = kw.title()
-                break
-
-        result = tool_module.connect_to_agent(
-            city=city,
-            intent=intent,
-            budget_pkr=budget_pkr,
-            specific_area=specific_area,
-        )
-        return result.get('whatsapp_summary') or result.get('message', 'Sorry, could not find an agent right now.')
 
     # ─── Error handling ───────────────────────────────────────────────────────
 
