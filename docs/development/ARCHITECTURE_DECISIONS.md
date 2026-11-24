@@ -846,3 +846,15 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - Phone numbers and emails are removed from the title, description and alt text of listings that do not belong to an organization (also in search results and the assistant's tools).
   - Credentials are ignored, so every caller gets the same answer. `Cache-Control: public, max-age=60`, weak ETag, 304. A withdrawn listing can stay in a cache for up to 60 s. Not‑public is always 404.
 - **Limits:** contact redaction is a pattern (10–15 digits, emails); numbers written in words pass. No sitemap or 410 for past listings (SEO pages are P2).
+
+### ADR‑036 — Enquiries, threads and email (T‑2050, 2026‑11‑24)
+- **Decision:**
+  - One `Enquiry` row is both the consented enquiry and its thread (the spec's `Thread` and `ThreadParticipant` are not separate tables). Messages are `ConversationMessage` rows with `enquiry` set, so the CRM and the thread share one immutable log (towards FR‑COM‑009).
+  - `contact_consent: true` is required. The consent version, time and channel are stored; consent can be withdrawn. Contacts are shown, and contact details in messages unmasked, only while **both** sides share.
+  - Who answers: organization managers or the assigned agent (active membership), the freelance agent, the private owner, or platform admins for requests without a listing. Everyone else gets 404, including platform admins for organization threads.
+  - One lead per person and organization. Enquiries to private owners, freelancers and the platform use leads of their own; WhatsApp chats, `upsert_lead` and `connect_to_agent` never use those or another organization's lead.
+  - One open enquiry per person and listing (database constraint); a second one continues the thread. At most 20 new enquiries per day.
+  - The assistant's `create_enquiry` runs only after the user's confirmation; the listing is stored by id at proposal time. `connect_to_agent` stays for requests without a listing.
+  - Notifications contain no message text or contact details, and are sent once per unread burst (again after 1 h). Email goes through the outbox to any SMTP provider; address and preferences are checked at delivery.
+- **Kept:** the owner's rule that free‑text messages are PII‑masked on input (T‑1033): emails and `+` phone numbers typed in a message are never stored.
+- **Limits:** KI‑072…KI‑075. Email addresses are not verified, which is why emails carry no content.

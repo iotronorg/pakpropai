@@ -57,6 +57,7 @@ LOCAL_APPS = [
     'apps.whatsapp',
     'apps.verification',
     'apps.leads',
+    'apps.enquiries',
     'apps.escrow',
     'apps.reports',
     'apps.audit',
@@ -238,6 +239,7 @@ REST_FRAMEWORK = {
         'fraud_check':     '20/min',
         'property_search': '30/min',
         'public_listings': env('PUBLIC_LISTINGS_RATE', default='120/min'),   # per IP (T-2031)
+        'thread_message':  '30/min',    # T-2050: enquiries and thread messages
         'report_generate': '5/hour',
         'bulk_operation':  '10/min',
         'score_property':    '15/min',
@@ -246,6 +248,19 @@ REST_FRAMEWORK = {
         'public_convert':    '20/min',   # viral referral lead creation
     },
 }
+
+# The web app: links in emails, checkout returns, referral links.
+FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:3000')
+
+# ── Email (T-2050) ────────────────────────────────────────────────────────────
+# Any SMTP provider. Without EMAIL_HOST no email is queued.
+EMAIL_HOST          = env('EMAIL_HOST', default='')
+EMAIL_PORT          = env.int('EMAIL_PORT', default=587)
+EMAIL_HOST_USER     = env('EMAIL_HOST_USER', default='')
+EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
+EMAIL_USE_TLS       = env.bool('EMAIL_USE_TLS', default=True)
+EMAIL_TIMEOUT       = 20
+DEFAULT_FROM_EMAIL  = env('DEFAULT_FROM_EMAIL', default='RealTron <no-reply@localhost>')
 
 # ── OpenAPI (T-1090a, ADR-016) ─────────────────────────────────────────────────
 # GET /api/v1/schema/ — staff only unless OPENAPI_SCHEMA_PUBLIC=True.

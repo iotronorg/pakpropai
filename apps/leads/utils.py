@@ -55,7 +55,14 @@ def upsert_lead(user, intent: str, city_interest: str = '',
         }
         if organization is not None:
             defaults['organization'] = organization
-        lead, created = Lead.objects.get_or_create(user=user, defaults=defaults)
+        # One lead per person and organization (T-2050). An unscoped lead is taken over
+        # by the first organization; leads of enquiries to other listers are left alone.
+        mine = Lead.objects.filter(user=user).order_by('-created_at')
+        unscoped = mine.filter(organization__isnull=True, enquiries__isnull=True)
+        lead = (mine.filter(organization=organization).first() if organization is not None else None) or unscoped.first()
+        created = lead is None
+        if created:
+            lead = Lead.objects.create(user=user, **defaults)
         if not created:
             update_fields = ['intent', 'city_interest', 'budget_min',
                              'budget_max', 'score', 'last_scored_at', 'score_factors']

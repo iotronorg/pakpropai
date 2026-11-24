@@ -71,7 +71,34 @@ def _initiate_deal_lock(a: dict):
     return 'Please confirm you want to reserve this property with a token payment:', '\n'.join(lines)
 
 
-_BUILDERS = {'list_property': _list_property, 'connect_to_agent': _connect_to_agent,
+def _create_enquiry(a: dict):
+    from apps.enquiries import services as E
+    from apps.properties.listing_search import find
+
+    from ._tools_listings import _state
+    user, org = _ctx_user.get(), _ctx_org.get()
+    if user is None:
+        raise Refused('The user must sign in or register on WhatsApp first.')
+    a['message'] = (a.get('message') or '').strip()[:2000]
+    if not a['message']:
+        raise Refused('Ask the user what they want to say to the lister.')
+    state = _state()
+    hit = find(a['listing'], org, (state.last_results or []) if state else [])
+    listing = E.visible_listing(hit.pk, org) if hit else None
+    if listing is None:
+        raise Refused('Listing not found or no longer available.')
+    try:
+        E.check_allowed(user, listing)
+    except E.EnquiryError as exc:
+        raise Refused(str(exc)) from None
+    a['listing'] = str(listing.pk)        # "2" must not mean another listing later
+    from apps.properties.public_listings import public_text
+    lines = [f'🏠 {public_text(listing, listing.title)} — {listing.location}, {listing.city} ({listing.ref_no})',
+             f"💬 {a['message']}", E.CONSENT_TEXT]
+    return f'Shall I send this enquiry to {E.lister_name(listing)}?', '\n'.join(lines)
+
+
+_BUILDERS = {'create_enquiry': _create_enquiry, 'list_property': _list_property, 'connect_to_agent': _connect_to_agent,
              'generate_property_audit': _generate_property_audit,
              'initiate_deal_lock': _initiate_deal_lock}
 

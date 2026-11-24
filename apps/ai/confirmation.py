@@ -148,7 +148,7 @@ def guarded(fn):
 
 # ── Resolve ───────────────────────────────────────────────────────────────────
 
-_RESULT_KEYS = ('success', 'found', 'listing_id', 'deal_id', 'audit_id', 'agent_id')
+_RESULT_KEYS = ('success', 'found', 'listing_id', 'deal_id', 'audit_id', 'agent_id', 'enquiry_id')
 
 
 def confirm(action, via: str) -> dict:

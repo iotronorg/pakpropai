@@ -95,6 +95,7 @@ Priority: P0 (blocker) → P3.
 | T‑2031 | [x] | P1 | Public listing read API | ADR‑035. `GET /api/v1/public/listings/search/` and `/{slug_or_id}/`; explicit field list, ETag and 60 s public cache. 22 tests |
 | T‑2040 | [ ] | P2 | Preferences with consent, favourites, saved searches + alerts | |
 | T‑2041 | [ ] | P2 | Consumer comparison | |
-| T‑2050 | [ ] | P1 | Enquiries → leads, threads, email notifications | |
+| T‑2050 | [x] | P1 | Enquiries → leads, threads, email notifications | ADR‑036. `apps/enquiries`, `create_enquiry` tool, outbox email. Attachments and report/block are split out to T‑2051. 40 tests |
+| T‑2051 | [ ] | P2 | Thread attachments and report/block (rest of FR‑COM‑001/007) | KI‑072 |
 | T‑2060 | [ ] | P1 | Availability, booking, reminders, feedback | |
 | T‑2070 | [ ] | P1 | Eval suites + CI gate; kill switch | |

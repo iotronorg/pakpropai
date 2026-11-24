@@ -39,10 +39,11 @@ logger = logging.getLogger(__name__)
 HANDLERS: dict[str, str] = {
     'whatsapp.otp':          'apps.notifications.delivery.deliver_otp',
     'notification.whatsapp': 'apps.notifications.delivery.deliver_notification',
+    'notification.email':    'apps.notifications.delivery.deliver_email',
     'whatsapp.text':         'apps.notifications.delivery.deliver_whatsapp_text',
 }
 # Payload is wiped once the message reaches a terminal state (data minimisation).
-SENSITIVE_KINDS = frozenset({'whatsapp.otp', 'whatsapp.text'})
+SENSITIVE_KINDS = frozenset({'whatsapp.otp', 'whatsapp.text', 'notification.email'})
 
 LEASE = timedelta(minutes=2)
 BACKOFF_BASE_SECONDS = 15

@@ -11,6 +11,7 @@ from ._tools_listings import get_listing, search_listings, update_session_criter
 from ._tools_search import search_properties                     # noqa: F401
 from ._tools_financial import calculate_7e_tax, check_loan_eligibility  # noqa: F401
 from ._tools_fraud import run_fraud_check                        # noqa: F401
+from ._tools_enquiries import create_enquiry                    # noqa: F401
 from ._tools_deals import initiate_deal_lock                     # noqa: F401
 
 # ─── Property Audit ──────────────────────────────────────────────────────────
@@ -522,16 +523,19 @@ def _capture_agent_request_lead(user, phone: str, city: str, intent: str,
         if agent:
             signals['matched_agent_id'] = agent.id
         if user:
-            lead, _ = Lead.objects.update_or_create(
-                user=user, intent=lead_intent,
-                defaults={
+            # Never a lead another organization or lister owns (T-2050).
+            lead = (Lead.objects.filter(user=user, intent=lead_intent, organization__isnull=True,
+                                        enquiries__isnull=True).order_by('-created_at').first()
+                    or Lead(user=user, intent=lead_intent))
+            for field, value in {
                     'city_interest':  city,
                     'budget_max':     budget_pkr if budget_pkr > 0 else None,
                     'intent_signals': signals,
                     'score':          80,
                     'status':         Lead.Status.QUALIFIED,
-                },
-            )
+            }.items():
+                setattr(lead, field, value)
+            lead.save()
             lead.score_factors = compute_score_factors(lead)
             lead.save(update_fields=['score_factors'])
             if agent and not lead.assigned_agent_id:

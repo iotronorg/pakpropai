@@ -585,13 +585,22 @@ class MessageRouter:
         except Exception:
             pass
         # Mirror inbound messages to CRM conversation log (enables dashboard chat view)
-        cls._persist_crm_inbound(session_db.user, body, wa_message_id)
+        cls._persist_crm_inbound(session_db.user, body, wa_message_id, session_db.organization_id)
+
+    @staticmethod
+    def _crm_lead(user, org_id):
+        """The lead of this chat's own organization: a chat is never filed under another lister (T-2050)."""
+        from apps.leads.models import Lead
+        mine = Lead.objects.filter(user=user).order_by('-created_at')
+        if org_id:
+            return mine.filter(organization_id=org_id).first()
+        return mine.filter(organization__isnull=True, enquiries__isnull=True).first()
 
     @classmethod
-    def _persist_crm_inbound(cls, user, body: str, wa_message_id: str):
+    def _persist_crm_inbound(cls, user, body: str, wa_message_id: str, org_id=None):
         try:
-            from apps.leads.models import Lead, ConversationMessage
-            lead = Lead.objects.filter(user=user).order_by('-created_at').first()
+            from apps.leads.models import ConversationMessage
+            lead = cls._crm_lead(user, org_id)
             if lead and body:
                 ConversationMessage.objects.get_or_create(
                     wa_message_id=wa_message_id,
@@ -619,15 +628,15 @@ class MessageRouter:
                 body          = body[:2000],
                 raw_payload   = resp,
             )
-            cls._persist_crm_outbound(session_db.user, body, wa_id)
+            cls._persist_crm_outbound(session_db.user, body, wa_id, org.pk if org else session_db.organization_id)
         except Exception as exc:
             logger.error(f"Failed to send reply to {phone}: {exc}")
 
     @classmethod
-    def _persist_crm_outbound(cls, user, body: str, wa_message_id: str):
+    def _persist_crm_outbound(cls, user, body: str, wa_message_id: str, org_id=None):
         try:
-            from apps.leads.models import Lead, ConversationMessage
-            lead = Lead.objects.filter(user=user).order_by('-created_at').first()
+            from apps.leads.models import ConversationMessage
+            lead = cls._crm_lead(user, org_id)
             if lead and body:
                 ConversationMessage.objects.get_or_create(
                     wa_message_id=wa_message_id,

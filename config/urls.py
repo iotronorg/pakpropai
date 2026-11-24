@@ -35,6 +35,8 @@ urlpatterns = [
         path('auth/',          include('apps.users.urls')),
         path('organizations/', include('apps.organizations.urls')),
         path('leads/',        include('apps.leads.urls')),
+        path('enquiries/',    include('apps.enquiries.urls')),
+        path('threads/',      include('apps.enquiries.thread_urls')),
         path('agents/',       include('apps.agents.urls')),
         path('deals/',        include('apps.escrow.urls')),
         path('payments/',     include('apps.payments.urls')),

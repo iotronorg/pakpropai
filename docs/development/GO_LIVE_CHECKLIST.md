@@ -325,3 +325,12 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - **Setting:** `PUBLIC_LISTINGS_RATE` (`120/min` per IP). A server‑rendered frontend shares one IP: raise it or cache in front.
 - **Proxy:** per‑IP limits need the real client IP behind the proxy.
 - **Before launch:** run `manage.py sanitize_images` for images from before T‑1110 (KI‑071) and have the field list reviewed for privacy.
+
+## 38. Session‑14 change: enquiries, threads, email (T‑2050, ADR‑036)
+- **Migrations:** `enquiries/0001`, `leads/0022` (adds a nullable column and index to `conversation_messages`; plan for a short lock on a large table).
+- **Email:** set `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS`, `DEFAULT_FROM_EMAIL`; configure SPF/DKIM/DMARC. Without `EMAIL_HOST` no email is sent. Port 587 with TLS is assumed.
+- **`FRONTEND_URL` is now a real setting.** Before, code read it but no settings file defined it, so payment return links fell back to localhost. Check it in production.
+- **Deploy workers with the web tier:** older workers do not know the `notification.email` outbox kind.
+- **Frontend:** show the consent text and send `contact_consent: true`; pages for `/threads/<id>`.
+- **Before launch:** audit old CRM messages (KI‑073), decide KI‑074, approve a WhatsApp template (KI‑075), have the consent text reviewed for each market.
+- **Prompt:** `agent.system` is version 4; run the eval suite with a live model.

@@ -31,8 +31,13 @@ def notify_user(
     message: str,
     send_whatsapp: bool = True,
     event_type: str = 'lead_updates',
+    send_email: bool = False,
+    path: str = '',
 ) -> None:
-    """Create a Notification record and deliver via WhatsApp if user preferences allow it."""
+    """
+    Create a Notification record (the in-app inbox) and deliver it by WhatsApp and/or
+    email as the user's preferences allow. ``path`` is the page the email links to.
+    """
     try:
         from .models import Notification, UserNotificationPreference
 
@@ -55,6 +60,10 @@ def notify_user(
                 # Transactional outbox (ADR-014): the delivery commits with the row.
                 from .delivery import enqueue_notification
                 enqueue_notification(n)
+
+        if send_email and prefs.email_enabled and event_allowed:
+            from .delivery import enqueue_email
+            enqueue_email(user, title, message, key=f'email:{n.pk}', event_type=event_type, path=path)
 
         if send_whatsapp and not deliver:
             n.status = Notification.Status.FAILED

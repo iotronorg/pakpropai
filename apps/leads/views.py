@@ -124,7 +124,7 @@ class LeadViewSet(viewsets.ModelViewSet):
     def conversations(self, request, pk=None):
         """GET /leads/{id}/conversations/ — full message history for a lead."""
         lead = self.get_object()
-        msgs = lead.messages.select_related('sender').order_by('created_at')
+        msgs = lead.crm_messages().select_related('sender').order_by('created_at')
         serializer = ConversationMessageSerializer(msgs, many=True)
         return Response(serializer.data)
 
@@ -168,7 +168,7 @@ class LeadViewSet(viewsets.ModelViewSet):
         """
         lead = self.get_object()
         msgs = list(
-            lead.messages.order_by('-created_at')[:30]
+            lead.crm_messages().order_by('-created_at')[:30]
         )[::-1]  # last 30 messages, oldest first
 
         if not msgs:
@@ -201,7 +201,7 @@ class LeadViewSet(viewsets.ModelViewSet):
         Returns 3 context-aware reply suggestions for the agent.
         """
         lead = self.get_object()
-        msgs = list(lead.messages.order_by('-created_at')[:10])[::-1]
+        msgs = list(lead.crm_messages().order_by('-created_at')[:10])[::-1]
 
         if not msgs:
             return Response({'suggestions': []})

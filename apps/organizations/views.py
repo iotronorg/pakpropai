@@ -435,7 +435,8 @@ class OrgAIStatsView(APIView):
         # Recent conversation snapshot: last 15 inbound messages across org leads
         recent_messages = (
             ConversationMessage.objects
-            .filter(lead__organization=org, direction='inbound')
+            .filter(Q(enquiry__isnull=True) | Q(enquiry__organization=org),
+                    lead__organization=org, direction='inbound')
             .select_related('lead__user')
             .order_by('-created_at')[:15]
         )

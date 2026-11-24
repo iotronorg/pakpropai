@@ -97,6 +97,7 @@ class MergeLeadsView(APIView):
             return Response({'detail': 'One or both leads not found.'}, status=404)
 
         moved_msgs = ConversationMessage.objects.filter(lead=secondary).update(lead=primary)
+        secondary.enquiries.update(lead=primary)
         Appointment.objects.filter(lead=secondary).update(lead=primary)
 
         if secondary.notes:

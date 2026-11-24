@@ -512,3 +512,9 @@
 - **Added:** `properties/public_listings.py`, `public_views.py`, `public_urls.py`, `tests/test_public_listings.py`.
 - **Changed:** `listing_search.summary` and `get_listing` redact private contacts; `execute(with_relaxations=)`; settings rate; URLs.
 - **Fixed:** KI‑070 (`scripts/dev/test.sh`), and its earlier wrong diagnosis. **Found:** KI‑071.
+
+### 2026-11-24 — session 14: T‑2050 enquiries, threads, email
+- **Verified:** the owner committed T‑2031 (`74c959e`); the tree was clean.
+- **Added:** `apps/enquiries` (models, services, views, URLs, migration), `apps/ai/_tools_enquiries.py`, `leads/0022`, outbox kind `notification.email`, `tests/test_enquiries.py`.
+- **Fixed:** WhatsApp messages filed under another organization's lead (KI‑073); `upsert_lead` and `connect_to_agent` failing or crossing organizations when a person has several leads; `FRONTEND_URL` missing from settings; lead merge keeps threads.
+- **Privacy:** erasure deletes enquiries and redacts replies; export lists enquiry facts and consents, not message text (KI‑066).

@@ -71,6 +71,10 @@ def generate_data_export(request_id: str):
                 Lead.objects.filter(user=user).values('id', 'created_at', 'status', 'intent')
             ),
         }
+        # Facts and consents only: message text is an open owner decision (KI-066).
+        from apps.enquiries.models import Enquiry
+        data['enquiries'] = list(Enquiry.objects.filter(user=user).values(
+            'id', 'subject', 'kind', 'status', 'created_at', 'consented_at', 'consent_version', 'consent_revoked_at'))
         payload = json.dumps(data, default=str)
         import cloudinary.uploader
         result = cloudinary.uploader.upload(

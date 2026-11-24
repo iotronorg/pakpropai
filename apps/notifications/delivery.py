@@ -135,3 +135,39 @@ def deliver_whatsapp_text(msg, payload) -> str:
     except ValueError as exc:  # outside the 24h customer-service window
         raise PermanentDeliveryError(str(exc)) from exc
     return _wa_message_id(resp)
+
+
+# ── Email (T-2050, FR-COM-003) ────────────────────────────────────────────────
+
+def enqueue_email(user, subject: str, body: str, *, key: str, event_type: str = 'lead_updates', path: str = ''):
+    """Queue an email to a user, or None when there is no address or no provider (EMAIL_HOST)."""
+    from django.conf import settings
+    if not settings.EMAIL_HOST or not (user.email or '').strip():
+        return None
+    return outbox.enqueue('notification.email', {
+        'user_id': str(user.pk), 'subject': subject, 'body': body, 'event_type': event_type, 'path': path}, key=key)
+
+
+def deliver_email(msg, payload) -> str:
+    """The address and the preferences are read now: an opt-out or erasure after queueing counts."""
+    from django.conf import settings
+    from django.contrib.auth import get_user_model
+    from django.core.mail import EmailMessage
+
+    from .models import UserNotificationPreference
+    from .services import _EVENT_PREF_FIELD
+
+    user = get_user_model().objects.filter(pk=payload.get('user_id'), is_active=True).first()
+    address = (user.email or '').strip() if user else ''
+    if not address:
+        raise PermanentDeliveryError('no active recipient')
+    prefs = UserNotificationPreference.objects.filter(user=user).first()
+    event = _EVENT_PREF_FIELD.get(payload.get('event_type'), 'lead_updates')
+    if prefs and not (prefs.email_enabled and getattr(prefs, event)):
+        raise PermanentDeliveryError('blocked by preferences')
+    body = payload['body']
+    if payload.get('path'):
+        body += f"\n\n{getattr(settings, 'FRONTEND_URL', 'http://localhost:3000').rstrip('/')}{payload['path']}"
+    EmailMessage(' '.join(payload['subject'].split())[:200], body, to=[address],
+                 headers={'Message-ID': f'<{msg.pk}@realtron>', 'Auto-Submitted': 'auto-generated'}).send()
+    return ''

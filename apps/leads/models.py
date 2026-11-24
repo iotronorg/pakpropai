@@ -122,6 +122,13 @@ class Lead(SandboxFollowsOrg, models.Model):
     # ADR-002 / T-1040: ``is_sandbox`` is derived by ``SandboxFollowsOrg.save`` (on
     # insert and when ``organization`` changes); unscoped leads are live.
 
+    def crm_messages(self):
+        """Messages the lead's own organization may read: never another lister's thread."""
+        return self.messages.filter(models.Q(enquiry__isnull=True) | (
+            models.Q(enquiry__organization_id=self.organization_id) if self.organization_id
+            else models.Q(enquiry__organization__isnull=True, enquiry__lead_id=self.pk,
+                          enquiry__kind__in=('agent', 'platform'))))
+
     def clean(self):
         if self.budget_min is not None and self.budget_max is not None:
             if self.budget_min > self.budget_max:
@@ -225,9 +232,12 @@ class ConversationMessage(models.Model):
     class Channel(models.TextChoices):
         WHATSAPP  = 'whatsapp',  'WhatsApp'
         DASHBOARD = 'dashboard', 'Dashboard Note'
+        IN_APP    = 'in_app',    'In-app thread'
 
     id        = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     lead      = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name='messages')
+    enquiry   = models.ForeignKey('enquiries.Enquiry', on_delete=models.SET_NULL, null=True, blank=True,
+                                  related_name='messages')      # in-app thread (T-2050)
     direction = models.CharField(max_length=10, choices=Direction.choices)
     channel   = models.CharField(max_length=20, choices=Channel.choices,
                                  default=Channel.WHATSAPP)
