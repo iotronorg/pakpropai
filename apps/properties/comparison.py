@@ -16,7 +16,7 @@ from apps.markets import fx
 from . import listing_search as S
 from .criteria import Place, SearchCriteria
 from .models import Property
-from .public_listings import public_q, safe_images
+from .public_listings import safe_images
 
 MIN, MAX = 2, 4
 YES, NO, UNKNOWN = 'yes', 'no', 'unknown'
@@ -25,7 +25,7 @@ _BASIS = {'total': 'total', 'per_month': 'month', 'per_year': 'month', 'per_sqm'
 
 def load(ids, viewer_org=None) -> list[Property]:
     """Visible listings in the order asked; the rest are left out."""
-    found = {p.pk: p for p in Property.objects.visible_to(viewer_org).filter(public_q(), pk__in=ids)
+    found = {p.pk: p for p in Property.objects.visible_to(viewer_org).filter(pk__in=ids)
              .select_related('organization', 'location_ref', 'market')
              .prefetch_related('amenities')}
     rows = [found[i] for i in dict.fromkeys(ids) if i in found]

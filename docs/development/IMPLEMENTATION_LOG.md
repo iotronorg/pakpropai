@@ -573,3 +573,8 @@
 - **Added:** `apps/compliance/parsers.py` (default form parsers), `tests/test_form_masking.py`.
 - **Changed:** masking helpers in `apps/compliance/middleware.py`; callback paths exempt from masking; stored payment callbacks masked (`masked_payload`); admin organization creation keeps `phone` and `email` (allow-list).
 - **Fixed:** Jumio result read from Jumio; Stripe billing verification, event reading and retry.
+
+### 2026-11-25 — session 25: MVP criteria 3 and 5
+- **Added:** `tests/test_mvp_listings_alerts.py`.
+- **Changed:** `Property.objects.visible_to()` also requires not expired and a market that is not inactive (`public_q` removed); consumer listing API, compare, trends and the WhatsApp location pin use it; listing detail hides owner data; reports check access; going live stamps `published_at`; alert backlog warning.
+- **Fixed:** `GET /external/inventory/`.

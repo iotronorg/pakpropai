@@ -9,7 +9,6 @@ from django.utils import timezone
 from apps.compliance.models import ConsentRecord
 from apps.properties import criteria as C
 from apps.properties.models import Property
-from apps.properties.public_listings import public_q
 
 from .models import Favourite, PreferenceItem
 
@@ -32,7 +31,7 @@ class PreferenceError(Exception):
 # ── Favourites ────────────────────────────────────────────────────────────────
 
 def visible(ids) -> dict:
-    return {p.pk: p for p in Property.objects.visible_to(None).filter(public_q(), pk__in=ids)}
+    return {p.pk: p for p in Property.objects.visible_to(None).filter(pk__in=ids)}
 
 
 def keep(user, listing: Property, *, kind: str = Favourite.Kind.SAVED, note: str | None = None) -> Favourite:

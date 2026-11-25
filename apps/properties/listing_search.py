@@ -141,8 +141,7 @@ def _locations(ids):
 def filtered(c: SearchCriteria, viewer_org=None, *, skip: frozenset = frozenset()):
     now = timezone.now()
     qs = (Property.objects.visible_to(viewer_org)
-          .filter(Q(market_id=c.market) | Q(market__isnull=True, country=c.market))
-          .exclude(expires_at__lte=now))
+          .filter(Q(market_id=c.market) | Q(market__isnull=True, country=c.market)))
     if c.purpose and 'purpose' not in skip:
         qs = qs.filter(purpose=c.purpose)
     if c.category:

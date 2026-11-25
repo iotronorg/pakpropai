@@ -943,3 +943,9 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
 - **Forms** are masked by the DRF parsers, with the same exempt paths and field allow-list as JSON. A test walks every URL and refuses an unmasked form parser.
 - **Callbacks** (`payments|billing|verification|voice/webhook/`) reach the view unchanged, because a signature covers the exact body. Each must prove itself (signature, or reading the result from the provider), and payment callbacks are stored masked.
 - **Jumio:** the callback is only a signal; the result comes from Jumio's API. Until it is readable the answer is 503, so Jumio repeats it.
+
+### ADR‑048 — One rule for what consumers see (session 25, 2026-11-25)
+- `visible_to()` is the whole rule: published or under offer, not expired, market not inactive, not sandbox (an organization still sees its own sandbox in its own context). Expiry is checked at read time, not by the daily job.
+- "Live market" means not `inactive`: `beta` markets are shown, as before. `under_offer` listings are shown, as before.
+- Owner phone, raw documents and AI analysis are for those who manage the listing or belong to its organization.
+- When an organization goes live, its listings' `published_at` becomes that moment.

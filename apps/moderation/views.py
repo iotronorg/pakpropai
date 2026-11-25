@@ -12,7 +12,6 @@ from rest_framework.views import APIView
 from apps.enquiries.models import ThreadReport
 from apps.enquiries.views import ThreadMessageThrottle
 from apps.properties.models import Property
-from apps.properties.public_listings import public_q
 
 from . import services as M
 from .models import ModerationItem, UserReport
@@ -176,7 +175,7 @@ class ReportListingView(APIView):
         s = ReportSerializer(data=request.data)
         s.is_valid(raise_exception=True)
         d = s.validated_data
-        p = Property.objects.visible_to(None).filter(public_q(), pk=d['listing_id']).first()
+        p = Property.objects.visible_to(None).filter(pk=d['listing_id']).first()
         if p is None:
             raise exceptions.NotFound('Listing not found.')
         _call(lambda: M.report(request.user, p, d['category'], d['text']))

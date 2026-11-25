@@ -397,3 +397,8 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - No migration. Text sent as a form is masked like JSON: check any client that posts forms with contact fields outside the allow-list.
 - Stripe billing callbacks need `stripe_webhook_secret` in the system configuration; without it they are refused.
 - Before enabling Stripe, Jumio or Onfido, wire their settings (KI‑098) and send a test callback from the provider's console.
+
+## 49. Session-25 change: listing visibility (ADR‑048)
+- No migration. Expired listings disappear at once. Set a market to `inactive` to hide its listings everywhere.
+- `GET /properties/{id}/`: `owner_phone`, `raw_docs` and `ai_analysis` are `null` for consumers. Check the frontend does not need them (contact goes through enquiries).
+- Alert on the log `saved_search.backlog`.

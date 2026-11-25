@@ -91,6 +91,8 @@ class SandboxDataMigrator:
 
         leads_count = Lead.objects.filter(organization=org, is_sandbox=True).update(is_sandbox=False)
         sessions_count = WhatsAppSession.objects.filter(organization=org, is_sandbox=True).update(is_sandbox=False)
+        # They become public now: without a new date, saved-search alerts would never announce them.
+        Property.objects.filter(organization=org, is_sandbox=True, is_active=True).update(published_at=timezone.now())
         properties_count = Property.objects.filter(organization=org, is_sandbox=True).update(is_sandbox=False)
 
         return MigrationResult(

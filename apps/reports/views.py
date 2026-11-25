@@ -2,6 +2,7 @@ from apps.properties.taxonomy import property_type_expression  # T-1070g
 import datetime
 import logging
 
+from django.core.exceptions import ValidationError
 from django.db.models import Count, Avg, Sum
 from django.db.models.functions import TruncWeek, TruncMonth, TruncDay
 from django.utils import timezone
@@ -43,6 +44,16 @@ def _get_trend(qs, created_field='created_at', period='weekly', tz=None):
 logger = logging.getLogger(__name__)
 
 
+def _may_report_on(user, prop) -> bool:
+    """A listing the person manages, one of their organization, or a public one."""
+    from apps.properties.lifecycle import can_manage
+    from apps.properties.models import Property
+    if can_manage(user, prop) or Property.objects.visible_to(None).filter(pk=prop.pk).exists():
+        return True
+    org = get_user_org(user) if user.role in ('developer', 'agent') else None
+    return org is not None and prop.organization_id == org.pk
+
+
 class ReportGenerateView(APIView):
     """POST /reports/generate/ — create a report and queue async generation."""
     permission_classes = [IsAuthenticated]
@@ -62,7 +73,9 @@ class ReportGenerateView(APIView):
             from apps.properties.models import Property
             try:
                 prop = Property.objects.get(id=property_id)
-            except Property.DoesNotExist:
+            except (Property.DoesNotExist, ValidationError, ValueError, TypeError):
+                prop = None
+            if prop is None or not _may_report_on(request.user, prop):
                 return Response({'detail': 'Property not found.'},
                                 status=status.HTTP_404_NOT_FOUND)
 

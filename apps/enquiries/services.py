@@ -11,7 +11,7 @@ from django.utils import timezone
 from apps.leads.models import ConversationMessage, Lead, LeadActivity
 from apps.organizations.models import OrganizationMembership
 from apps.properties.models import Property
-from apps.properties.public_listings import public_q, public_text
+from apps.properties.public_listings import public_text
 
 from .models import Enquiry
 
@@ -80,7 +80,7 @@ def side_of(e: Enquiry, user) -> str | None:
 
 
 def visible_listing(listing_id, viewer_org=None):
-    return (Property.objects.visible_to(viewer_org).filter(public_q(), pk=listing_id)
+    return (Property.objects.visible_to(viewer_org).filter(pk=listing_id)
             .select_related('organization', 'listed_by_agent__user', 'owner').first())
 
 

@@ -9,7 +9,6 @@ import re
 import uuid
 
 from django.db.models import Prefetch, Q
-from django.utils import timezone
 from django.utils.text import slugify
 
 from .models import Property, PropertyImage
@@ -30,17 +29,6 @@ def public_text(p: Property, text: str) -> str:
     return redact_contacts(text)
 
 
-def public_q(now=None) -> Q:
-    """Not expired, in a market that is not inactive. Use together with ``visible_to``."""
-    from apps.markets.models import Market
-    inactive = list(Market.objects.filter(status=Market.Status.INACTIVE).values_list('code', flat=True))
-    q = Q(expires_at__isnull=True) | Q(expires_at__gt=now or timezone.now())
-    if inactive:
-        q &= ~(Q(market__isnull=False) & Q(market_id__in=inactive))
-        q &= ~(Q(market__isnull=True) & Q(country__in=inactive))
-    return q
-
-
 def safe_images() -> Prefetch:
     """Only images re-encoded without metadata (older uploads may carry GPS; T-1110)."""
     return Prefetch('images', PropertyImage.objects.exclude(sha256='').order_by('order', 'created_at'),
@@ -57,7 +45,7 @@ def slug(p: Property) -> str:
 def lookup(slug_or_id: str) -> Property | None:
     """A public listing by id, reference number or slug."""
     value = (slug_or_id or '').strip().lower()[:200]
-    qs = (Property.objects.visible_to(None).filter(public_q())
+    qs = (Property.objects.visible_to(None)
           .select_related('organization', 'location_ref', 'market').prefetch_related('amenities', safe_images()))
     try:
         return qs.filter(pk=uuid.UUID(value)).first()

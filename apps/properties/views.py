@@ -191,7 +191,7 @@ class PropertyViewSet(viewsets.ModelViewSet):
         # Consumers never see other orgs' sandbox / demo inventory (ADR-002).
         # A client's own private listings stay visible to them.
         if user.is_authenticated and user.role not in ('admin', 'developer', 'agent'):
-            qs = qs.filter(Q(is_sandbox=False) | Q(owner=user))
+            qs = qs.filter(Q(pk__in=Property.objects.visible_to(None).values('pk')) | _manage_q(user))
 
         params = self.request.query_params
         if (ref_no := params.get('ref_no', '').strip()):
@@ -487,6 +487,8 @@ class PropertyViewSet(viewsets.ModelViewSet):
         from django.shortcuts import get_object_or_404
         from apps.properties.recommendations import recommend_for_lead
 
+        if not (request.user.is_staff or request.user.role in ('admin', 'developer', 'agent')):
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
         lead = get_object_or_404(Lead, id=lead_id)
 
         # Org scoping: developers and agents can only access their own org's leads
@@ -667,8 +669,8 @@ class PropertyCompareView(APIView):
                 props = props.filter(organization=org)
         elif user.role == 'agent':
             org = get_user_org(user)
-            if org:
-                props = props.filter(organization=org)
+            props = props.filter(organization=org) if org else props.filter(
+                Q(pk__in=Property.objects.visible_to(None).values('pk')) | _manage_q(user))
         return Response({
             'count': props.count(),
             'results': PropertyDetailSerializer(props, many=True, context={'request': request}).data,
@@ -695,8 +697,8 @@ class PropertyMarketTrendsView(APIView):
             qs = qs.filter(organization=org)
         elif user.role == 'agent':
             org = get_user_org(user)
-            if org:
-                qs = qs.filter(organization=org)
+            qs = qs.filter(organization=org) if org else qs.filter(
+                Q(pk__in=Property.objects.visible_to(None).values('pk')) | _manage_q(user))
         if city:
             qs = qs.filter(city__icontains=city)
 

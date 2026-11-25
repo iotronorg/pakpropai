@@ -356,6 +356,20 @@ class PropertyDetailSerializer(GeoPointMixin, ListingV2ValidationMixin, LegacyWr
                             'size_m2', 'status', 'status_changed_at', 'published_at', 'expires_at',
                             'ai_analysis', 'primary_image', 'images', 'created_at', 'updated_at')
 
+    # Only for people who manage the listing: consumers contact the lister through an enquiry.
+    _PRIVATE = ('owner_phone', 'raw_docs', 'ai_analysis')
+
+    def to_representation(self, obj):
+        data = super().to_representation(obj)
+        if not self._manages(obj):
+            data.update(dict.fromkeys(self._PRIVATE))
+        return data
+
+    def _manages(self, obj) -> bool:
+        from .lifecycle import can_manage
+        user = getattr(self.context.get('request'), 'user', None)
+        return viewer_sees_exact_point(self.context, obj) or can_manage(user, obj)
+
     def get_primary_image(self, obj) -> str | None:
         first = obj.images.first()
         if not first:

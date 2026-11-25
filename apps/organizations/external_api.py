@@ -326,14 +326,14 @@ class ExternalInventoryView(APIView):
 
     def get(self, request):
         from apps.properties.models import Property
-        from apps.properties.serializers import PropertySerializer
+        from apps.properties.serializers import PropertyListSerializer
 
         api_key = request.auth
         props = Property.objects.filter(
             organization=api_key.organization, is_active=True
         ).order_by('-created_at')[:200]
 
-        return Response(PropertySerializer(props, many=True).data)
+        return Response(PropertyListSerializer(props, many=True, context={'request': request}).data)
 
     def post(self, request):
         from apps.properties.serializers import PropertyCreateSerializer

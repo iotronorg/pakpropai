@@ -166,8 +166,11 @@ def run(search_id) -> int:
 def run_due(limit: int = 500) -> int:
     """Run every due search; one failure does not stop the others."""
     sent = 0
-    for pk in list(SavedSearch.objects.filter(is_active=True, next_run_at__lte=timezone.now(), user__is_active=True)
-                   .order_by('next_run_at').values_list('pk', flat=True)[:limit]):
+    due = list(SavedSearch.objects.filter(is_active=True, next_run_at__lte=timezone.now(), user__is_active=True)
+               .order_by('next_run_at').values_list('pk', flat=True)[:limit])
+    if len(due) == limit:            # alerts are falling behind their frequency (MVP acceptance 5)
+        logger.warning('saved_search.backlog limit=%s', limit)
+    for pk in due:
         try:
             sent += bool(run(pk))
         except Exception:

@@ -133,8 +133,8 @@ class GeoContextResolver:
             logger.warning("Nominatim lookup raised in resolve() — falling to Tier 2")
             nominatim_city = None
         if nominatim_city:
-            qs = Property.objects.filter(
-                organization=org, is_active=True,
+            qs = Property.objects.visible_to(org).filter(
+                organization=org,
                 city__icontains=nominatim_city,
             )
             if qs.exists():
@@ -148,7 +148,7 @@ class GeoContextResolver:
             from apps.geo.search import within_radius
             try:
                 nearby = within_radius(
-                    Property.objects.filter(organization=org, is_active=True),
+                    Property.objects.visible_to(org).filter(organization=org),
                     lat, lon, _HAVERSINE_RADIUS,
                 ).order_by('distance_km')
                 first = nearby.only('id', 'city').first()
@@ -167,8 +167,8 @@ class GeoContextResolver:
                     lat, lon, float(zone.centroid_lat), float(zone.centroid_lon)
                 )
                 if dist <= float(zone.radius_km):
-                    qs = Property.objects.filter(
-                        organization=org, is_active=True,
+                    qs = Property.objects.visible_to(org).filter(
+                        organization=org,
                         city__icontains=zone.city,
                     )
                     if qs.exists():

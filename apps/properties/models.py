@@ -46,7 +46,9 @@ class PropertyQuerySet(models.QuerySet):
         Listings a consumer-facing surface (search, AI tools, recommendations,
         client API) may show. See ADR-002.
 
-        Active listings that are live (``is_sandbox=False``) are always visible.
+        Published (or under offer), not past ``expires_at`` (the expiry job runs later),
+        and in a market that is not inactive (MVP acceptance 3).
+        Such listings that are live (``is_sandbox=False``) are always visible.
         Sandbox listings are visible only to their own organization's context, so
         an org can test its bot on its own inventory before go-live.
         """
@@ -54,7 +56,12 @@ class PropertyQuerySet(models.QuerySet):
         viewer_org_id = getattr(viewer_org, 'pk', viewer_org)
         if viewer_org_id:
             live |= models.Q(organization_id=viewer_org_id)
-        return self.filter(live, is_active=True)
+        from apps.markets.models import Market
+        inactive = Market.objects.filter(status=Market.Status.INACTIVE).values('code')
+        in_market = (models.Q(market__isnull=False) & ~models.Q(market_id__in=inactive)
+                     | models.Q(market__isnull=True) & ~models.Q(country__in=inactive))
+        unexpired = models.Q(expires_at__isnull=True) | models.Q(expires_at__gt=timezone.now())
+        return self.filter(live, in_market, unexpired, is_active=True)
 
 
 def _property_image_path(instance, filename):
