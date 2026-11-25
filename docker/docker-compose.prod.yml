@@ -127,6 +127,9 @@ services:
       DJANGO_SETTINGS_MODULE: config.settings.prod
       CELERY_CONCURRENCY: "4"
       CELERY_QUEUES: "default,outbound"  # outbound = outbox dispatch when OUTBOX_CELERY_QUEUE=outbound
+    # Metrics on :9808 (image default WORKER_METRICS_PORT; ADR-050), scraped as job realtron_worker.
+    expose:
+      - "9808"
     volumes:
       - media_files:/app/media
     depends_on:
@@ -152,6 +155,8 @@ services:
       DJANGO_SETTINGS_MODULE: config.settings.prod
       CELERY_CONCURRENCY: "2"
       CELERY_QUEUES: "high-resource"
+    expose:
+      - "9808"
     volumes:
       - media_files:/app/media
     depends_on:
@@ -170,6 +175,7 @@ services:
     env_file: ../.env
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.prod
+      WORKER_METRICS_PORT: "0"   # beat runs no tasks
     depends_on:
       db:
         condition: service_healthy

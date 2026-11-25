@@ -1,0 +1,166 @@
+# promtool unit tests for ops/prometheus-alerts.yaml (ADR-050). Run:
+#   docker run --rm -v "$PWD/ops:/ops" -w /ops --entrypoint promtool prom/prometheus:v3.16.0 test rules tests/slo-rules.test.yaml
+rule_files:
+  - ../prometheus-alerts.yaml
+
+evaluation_interval: 1m
+
+tests:
+  # 10 % of API requests fail for 80 minutes: page. Search is healthy.
+  - interval: 1m
+    input_series:
+      - series: 'django_http_responses_total_by_status_view_method_total{status="200", view="lead-list", method="GET"}'
+        values: '0+90x80'
+      - series: 'django_http_responses_total_by_status_view_method_total{status="500", view="lead-list", method="GET"}'
+        values: '0+10x80'
+      - series: 'django_http_requests_latency_seconds_by_view_method_bucket{le="0.4", view="listing-search", method="POST"}'
+        values: '0+100x80'
+      - series: 'django_http_requests_latency_seconds_by_view_method_count{view="listing-search", method="POST"}'
+        values: '0+100x80'
+      - series: 'up{job="realtron_api", instance="web:8000"}'
+        values: '1x80'
+      - series: 'up{job="realtron_worker", instance="worker:9808"}'
+        values: '1x80'
+    promql_expr_test:
+      - expr: slo:sli_error:ratio_rate1h{slo="api_availability"}
+        eval_time: 70m
+        exp_samples:
+          - labels: 'slo:sli_error:ratio_rate1h{slo="api_availability"}'
+            value: 0.1
+      - expr: slo:sli_error:ratio_rate5m{slo="search_latency"}
+        eval_time: 70m
+        exp_samples:
+          - labels: 'slo:sli_error:ratio_rate5m{slo="search_latency"}'
+            value: 0
+    alert_rule_test:
+      - eval_time: 70m
+        alertname: SLOErrorBudgetBurnFast
+        exp_alerts:
+          - exp_labels: {severity: critical, slo: api_availability}
+            exp_annotations:
+              summary: "SLO api_availability is burning its error budget fast"
+              description: "10% of events missed the objective over the last hour; at this rate the 30-day budget is gone in about two days."
+      - eval_time: 70m
+        alertname: WorkerMetricsAbsent
+        exp_alerts: []
+
+  # Healthy: 0.1 % errors stays inside the budget; no worker scraped raises WorkerMetricsAbsent.
+  - interval: 1m
+    input_series:
+      - series: 'django_http_responses_total_by_status_view_method_total{status="200", view="lead-list", method="GET"}'
+        values: '0+999x80'
+      - series: 'django_http_responses_total_by_status_view_method_total{status="500", view="lead-list", method="GET"}'
+        values: '0+1x80'
+      - series: 'up{job="realtron_api", instance="web:8000"}'
+        values: '1x80'
+    alert_rule_test:
+      - eval_time: 70m
+        alertname: SLOErrorBudgetBurnFast
+        exp_alerts: []
+      - eval_time: 70m
+        alertname: SLOErrorBudgetBurnSlow
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: WorkerMetricsAbsent
+        exp_alerts:
+          - exp_labels: {severity: critical}
+            exp_annotations:
+              summary: "No Celery worker is being scraped"
+              description: "AI reply, webhook processing and notification delivery SLOs come from the workers (WORKER_METRICS_PORT)."
+
+  # Enquiry notifications: WhatsApp all late, email on time, in-app failing outright
+  # (failures only, no successful delivery) — the failing channels alert, email does not.
+  - interval: 1m
+    input_series:
+      - series: 'realtron_notification_delivery_seconds_bucket{event="enquiry.new", channel="whatsapp", le="60.0"}'
+        values: '0x80'
+      - series: 'realtron_notification_delivery_seconds_count{event="enquiry.new", channel="whatsapp"}'
+        values: '0+1x80'
+      - series: 'realtron_notification_delivery_seconds_bucket{event="enquiry.new", channel="email", le="60.0"}'
+        values: '0+1x80'
+      - series: 'realtron_notification_delivery_seconds_count{event="enquiry.new", channel="email"}'
+        values: '0+1x80'
+      - series: 'realtron_notification_delivery_failures_total{event="enquiry.message", channel="in_app", reason="permanent"}'
+        values: '0+1x80'
+      - series: 'realtron_notification_delivery_failures_total{event="enquiry.new", channel="email", reason="preferences"}'
+        values: '0+5x80'
+      - series: 'realtron_outbox_oldest_undelivered_seconds{kind="notification.whatsapp"}'
+        values: '120x10'
+      - series: 'realtron_outbox_oldest_undelivered_seconds{kind="whatsapp.otp"}'
+        values: '120x10'
+    promql_expr_test:
+      - expr: slo:sli_error:ratio_rate1h{slo="enquiry_notification"}
+        eval_time: 70m
+        exp_samples:
+          - labels: 'slo:sli_error:ratio_rate1h{slo="enquiry_notification", channel="whatsapp"}'
+            value: 1
+          - labels: 'slo:sli_error:ratio_rate1h{slo="enquiry_notification", channel="email"}'
+            value: 0
+          - labels: 'slo:sli_error:ratio_rate1h{slo="enquiry_notification", channel="in_app"}'
+            value: 1
+    alert_rule_test:
+      - eval_time: 70m
+        alertname: SLOErrorBudgetBurnFast
+        exp_alerts:
+          - exp_labels: {severity: critical, slo: enquiry_notification, channel: whatsapp}
+            exp_annotations:
+              summary: "SLO enquiry_notification (whatsapp) is burning its error budget fast"
+              description: "100% of events missed the objective over the last hour; at this rate the 30-day budget is gone in about two days."
+          - exp_labels: {severity: critical, slo: enquiry_notification, channel: in_app}
+            exp_annotations:
+              summary: "SLO enquiry_notification (in_app) is burning its error budget fast"
+              description: "100% of events missed the objective over the last hour; at this rate the 30-day budget is gone in about two days."
+      - eval_time: 5m
+        alertname: EnquiryNotificationBacklog
+        exp_alerts:
+          - exp_labels: {severity: critical, kind: notification.whatsapp}
+            exp_annotations:
+              summary: "notification.whatsapp deliveries are waiting longer than a minute"
+              description: "The oldest undelivered notification.whatsapp message is 2m 0s old. Check the outbound worker, the broker and the provider."
+
+  # AI replies: 90 % take longer than 8 s (fast and slow burn); webhooks: 5 % errors, retries
+  # not counted (slow burn only: 6x of a 0.5 % budget is 3 %, 14.4x is 7.2 %).
+  - interval: 1m
+    input_series:
+      - series: 'realtron_ai_request_duration_seconds_bucket{route="llm", le="8.0"}'
+        values: '0+1x400'
+      - series: 'realtron_ai_request_duration_seconds_count{route="llm"}'
+        values: '0+10x400'
+      - series: 'realtron_webhook_processed_total{gateway="whatsapp", result="ok"}'
+        values: '0+95x400'
+      - series: 'realtron_webhook_processed_total{gateway="whatsapp", result="error"}'
+        values: '0+5x400'
+      - series: 'realtron_webhook_processed_total{gateway="whatsapp", result="retry"}'
+        values: '0+50x400'
+    promql_expr_test:
+      - expr: slo:sli_error:ratio_rate6h{slo="webhook_processing"}
+        eval_time: 380m
+        exp_samples:
+          - labels: 'slo:sli_error:ratio_rate6h{slo="webhook_processing"}'
+            value: 0.05
+    alert_rule_test:
+      - eval_time: 70m
+        alertname: SLOErrorBudgetBurnFast
+        exp_alerts:
+          - exp_labels: {severity: critical, slo: ai_reply_latency}
+            exp_annotations:
+              summary: "SLO ai_reply_latency is burning its error budget fast"
+              description: "90% of events missed the objective over the last hour; at this rate the 30-day budget is gone in about two days."
+      - eval_time: 380m
+        alertname: SLOErrorBudgetBurnFast
+        exp_alerts:
+          - exp_labels: {severity: critical, slo: ai_reply_latency}
+            exp_annotations:
+              summary: "SLO ai_reply_latency is burning its error budget fast"
+              description: "90% of events missed the objective over the last hour; at this rate the 30-day budget is gone in about two days."
+      - eval_time: 380m
+        alertname: SLOErrorBudgetBurnSlow
+        exp_alerts:
+          - exp_labels: {severity: warning, slo: ai_reply_latency}
+            exp_annotations:
+              summary: "SLO ai_reply_latency is burning its error budget"
+              description: "90% of events missed the objective over the last 6 hours; at this rate the 30-day budget is gone in about five days."
+          - exp_labels: {severity: warning, slo: webhook_processing}
+            exp_annotations:
+              summary: "SLO webhook_processing is burning its error budget"
+              description: "5% of events missed the objective over the last 6 hours; at this rate the 30-day budget is gone in about five days."

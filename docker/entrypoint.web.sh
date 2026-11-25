@@ -14,6 +14,13 @@ if [ "${RUN_MIGRATIONS:-false}" = "true" ]; then
     python manage.py migrate --noinput
 fi
 
+# Prometheus multiprocess mode (ADR-050): start from an empty directory, or samples
+# from processes of the previous container run are added to this one's.
+if [ -n "${PROMETHEUS_MULTIPROC_DIR:-}" ]; then
+    rm -rf "${PROMETHEUS_MULTIPROC_DIR:?}"
+    mkdir -p "$PROMETHEUS_MULTIPROC_DIR"
+fi
+
 # Use daphne (ASGI) so Django Channels WebSockets work alongside REST.
 # daphne is single-process — scale horizontally via Docker replicas.
 echo "[web] Starting daphne (ASGI)..."

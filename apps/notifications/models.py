@@ -24,6 +24,8 @@ class Notification(models.Model):
                  )
     channel    = models.CharField(max_length=20, choices=Channel.choices, default=Channel.WHATSAPP)
     title      = models.CharField(max_length=200, blank=True)
+    # What caused it, e.g. ``enquiry.new`` — used to measure delivery (ADR-050).
+    event      = models.CharField(max_length=40, blank=True, default='', db_default='')
     message    = models.TextField()
     status     = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
     is_read    = models.BooleanField(default=False, db_index=True)
@@ -35,6 +37,8 @@ class Notification(models.Model):
     class Meta:
         db_table = 'notifications'
         ordering = ['-created_at']
+        indexes  = [models.Index(fields=['event', 'created_at'], name='notification_event_idx',
+                                 condition=~models.Q(event=''))]
 
     def __str__(self):
         return f"{self.channel} to {self.user.phone} — {self.status}"

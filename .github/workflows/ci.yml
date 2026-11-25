@@ -132,6 +132,12 @@ jobs:
           path: openapi.yaml
           if-no-files-found: error
 
+      - name: Prometheus SLO rules and alert unit tests (ADR-050)
+        run: |
+          docker run --rm -v "$PWD/ops:/ops" -w /ops --entrypoint promtool prom/prometheus:v3.16.0 check config prometheus.yml
+          docker run --rm -v "$PWD/ops:/ops" -w /ops --entrypoint promtool prom/prometheus:v3.16.0 test rules tests/slo-rules.test.yaml
+          docker run --rm -v "$PWD/ops:/ops" --entrypoint amtool prom/alertmanager:v0.28.1 check-config /ops/alertmanager.yml
+
       - name: AI eval gate (T-2070, deterministic suites, no model call)
         run: |
           python manage.py run_ai_evals --report ai-evals.json

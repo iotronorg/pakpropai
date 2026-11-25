@@ -101,3 +101,11 @@ Priority: P0 (blocker) → P3.
 | T‑2070 | [x] | P1 | Eval suites + CI gate; kill switch | ADR‑043. `apps/ai/kill_switch.py`, `apps/ai/evals/`, `manage.py run_ai_evals` (CI gate) and `ai_kill_switch`. `tests/test_kill_switch.py`, `tests/test_ai_evals.py`. Live scores are T‑2072 |
 | T‑2071 | [x] | P1 | Indirect prompt injection: lister text to the model as delimited data, injection in it neutralised, eval suite | ADR‑044. `apps/ai/untrusted.py`, contact rule in `grounding.py`, moderation flag, `indirect` suite. `tests/test_indirect_injection.py` |
 | T‑2072 | [ ] | P1 | Golden set to ≥300 reviewed utterances per language; first live run and baseline | Owner: native reviewers, `EVAL_GEMINI_API_KEY`, paid model calls. MVP 6 |
+
+## MVP acceptance criteria (MVP_SCOPE §6) — cross-milestone
+
+| ID | Status | P | Task | Notes |
+|---|---|---|---|---|
+| MVP‑4 | [x] | P1 | Enquiry notification delivery measured against one minute | Session 27, ADR‑050. `Notification.event`, `realtron_notification_delivery_seconds`, backlog alert, `manage.py notification_delivery_report`. Production numbers need the release running |
+| MVP‑14 | [x] | P1 | SLO dashboards and alerts for API, search, AI reply, webhooks | Session 27, ADR‑050. Built and tested (promtool in CI). **Live** waits for KI‑108 (receiver) and KI‑109 (production Prometheus) |
+| MVP‑15 | [ ] | P1 | Runbooks: LLM outage, WhatsApp token expiry, data incidents, harmful AI output | Next |

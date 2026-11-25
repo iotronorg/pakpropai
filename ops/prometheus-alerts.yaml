@@ -1,4 +1,301 @@
+# RealTron alerting and SLO rules (ADR-050).
+#
+# SLOs: apps/core/slo.py OBJECTIVES is the source of the targets; tests/test_slo.py
+# checks this file against it and ops/tests/slo-rules.test.yaml (promtool) checks
+# that the alerts fire. Burn-rate alerts follow the multi-window pattern: fast
+# (1h and 5m above 14.4x the budget rate: page) and slow (6h and 30m above 6x: ticket).
+# Error ratios are NaN without traffic, so an idle service raises no SLO alert;
+# the target-down and backlog alerts cover "nothing is being measured".
 groups:
+  # ── SLO indicators (error ratios per window) ──────────────────────────────
+  - name: realtron_slo_objectives
+    interval: 60s
+    rules:
+      - {record: slo:objective:ratio, expr: vector(0.995), labels: {slo: api_availability}}
+      - {record: slo:objective:ratio, expr: vector(0.95),  labels: {slo: api_latency}}
+      - {record: slo:objective:ratio, expr: vector(0.95),  labels: {slo: search_latency}}
+      - {record: slo:objective:ratio, expr: vector(0.95),  labels: {slo: ai_reply_latency}}
+      - {record: slo:objective:ratio, expr: vector(0.995), labels: {slo: webhook_processing}}
+      - {record: slo:objective:ratio, expr: vector(0.95),  labels: {slo: webhook_queue_delay}}
+      - {record: slo:objective:ratio, expr: vector(0.99),  labels: {slo: enquiry_notification}}
+
+  - name: realtron_slo_indicators
+    interval: 60s
+    rules:
+      - record: slo:sli_error:ratio_rate5m
+        labels: {slo: api_availability}
+        expr: |
+          sum(rate(django_http_responses_total_by_status_view_method_total{status=~"5..", view!="prometheus-metrics"}[5m]))
+          / sum(rate(django_http_responses_total_by_status_view_method_total{view!="prometheus-metrics"}[5m]))
+      - record: slo:sli_error:ratio_rate5m
+        labels: {slo: api_latency}
+        expr: |
+          1 - (
+            sum(rate(django_http_requests_latency_seconds_by_view_method_bucket{le="0.3", view!~"prometheus-metrics|conversation-messages|listing-search|public-listing-search|property-list"}[5m]))
+            / sum(rate(django_http_requests_latency_seconds_by_view_method_count{view!~"prometheus-metrics|conversation-messages|listing-search|public-listing-search|property-list"}[5m]))
+          )
+      - record: slo:sli_error:ratio_rate5m
+        labels: {slo: search_latency}
+        expr: |
+          1 - (
+            sum(rate(django_http_requests_latency_seconds_by_view_method_bucket{le="0.4", view=~"listing-search|public-listing-search|property-list"}[5m]))
+            / sum(rate(django_http_requests_latency_seconds_by_view_method_count{view=~"listing-search|public-listing-search|property-list"}[5m]))
+          )
+      - record: slo:sli_error:ratio_rate5m
+        labels: {slo: ai_reply_latency}
+        expr: |
+          1 - (
+            sum(rate(realtron_ai_request_duration_seconds_bucket{route="llm", le="8.0"}[5m]))
+            / sum(rate(realtron_ai_request_duration_seconds_count{route="llm"}[5m]))
+          )
+      - record: slo:sli_error:ratio_rate5m
+        labels: {slo: webhook_processing}
+        expr: |
+          sum(rate(realtron_webhook_processed_total{gateway="whatsapp", result=~"error|dead_letter"}[5m]))
+          / sum(rate(realtron_webhook_processed_total{gateway="whatsapp", result!="retry"}[5m]))
+      - record: slo:sli_error:ratio_rate5m
+        labels: {slo: webhook_queue_delay}
+        expr: |
+          1 - (
+            sum(rate(realtron_webhook_queue_delay_seconds_bucket{gateway="whatsapp", le="5.0"}[5m]))
+            / sum(rate(realtron_webhook_queue_delay_seconds_count{gateway="whatsapp"}[5m]))
+          )
+      # Per channel; a failed delivery counts as late.
+      - record: slo:sli_error:ratio_rate5m
+        labels: {slo: enquiry_notification}
+        expr: |
+          1 - (
+            (sum by (channel) (rate(realtron_notification_delivery_seconds_bucket{event=~"enquiry\\..*", le="60.0"}[5m])) or 0 * sum by (channel) (rate(realtron_notification_delivery_failures_total{event=~"enquiry\\..*", reason=~"permanent|exhausted"}[5m])))
+            / ((sum by (channel) (rate(realtron_notification_delivery_seconds_count{event=~"enquiry\\..*"}[5m])) or 0 * sum by (channel) (rate(realtron_notification_delivery_failures_total{event=~"enquiry\\..*", reason=~"permanent|exhausted"}[5m]))) + (sum by (channel) (rate(realtron_notification_delivery_failures_total{event=~"enquiry\\..*", reason=~"permanent|exhausted"}[5m])) or 0 * sum by (channel) (rate(realtron_notification_delivery_seconds_count{event=~"enquiry\\..*"}[5m]))))
+          )
+      - record: slo:sli_error:ratio_rate30m
+        labels: {slo: api_availability}
+        expr: |
+          sum(rate(django_http_responses_total_by_status_view_method_total{status=~"5..", view!="prometheus-metrics"}[30m]))
+          / sum(rate(django_http_responses_total_by_status_view_method_total{view!="prometheus-metrics"}[30m]))
+      - record: slo:sli_error:ratio_rate30m
+        labels: {slo: api_latency}
+        expr: |
+          1 - (
+            sum(rate(django_http_requests_latency_seconds_by_view_method_bucket{le="0.3", view!~"prometheus-metrics|conversation-messages|listing-search|public-listing-search|property-list"}[30m]))
+            / sum(rate(django_http_requests_latency_seconds_by_view_method_count{view!~"prometheus-metrics|conversation-messages|listing-search|public-listing-search|property-list"}[30m]))
+          )
+      - record: slo:sli_error:ratio_rate30m
+        labels: {slo: search_latency}
+        expr: |
+          1 - (
+            sum(rate(django_http_requests_latency_seconds_by_view_method_bucket{le="0.4", view=~"listing-search|public-listing-search|property-list"}[30m]))
+            / sum(rate(django_http_requests_latency_seconds_by_view_method_count{view=~"listing-search|public-listing-search|property-list"}[30m]))
+          )
+      - record: slo:sli_error:ratio_rate30m
+        labels: {slo: ai_reply_latency}
+        expr: |
+          1 - (
+            sum(rate(realtron_ai_request_duration_seconds_bucket{route="llm", le="8.0"}[30m]))
+            / sum(rate(realtron_ai_request_duration_seconds_count{route="llm"}[30m]))
+          )
+      - record: slo:sli_error:ratio_rate30m
+        labels: {slo: webhook_processing}
+        expr: |
+          sum(rate(realtron_webhook_processed_total{gateway="whatsapp", result=~"error|dead_letter"}[30m]))
+          / sum(rate(realtron_webhook_processed_total{gateway="whatsapp", result!="retry"}[30m]))
+      - record: slo:sli_error:ratio_rate30m
+        labels: {slo: webhook_queue_delay}
+        expr: |
+          1 - (
+            sum(rate(realtron_webhook_queue_delay_seconds_bucket{gateway="whatsapp", le="5.0"}[30m]))
+            / sum(rate(realtron_webhook_queue_delay_seconds_count{gateway="whatsapp"}[30m]))
+          )
+      # Per channel; a failed delivery counts as late.
+      - record: slo:sli_error:ratio_rate30m
+        labels: {slo: enquiry_notification}
+        expr: |
+          1 - (
+            (sum by (channel) (rate(realtron_notification_delivery_seconds_bucket{event=~"enquiry\\..*", le="60.0"}[30m])) or 0 * sum by (channel) (rate(realtron_notification_delivery_failures_total{event=~"enquiry\\..*", reason=~"permanent|exhausted"}[30m])))
+            / ((sum by (channel) (rate(realtron_notification_delivery_seconds_count{event=~"enquiry\\..*"}[30m])) or 0 * sum by (channel) (rate(realtron_notification_delivery_failures_total{event=~"enquiry\\..*", reason=~"permanent|exhausted"}[30m]))) + (sum by (channel) (rate(realtron_notification_delivery_failures_total{event=~"enquiry\\..*", reason=~"permanent|exhausted"}[30m])) or 0 * sum by (channel) (rate(realtron_notification_delivery_seconds_count{event=~"enquiry\\..*"}[30m]))))
+          )
+      - record: slo:sli_error:ratio_rate1h
+        labels: {slo: api_availability}
+        expr: |
+          sum(rate(django_http_responses_total_by_status_view_method_total{status=~"5..", view!="prometheus-metrics"}[1h]))
+          / sum(rate(django_http_responses_total_by_status_view_method_total{view!="prometheus-metrics"}[1h]))
+      - record: slo:sli_error:ratio_rate1h
+        labels: {slo: api_latency}
+        expr: |
+          1 - (
+            sum(rate(django_http_requests_latency_seconds_by_view_method_bucket{le="0.3", view!~"prometheus-metrics|conversation-messages|listing-search|public-listing-search|property-list"}[1h]))
+            / sum(rate(django_http_requests_latency_seconds_by_view_method_count{view!~"prometheus-metrics|conversation-messages|listing-search|public-listing-search|property-list"}[1h]))
+          )
+      - record: slo:sli_error:ratio_rate1h
+        labels: {slo: search_latency}
+        expr: |
+          1 - (
+            sum(rate(django_http_requests_latency_seconds_by_view_method_bucket{le="0.4", view=~"listing-search|public-listing-search|property-list"}[1h]))
+            / sum(rate(django_http_requests_latency_seconds_by_view_method_count{view=~"listing-search|public-listing-search|property-list"}[1h]))
+          )
+      - record: slo:sli_error:ratio_rate1h
+        labels: {slo: ai_reply_latency}
+        expr: |
+          1 - (
+            sum(rate(realtron_ai_request_duration_seconds_bucket{route="llm", le="8.0"}[1h]))
+            / sum(rate(realtron_ai_request_duration_seconds_count{route="llm"}[1h]))
+          )
+      - record: slo:sli_error:ratio_rate1h
+        labels: {slo: webhook_processing}
+        expr: |
+          sum(rate(realtron_webhook_processed_total{gateway="whatsapp", result=~"error|dead_letter"}[1h]))
+          / sum(rate(realtron_webhook_processed_total{gateway="whatsapp", result!="retry"}[1h]))
+      - record: slo:sli_error:ratio_rate1h
+        labels: {slo: webhook_queue_delay}
+        expr: |
+          1 - (
+            sum(rate(realtron_webhook_queue_delay_seconds_bucket{gateway="whatsapp", le="5.0"}[1h]))
+            / sum(rate(realtron_webhook_queue_delay_seconds_count{gateway="whatsapp"}[1h]))
+          )
+      # Per channel; a failed delivery counts as late.
+      - record: slo:sli_error:ratio_rate1h
+        labels: {slo: enquiry_notification}
+        expr: |
+          1 - (
+            (sum by (channel) (rate(realtron_notification_delivery_seconds_bucket{event=~"enquiry\\..*", le="60.0"}[1h])) or 0 * sum by (channel) (rate(realtron_notification_delivery_failures_total{event=~"enquiry\\..*", reason=~"permanent|exhausted"}[1h])))
+            / ((sum by (channel) (rate(realtron_notification_delivery_seconds_count{event=~"enquiry\\..*"}[1h])) or 0 * sum by (channel) (rate(realtron_notification_delivery_failures_total{event=~"enquiry\\..*", reason=~"permanent|exhausted"}[1h]))) + (sum by (channel) (rate(realtron_notification_delivery_failures_total{event=~"enquiry\\..*", reason=~"permanent|exhausted"}[1h])) or 0 * sum by (channel) (rate(realtron_notification_delivery_seconds_count{event=~"enquiry\\..*"}[1h]))))
+          )
+      - record: slo:sli_error:ratio_rate6h
+        labels: {slo: api_availability}
+        expr: |
+          sum(rate(django_http_responses_total_by_status_view_method_total{status=~"5..", view!="prometheus-metrics"}[6h]))
+          / sum(rate(django_http_responses_total_by_status_view_method_total{view!="prometheus-metrics"}[6h]))
+      - record: slo:sli_error:ratio_rate6h
+        labels: {slo: api_latency}
+        expr: |
+          1 - (
+            sum(rate(django_http_requests_latency_seconds_by_view_method_bucket{le="0.3", view!~"prometheus-metrics|conversation-messages|listing-search|public-listing-search|property-list"}[6h]))
+            / sum(rate(django_http_requests_latency_seconds_by_view_method_count{view!~"prometheus-metrics|conversation-messages|listing-search|public-listing-search|property-list"}[6h]))
+          )
+      - record: slo:sli_error:ratio_rate6h
+        labels: {slo: search_latency}
+        expr: |
+          1 - (
+            sum(rate(django_http_requests_latency_seconds_by_view_method_bucket{le="0.4", view=~"listing-search|public-listing-search|property-list"}[6h]))
+            / sum(rate(django_http_requests_latency_seconds_by_view_method_count{view=~"listing-search|public-listing-search|property-list"}[6h]))
+          )
+      - record: slo:sli_error:ratio_rate6h
+        labels: {slo: ai_reply_latency}
+        expr: |
+          1 - (
+            sum(rate(realtron_ai_request_duration_seconds_bucket{route="llm", le="8.0"}[6h]))
+            / sum(rate(realtron_ai_request_duration_seconds_count{route="llm"}[6h]))
+          )
+      - record: slo:sli_error:ratio_rate6h
+        labels: {slo: webhook_processing}
+        expr: |
+          sum(rate(realtron_webhook_processed_total{gateway="whatsapp", result=~"error|dead_letter"}[6h]))
+          / sum(rate(realtron_webhook_processed_total{gateway="whatsapp", result!="retry"}[6h]))
+      - record: slo:sli_error:ratio_rate6h
+        labels: {slo: webhook_queue_delay}
+        expr: |
+          1 - (
+            sum(rate(realtron_webhook_queue_delay_seconds_bucket{gateway="whatsapp", le="5.0"}[6h]))
+            / sum(rate(realtron_webhook_queue_delay_seconds_count{gateway="whatsapp"}[6h]))
+          )
+      # Per channel; a failed delivery counts as late.
+      - record: slo:sli_error:ratio_rate6h
+        labels: {slo: enquiry_notification}
+        expr: |
+          1 - (
+            (sum by (channel) (rate(realtron_notification_delivery_seconds_bucket{event=~"enquiry\\..*", le="60.0"}[6h])) or 0 * sum by (channel) (rate(realtron_notification_delivery_failures_total{event=~"enquiry\\..*", reason=~"permanent|exhausted"}[6h])))
+            / ((sum by (channel) (rate(realtron_notification_delivery_seconds_count{event=~"enquiry\\..*"}[6h])) or 0 * sum by (channel) (rate(realtron_notification_delivery_failures_total{event=~"enquiry\\..*", reason=~"permanent|exhausted"}[6h]))) + (sum by (channel) (rate(realtron_notification_delivery_failures_total{event=~"enquiry\\..*", reason=~"permanent|exhausted"}[6h])) or 0 * sum by (channel) (rate(realtron_notification_delivery_seconds_count{event=~"enquiry\\..*"}[6h]))))
+          )
+
+      # p95s for the dashboard and the latency alerts' descriptions.
+      - record: slo:latency_p95:seconds
+        labels: {slo: api_latency}
+        expr: histogram_quantile(0.95, sum by (le) (rate(django_http_requests_latency_seconds_by_view_method_bucket{view!~"prometheus-metrics|conversation-messages|listing-search|public-listing-search|property-list"}[5m])))
+      - record: slo:latency_p95:seconds
+        labels: {slo: search_latency}
+        expr: histogram_quantile(0.95, sum by (le) (rate(django_http_requests_latency_seconds_by_view_method_bucket{view=~"listing-search|public-listing-search|property-list"}[5m])))
+      - record: slo:latency_p95:seconds
+        labels: {slo: ai_reply_latency}
+        expr: histogram_quantile(0.95, sum by (le) (rate(realtron_ai_request_duration_seconds_bucket{route="llm"}[5m])))
+      - record: slo:latency_p95:seconds
+        labels: {slo: webhook_queue_delay}
+        expr: histogram_quantile(0.95, sum by (le) (rate(realtron_webhook_queue_delay_seconds_bucket{gateway="whatsapp"}[5m])))
+      - record: slo:latency_p95:seconds
+        labels: {slo: enquiry_notification}
+        expr: histogram_quantile(0.95, sum by (le, channel) (rate(realtron_notification_delivery_seconds_bucket{event=~"enquiry\\..*"}[5m])))
+
+  # ── SLO alerts ──────────────────────────────────────────────────────────────
+  - name: realtron_slo_alerts
+    interval: 60s
+    rules:
+      - alert: SLOErrorBudgetBurnFast
+        expr: |
+          (
+            slo:sli_error:ratio_rate1h > on (slo) group_left () (14.4 * (1 - slo:objective:ratio))
+          )
+          and on (slo, channel)
+          (
+            slo:sli_error:ratio_rate5m > on (slo) group_left () (14.4 * (1 - slo:objective:ratio))
+          )
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "SLO {{ $labels.slo }}{{ if $labels.channel }} ({{ $labels.channel }}){{ end }} is burning its error budget fast"
+          description: "{{ $value | humanizePercentage }} of events missed the objective over the last hour; at this rate the 30-day budget is gone in about two days."
+
+      - alert: SLOErrorBudgetBurnSlow
+        expr: |
+          (
+            slo:sli_error:ratio_rate6h > on (slo) group_left () (6 * (1 - slo:objective:ratio))
+          )
+          and on (slo, channel)
+          (
+            slo:sli_error:ratio_rate30m > on (slo) group_left () (6 * (1 - slo:objective:ratio))
+          )
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "SLO {{ $labels.slo }}{{ if $labels.channel }} ({{ $labels.channel }}){{ end }} is burning its error budget"
+          description: "{{ $value | humanizePercentage }} of events missed the objective over the last 6 hours; at this rate the 30-day budget is gone in about five days."
+
+      # Enquiries are rare, so a ratio can miss a stuck queue: watch the backlog itself.
+      - alert: EnquiryNotificationBacklog
+        expr: max by (kind) (realtron_outbox_oldest_undelivered_seconds{kind=~"notification\\.whatsapp|notification\\.email"}) > 60
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.kind }} deliveries are waiting longer than a minute"
+          description: "The oldest undelivered {{ $labels.kind }} message is {{ $value | humanizeDuration }} old. Check the outbound worker, the broker and the provider."
+
+      - alert: OutboxBacklogStale
+        expr: max by (kind) (realtron_outbox_oldest_undelivered_seconds) > 900
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Outbox {{ $labels.kind }} has undelivered messages older than 15 minutes"
+          description: "Oldest is {{ $value | humanizeDuration }}. Retries back off up to 15 minutes; older means the relay or the workers are not running."
+
+      - alert: MetricsTargetDown
+        expr: up{job=~"realtron_.*"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prometheus cannot scrape {{ $labels.job }} ({{ $labels.instance }})"
+          description: "SLOs measured on this target are blind while it is down."
+
+      - alert: WorkerMetricsAbsent
+        expr: absent(up{job="realtron_worker"} == 1)
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No Celery worker is being scraped"
+          description: "AI reply, webhook processing and notification delivery SLOs come from the workers (WORKER_METRICS_PORT)."
   - name: realtron_critical
     interval: 60s
     rules:

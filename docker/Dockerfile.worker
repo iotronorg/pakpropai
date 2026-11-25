@@ -26,7 +26,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONFAULTHANDLER=1 \
     DJANGO_SETTINGS_MODULE=config.settings.prod \
     CELERY_LOGLEVEL=info \
-    CELERY_CONCURRENCY=4
+    CELERY_CONCURRENCY=4 \
+    PROMETHEUS_MULTIPROC_DIR=/tmp/prometheus-multiproc \
+    WORKER_METRICS_PORT=9808
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libpq5 \
@@ -42,6 +44,9 @@ COPY --chown=realtron:realtron . .
 RUN chmod +x docker/entrypoint.worker.sh
 
 USER realtron
+
+# Worker metrics for Prometheus (ADR-050).
+EXPOSE 9808
 
 ENTRYPOINT ["docker/entrypoint.worker.sh"]
 # Default: run the async task worker.

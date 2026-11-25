@@ -34,10 +34,12 @@ def notify_user(
     event_type: str = 'lead_updates',
     send_email: bool = False,
     path: str = '',
+    event: str = '',
 ) -> bool:
     """
     Create a Notification record (the in-app inbox) and deliver it by WhatsApp and/or
     email as the user's preferences allow. ``path`` is the page the email links to.
+    ``event`` names the cause (e.g. ``enquiry.new``) so delivery can be measured.
     Never raises; False means it failed (the caller may retry).
     """
     try:
@@ -56,8 +58,12 @@ def notify_user(
                 user=user,
                 title=title,
                 message=message,
+                event=event[:40],
                 channel=Notification.Channel.WHATSAPP,
             )
+            # The inbox is the in-app channel: it is delivered when this commits.
+            from apps.core.metrics import observe_delivery
+            transaction.on_commit(lambda: observe_delivery(n.event, 'in_app', n.created_at))
             if deliver:
                 # Transactional outbox (ADR-014): the delivery commits with the row.
                 from .delivery import enqueue_notification
@@ -65,9 +71,12 @@ def notify_user(
 
         if send_email and prefs.email_enabled and event_allowed:
             from .delivery import enqueue_email
-            enqueue_email(user, title, message, key=f'email:{n.pk}', event_type=event_type, path=path)
+            enqueue_email(user, title, message, key=f'email:{n.pk}', event_type=event_type, path=path,
+                          event=n.event)
 
         if send_whatsapp and not deliver:
+            from apps.core.metrics import delivery_failed
+            delivery_failed(n.event, 'whatsapp', 'preferences')
             n.status = Notification.Status.FAILED
             n.error  = 'Blocked by user notification preferences'
             n.save(update_fields=['status', 'error'])

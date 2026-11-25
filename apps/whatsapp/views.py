@@ -57,9 +57,11 @@ class WhatsAppWebhookView(APIView):
     def post(self, request):
         # Phase 1: Parse payload to extract phone_number_id (stateless — no DB writes).
         # Must happen before signature check so we can look up the org's secret.
+        from apps.core.metrics import webhook_events_total
         try:
             payload = json.loads(request.body.decode())
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            webhook_events_total.labels(gateway='whatsapp', result='bad_payload').inc()
             return Response(status=400)
 
         phone_number_id = ''
@@ -90,6 +92,7 @@ class WhatsAppWebhookView(APIView):
             logger.warning(
                 "WA webhook: invalid signature for phone_number_id=%s", phone_number_id
             )
+            webhook_events_total.labels(gateway='whatsapp', result='invalid_sig').inc()
             return Response(status=403)
 
         # Phase 4: Process each message.
@@ -135,14 +138,21 @@ class WhatsAppWebhookView(APIView):
 
     @classmethod
     def _process_with_idempotency(cls, message: dict, phone_number_id: str = ''):
+        from apps.core.metrics import webhook_events_total
+
+        def count(result):
+            webhook_events_total.labels(gateway='whatsapp', result=result).inc()
+
         msg_id = message.get('id')
         phone  = message.get('from')
         if not msg_id or not phone:
+            count('bad_payload')
             return
 
         # Gateway-level rate limit: drop obvious floods before queuing a task
         if cls._is_phone_rate_limited(phone, cls._RATE_LIMIT_PER_MIN):
             logger.warning("WA gateway rate limit for phone %s — dropped msg %s", phone, msg_id)
+            count('rate_limited')
             return
 
         # Atomic 48h idempotency guard: cache.add returns False if key already exists.
@@ -150,13 +160,18 @@ class WhatsAppWebhookView(APIView):
         idem_key = f"wa:processed:{msg_id}"
         if not cache.add(idem_key, True, 60 * 60 * 48):
             logger.info("Duplicate WA message %s — skipping", msg_id)
+            count('duplicate')
             return
 
         from .tasks import process_incoming_whatsapp_task
         otel_ctx = getattr(_trace_context, "current", "")
         try:
-            process_incoming_whatsapp_task.delay(message, phone_number_id, otel_context=otel_ctx)
+            # received_at: wall clock, for the queue-delay SLO (ADR-050).
+            process_incoming_whatsapp_task.delay(message, phone_number_id, otel_context=otel_ctx,
+                                                 received_at=time.time())
+            count('ok')
         except Exception:
+            count('enqueue_error')
             # T-1020: the message never reached the broker. Release the key so
             # Meta's re-delivery (triggered by the 500) is processed, not dropped.
             try:

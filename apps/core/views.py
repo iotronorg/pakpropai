@@ -166,18 +166,38 @@ class AuditLogView(APIView):
         })
 
 
+def _scraper_allowed(remote_ip: str, allowed) -> bool:
+    """Exact addresses or CIDR ranges (``10.0.0.0/8``); ``0.0.0.0`` allows any (dev/Docker only)."""
+    import ipaddress
+    if '0.0.0.0' in allowed:
+        return True
+    try:
+        ip = ipaddress.ip_address(remote_ip)
+    except ValueError:
+        return False
+    for entry in allowed:
+        try:
+            if ip in ipaddress.ip_network(entry.strip(), strict=False):
+                return True
+        except ValueError:
+            continue
+    return False
+
+
 def metrics_view(request):
     """
     GET /metrics/
     Prometheus metrics endpoint — restricted to internal IPs only.
-    Set PROMETHEUS_ALLOWED_IPS in env to control scraper access.
+    Set PROMETHEUS_ALLOWED_IPS in env (addresses or CIDR ranges) to control scraper access.
     Set PROMETHEUS_ALLOWED_IPS=0.0.0.0 to allow any IP (dev/Docker only).
+    With PROMETHEUS_MULTIPROC_DIR set, the samples of every web process are added up;
+    the outbox backlog is read from the database (ADR-050).
     """
     allowed = getattr(settings, 'PROMETHEUS_ALLOWED_IPS', ['127.0.0.1', '::1'])
-    if '0.0.0.0' not in allowed:
-        remote_ip = request.META.get('REMOTE_ADDR', '')
-        if remote_ip not in allowed:
-            return HttpResponseForbidden('Forbidden')
+    if not _scraper_allowed(request.META.get('REMOTE_ADDR', ''), allowed):
+        return HttpResponseForbidden('Forbidden')
 
     from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
-    return HttpResponse(generate_latest(), content_type=CONTENT_TYPE_LATEST)
+    from apps.core.metrics import metrics_registry
+    from apps.core.slo import outbox_backlog
+    return HttpResponse(generate_latest(metrics_registry(outbox_backlog)), content_type=CONTENT_TYPE_LATEST)

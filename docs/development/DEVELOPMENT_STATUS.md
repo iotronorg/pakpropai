@@ -1,17 +1,17 @@
 # Development Status
 
-_Last updated: 2026-11-25 (session 26; git commit subjects number sessions differently: `65b93d2` "session 45" is session 25 here)_
+_Last updated: 2026-11-25 (session 27; git commit subjects number sessions differently: `fa2f741` "session 46" is session 26 here)_
 
 | Item | Value |
 |---|---|
-| Branch | `development`. The owner committed through MVP criteria 3 and 5 (`65b93d2`). **Uncommitted:** MVP criteria 10 and 11 (session 26) |
+| Branch | `development`. The owner committed through MVP criteria 10 and 11 (`fa2f741`). **Uncommitted:** MVP criteria 4 and 14 (session 27) |
 | Current milestone | **M2 — AI agent MVP** ([MILESTONE_02](milestones/MILESTONE_02_AI_AGENT_MVP.md)), started 2026‑11‑23. M1 code complete (contracts T‑1070g‑2 / T‑1032b‑2 release‑gated); M0 awaiting the first GitHub Actions run |
 | M0 progress | All 17 tasks complete. Remaining exit criterion: CI green on GitHub Actions (owner pushes) |
 | M1 progress | 16 of 18 tasks done (T‑1010, T‑1011, T‑1020, T‑1021, T‑1022, T‑1030, T‑1031, T‑1033, T‑1040, T‑1050, T‑1060, T‑1080, T‑1090, T‑1100, T‑1110, T‑1120) plus subtasks T‑1032a, T‑1032c, T‑1070a–f and T‑1070g‑1 |
 | M2 progress | 16 of 17 tasks done. Open: T‑2072 (owner data and paid runs) |
-| Test suite | **2434 passed, 1 skipped, 0 failed** (session 26). Journey 69 checks, local. See [TESTING_STATUS](TESTING_STATUS.md) |
-| Last completed task | MVP criteria 10 and 11; KI‑102, KI‑103 fixed (ADR‑049) |
-| Next task | **MVP criteria 4 and 14** (MVP_SCOPE §6): measure enquiry notification delivery against one minute, and check that SLO dashboards and alerts exist for API, search, AI reply and webhooks. Start in `apps/enquiries/`, `apps/notifications/delivery.py`, `apps/core/metrics.py`. Waiting on the owner: T‑2072, staging E2E run, KI‑085, KI‑098, KI‑105. Open: KI‑055…KI‑059, KI‑068, KI‑069, KI‑071, KI‑073, KI‑075…KI‑089, KI‑091…KI‑093, KI‑095, KI‑096 (deploy), KI‑098, KI‑101, KI‑104, KI‑105 |
+| Test suite | **2464 passed, 1 skipped, 0 failed** (session 27); promtool SLO rule tests pass. Journey 69 checks, local. See [TESTING_STATUS](TESTING_STATUS.md) |
+| Last completed task | MVP criteria 4 and 14 (ADR‑050); KI‑106, KI‑107 fixed |
+| Next task | **MVP criterion 15** (MVP_SCOPE §6): runbooks for LLM outage, WhatsApp token expiry, data incidents and harmful AI output, linked from the alerts (`runbook_url`). Start in a new `docs/runbooks/`, `ops/prometheus-alerts.yaml`, `apps/ai/kill_switch.py`, `apps/whatsapp/tasks.py` (`check_whatsapp_token_health`). Waiting on the owner: KI‑108 (alert receiver), KI‑109 (production Prometheus), T‑2072, staging E2E run, KI‑085, KI‑098, KI‑105. Open: KI‑055…KI‑059, KI‑068, KI‑069, KI‑071, KI‑073, KI‑075…KI‑089, KI‑091…KI‑093, KI‑095, KI‑096 (deploy), KI‑098, KI‑101, KI‑104, KI‑105, KI‑108…KI‑110 |
 
 ## Owner decisions (2026-11-23)
 - **T‑1032b:** staged like T‑1070g (b‑1 now, drops in a later release behind the reconcile gate); `Agent.organization` kept as a derived primary‑org pointer.
@@ -33,6 +33,7 @@ _Last updated: 2026-11-25 (session 26; git commit subjects number sessions diffe
 - Meta: re‑submit the OTP template body with the RealTron name.
 
 ## Operator actions before deploying these changes
+- **Session 27** (checklist §51): migrations `notifications 0005` (additive) and `0006` (concurrent index; direct DB connection). Scrape the workers on :9808, keep 35 days, choose an alert receiver.
 - **Session 26** (checklist §50): **migrations that encrypt data; back up first.**
 - **Session 25** (checklist §49): no migration; some API answers hide more.
 - **Session 24** (checklist §48): no migration; provider callbacks behave differently.

@@ -639,6 +639,12 @@ BASE_URL = env('BASE_URL', default='http://127.0.0.1:8000')
 # Example: "10.0.0.0/8,172.16.0.0/12,127.0.0.1"
 PROMETHEUS_METRICS_EXPORT_PORT = env.int('PROMETHEUS_METRICS_EXPORT_PORT', default=0)
 PROMETHEUS_ALLOWED_IPS = env.list('PROMETHEUS_ALLOWED_IPS', default=['127.0.0.1', '::1'])
+# Request-latency buckets include the SLO thresholds: 0.3 s (REST) and 0.4 s (search) (ADR-050).
+PROMETHEUS_LATENCY_BUCKETS = (0.01, 0.025, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.75, 1.0, 2.5, 5.0, 8.0,
+                              10.0, 25.0, 60.0, float('inf'))
+# Celery workers serve /metrics on this port when > 0 (config/celery.py). Several pool
+# processes need PROMETHEUS_MULTIPROC_DIR, or only the parent's samples are served.
+WORKER_METRICS_PORT = env.int('WORKER_METRICS_PORT', default=0)
 
 # Safepay (primary online payment gateway)
 # Sign up at: https://getsafepay.com

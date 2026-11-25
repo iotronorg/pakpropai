@@ -250,16 +250,17 @@ def _announce(e: Enquiry, to: str, first: bool) -> None:
     """No message text and no contact details: those stay behind the login."""
     from apps.notifications.services import notify_user
     if to == USER:
-        title, people = 'New reply to your enquiry', [e.user]
+        title, people, event = 'New reply to your enquiry', [e.user], 'enquiry.reply'
     else:
         title, people = ('New enquiry' if first else 'New message'), recipients(e)
+        event = 'enquiry.new' if first else 'enquiry.message'
         if not people:
             logger.warning('enquiry.no_recipient id=%s kind=%s', e.pk, e.kind)
     for person in people:
         whatsapp = to == RESPONDER or e.preferred_channel == Enquiry.Channel.WHATSAPP
         email = to == RESPONDER or e.preferred_channel == Enquiry.Channel.EMAIL
         notify_user(person, title=title, message=f'{title}: {e.subject}. Open RealTron to read and answer.',
-                    send_whatsapp=whatsapp, send_email=email, path=f'/threads/{e.pk}')
+                    send_whatsapp=whatsapp, send_email=email, path=f'/threads/{e.pk}', event=event)
 
 
 def mark_read(e: Enquiry, side: str) -> None:

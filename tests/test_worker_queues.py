@@ -11,9 +11,9 @@ ROOT = Path(settings.BASE_DIR)
 class WorkerQueueTest(SimpleTestCase):
     def test_single_worker_deployments_read_every_queue(self):
         queues = {r['queue'] for r in settings.CELERY_TASK_ROUTES.values()} | {settings.CELERY_TASK_DEFAULT_QUEUE, 'outbound'}
-        for name, pattern in (('Procfile', r'^worker:.*-Q (\S+)'),
+        for name, pattern in (('Procfile', r'^worker:.*-Q ([\w,-]+)'),
                               ('docker/entrypoint.worker.sh', r'CELERY_QUEUES:-(default[\w,-]+)\}'),
-                              ('docker-compose.yml', r'celery -A config worker.*-Q (\S+)')):
+                              ('docker-compose.yml', r'celery -A config worker.*-Q ([\w,-]+)')):
             found = re.search(pattern, (ROOT / name).read_text(), re.M)
             self.assertIsNotNone(found, name)
             self.assertLessEqual(queues, set(found[1].split(',')), name)

@@ -465,3 +465,13 @@
 1. `git status`: uncommitted work is session 26. **Do not commit.**
 2. Next: MVP criteria 4 and 14 (starting files in DEVELOPMENT_STATUS).
 3. Owner: KI‑085, KI‑105, KI‑098, staging E2E run, T‑2072, KI‑089, KI‑095, KI‑096; email provider and WhatsApp template.
+
+## Session 27 — 2026-11-25
+- **Verified:** the owner committed session 26 (`fa2f741`); the tree was clean.
+- **Completed:** MVP criteria 4 and 14 (ADR‑050). **Found and fixed:** KI‑106 (worker and multi-worker metrics never exported), KI‑107. **Recorded:** KI‑108, KI‑109, KI‑110.
+- **Tests:** 2464 passed, 1 skipped, 0 failed; promtool rule tests pass. **Not committed.**
+
+### Handoff → session 28 (supersedes the one above)
+1. `git status`: uncommitted work is session 27. **Do not commit.**
+2. Next: MVP criterion 15, runbooks (starting files in DEVELOPMENT_STATUS).
+3. Owner: KI‑108 alert receiver, KI‑109 production Prometheus/Grafana, KI‑085, KI‑105, KI‑098, staging E2E run, T‑2072, KI‑089, KI‑095, KI‑096; email provider and WhatsApp template.

@@ -1,0 +1,25 @@
+# Alertmanager routing (ADR-050). The receiver below only records alerts in the
+# Alertmanager UI: choose where pages go (email, Slack, PagerDuty…) before go-live
+# (GO_LIVE_CHECKLIST §51, KI-108). Example for email:
+#
+#   receivers:
+#     - name: oncall
+#       email_configs:
+#         - to: oncall@example.com
+#           from: alerts@example.com
+#           smarthost: smtp.example.com:587
+#           auth_username: alerts@example.com
+#           auth_password_file: /etc/alertmanager/smtp_password
+route:
+  receiver: default
+  group_by: [alertname, slo, channel, kind]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - matchers: [severity="critical"]
+      receiver: default
+      repeat_interval: 1h
+
+receivers:
+  - name: default

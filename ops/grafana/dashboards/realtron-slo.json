@@ -1,0 +1,1256 @@
+{
+  "title": "RealTron — SLOs",
+  "uid": "realtron-slo",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "1m",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "tags": [
+    "realtron",
+    "slo"
+  ],
+  "description": "Service-level objectives (ADR-050). Targets: apps/core/slo.py; rules: ops/prometheus-alerts.yaml. 30-day figures average the 1 h error ratio, so they need 30 days of Prometheus retention.",
+  "panels": [
+    {
+      "type": "table",
+      "title": "Firing alerts",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "ALERTS{alertstate=\"firing\"}",
+          "format": "table",
+          "instant": true
+        }
+      ],
+      "id": 1,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Outbox: oldest undelivered message (s)",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 60
+              }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "realtron_outbox_oldest_undelivered_seconds",
+          "legendFormat": "{{kind}}"
+        }
+      ],
+      "id": 2,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "row",
+      "title": "API availability (non-5xx) — objective 99.5% over 30 days",
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": [],
+      "id": 3,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Compliance (30 d)",
+      "gridPos": {
+        "x": 0,
+        "y": 7,
+        "w": 4,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 0.995
+              }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "1 - avg (avg_over_time(slo:sli_error:ratio_rate1h{slo=\"api_availability\"}[30d]))",
+          "legendFormat": "api_availability"
+        }
+      ],
+      "id": 4,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Error budget left (30 d)",
+      "gridPos": {
+        "x": 4,
+        "y": 7,
+        "w": 4,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.25
+              },
+              {
+                "color": "green",
+                "value": 0.5
+              }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "1 - avg (avg_over_time(slo:sli_error:ratio_rate1h{slo=\"api_availability\"}[30d])) / 0.005",
+          "legendFormat": "api_availability"
+        }
+      ],
+      "id": 5,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Error ratio (5 m, 1 h) vs budget",
+      "gridPos": {
+        "x": 8,
+        "y": 7,
+        "w": 16,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0
+        }
+      },
+      "targets": [
+        {
+          "expr": "slo:sli_error:ratio_rate5m{slo=\"api_availability\"}",
+          "legendFormat": "5m api_availability"
+        },
+        {
+          "expr": "slo:sli_error:ratio_rate1h{slo=\"api_availability\"}",
+          "legendFormat": "1h api_availability"
+        },
+        {
+          "expr": "1 - slo:objective:ratio{slo=\"api_availability\"}",
+          "legendFormat": "budget rate"
+        }
+      ],
+      "id": 6,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "row",
+      "title": "API latency (REST ≤ 300 ms) — objective 95.0% over 30 days",
+      "gridPos": {
+        "x": 0,
+        "y": 13,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": [],
+      "id": 7,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Compliance (30 d)",
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 4,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 0.95
+              }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "1 - avg (avg_over_time(slo:sli_error:ratio_rate1h{slo=\"api_latency\"}[30d]))",
+          "legendFormat": "api_latency"
+        }
+      ],
+      "id": 8,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Error budget left (30 d)",
+      "gridPos": {
+        "x": 4,
+        "y": 14,
+        "w": 4,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.25
+              },
+              {
+                "color": "green",
+                "value": 0.5
+              }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "1 - avg (avg_over_time(slo:sli_error:ratio_rate1h{slo=\"api_latency\"}[30d])) / 0.05",
+          "legendFormat": "api_latency"
+        }
+      ],
+      "id": 9,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Error ratio (5 m, 1 h) vs budget",
+      "gridPos": {
+        "x": 8,
+        "y": 14,
+        "w": 8,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0
+        }
+      },
+      "targets": [
+        {
+          "expr": "slo:sli_error:ratio_rate5m{slo=\"api_latency\"}",
+          "legendFormat": "5m api_latency"
+        },
+        {
+          "expr": "slo:sli_error:ratio_rate1h{slo=\"api_latency\"}",
+          "legendFormat": "1h api_latency"
+        },
+        {
+          "expr": "1 - slo:objective:ratio{slo=\"api_latency\"}",
+          "legendFormat": "budget rate"
+        }
+      ],
+      "id": 10,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "p95 (target 0.3 s)",
+      "gridPos": {
+        "x": 16,
+        "y": 14,
+        "w": 8,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 0.3
+              }
+            ]
+          },
+          "custom": {
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "slo:latency_p95:seconds{slo=\"api_latency\"}",
+          "legendFormat": "api_latency"
+        }
+      ],
+      "id": 11,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "row",
+      "title": "Search latency (≤ 400 ms) — objective 95.0% over 30 days",
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": [],
+      "id": 12,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Compliance (30 d)",
+      "gridPos": {
+        "x": 0,
+        "y": 21,
+        "w": 4,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 0.95
+              }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "1 - avg (avg_over_time(slo:sli_error:ratio_rate1h{slo=\"search_latency\"}[30d]))",
+          "legendFormat": "search_latency"
+        }
+      ],
+      "id": 13,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Error budget left (30 d)",
+      "gridPos": {
+        "x": 4,
+        "y": 21,
+        "w": 4,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.25
+              },
+              {
+                "color": "green",
+                "value": 0.5
+              }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "1 - avg (avg_over_time(slo:sli_error:ratio_rate1h{slo=\"search_latency\"}[30d])) / 0.05",
+          "legendFormat": "search_latency"
+        }
+      ],
+      "id": 14,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Error ratio (5 m, 1 h) vs budget",
+      "gridPos": {
+        "x": 8,
+        "y": 21,
+        "w": 8,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0
+        }
+      },
+      "targets": [
+        {
+          "expr": "slo:sli_error:ratio_rate5m{slo=\"search_latency\"}",
+          "legendFormat": "5m search_latency"
+        },
+        {
+          "expr": "slo:sli_error:ratio_rate1h{slo=\"search_latency\"}",
+          "legendFormat": "1h search_latency"
+        },
+        {
+          "expr": "1 - slo:objective:ratio{slo=\"search_latency\"}",
+          "legendFormat": "budget rate"
+        }
+      ],
+      "id": 15,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "p95 (target 0.4 s)",
+      "gridPos": {
+        "x": 16,
+        "y": 21,
+        "w": 8,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 0.4
+              }
+            ]
+          },
+          "custom": {
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "slo:latency_p95:seconds{slo=\"search_latency\"}",
+          "legendFormat": "search_latency"
+        }
+      ],
+      "id": 16,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "row",
+      "title": "AI reply (model-written, ≤ 8 s) — objective 95.0% over 30 days",
+      "gridPos": {
+        "x": 0,
+        "y": 27,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": [],
+      "id": 17,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Compliance (30 d)",
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 4,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 0.95
+              }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "1 - avg (avg_over_time(slo:sli_error:ratio_rate1h{slo=\"ai_reply_latency\"}[30d]))",
+          "legendFormat": "ai_reply_latency"
+        }
+      ],
+      "id": 18,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Error budget left (30 d)",
+      "gridPos": {
+        "x": 4,
+        "y": 28,
+        "w": 4,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.25
+              },
+              {
+                "color": "green",
+                "value": 0.5
+              }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "1 - avg (avg_over_time(slo:sli_error:ratio_rate1h{slo=\"ai_reply_latency\"}[30d])) / 0.05",
+          "legendFormat": "ai_reply_latency"
+        }
+      ],
+      "id": 19,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Error ratio (5 m, 1 h) vs budget",
+      "gridPos": {
+        "x": 8,
+        "y": 28,
+        "w": 8,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0
+        }
+      },
+      "targets": [
+        {
+          "expr": "slo:sli_error:ratio_rate5m{slo=\"ai_reply_latency\"}",
+          "legendFormat": "5m ai_reply_latency"
+        },
+        {
+          "expr": "slo:sli_error:ratio_rate1h{slo=\"ai_reply_latency\"}",
+          "legendFormat": "1h ai_reply_latency"
+        },
+        {
+          "expr": "1 - slo:objective:ratio{slo=\"ai_reply_latency\"}",
+          "legendFormat": "budget rate"
+        }
+      ],
+      "id": 20,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "p95 (target 8 s)",
+      "gridPos": {
+        "x": 16,
+        "y": 28,
+        "w": 8,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 8.0
+              }
+            ]
+          },
+          "custom": {
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "slo:latency_p95:seconds{slo=\"ai_reply_latency\"}",
+          "legendFormat": "ai_reply_latency"
+        }
+      ],
+      "id": 21,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "row",
+      "title": "WhatsApp webhook processing (no error) — objective 99.5% over 30 days",
+      "gridPos": {
+        "x": 0,
+        "y": 34,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": [],
+      "id": 22,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Compliance (30 d)",
+      "gridPos": {
+        "x": 0,
+        "y": 35,
+        "w": 4,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 0.995
+              }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "1 - avg (avg_over_time(slo:sli_error:ratio_rate1h{slo=\"webhook_processing\"}[30d]))",
+          "legendFormat": "webhook_processing"
+        }
+      ],
+      "id": 23,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Error budget left (30 d)",
+      "gridPos": {
+        "x": 4,
+        "y": 35,
+        "w": 4,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.25
+              },
+              {
+                "color": "green",
+                "value": 0.5
+              }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "1 - avg (avg_over_time(slo:sli_error:ratio_rate1h{slo=\"webhook_processing\"}[30d])) / 0.005",
+          "legendFormat": "webhook_processing"
+        }
+      ],
+      "id": 24,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Error ratio (5 m, 1 h) vs budget",
+      "gridPos": {
+        "x": 8,
+        "y": 35,
+        "w": 16,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0
+        }
+      },
+      "targets": [
+        {
+          "expr": "slo:sli_error:ratio_rate5m{slo=\"webhook_processing\"}",
+          "legendFormat": "5m webhook_processing"
+        },
+        {
+          "expr": "slo:sli_error:ratio_rate1h{slo=\"webhook_processing\"}",
+          "legendFormat": "1h webhook_processing"
+        },
+        {
+          "expr": "1 - slo:objective:ratio{slo=\"webhook_processing\"}",
+          "legendFormat": "budget rate"
+        }
+      ],
+      "id": 25,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "row",
+      "title": "WhatsApp webhook pickup (≤ 5 s) — objective 95.0% over 30 days",
+      "gridPos": {
+        "x": 0,
+        "y": 41,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": [],
+      "id": 26,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Compliance (30 d)",
+      "gridPos": {
+        "x": 0,
+        "y": 42,
+        "w": 4,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 0.95
+              }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "1 - avg (avg_over_time(slo:sli_error:ratio_rate1h{slo=\"webhook_queue_delay\"}[30d]))",
+          "legendFormat": "webhook_queue_delay"
+        }
+      ],
+      "id": 27,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Error budget left (30 d)",
+      "gridPos": {
+        "x": 4,
+        "y": 42,
+        "w": 4,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.25
+              },
+              {
+                "color": "green",
+                "value": 0.5
+              }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "1 - avg (avg_over_time(slo:sli_error:ratio_rate1h{slo=\"webhook_queue_delay\"}[30d])) / 0.05",
+          "legendFormat": "webhook_queue_delay"
+        }
+      ],
+      "id": 28,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Error ratio (5 m, 1 h) vs budget",
+      "gridPos": {
+        "x": 8,
+        "y": 42,
+        "w": 8,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0
+        }
+      },
+      "targets": [
+        {
+          "expr": "slo:sli_error:ratio_rate5m{slo=\"webhook_queue_delay\"}",
+          "legendFormat": "5m webhook_queue_delay"
+        },
+        {
+          "expr": "slo:sli_error:ratio_rate1h{slo=\"webhook_queue_delay\"}",
+          "legendFormat": "1h webhook_queue_delay"
+        },
+        {
+          "expr": "1 - slo:objective:ratio{slo=\"webhook_queue_delay\"}",
+          "legendFormat": "budget rate"
+        }
+      ],
+      "id": 29,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "p95 (target 5 s)",
+      "gridPos": {
+        "x": 16,
+        "y": 42,
+        "w": 8,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 5.0
+              }
+            ]
+          },
+          "custom": {
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "slo:latency_p95:seconds{slo=\"webhook_queue_delay\"}",
+          "legendFormat": "webhook_queue_delay"
+        }
+      ],
+      "id": 30,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "row",
+      "title": "Enquiry notification delivery (≤ 60 s, per channel) — objective 99.0% over 30 days",
+      "gridPos": {
+        "x": 0,
+        "y": 48,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": [],
+      "id": 31,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Compliance (30 d)",
+      "gridPos": {
+        "x": 0,
+        "y": 49,
+        "w": 4,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 0.99
+              }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "1 - avg by (channel) (avg_over_time(slo:sli_error:ratio_rate1h{slo=\"enquiry_notification\"}[30d]))",
+          "legendFormat": "{{channel}}"
+        }
+      ],
+      "id": 32,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Error budget left (30 d)",
+      "gridPos": {
+        "x": 4,
+        "y": 49,
+        "w": 4,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.25
+              },
+              {
+                "color": "green",
+                "value": 0.5
+              }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "1 - avg by (channel) (avg_over_time(slo:sli_error:ratio_rate1h{slo=\"enquiry_notification\"}[30d])) / 0.01",
+          "legendFormat": "{{channel}}"
+        }
+      ],
+      "id": 33,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Error ratio (5 m, 1 h) vs budget",
+      "gridPos": {
+        "x": 8,
+        "y": 49,
+        "w": 8,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0
+        }
+      },
+      "targets": [
+        {
+          "expr": "slo:sli_error:ratio_rate5m{slo=\"enquiry_notification\"}",
+          "legendFormat": "5m {{channel}}"
+        },
+        {
+          "expr": "slo:sli_error:ratio_rate1h{slo=\"enquiry_notification\"}",
+          "legendFormat": "1h {{channel}}"
+        },
+        {
+          "expr": "1 - slo:objective:ratio{slo=\"enquiry_notification\"}",
+          "legendFormat": "budget rate"
+        }
+      ],
+      "id": 34,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "p95 (target 60 s)",
+      "gridPos": {
+        "x": 16,
+        "y": 49,
+        "w": 8,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 60.0
+              }
+            ]
+          },
+          "custom": {
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "slo:latency_p95:seconds{slo=\"enquiry_notification\"}",
+          "legendFormat": "{{channel}}"
+        }
+      ],
+      "id": 35,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    }
+  ]
+}

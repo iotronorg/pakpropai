@@ -5,6 +5,12 @@ global:
 rule_files:
   - "prometheus-alerts.yaml"
 
+# Alerts go to Alertmanager; ops/alertmanager.yml decides who hears about them.
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
 scrape_configs:
   - job_name: realtron_api
     static_configs:
@@ -13,3 +19,10 @@ scrape_configs:
       - targets: ["web:8000"]
     metrics_path: /metrics/
     # In production: restrict scraper IP and use basic_auth or bearer_token_file
+
+  # Celery workers (ADR-050): AI replies to WhatsApp, webhook processing and outbox
+  # deliveries are measured here. Each worker container serves WORKER_METRICS_PORT.
+  - job_name: realtron_worker
+    static_configs:
+      - targets: ["worker:9808"]
+    metrics_path: /

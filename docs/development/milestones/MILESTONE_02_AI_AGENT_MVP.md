@@ -10,7 +10,7 @@
 | 1 | Discover → shortlist → enquire → book on web and WhatsApp with no staff intervention (staging E2E) | Passes locally against real server, workers, Postgres and Redis with a stand-in model and WhatsApp API (`scripts/dev/e2e.sh`, session 23). The staging run with the release model is the owner's |
 | 2 | The same `SearchCriteria` gives identical results via the search API and the AI tool | Checked in the E2E journey for one query, web assistant and WhatsApp |
 | 3 | Every listing shown is published, in a live market, not sandbox, first‑party/licensed | Met for the consumer surfaces found in review (the disabled deal tools excluded, `under_offer` shown as before): tested against expired, inactive-market, sandbox, draft, suspended and sold listings (session 25, ADR‑048). Scrapers are off by default |
-| 4 | Agents receive enquiries within 1 minute and can reply | Checked in the E2E journey (inbox and in-app notification, and reply). WhatsApp delivery to the agent needs the approved template |
+| 4 | Agents receive enquiries within 1 minute and can reply | Measured per channel (session 27, ADR‑050): `realtron_notification_delivery_seconds`, the backlog alert and `manage.py notification_delivery_report`; reply checked in the E2E journey. WhatsApp delivery to the agent needs the approved template; production figures need the release running |
 | 5 | Saved‑search alerts arrive within the configured frequency | Met: worst case is the frequency plus one 15-minute run, proven with simulated time; go-live listings included (session 25). Email and WhatsApp delivery in staging pending |
 | 6 | Criteria‑extraction F1 meets the Phase 2 baseline per launch language | Harness and 18 seed cases per language built (T‑2070); no live run or baseline yet (T‑2072) |
 | 7 | Zero critical hallucinations in the release eval suite; grounding checker live | Checker live (T‑2013); deterministic suite passes in CI form (T‑2070); a run with the release model is T‑2072 |
@@ -18,6 +18,7 @@
 | 9 | AI cost per conversation and per qualified lead from real token data | Built (T‑2011, `GET /ai/costs/`); needs operator‑entered `ModelPrice` rows |
 | 10 | No plaintext secrets or national IDs in the database | Met in code: schema test and scan on test data (session 26); run `scan_plaintext` on production data |
 | 11 | Export and deletion cover conversations, memory, enquiries, messages, within the SLA | Built and tested (session 26); open: who may request (KI‑085), SLA confirmation and third-party files (KI‑105) |
+| 14 | SLO dashboards and alerts live for API, search, AI reply and webhooks | Built and tested (session 27, ADR‑050): objectives, burn-rate alerts (promtool tests in CI), SLO dashboard; worker metrics now exported. **Live** needs production scrape targets and an alert receiver (KI‑108, KI‑109) |
 
 ## Tasks
 | ID | P | Deliverable | Ref | Depends on |

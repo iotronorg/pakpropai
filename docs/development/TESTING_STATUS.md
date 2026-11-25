@@ -158,10 +158,21 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 - Session 4: `test_celery_tasks.py::CleanupExpiredOTPsTest` creates rows with `code_hash` (the `code` column no longer exists).
 - Session 3: syndication isolation tests (8 classes) and `VoiceInboundWebhookTest` call `enable_feature(...)`, because those modules are frozen by default.
 
+### Session 27
+
+| Date | Code state | Command | Result | Duration |
+|---|---|---|---|---|
+| 2026-11-25 | Working tree, session 27 | `scripts/dev/test.sh` | **2464 passed, 1 skipped, 0 failed**, 229 subtests | 10m23s |
+| 2026-11-25 | Working tree, session 27 | `promtool check config` + `test rules ops/tests/slo-rules.test.yaml` (v3.16.0); `amtool check-config` (v0.28.1) | 55 rules; all alert tests pass; config valid | — |
+| 2026-11-25 | Working tree, session 27 | Real prefork worker (2 processes) + `WORKER_METRICS_PORT`, 4 tasks sent | Exporter reported all 4 (`webhook_processed_total ok 4`) | — |
+| 2026-11-25 | Working tree, session 27 | Grafana (latest) with `ops/grafana/provisioning` | Both dashboards provisioned (SLO: 35 panels) | — |
+| 2026-11-25 | Working tree, session 27 | `makemigrations --check`; `notifications` 0006 → 0004 → 0006; `spectacular --validate`; Bandit on changed modules | No changes; reverse/forward OK; valid; 0 HIGH | — |
+
 ## Coverage
 Not measured yet (no coverage run executed). CI is configured with `--cov=apps`.
 
 ## Not covered / gaps
+- SLO alerts are proven with promtool on synthetic series; no Prometheus has scraped a running stack end to end, and production scrape targets do not exist yet (KI‑109).
 - Outbound WhatsApp is tested with `requests.post` patched; no test hits Meta. The tests used to patch `WhatsAppClient` methods at class level, which hid KI‑033; new tests go through the real client.
 - Pending‑action claims are tested with a stale second instance, not with two concurrent threads.
 - No test runs against a real LLM provider (all tests mock or use local backend paths).

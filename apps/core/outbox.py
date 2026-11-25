@@ -145,6 +145,14 @@ def dispatch(msg_id) -> str:
     msg = _claim(msg_id)
     if msg is None:
         return 'skipped'
+    status = _dispatch_claimed(msg)
+    from apps.core.metrics import outbox_deliveries_total
+    result = 'retry' if status == msg.Status.PENDING else str(status)
+    outbox_deliveries_total.labels(kind=msg.kind, result=result).inc()
+    return status
+
+
+def _dispatch_claimed(msg) -> str:
     Status = msg.Status
 
     if msg.expires_at and msg.expires_at <= timezone.now():

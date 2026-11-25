@@ -1,4 +1,6 @@
 import logging
+import time
+
 import requests
 
 from celery import shared_task
@@ -19,7 +21,7 @@ def _retry_inbound(task, exc, message: dict, phone_number_id: str, otel_context:
     retries = task.request.retries or 0
     if retries >= task.max_retries:
         dead_letter(message, phone_number_id, otel_context, exc)
-        return None
+        return 'dead_letter'
     countdown = retry_countdown(retries)
     logger.warning(
         "WA inbound transient DB error msg_id=%s — retry %d/%d in %ds: %s",
@@ -35,7 +37,35 @@ def _retry_inbound(task, exc, message: dict, phone_number_id: str, otel_context:
     reject_on_worker_lost=True,
     max_retries=INBOUND_MAX_RETRIES,
 )
-def process_incoming_whatsapp_task(self, message: dict, phone_number_id: str = '', otel_context: str = ''):
+def process_incoming_whatsapp_task(self, message: dict, phone_number_id: str = '', otel_context: str = '',
+                                   received_at: float | None = None):
+    """
+    Process one inbound WhatsApp message and record the webhook SLO metrics (ADR-050):
+    receipt → pickup delay (first attempt only; ``received_at`` is the webhook's wall
+    clock) and the outcome (``ok``, ``error``, ``retry``, ``dead_letter``).
+    """
+    from celery.exceptions import Retry
+    from apps.core.metrics import webhook_processed_total, webhook_queue_delay_seconds
+
+    if received_at and not (self.request.retries or 0):
+        try:
+            webhook_queue_delay_seconds.labels(gateway='whatsapp').observe(
+                max(time.time() - float(received_at), 0.0))
+        except (TypeError, ValueError):
+            pass
+    try:
+        outcome = _process_incoming(self, message, phone_number_id, otel_context)
+    except Retry:
+        webhook_processed_total.labels(gateway='whatsapp', result='retry').inc()
+        raise
+    except Exception:
+        webhook_processed_total.labels(gateway='whatsapp', result='error').inc()
+        raise
+    webhook_processed_total.labels(gateway='whatsapp', result=outcome or 'ok').inc()
+    return None
+
+
+def _process_incoming(self, message: dict, phone_number_id: str = '', otel_context: str = ''):
     """
     Async Celery worker for a single inbound WhatsApp message.
 
@@ -152,6 +182,7 @@ def process_incoming_whatsapp_task(self, message: dict, phone_number_id: str = '
 
     # ── Text (and media fallbacks) → direct routing ───────────────────────────
     retry_exc = None
+    crashed = False
     try:
         from apps.whatsapp.router import MessageRouter
         with track_side_effects() as effects:
@@ -171,6 +202,7 @@ def process_incoming_whatsapp_task(self, message: dict, phone_number_id: str = '
             "MessageRouter crashed for phone=%s msg_id=%s type=%s",
             phone, msg_id, msg_type,
         )
+        crashed = True
     finally:
         try:
             _otel_span.end()
@@ -181,6 +213,7 @@ def process_incoming_whatsapp_task(self, message: dict, phone_number_id: str = '
 
     if retry_exc is not None:
         return _retry_inbound(self, retry_exc, message, phone_number_id, otel_context)
+    return 'error' if crashed else 'ok'
 
 
 # ── Dedicated media workers ────────────────────────────────────────────────────

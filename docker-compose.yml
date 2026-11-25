@@ -57,7 +57,10 @@ services:
   worker:
     build: .
     # Consume both queues in dev so all tasks are processed without a second container.
-    command: celery -A config worker --loglevel=info --concurrency 2 -Q default,high-resource,outbound
+    # Prefork pool: the processes share PROMETHEUS_MULTIPROC_DIR, emptied at start (ADR-050).
+    command: >
+      sh -c "rm -rf /tmp/prometheus-multiproc && mkdir -p /tmp/prometheus-multiproc &&
+             celery -A config worker --loglevel=info --concurrency 2 -Q default,high-resource,outbound"
     volumes:
       - .:/app
       - media_files:/app/media
@@ -65,6 +68,8 @@ services:
       - .env
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.dev
+      PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus-multiproc
+      WORKER_METRICS_PORT: "9808"
     depends_on:
       web:
         condition: service_healthy
@@ -93,9 +98,18 @@ services:
       - prometheus_data:/prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.retention.time=15d"
+      # SLO dashboards look back 30 days (ADR-050).
+      - "--storage.tsdb.retention.time=35d"
     depends_on:
       - web
+      - alertmanager
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./ops/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
 
   grafana:
     image: grafana/grafana:latest
@@ -103,6 +117,8 @@ services:
       - "3001:3000"
     volumes:
       - grafana_data:/var/lib/grafana
+      - ./ops/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./ops/grafana/dashboards:/var/lib/grafana/dashboards:ro
     environment:
       GF_SECURITY_ADMIN_PASSWORD: admin
       GF_USERS_ALLOW_SIGN_UP: "false"

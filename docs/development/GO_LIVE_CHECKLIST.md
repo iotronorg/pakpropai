@@ -409,3 +409,13 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - Afterwards run `python manage.py scan_plaintext` on production; it prints counts only and must find nothing. If the cache was unreachable, save each blacklist entry once.
 - Deploy beat (new hourly `process_data_requests`). Alert on `data_request.overdue`.
 - Confirm `DATA_REQUEST_SLA_DAYS` (30).
+
+## 51. Session-27 change: SLO metrics, alerts and dashboards (ADR‑050)
+- Migrations `notifications 0005` (column with a database default; additive) and `0006` (`CREATE INDEX CONCURRENTLY`, `atomic = False`: run it on a direct database connection, not through PgBouncer in transaction mode).
+- **Workers serve metrics.** The worker image now sets `PROMETHEUS_MULTIPROC_DIR=/tmp/prometheus-multiproc` and `WORKER_METRICS_PORT=9808`. Prometheus must scrape every worker container on port 9808 (job `realtron_worker`) as well as `web:8000/metrics/` (job `realtron_api`). On ECS, add the port to the task definitions and a scrape target per task (service discovery or a managed Prometheus). Until this is done `WorkerMetricsAbsent` fires, and the AI reply, webhook and notification SLOs read nothing.
+- **Several web processes** (gunicorn in the `Procfile`) need `PROMETHEUS_MULTIPROC_DIR` too; the `Procfile` sets one and empties it at start. Daphne (`entrypoint.web.sh`) is a single process and needs none.
+- `PROMETHEUS_ALLOWED_IPS` now accepts CIDR ranges (`10.0.0.0/8`), as its comment always said.
+- Load `ops/prometheus-alerts.yaml` (55 rules) and keep **at least 35 days** of Prometheus data: the SLO dashboard's 30-day figures need it.
+- **Choose where alerts go** (KI‑108): `ops/alertmanager.yml` has no receiver yet, so alerts are only visible in Alertmanager and Grafana.
+- Import `ops/grafana/dashboards/realtron-slo.json` and `realtron-overview.json`, or mount `ops/grafana/provisioning` as `docker-compose.yml` does. The dashboards use the data-source uid `prometheus`.
+- Weekly, or before a release: `python manage.py notification_delivery_report --hours 168 --fail-under-objective` (MVP criterion 4; outbox rows are kept 7 days).

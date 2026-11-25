@@ -1,3 +1,3 @@
-web: gunicorn config.wsgi --worker-class gthread --workers 2 --threads 8 --timeout 120 --bind 0.0.0.0:$PORT
-worker: celery -A config worker --loglevel=info --concurrency 2 -Q default,high-resource,outbound
+web: sh -c 'export PROMETHEUS_MULTIPROC_DIR="${PROMETHEUS_MULTIPROC_DIR:-/tmp/prometheus-web}"; rm -rf "$PROMETHEUS_MULTIPROC_DIR"; mkdir -p "$PROMETHEUS_MULTIPROC_DIR"; exec gunicorn config.wsgi --worker-class gthread --workers 2 --threads 8 --timeout 120 --bind 0.0.0.0:$PORT'
+worker: sh -c 'export PROMETHEUS_MULTIPROC_DIR="${PROMETHEUS_MULTIPROC_DIR:-/tmp/prometheus-worker}"; rm -rf "$PROMETHEUS_MULTIPROC_DIR"; mkdir -p "$PROMETHEUS_MULTIPROC_DIR"; exec celery -A config worker --loglevel=info --concurrency 2 -Q default,high-resource,outbound'
 beat: celery -A config beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
