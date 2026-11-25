@@ -39,7 +39,7 @@ def transcribe_and_respond(self, call_sid: str) -> None:
     # 2. STT: μ-law 8kHz → text
     try:
         from apps.whatsapp.stt_services import STTService
-        result = STTService.transcribe(audio, mime_type='audio/ulaw')
+        result = STTService.transcribe(audio, mime_type='audio/ulaw', organization=session.organization)
         text   = result.text.strip()
     except Exception as exc:
         logger.warning("STT failed for call_sid=%s: %s", call_sid, exc)

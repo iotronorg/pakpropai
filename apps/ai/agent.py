@@ -95,7 +95,9 @@ class RealTronAgent:
     def chat_with_image(self, phone: str, image_bytes: bytes, mime_type: str,
                         caption: str = '', user=None, organization=None) -> str:
         """Process an image/document message through the agent."""
-        from apps.ai import llm
+        from apps.ai import kill_switch, llm
+        if kill_switch.is_stopped(organization):
+            return kill_switch.paused_reply(caption)
         if not llm.any_configured():
             return "AI service not configured. Please set the Gemini API key in System Setup."
 
@@ -107,7 +109,7 @@ class RealTronAgent:
         try:
             reply = llm.vision('agent.image', image_bytes, mime_type,
                                {'caption': caption or 'User sent a property-related image.'},
-                               country=getattr(organization, 'country', None), user=user,
+                               country=getattr(organization, 'country', None), organization=organization, user=user,
                                interaction_type='ocr').text
         except Exception as exc:
             logger.error(f"Image analysis failed: {exc}")
@@ -122,6 +124,9 @@ class RealTronAgent:
         Specialized document OCR flow.
         Detects document type, extracts fields, flags issues, saves to DocumentScan.
         """
+        from apps.ai import kill_switch
+        if kill_switch.is_stopped(organization):
+            return kill_switch.paused_reply(caption)
         backend = self._get_backend()
         from apps.markets.services import org_country as _org_country
         org_country = _org_country(organization)

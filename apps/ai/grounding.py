@@ -217,12 +217,14 @@ _SIZE_RE = re.compile(
     r'(?<![\w.,])(\d[\d,]*(?:\.\d+)?)\s*-?\s*(marlas?|kanals?|sq\.?\s*f(?:ee|oo)?t|square\s+f(?:ee|oo)t|'
     r'sq\.?\s*m(?:et(?:er|re)s?)?\b|square\s+met(?:er|re)s?|m²|مرلہ|کنال)', re.I)
 _M_RE = re.compile(r'(?<![\w.,])(\d+(?:\.\d+)?)(M)(?![\w²])')      # "10M" = 10 marla in listing titles
-_BED_RE = re.compile(r'(?<![\w.])(\d{1,2})\s*-?\s*(?:bed(?:room)?s?|br|bhk|کمرے)\b', re.I)
-_BATH_RE = re.compile(r'(?<![\w.])(\d{1,2})\s*-?\s*(?:bath(?:room)?s?|washrooms?)\b', re.I)
+_BED_RE = re.compile(r'(?<![\w.])(\d{1,2})\s*-?\s*(?:bed(?:room)?s?|br|bhk|kamr[ae]y?|کمر[ےہ]|کمروں|بیڈ\s*رومز?|بیڈ)\b', re.I)
+_BATH_RE = re.compile(r'(?<![\w.])(\d{1,2})\s*-?\s*(?:bath(?:room)?s?|washrooms?|ghusal\s*khan[ae]y?|باتھ(?:\s*رومز?)?|غسل\s*خان[ےہ])\b', re.I)
 _INSTALL_RE = re.compile(r'\b(?:instal?lments?|payment plan|qist|aqsaat|taqseet)\b|قسط|أقساط|تقسيط', re.I)
 _VERIFIED_RE = re.compile(
     r'\bverified\s+(?:property|listing|title|documents?|papers|ownership)\b'
-    r'|\b(?:title|documents?|ownership|property|listing|papers)\s+(?:is|are|has been|have been)\s+verified\b', re.I)
+    r'|\b(?:title|documents?|ownership|property|listing|papers)\s+(?:is|are|has been|have been)\s+verified\b'
+    r'|\b(?:title|documents?|ownership|property|listing|papers|kaghz?a+t|kaghaz)\s+(?:\w+\s+){0,2}'
+    r'(?:verified|tasd(?:ee|i)q\s*shuda)\s+ha(?:i|in)\b|تصدیق\s*شدہ|ویریفائ', re.I)
 _HEDGE_RE = re.compile(
     r"\b(?:no|not|n't|isn't|doesn't|don't|without|unknown|unspecified|unverified|lacks?|nahi|nahin|if|whether|"
     r"could|would you|do you|ask|confirm with)\b|\?|؟|نہیں|ليس", re.I)

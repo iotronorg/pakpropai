@@ -176,6 +176,7 @@ class AITrace(models.Model):
         CACHE         = 'cache',         'Semantic cache'
         GUARD_BLOCKED = 'guard_blocked', 'Blocked input'
         THROTTLED     = 'throttled',     'Budget throttle'
+        STOPPED       = 'stopped',       'Kill switch'
 
     class Pricing(models.TextChoices):
         NO_CALLS = 'no_calls', 'No model calls'
@@ -222,3 +223,49 @@ class AITrace(models.Model):
 
     def __str__(self):
         return f'{self.route} {self.model} {self.created_at:%Y-%m-%d %H:%M}'
+
+
+class AIKillSwitch(models.Model):
+    """
+    One stop of the assistant (T-2070, ADR-043): the platform, a market or an
+    organization. In force while ``released_at`` is null; rows are kept as history.
+    Written through ``apps.ai.kill_switch`` only.
+    """
+    class Scope(models.TextChoices):
+        PLATFORM     = 'platform',     'Platform'
+        MARKET       = 'market',       'Market'
+        ORGANIZATION = 'organization', 'Organization'
+
+    id           = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    scope        = models.CharField(max_length=12, choices=Scope.choices)
+    market       = models.ForeignKey('markets.Market', on_delete=models.CASCADE, null=True, blank=True,
+                                     related_name='ai_kill_switches')
+    organization = models.ForeignKey('organizations.Organization', on_delete=models.CASCADE, null=True, blank=True,
+                                     related_name='ai_kill_switches')
+    reason       = models.CharField(max_length=300)
+    created_by   = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+                                     related_name='+')
+    created_at   = models.DateTimeField(auto_now_add=True)
+    released_by  = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+                                     related_name='+')
+    released_at  = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'ai_kill_switches'
+        ordering = ['-created_at']
+        constraints = [
+            models.CheckConstraint(name='ai_kill_switch_target', condition=(
+                models.Q(scope='platform', market__isnull=True, organization__isnull=True)
+                | models.Q(scope='market', market__isnull=False, organization__isnull=True)
+                | models.Q(scope='organization', market__isnull=True, organization__isnull=False))),
+            # At most one stop in force per target.
+            models.UniqueConstraint(fields=['scope'], name='ai_kill_switch_one_platform',
+                                    condition=models.Q(scope='platform', released_at__isnull=True)),
+            models.UniqueConstraint(fields=['market'], name='ai_kill_switch_one_market',
+                                    condition=models.Q(scope='market', released_at__isnull=True)),
+            models.UniqueConstraint(fields=['organization'], name='ai_kill_switch_one_org',
+                                    condition=models.Q(scope='organization', released_at__isnull=True)),
+        ]
+
+    def __str__(self):
+        return f'{self.scope} {self.market_id or self.organization_id or ""}'.strip()

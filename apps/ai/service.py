@@ -610,7 +610,9 @@ class AIServiceManager:
             try:
                 if interactive and conversation is not None and user_message is None:
                     user_message = self._store(lambda s: s.begin_turn(conversation, message)[0])
-                reply = self._process(phone, message, user, organization, interactive)
+                from apps.ai import kill_switch
+                with kill_switch.scope(organization, getattr(conversation, 'market_code', '')):
+                    reply = self._process(phone, message, user, organization, interactive)
             except Exception as exc:
                 tracing.note(error=type(exc).__name__[:80])
                 if user_message is not None:
@@ -622,7 +624,7 @@ class AIServiceManager:
             if user_message is not None:
                 self._store(lambda s: s.finish_turn(
                     conversation, user_message, reply, trace=row,
-                    in_window=trace.values.get('route') not in ('guard_blocked', 'throttled'),
+                    in_window=trace.values.get('route') not in ('guard_blocked', 'throttled', 'stopped'),
                     citations=trace.values.get('citations') or (), **trace.extra))
             return reply
         finally:
@@ -654,8 +656,17 @@ class AIServiceManager:
         started_at = timezone.now()
         from apps.ai import tracing
 
-        # ── 0. Answer to a pending action (T-2012): no model involved ──────────
-        from apps.ai import confirmation
+        from apps.ai import confirmation, kill_switch
+
+        # ── 0. Kill switch (T-2070): nothing below runs, confirmations included ─
+        if kill_switch.is_stopped():
+            tracing.note(route='stopped')
+            if not interactive:
+                return ''                    # a draft: the notice must not become a suggestion
+            confirmation.close_reply_window(phone, organization)
+            return kill_switch.paused_reply(message)
+
+        # ── 0b. Answer to a pending action (T-2012): no model involved ─────────
         if interactive:
             answer = confirmation.resolve_reply(phone, message, user, organization)
             if answer is not None:

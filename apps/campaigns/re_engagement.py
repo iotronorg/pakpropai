@@ -156,7 +156,7 @@ class ReEngagementPromptGenerator:
             'intent': summary.get('intent', 'unknown'), 'city': summary.get('city', 'unknown'),
             'budget': budget_str, 'transcript': context.transcript or '(no messages)',
             'crm_timeline': context.crm_timeline or '(no activity)', 'max_chars': _MAX_MSG_LENGTH,
-        }, country=country, system=system.text, interaction_type='re_engagement',
+        }, country=country, organization=org, system=system.text, interaction_type='re_engagement',
             max_tokens=200, temperature=0.7).text
 
 

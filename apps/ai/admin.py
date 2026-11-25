@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import AIInteraction, AITrace, ModelPrice, PendingAction
+from .models import AIInteraction, AIKillSwitch, AITrace, ModelPrice, PendingAction
 
 
 @admin.register(AIInteraction)
@@ -46,4 +46,21 @@ class AITraceAdmin(admin.ModelAdmin):
         return False
 
     def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(AIKillSwitch)
+class AIKillSwitchAdmin(admin.ModelAdmin):
+    """Read-only: stops are made and released through the API or ``manage.py ai_kill_switch`` (audited)."""
+    list_display = ('scope', 'market', 'organization', 'reason', 'created_at', 'released_at')
+    list_filter = ('scope', 'market')
+    readonly_fields = [f.name for f in AIKillSwitch._meta.fields]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
         return False

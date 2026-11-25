@@ -119,7 +119,7 @@ def answer(message: str, intent, organization) -> Answer | None:
     try:
         # No user: nothing about the person reaches the model or its log row.
         result = llm.complete(FAQ_PROMPT.name, {'facts': fragment.text, 'question': message.strip()},
-                              country=country, max_tokens=400)
+                              country=country, organization=organization, max_tokens=400)
     except Exception as exc:
         logger.warning('faq: no answer (%s)', type(exc).__name__)
         return None

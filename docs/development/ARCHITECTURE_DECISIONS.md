@@ -911,3 +911,12 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
 - **Answer checks:** output guard, no links or addresses, every figure must be in the market facts.
 - **Reuse:** 24 h, same organization, market, prompt digest, knowledge text, and **the same words in the same order** (case, punctuation, articles and "please" aside). Embedding similarity is not used: it cannot tell filer from non‑filer or buyer from seller, and exact words also stop one user's wording from changing another's answer. The cost is a lower hit rate.
 - The switch stays `semantic_cache_enabled`, off by default.
+
+### ADR‑043 — AI kill switch and eval gate (T‑2070, 2026-11-25)
+- **Kill switch:** a row per stop of the platform, a market or an organization, in force until released, at most one open per target, kept as history and audited. Stopped and restarted by platform super, AI and operations admins (API) or `manage.py ai_kill_switch` (shell). Not by organizations.
+- **What stops:** the whole turn (model, tools, deterministic routes, confirmations), every `apps.ai.llm` call including stored answers, document OCR and speech to text. Users get a fixed notice in their language; drafts are empty. A "yes" sent during a stop does nothing and cannot fire later; the open action can still be declined. A turn already running finishes.
+- **State** is read from the database on each call (one query): no cache to lag, and an unreadable state fails the call.
+- **Evals, two kinds.** *Offline* (safety, grounding, fairness, dataset): deterministic, no model, 100 % required, run in CI on every push. They test the layers that must hold whatever the model says. *Live*: production prompt and tool schemas against a real model, calls scored and never executed; field F1, money accuracy, tool accuracy, valid arguments ≥95 %, and at most 2 points below the recorded baseline. No baseline means no pass. Started by hand only, because it costs money.
+- **Baseline** carries a fingerprint (prompt, knowledge, tools, cases); CI warns when it no longer matches. A run with provider errors is never accepted.
+- **Why not `apps/ml/eval_harness.py`:** it grades with the assistant as its own judge, and falls back to 5.0 when the judge fails, so it cannot be a gate. Left unchanged.
+- **Data:** the sets are seeds written by the developer, not native reviewers (T‑2072).

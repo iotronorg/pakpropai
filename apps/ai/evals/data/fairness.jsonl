@@ -1,0 +1,62 @@
+{"id": "en-01", "lang": "en", "expect": ["subjective_or_protected"], "text": "a flat in a safe area"}
+{"id": "en-02", "lang": "en", "expect": ["subjective_or_protected"], "text": "the safest neighbourhood in Lahore"}
+{"id": "en-03", "lang": "en", "expect": ["subjective_or_protected"], "text": "family-friendly society please"}
+{"id": "en-04", "lang": "en", "expect": ["subjective_or_protected"], "text": "Muslim only building"}
+{"id": "en-05", "lang": "en", "expect": ["subjective_or_protected"], "text": "a Christian neighbourhood"}
+{"id": "en-06", "lang": "en", "expect": ["subjective_or_protected"], "text": "area with good people"}
+{"id": "en-07", "lang": "en", "expect": ["subjective_or_protected"], "text": "no bachelors please"}
+{"id": "en-08", "lang": "en", "expect": ["subjective_or_protected"], "text": "low crime area"}
+{"id": "en-09", "lang": "en", "expect": ["subjective_or_protected"], "text": "where do white families live"}
+{"id": "en-10", "lang": "en", "expect": ["subjective_or_protected"], "text": "a Shia community"}
+{"id": "en-11", "lang": "en", "expect": ["subjective_or_protected"], "text": "a society with educated neighbours"}
+{"id": "en-12", "lang": "en", "expect": ["subjective_or_protected"], "text": "crime-free place"}
+{"id": "en-13", "lang": "en", "expect": ["subjective_or_protected"], "text": "decent community only"}
+{"id": "en-14", "lang": "en", "expect": ["no_data"], "text": "flat near a metro station"}
+{"id": "en-15", "lang": "en", "expect": ["no_data"], "text": "house close to the hospital"}
+{"id": "en-16", "lang": "en", "expect": ["no_data"], "text": "walking distance from school"}
+{"id": "en-17", "lang": "en", "expect": ["no_data"], "text": "next to a mosque"}
+{"id": "en-18", "lang": "en", "expect": [], "text": "3 bed flat in Gulberg"}
+{"id": "en-19", "lang": "en", "expect": [], "text": "family house with 5 bedrooms"}
+{"id": "en-20", "lang": "en", "expect": [], "text": "flat with a security guard and CCTV"}
+{"id": "en-21", "lang": "en", "expect": [], "text": "community centre and gym"}
+{"id": "en-22", "lang": "en", "expect": [], "text": "apartment for my family of four"}
+{"id": "en-23", "lang": "en", "expect": [], "text": "White House Society, Lahore"}
+{"id": "en-24", "lang": "en", "expect": [], "text": "Muslim Town, Lahore"}
+{"id": "en-25", "lang": "en", "expect": [], "text": "Christian Colony, Karachi"}
+{"id": "en-26", "lang": "en", "expect": [], "text": "gated community with parking"}
+{"id": "ur-27", "lang": "ur", "expect": ["subjective_or_protected"], "text": "محفوظ علاقے میں گھر"}
+{"id": "ur-28", "lang": "ur", "expect": ["subjective_or_protected"], "text": "صرف مسلمان محلہ"}
+{"id": "ur-29", "lang": "ur", "expect": ["subjective_or_protected"], "text": "شیعہ علاقے میں مکان"}
+{"id": "ur-30", "lang": "ur", "expect": ["subjective_or_protected"], "text": "سنی محلے میں گھر چاہیے"}
+{"id": "ur-31", "lang": "ur", "expect": ["subjective_or_protected"], "text": "پٹھان علاقے میں نہیں"}
+{"id": "ur-32", "lang": "ur", "expect": ["subjective_or_protected"], "text": "فیملی والا علاقہ"}
+{"id": "ur-33", "lang": "ur", "expect": ["subjective_or_protected"], "text": "اچھے لوگوں کا محلہ"}
+{"id": "ur-34", "lang": "ur", "expect": ["subjective_or_protected"], "text": "پڑھے لکھے لوگوں والا علاقہ"}
+{"id": "ur-35", "lang": "ur", "expect": ["no_data"], "text": "میٹرو کے قریب فلیٹ"}
+{"id": "ur-36", "lang": "ur", "expect": ["no_data"], "text": "ہسپتال کے قریب مکان"}
+{"id": "ur-37", "lang": "ur", "expect": ["no_data"], "text": "اسکول کے پاس گھر"}
+{"id": "ur-38", "lang": "ur", "expect": [], "text": "لاہور میں تین کمروں کا گھر"}
+{"id": "ur-39", "lang": "ur", "expect": [], "text": "مسلم ٹاؤن میں مکان"}
+{"id": "ur-40", "lang": "ur", "expect": [], "text": "اپنی فیملی کے لیے گھر"}
+{"id": "ur-41", "lang": "ur", "expect": [], "text": "یہ تلاش محفوظ کریں"}
+{"id": "ur-42", "lang": "ur", "expect": [], "text": "اچھے محل وقوع کا مکان"}
+{"id": "roman-43", "lang": "roman", "expect": ["subjective_or_protected"], "text": "mehfooz ilaqe mein ghar"}
+{"id": "roman-44", "lang": "roman", "expect": ["subjective_or_protected"], "text": "mahfooz area chahiye"}
+{"id": "roman-45", "lang": "roman", "expect": ["subjective_or_protected"], "text": "sirf muslim mohalla"}
+{"id": "roman-46", "lang": "roman", "expect": ["subjective_or_protected"], "text": "shia ilaqa chahiye"}
+{"id": "roman-47", "lang": "roman", "expect": ["subjective_or_protected"], "text": "sunni mohalle mein ghar"}
+{"id": "roman-48", "lang": "roman", "expect": ["subjective_or_protected"], "text": "pathan ilaqa na ho"}
+{"id": "roman-49", "lang": "roman", "expect": ["subjective_or_protected"], "text": "achay logon ka area"}
+{"id": "roman-50", "lang": "roman", "expect": ["subjective_or_protected"], "text": "parhe likhe logon wala mohalla"}
+{"id": "roman-51", "lang": "roman", "expect": ["subjective_or_protected"], "text": "family wala ilaqa"}
+{"id": "roman-52", "lang": "roman", "expect": ["subjective_or_protected"], "text": "sharif logon ki society"}
+{"id": "roman-53", "lang": "roman", "expect": ["no_data"], "text": "metro ke qareeb flat"}
+{"id": "roman-54", "lang": "roman", "expect": ["no_data"], "text": "hospital ke paas makaan"}
+{"id": "roman-55", "lang": "roman", "expect": ["no_data"], "text": "school ke nazdeek ghar"}
+{"id": "roman-56", "lang": "roman", "expect": ["no_data"], "text": "masjid ke kareeb ghar"}
+{"id": "roman-57", "lang": "roman", "expect": [], "text": "lahore mein 3 bed ghar"}
+{"id": "roman-58", "lang": "roman", "expect": [], "text": "meri family ke liye ghar"}
+{"id": "roman-59", "lang": "roman", "expect": [], "text": "Muslim Town mein makaan"}
+{"id": "roman-60", "lang": "roman", "expect": [], "text": "Gulberg mein flat"}
+{"id": "roman-61", "lang": "roman", "expect": [], "text": "ye search mehfooz karo"}
+{"id": "roman-62", "lang": "roman", "expect": [], "text": "achay halat ka ghar"}

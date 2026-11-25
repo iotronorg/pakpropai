@@ -194,7 +194,8 @@ class LeadViewSet(viewsets.ModelViewSet):
                 'status': lead.status, 'budget_min': lead.budget_min or '?',
                 'budget_max': lead.budget_max or '?', 'city': lead.city_interest or 'unknown',
                 'count': len(msgs), 'transcript': transcript,
-            }, country=getattr(lead.organization, 'country', None), user=request.user,
+            }, country=getattr(lead.organization, 'country', None), organization=lead.organization,
+                user=request.user,
                 interaction_type='lead_summary', max_tokens=400, temperature=0.3).text
         except Exception as exc:
             logger.error(f"Summarize failed for lead {lead.id}: {exc}")
@@ -229,7 +230,8 @@ class LeadViewSet(viewsets.ModelViewSet):
             raw = llm.complete('lead.suggest_replies', {
                 'status': lead.status, 'city': lead.city_interest or 'unknown',
                 'budget_max': lead.budget_max or '?', 'recent': recent, 'last_inbound': last_inbound,
-            }, country=getattr(lead.organization, 'country', None), user=request.user,
+            }, country=getattr(lead.organization, 'country', None), organization=lead.organization,
+                user=request.user,
                 interaction_type='reply_suggest', max_tokens=300, temperature=0.6).text
             suggestions = llm.parse_json(raw)
             if not isinstance(suggestions, list):

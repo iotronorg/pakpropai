@@ -78,7 +78,11 @@ class _CachedDecision:
 
 # Layer 4 — Direct prompt injection (CRITICAL) — English + 9 other languages
 _INJECTION_EN = (
-    r'ignore\s+(all\s+)?(previous|prior|above|your)\s+instructions?'
+    r'ignore\s+(?:(?:all|any|of|the)\s+){0,3}(?:previous|prior|above|earlier|your)\s+instructions?'
+    r'|\bsystem\s+prompt\b'
+    r'|\b(?:reveal|show|print|output|repeat|tell|give|display|what\s+(?:is|are|was))\b[^.?!\n]{0,40}'
+    r'\b(?:hidden|initial|secret)\s+(?:prompt|instructions?)'
+    r'|\b(?:print|output|repeat)\s+(?:the\s+)?(?:text|words|everything)\s+above'
     r'|forget\s+(all\s+)?(previous|prior|your)\s+(instructions?|context|memory)'
     r'|disregard\s+(?:(?:all|the|previous)\s+)?(?:your\s+)?(instructions?|rules?|prompt|guidelines?)'
     r'|new\s+instructions?\s*:'
@@ -90,6 +94,17 @@ _INJECTION_EN = (
     r'|\{\{\s*(?:system|instructions?)\s*\}\}'
 )
 _INJECTION_MULTI = (
+    # Urdu
+    r'|(?:پچھلی|سابقہ|پہلی|اپنی|تمام|ساری|سب)\s+(?:(?:تمام|سابقہ|ساری)\s+)?(?:ہدایات|انسٹرکشنز|قوانین)\s+'
+    r'(?:کو\s+)?(?:نظر\s*انداز|بھول|رد\s+کر)'
+    r'|نئی\s+ہدایات\s*[:：]'
+    r'|سسٹم\s+پرامپٹ'
+    r'|خفیہ\s+(?:ہدایات|پرامپٹ)'
+    # Roman Urdu
+    r'|\b(?:pichl[ei]|pehl[ei]|sabiqa|saa?r[ei]|tamaa?m|apn[ei])\s+(?:(?:tamaa?m|saa?ri|pichli)\s+)?'
+    r'(?:hidaya+t|instructions?|rules?|qawaneen)\s+(?:ko\s+)?(?:nazar\s*anda+z|ignore|bho?ol|bhul|to[rd])'
+    r'|\bna[iy]+[ie]?\s+(?:hidaya+t|instructions?)\s*[:：]'
+    r'|\bkhuf(?:ia|iya|ya)\s+(?:hidaya+t|instructions?|prompt)'
     # Arabic
     r'|تجاهل\s+(?:جميع\s+)?(?:التعليمات|التوجيهات)(?:\s+السابقة)?'
     r'|انسَ?\s+(?:جميع\s+)?التعليمات'
@@ -139,7 +154,7 @@ _ADVERSARIAL_EN = (
     r'|jailbreak'
     r'|developer\s+mode\s+enabled'
     r'|enable\s+(?:developer|unrestricted|god)\s+mode'
-    r'|without\s+(?:any\s+)?(?:restrictions?|limitations?|filters?|guidelines?)'
+    r'|without\s+(?:any\s+)?(?:restrictions?|limitations?|filters?|guidelines?)\b(?!\s+(?:on|for)\b)'
     r'|bypass\s+(?:your\s+)?(?:safety|filter|restriction|guideline|rule)'
     r'|you\s+have\s+no\s+(?:restrictions?|limitations?|rules?)'
     r'|you\s+can\s+(?:say|do|provide)\s+anything'
@@ -147,6 +162,9 @@ _ADVERSARIAL_EN = (
     r'|roleplay\s+as\s+(?:an?\s+)?(?:evil|unrestricted|unethical|harmful)'
 )
 _ADVERSARIAL_MULTI = (
+    # Urdu / Roman Urdu
+    r'|اب\s+(?:تم|آپ)\s+(?:ایک\s+)?(?:آزاد|اے\s*آئی|بوٹ)'
+    r'|\bab\s+(?:tum|aap)\s+(?:[ae]+[ik]+\s+)?(?:aa?zaa?d|AI|bot)\b'
     # Arabic
     r'|أنت\s+الآن\s+(?!مساعد?\s+(?:عقار|عقاري))'
     r'|تصرف\s+مثل\s+(?:ذكاء\s+اصطناعي\s+)?(?:غير\s+مقيد|خطير|ضار)'
@@ -242,7 +260,9 @@ _RE_ESTATE_SIGNAL = re.compile(
     r'property|plot|house|home|flat|apartment|makaan|ghar|zameen|'
     r'marla|kanal|sqft|square[\s-]?feet|'
     r'DHA|Bahria|Gulberg|Defence|Clifton|PECHS|'
-    r'rent|buy|sell|invest|lease|'
+    r'rent|rentals?|renting|buy|sell|invest|lease|'
+    r'bedrooms?|\d+\s*bed|bhk|studio|villa|penthouse|installments?|'
+    r'kamr[ae]y?|kiray[ae]y?|jagah|duka+n|khareed\w*|bechn\w*|'
     r'mortgage|loan|EMI|down[\s-]?payment|'
     r'tax|filer|7E|CGT|stamp[\s-]?duty|'
     r'agent|broker|developer|society|'
@@ -361,6 +381,24 @@ class GuardrailEngine:
     any number of concurrent threads/workers.
     """
 
+    @staticmethod
+    def inspect(message: str) -> tuple[str, str, Optional[Severity]]:
+        """Pattern verdict ``(violation_type, reason, severity)``, ``('', '', None)`` when safe. No side effects or cache."""
+        msg = _strip_control(message.strip())
+        if _INJECTION_RE.search(msg):
+            return 'injection', 'prompt_injection', Severity.CRITICAL
+        if _ADVERSARIAL_RE.search(msg):
+            return 'adversarial', 'adversarial_override', Severity.HIGH
+        if _JAILBREAK_RE.search(msg):
+            return 'jailbreak', 'jailbreak_attempt', Severity.HIGH
+        if _get_profanity_re().search(msg):
+            return 'profanity', 'profanity', Severity.MEDIUM
+        if not _RE_ESTATE_SIGNAL.search(msg):
+            for pattern, topic in _OFF_TOPIC:
+                if pattern.search(msg):
+                    return 'off_topic', f'off_topic:{topic}', Severity.LOW
+        return '', '', None
+
     @classmethod
     def check_input(
         cls,
@@ -414,68 +452,23 @@ class GuardrailEngine:
                                       cached.violation_type, cached.severity)
             return result
 
-        # L3: NFKC normalization (homoglyph defence) + control-char strip
+        # L3–L8: normalisation (homoglyph defence), then patterns, worst first
         msg = _strip_control(msg)
-
-        # L4: critical prompt injection
-        if _INJECTION_RE.search(msg):
-            return cls._block(
-                msg, cache_key, phone, organization_id, language,
-                violation_type='injection',
-                severity=Severity.CRITICAL,
-                reason='prompt_injection',
-                reply=_security_reply(language),
-            )
-
-        # L5: adversarial role / persona override
-        if _ADVERSARIAL_RE.search(msg):
-            return cls._block(
-                msg, cache_key, phone, organization_id, language,
-                violation_type='adversarial',
-                severity=Severity.HIGH,
-                reason='adversarial_override',
-                reply=_security_reply(language),
-            )
-
-        # L6: jailbreak encoding tricks
-        if _JAILBREAK_RE.search(msg):
-            return cls._block(
-                msg, cache_key, phone, organization_id, language,
-                violation_type='jailbreak',
-                severity=Severity.HIGH,
-                reason='jailbreak_attempt',
-                reply=_security_reply(language),
-            )
-
-        # L7: profanity (MEDIUM — warn, don't permanently block lead)
-        if _get_profanity_re().search(msg):
-            result = GuardrailResult(
-                safe=False,
-                reason='profanity',
-                violation_type='profanity',
-                severity=int(Severity.MEDIUM),
-                organization_id=organization_id,
-                fallback_reply=_profanity_reply(language),
-            )
+        violation, reason, severity = cls.inspect(msg)
+        if violation in ('injection', 'adversarial', 'jailbreak'):
+            return cls._block(msg, cache_key, phone, organization_id, language, violation_type=violation,
+                              severity=severity, reason=reason, reply=_security_reply(language))
+        if violation:
+            reply = (_profanity_reply(language) if violation == 'profanity'
+                     else _off_topic_reply(reason.split(':', 1)[1], language))
+            result = GuardrailResult(safe=False, reason=reason, violation_type=violation, severity=int(severity),
+                                     organization_id=organization_id, fallback_reply=reply)
             _cache_set(cache_key, result)
-            _write_security_trace(msg, phone, organization_id, 'profanity', Severity.MEDIUM)
+            if violation == 'profanity':            # MEDIUM: warn, don't permanently block the lead
+                _write_security_trace(msg, phone, organization_id, 'profanity', Severity.MEDIUM)
+            else:
+                logger.info("Guardrail off-topic blocked: %s phone=%s", reason, phone)
             return result
-
-        # L8: off-topic (only when no real-estate signal present)
-        if not _RE_ESTATE_SIGNAL.search(msg):
-            for pattern, topic in _OFF_TOPIC:
-                if pattern.search(msg):
-                    result = GuardrailResult(
-                        safe=False,
-                        reason=f'off_topic:{topic}',
-                        violation_type='off_topic',
-                        severity=int(Severity.LOW),
-                        organization_id=organization_id,
-                        fallback_reply=_off_topic_reply(topic, language),
-                    )
-                    _cache_set(cache_key, result)
-                    logger.info("Guardrail off-topic blocked: %s phone=%s", topic, phone)
-                    return result
 
         safe_result = GuardrailResult(safe=True)
         _cache_set(cache_key, safe_result)

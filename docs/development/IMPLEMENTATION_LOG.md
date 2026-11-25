@@ -547,3 +547,9 @@
 ### 2026-11-24 — session 19: T‑2016 context‑free FAQ answers
 - **Added:** `apps/ai/faq.py`, `tests/test_faq.py`. **Changed:** `apps/ai/service.py` no longer caches assistant replies.
 - **Fixed:** city names matched inside words ("transfer" → San Francisco, "plan" → Los Angeles), so such messages became searches; the request filter refused sign‑in tokens containing `--` (KI‑089).
+
+### 2026-11-25 — session 20: T‑2070 kill switch and eval gate
+- **Verified:** the owner committed T‑2016 (`a33c7fa`); the tree was clean.
+- **Added:** `AIKillSwitch` (`ai 0008`), `apps/ai/kill_switch.py`, `kill_switch_views.py`, `lang.py`, `apps/ai/evals/` (offline and live suites, data), commands `ai_kill_switch` and `run_ai_evals`, `.github/workflows/ai-evals-live.yml`, two test files.
+- **Changed:** `service.py`, `llm.py`, `confirmation.py`, `agent.py`, WhatsApp router and speech-to-text check the switch; `GuardrailEngine.inspect` (pure) split out of `check_input`; CI runs the eval gate.
+- **Fixed:** Urdu and Roman Urdu gaps in `guardrails.py`, `criteria.py` and `grounding.py` (see SESSION_HISTORY).

@@ -393,3 +393,14 @@
 1. `git status`: uncommitted work is T‑2016. **Do not commit.**
 2. Next: **T‑2070** (starting files in DEVELOPMENT_STATUS).
 3. Owner decisions open: KI‑085, KI‑089 (relax `;` and `--`); email provider and WhatsApp template (go‑live).
+
+## Session 20 — 2026-11-25
+- **Verified:** tree clean at `a33c7fa`; baseline re-run gave 2324 passed, 1 skipped, as handed over.
+- **Completed:** T‑2070 (ADR‑043). Split out T‑2071, T‑2072.
+- **Found by the new evals and fixed:** the input guard had no Urdu or Roman Urdu patterns and missed common English system-prompt requests; it blocked "without any restrictions on pets" as an attack and refused Roman Urdu or rental messages naming a hospital; the fairness policy missed most Urdu and Roman Urdu wording and treated "save this search" in Urdu as a request for a safe area; grounding missed Urdu bedroom, bathroom and verification claims.
+- **Found:** KI‑090…KI‑092. **Tests:** 2355 passed, 1 skipped, 0 failed. **Not committed.**
+
+### Handoff → session 21 (supersedes the one above)
+1. `git status`: uncommitted work is T‑2070. **Do not commit.**
+2. Next: **T‑2071** (starting files in DEVELOPMENT_STATUS), then T‑2051.
+3. Owner decisions open: T‑2072 (reviewers, API key and budget for live evals), KI‑085, KI‑089; email provider and WhatsApp template (go-live).

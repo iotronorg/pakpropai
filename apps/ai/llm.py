@@ -37,6 +37,10 @@ class LLMUnavailable(RuntimeError):
     """No configured provider produced an answer."""
 
 
+class AIStopped(LLMUnavailable):
+    """A kill switch is on (T-2070). No provider is called."""
+
+
 @dataclass
 class LLMResult:
     text: str
@@ -103,6 +107,12 @@ def any_configured() -> bool:
     return bool(_candidates())
 
 
+def _ensure_running(organization=None, country: str | None = None) -> None:
+    from . import kill_switch
+    if kill_switch.is_stopped(organization, country):
+        raise AIStopped('the assistant is stopped')
+
+
 def _run(op, *, what: str):
     """Try providers in order; a turn that already ran a committing tool is never retried."""
     from .runtime import TurnCommitted
@@ -160,14 +170,14 @@ def render(prompt_name: str, values: dict | None = None, *, country: str | None 
     return prompt.render(**{k: merged[k] for k in prompt.variables if k in merged})
 
 
-def complete(prompt_name: str, values: dict | None = None, *, country: str | None = None,
+def complete(prompt_name: str, values: dict | None = None, *, country: str | None = None, organization=None,
              interaction_type: str = 'intent_classify', user=None, system: str = '',
              max_tokens: int = 512, temperature: float = 0.2, json_mode: bool = False,
              cache_ttl: int = 0) -> LLMResult:
     rendered = render(prompt_name, values, country=country)
     return _complete(rendered.text, rendered, interaction_type=interaction_type, user=user,
                      system=system, max_tokens=max_tokens, temperature=temperature,
-                     json_mode=json_mode, cache_ttl=cache_ttl)
+                     json_mode=json_mode, cache_ttl=cache_ttl, organization=organization, country=country)
 
 
 def complete_text(text: str, **kwargs) -> LLMResult:
@@ -177,8 +187,9 @@ def complete_text(text: str, **kwargs) -> LLMResult:
 
 
 def _complete(text, rendered, *, interaction_type, user=None, system='', max_tokens=512,
-              temperature=0.2, json_mode=False, cache_ttl=0) -> LLMResult:
+              temperature=0.2, json_mode=False, cache_ttl=0, organization=None, country=None) -> LLMResult:
     import hashlib
+    _ensure_running(organization, country)     # before the cache: a stop covers stored answers too
     key = None
     if cache_ttl:
         key = 'ai:resp:v2:' + hashlib.sha256(f'{system}\x00{text}\x00{json_mode}'.encode()).hexdigest()
@@ -224,7 +235,8 @@ def complete_json(prompt_name: str, values: dict | None = None, **kwargs):
 
 
 def vision(prompt_name: str, image_bytes: bytes, mime_type: str, values: dict | None = None, *,
-           country: str | None = None, interaction_type: str = 'ocr', user=None) -> LLMResult:
+           country: str | None = None, organization=None, interaction_type: str = 'ocr', user=None) -> LLMResult:
+    _ensure_running(organization, country)
     rendered = render(prompt_name, values, country=country)
     name, backend, text, ms = _run(lambda b: b.analyze_image(image_bytes, mime_type, rendered.text),
                                    what='vision')
@@ -243,6 +255,7 @@ def chat(message: str, history: list, tools: list, system: P.Rendered | str, *,
     """
     from . import runtime
     from .tool_registry import ToolSpec
+    _ensure_running()
     rendered = system if isinstance(system, P.Rendered) else None
     system_text = system.text if rendered else system
     specs = [t if isinstance(t, ToolSpec) else ToolSpec.from_callable(t) for t in tools]

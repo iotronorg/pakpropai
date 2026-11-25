@@ -229,7 +229,9 @@ def transcribe_audio_task(
         return
 
     # ── 2. Transcribe ─────────────────────────────────────────────────────────
-    transcript = STTService.transcribe(result.data, result.mime_type)
+    from apps.whatsapp.router import MessageRouter
+    transcript = STTService.transcribe(result.data, result.mime_type,
+                                       organization=MessageRouter._resolve_org(phone_number_id))
     logger.info(
         "Audio transcribed phone=%s provider=%s lang=%s len=%d",
         phone, transcript.provider, transcript.language, len(transcript.text),

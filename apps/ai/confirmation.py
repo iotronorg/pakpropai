@@ -155,7 +155,10 @@ _RESULT_KEYS = ('success', 'found', 'listing_id', 'deal_id', 'audit_id', 'agent_
 def confirm(action, via: str) -> dict:
     """Claim and run the stored call. Raises :class:`NotConfirmable`."""
     from .models import PendingAction
+    from . import kill_switch
     S = PendingAction.Status
+    if kill_switch.is_stopped(action.organization, getattr(action.conversation, 'market_code', '')):
+        raise NotConfirmable('paused')       # stays pending; works again if released before it expires
     now = timezone.now()
     claimed = PendingAction.objects.filter(
         pk=action.pk, status=S.PENDING, expires_at__gt=now,

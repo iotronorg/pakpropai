@@ -175,6 +175,12 @@ class MessageRouter:
                     org=org,
                 )
                 return
+            from apps.ai import kill_switch
+            if kill_switch.is_stopped(org):          # T-2070: no speech-to-text either
+                cls._close_confirmation(phone, org)
+                cls._log_inbound(message_data, session_db, '[voice]', msg_type)
+                cls._send_and_log(phone, kill_switch.paused_reply(), session_db, org=org)
+                return
             text = cls._transcribe_voice(message_data, phone, org=org)
             if not text:
                 # Transcription failed (unsupported backend or download error).

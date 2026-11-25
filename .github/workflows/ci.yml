@@ -132,6 +132,18 @@ jobs:
           path: openapi.yaml
           if-no-files-found: error
 
+      - name: AI eval gate (T-2070, deterministic suites, no model call)
+        run: |
+          python manage.py run_ai_evals --report ai-evals.json
+
+      - name: Archive AI eval report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ai-evals
+          path: ai-evals.json
+          if-no-files-found: ignore
+
       - name: Run full test suite
         run: |
           pytest tests/ apps/ \

@@ -165,10 +165,23 @@ _SUBJECTIVE = re.compile(
     r'(?:muslim|christian|hindu|sikh|jewish|shia|sunni|ahmadi|punjabi|pathan|pashtun|sindhi|muhajir|arab|'
     r'indian|white|black|asian|western|european)s?(?:[- ]only)?\s+(?:area|neighbou?rhood|community|society|'
     r'neighbou?rs|people|families|building|only)|no (?:bachelors?|kids|children|foreigners))\b'
-    r'|mehfooz|محفوظ', re.I)
+    # Roman Urdu and Urdu ("mehfooz kar" / "محفوظ کر" means save)
+    r'|\bm[ae]hf(?:oo|u)z\b(?!\s+(?:kar|shuda))'
+    r'|\b(?:muslim|christian|hindu|sikh|shia|sunni|ahmadi|punjabi|pathan|pashtun|sindhi|muhajir)(?:on)?\s+(?:wal[aei]\s+)?'
+    r'(?:ilaq\w+|mohall\w+|abadi|log(?:on)?)\b'
+    r'|\b(?:ach+[ae]y?|parh[ae]y?[- ]likh[ae]y?|shar(?:i|ee)f)\s+(?:log(?:on)?|hamsay\w*|paros\w*)\b'
+    r'|\bfamily\s+wal[aei]y?\s+(?:ilaq\w+|mohall\w+|area|society)\b'
+    r'|محفوظ(?!\s+(?:کر|شدہ))'
+    r'|(?:مسلمان|مسلم|عیسائی|مسیحی|ہندو|سکھ|شیعہ|سنی|احمدی|پنجابی|پٹھان|سندھی|مہاجر)(?:وں)?\s+(?:وال[ایے]\s+)?'
+    r'(?:علاق\w+|محل\w+|آبادی|لوگ\w*)'
+    r'|(?:اچھے|پڑھے\s+لکھے|شریف)\s+(?:لوگ\w*|ہمسائ\w*|پڑوس\w*)'
+    r'|فیملی\s+وال[ایے]\s+(?:علاق\w+|محل\w+|سوسائٹی)', re.I)
 _PROXIMITY = re.compile(
     r'\b(?:near|close to|walking distance (?:to|from)|next to)\s+(?:the\s+|a\s+|an\s+)?'
-    r'(?:public transport(?:ation)?|metro|station|bus(?: stop)?|school|hospital|mosque|park|mall|market|airport)s?\b', re.I)
+    r'(?:public transport(?:ation)?|metro|station|bus(?: stop)?|school|hospital|mosque|park|mall|market|airport)s?\b'
+    r'|\b(?:metro|station|school|hospital|masjid|mosque|park|mall|market|airport)\s+k[ei]y?\s+'
+    r'(?:[qk]ar(?:ee|i)b|paa?s|nazd(?:ee|i)k)\b'
+    r'|(?:میٹرو|اسٹیشن|ا?سکول|ہسپتال|اسپتال|مسجد|پارک|مال|مارکیٹ|ایئرپورٹ)\s+کے\s+(?:قریب|پاس|نزدیک)', re.I)
 
 
 def unsupported(*texts: str) -> list[Unsupported]:

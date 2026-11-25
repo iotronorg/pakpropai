@@ -12,8 +12,8 @@
 | 3 | Every listing shown is published, in a live market, not sandbox, first‑party/licensed | Partly: sandbox exclusion (M0), lifecycle visibility (T‑1080) |
 | 4 | Agents receive enquiries within 1 minute and can reply | Not started |
 | 5 | Saved‑search alerts arrive within the configured frequency | Not started |
-| 6 | Criteria‑extraction F1 meets the Phase 2 baseline per launch language | Not started |
-| 7 | Zero critical hallucinations in the release eval suite; grounding checker live | Checker live (T‑2013); the eval suite is T‑2070 |
+| 6 | Criteria‑extraction F1 meets the Phase 2 baseline per launch language | Harness and 18 seed cases per language built (T‑2070); no live run or baseline yet (T‑2072) |
+| 7 | Zero critical hallucinations in the release eval suite; grounding checker live | Checker live (T‑2013); deterministic suite passes in CI form (T‑2070); a run with the release model is T‑2072 |
 | 8 | Side‑effect tools never execute without a confirmation record (tests) | Met for the existing tools (T‑2012); a test requires every committing registry tool to be confirmable. Enquiry, booking and saved‑search tools come later |
 | 9 | AI cost per conversation and per qualified lead from real token data | Built (T‑2011, `GET /ai/costs/`); needs operator‑entered `ModelPrice` rows |
 
@@ -33,11 +33,13 @@
 | T‑2041 ✅ | P2 | Consumer comparison (`compare_listings`) | FR‑CMP‑001/002 | T‑2030 |
 | T‑2050 ✅ | P1 | Enquiries → leads (`create_enquiry` with consent); in‑app threads; email notifications | FR‑COM‑001–003, MVP 4 | T‑2012 ✅ |
 | T‑2060 ✅ | P1 | Availability, slot booking (`find_viewing_slots`/`book_viewing`), reminders, feedback | FR‑APT‑001–006 | T‑2012 ✅ |
-| T‑2070 | P1 | Eval suites (EN/UR/Roman Urdu) with a CI gate; kill switch per market/org (provider failover done in T‑1120) | AI spec §9, MVP 6/7 | T‑2010, T‑2030 |
+| T‑2070 ✅ | P1 | Eval suites (EN/UR/Roman Urdu) with a CI gate; kill switch per market/org (provider failover done in T‑1120) | AI spec §9, MVP 6/7 | T‑2010, T‑2030 |
+| T‑2071 | P1 | Indirect prompt injection (lister text as delimited data; eval suite) | AI spec §8.1 | T‑2070 |
+| T‑2072 | P1 | Reviewed golden set (≥300 per language); live run and baseline | AI spec §9, MVP 6 | owner |
 | T‑2080 | — | Closed beta with launch agencies | Release | owner |
 
 ## Order
-T‑2010 → T‑2012 → T‑2011 → T‑2013 → T‑2020 → T‑2030 → T‑2031 → T‑2050 → T‑2060 → T‑2040 → T‑2041 → T‑2014 → T‑2016 → T‑2070 → T‑2080.
+T‑2010 → T‑2012 → T‑2011 → T‑2013 → T‑2020 → T‑2030 → T‑2031 → T‑2050 → T‑2060 → T‑2040 → T‑2041 → T‑2014 → T‑2016 → T‑2070 → T‑2071 → T‑2051 → T‑2072 → T‑2080.
 
 ## Owner dependencies (from the PRD)
 - Frontend chat, search and listing UI.

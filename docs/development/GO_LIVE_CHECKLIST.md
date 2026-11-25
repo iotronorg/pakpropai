@@ -369,3 +369,10 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 ## 43. Session‑19 change: FAQ answers (T‑2016, ADR‑042)
 - No migration. `semantic_cache_enabled` stays off until the answers were reviewed with a live model per market; then it may be set to `true`.
 - Market knowledge must be current: FAQ answers quote its rates.
+
+## 44. Session-20 change: kill switch and evals (T‑2070, ADR‑043)
+- **Migration:** `ai 0008` (new table; additive).
+- **Runbook:** name who may stop the assistant (super, AI or ops admin). `POST /api/v1/ai/kill-switches/` or `python manage.py ai_kill_switch stop --market PK --reason "…"`; release with the id. Rehearse it on staging.
+- **Before release:** grow and review the golden set, create the GitHub environment `ai-evals` with `EVAL_GEMINI_API_KEY`, run the "AI evals (live model)" workflow, review and commit `apps/ai/evals/baseline.json`, archive the reports.
+- **Review:** have Urdu speakers check the paused notices (`apps/ai/kill_switch.py`) and the seed cases.
+- **Frontend:** confirming an action returns 409 "This action is paused." during a stop.

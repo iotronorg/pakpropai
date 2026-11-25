@@ -49,7 +49,7 @@ class STTService:
     """
 
     @classmethod
-    def transcribe(cls, audio_bytes: bytes, mime_type: str) -> TranscriptResult:
+    def transcribe(cls, audio_bytes: bytes, mime_type: str, organization=None) -> TranscriptResult:
         """
         Transcribe audio bytes with automatic language detection.
 
@@ -58,6 +58,11 @@ class STTService:
         """
         if not audio_bytes:
             logger.warning("STTService.transcribe called with empty audio bytes.")
+            return TranscriptResult(text='', language='', provider='none')
+
+        from apps.ai import kill_switch
+        if kill_switch.is_stopped(organization):
+            logger.info('STT: skipped, the assistant is stopped')
             return TranscriptResult(text='', language='', provider='none')
 
         result = cls._try_openai_whisper(audio_bytes, mime_type)

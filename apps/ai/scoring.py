@@ -28,7 +28,7 @@ def score_property(property_obj) -> dict:
         'passed_verifications': signals['passed_verifications'],
         'document_count': signals['document_count'], 'baseline_score': baseline,
         **({'currency': property_obj.currency} if getattr(property_obj, 'currency', None) else {}),
-    }, country=property_obj.country, interaction_type='property_score', max_tokens=300)
+    }, country=property_obj.country, organization=property_obj.organization, interaction_type='property_score', max_tokens=300)
     if not isinstance(data, dict) or not data:
         raise ValueError('AI score reply had no JSON object')
     return data
