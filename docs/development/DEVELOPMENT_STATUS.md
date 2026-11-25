@@ -1,17 +1,17 @@
 # Development Status
 
-_Last updated: 2026-11-25 (session 23; git commit subjects number sessions differently: `a64cf24` "session 42" is session 22 here)_
+_Last updated: 2026-11-25 (session 24; git commit subjects number sessions differently: `d78b396` "session 43" is session 23 here)_
 
 | Item | Value |
 |---|---|
-| Branch | `development`. The owner committed through T‑2051 (`a64cf24`). **Uncommitted:** the end-to-end journey (session 23) |
+| Branch | `development`. The owner committed through the E2E journey (`d78b396`). **Uncommitted:** KI‑094, KI‑097 (session 24) |
 | Current milestone | **M2 — AI agent MVP** ([MILESTONE_02](milestones/MILESTONE_02_AI_AGENT_MVP.md)), started 2026‑11‑23. M1 code complete (contracts T‑1070g‑2 / T‑1032b‑2 release‑gated); M0 awaiting the first GitHub Actions run |
 | M0 progress | All 17 tasks complete. Remaining exit criterion: CI green on GitHub Actions (owner pushes) |
 | M1 progress | 16 of 18 tasks done (T‑1010, T‑1011, T‑1020, T‑1021, T‑1022, T‑1030, T‑1031, T‑1033, T‑1040, T‑1050, T‑1060, T‑1080, T‑1090, T‑1100, T‑1110, T‑1120) plus subtasks T‑1032a, T‑1032c, T‑1070a–f and T‑1070g‑1 |
 | M2 progress | 16 of 17 tasks done. Open: T‑2072 (owner data and paid runs) |
-| Test suite | **2388 passed, 1 skipped, 0 failed** (session 23); end-to-end journey 69 checks, local (`scripts/dev/e2e.sh`). See [TESTING_STATUS](TESTING_STATUS.md) |
-| Last completed task | End-to-end consumer journey, MVP criterion 1, local run (ADR‑046) |
-| Next task | **KI‑094**: privacy masking of form bodies. Start in `apps/compliance/middleware.py`; list the form-encoded callers first (payment callbacks must not be altered: a masked transaction number breaks the signature). Then review MVP criteria 3 and 5 in MILESTONE_02. Waiting on the owner: T‑2072 and the staging run of `scripts/e2e/consumer_journey.py`. Open: KI‑055…KI‑059, KI‑068, KI‑069, KI‑071, KI‑073, KI‑075…KI‑089, KI‑091…KI‑096 |
+| Test suite | **2402 passed, 1 skipped, 0 failed** (session 24); end-to-end journey 69 checks, local. See [TESTING_STATUS](TESTING_STATUS.md) |
+| Last completed task | KI‑094 form masking; KI‑097 provider callbacks (ADR‑047) |
+| Next task | Review **MVP criteria 3 and 5** (MILESTONE_02): prove with tests that every listing shown is public, in a live market and not sandbox, and that saved-search alerts arrive in their frequency (start in `apps/properties/public_listings.py`, `apps/preferences/alerts.py`, extend `scripts/e2e/consumer_journey.py`). Waiting on the owner: T‑2072, staging E2E run, KI‑098. Open: KI‑055…KI‑059, KI‑068, KI‑069, KI‑071, KI‑073, KI‑075…KI‑089, KI‑091…KI‑093, KI‑095, KI‑096 (deploy), KI‑098 |
 
 ## Owner decisions (2026-11-23)
 - **T‑1032b:** staged like T‑1070g (b‑1 now, drops in a later release behind the reconcile gate); `Agent.organization` kept as a derived primary‑org pointer.
@@ -33,6 +33,7 @@ _Last updated: 2026-11-25 (session 23; git commit subjects number sessions diffe
 - Meta: re‑submit the OTP template body with the RealTron name.
 
 ## Operator actions before deploying these changes
+- **Session 24** (checklist §48): no migration; provider callbacks behave differently.
 - **Session 23** (checklist §47): no migration; the worker command now names every queue.
 - **Session 22** (checklist §46): migration `enquiries 0002` (additive).
 - **Session 21** (checklist §45): no migration. Prompt versions changed; review organization listings flagged `assistant_instructions`.

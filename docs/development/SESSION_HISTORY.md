@@ -435,3 +435,13 @@
 1. `git status`: uncommitted work is the E2E journey. **Do not commit.**
 2. Next: KI‑094 (starting files in DEVELOPMENT_STATUS).
 3. Owner: staging E2E run, T‑2072, KI‑085, KI‑089, KI‑095 (retention), start command check (KI‑096); email provider and WhatsApp template.
+
+## Session 24 — 2026-11-25
+- **Verified:** the owner committed session 23 (`d78b396`); the tree was clean.
+- **Completed:** KI‑094, and KI‑097 found on the way (ADR‑047). **Found:** KI‑098.
+- **Tests:** 2402 passed, 1 skipped, 0 failed; E2E journey 69 checks. **Not committed.**
+
+### Handoff → session 25 (supersedes the one above)
+1. `git status`: uncommitted work is KI‑094/KI‑097. **Do not commit.**
+2. Next: MVP criteria 3 and 5 (starting files in DEVELOPMENT_STATUS).
+3. Owner: KI‑098, staging E2E run, T‑2072, KI‑085, KI‑089, KI‑095, KI‑096 start command; email provider and WhatsApp template.

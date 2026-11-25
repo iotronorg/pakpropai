@@ -938,3 +938,8 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
 - The journey talks to a running server only through its public API and signed webhook, and checks outcomes (threads, viewings, pending actions), never wording, so the same script runs locally with a stand-in model and on staging with the release model.
 - Locally everything else is real: daphne, Celery workers started from the production entrypoint, Postgres, Redis. Stand-ins: the model and WhatsApp's API (`WA_API_URL`).
 - `seed.py` runs only when `E2E_SEED_DATABASE` names the connected database, because it creates public listings.
+
+### ADR‑047 — Masking covers forms, not provider callbacks (session 24, 2026-11-25)
+- **Forms** are masked by the DRF parsers, with the same exempt paths and field allow-list as JSON. A test walks every URL and refuses an unmasked form parser.
+- **Callbacks** (`payments|billing|verification|voice/webhook/`) reach the view unchanged, because a signature covers the exact body. Each must prove itself (signature, or reading the result from the provider), and payment callbacks are stored masked.
+- **Jumio:** the callback is only a signal; the result comes from Jumio's API. Until it is readable the answer is 503, so Jumio repeats it.

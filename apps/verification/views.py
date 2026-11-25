@@ -690,10 +690,22 @@ class JumioWebhookView(APIView):
 
         from .providers.jumio_provider import JumioVerificationProvider
         provider    = JumioVerificationProvider()
-        session_id, result = provider.parse_webhook(payload)
-
-        if not session_id:
-            return Response({'received': True})
+        # The callback carries no signature: it only says that a result is ready.
+        # The result itself is read from Jumio's API with our credentials (KI-097).
+        try:
+            session_id, _ = provider.parse_webhook(payload)
+            known = DocumentScan.objects.filter(registration_number=session_id).exists()
+        except (AttributeError, TypeError):
+            return Response({'detail': 'Bad payload.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not known:
+            return Response({'received': True, 'activated': False})
+        try:
+            result = provider.poll_result(session_id)
+        except Exception as exc:
+            logger.error('JumioWebhookView: result of session=%s not readable: %s', session_id, exc)
+            result = None
+        if result is None or result.status == 'pending':      # Jumio sends the callback again
+            return Response({'detail': 'Result not available.'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
         found = _apply_verification_result(session_id, result)
         logger.info('JumioWebhookView: session=%s status=%s found=%s', session_id, result.status, found)
@@ -758,7 +770,8 @@ class StripeIdentityWebhookView(APIView):
 
         from .providers.stripe_identity_provider import StripeIdentityProvider
         provider = StripeIdentityProvider()
-        session_id, result = provider.parse_webhook(dict(event))
+        from apps.billing.stripe_service import as_dict
+        session_id, result = provider.parse_webhook(as_dict(event))
         found = _apply_verification_result(session_id, result) if session_id else False
         logger.info('StripeIdentityWebhookView: session=%s status=%s found=%s', session_id, result.status, found)
         return Response({'received': True, 'activated': found})

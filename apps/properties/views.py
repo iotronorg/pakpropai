@@ -1,11 +1,11 @@
 from django.db.models import Avg, Count, Q, prefetch_related_objects
 from django.db.models.functions import TruncMonth, TruncWeek
 
+from apps.compliance.parsers import MaskedMultiPartParser
 from apps.markets.services import user_timezone
 from rest_framework import filters, status, viewsets
 from rest_framework.views import APIView
 from rest_framework.decorators import action
-from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -383,7 +383,7 @@ class PropertyViewSet(viewsets.ModelViewSet):
                        'alt_text': drf_serializers.CharField(required=False)})},
                    responses=PropertyImageSerializer(many=True))
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated],
-            url_path='upload-images', parser_classes=[MultiPartParser])
+            url_path='upload-images', parser_classes=[MaskedMultiPartParser])
     def upload_images(self, request, pk=None):
         """
         Upload up to MAX_IMAGES_PER_LISTING images (T-1110). Each file is

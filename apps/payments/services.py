@@ -23,6 +23,12 @@ logger = logging.getLogger(__name__)
 
 # ─── Safepay ──────────────────────────────────────────────────────────────────
 
+def masked_payload(payload) -> dict:
+    """The audit copy of a provider callback: verified unmasked, stored without contact details (KI-097)."""
+    from apps.compliance.middleware import mask_fields
+    return mask_fields(payload, ())[0]
+
+
 class SafepayGateway:
     """
     Safepay v1 API.
@@ -537,7 +543,7 @@ class PaymentService:
         Payment.objects.filter(escrow_deal=deal, gateway=gateway).update(
             status=Payment.Status.COMPLETED,
             reference=parsed.get('tracker', ''),
-            webhook_payload=payload,
+            webhook_payload=masked_payload(payload),
         )
 
         # Activate the 48h lock

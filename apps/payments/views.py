@@ -14,7 +14,7 @@ from rest_framework.views import APIView
 from apps.escrow.models import EscrowDeal
 from apps.core.metrics import deal_locks_total, webhook_events_total
 from .models import Payment
-from .services import PaymentService
+from .services import masked_payload, PaymentService
 from drf_spectacular.utils import extend_schema
 from apps.core.idempotency import IDEMPOTENCY_PARAMETER, idempotent
 
@@ -259,7 +259,7 @@ class SafepayDealLockWebhookView(APIView):
         Payment.objects.filter(escrow_deal=deal, gateway='safepay').update(
             status=Payment.Status.COMPLETED,
             reference=parsed.get('tracker', ''),
-            webhook_payload=payload,
+            webhook_payload=masked_payload(payload),
         )
         deal.payment_ref = parsed.get('tracker', '')
         deal.save(update_fields=['payment_ref', 'updated_at'])
@@ -330,7 +330,7 @@ class bSecureDealLockWebhookView(APIView):
         Payment.objects.filter(escrow_deal=deal, gateway='bsecure').update(
             status=Payment.Status.COMPLETED,
             reference=parsed.get('tracker', ''),
-            webhook_payload=payload,
+            webhook_payload=masked_payload(payload),
         )
         deal.payment_ref = parsed.get('tracker', '')
         deal.save(update_fields=['payment_ref', 'updated_at'])
@@ -376,7 +376,8 @@ class StripeDealLockWebhookView(APIView):
             return Response({'received': True, 'activated': False})
 
         from .services import StripePaymentGateway
-        parsed   = StripePaymentGateway.parse_webhook(dict(event))
+        from apps.billing.stripe_service import as_dict
+        parsed   = StripePaymentGateway.parse_webhook(as_dict(event))
         order_id = parsed.get('order_id', '')
 
         if not order_id:
@@ -410,7 +411,7 @@ class StripeDealLockWebhookView(APIView):
         Payment.objects.filter(escrow_deal=deal, gateway='stripe').update(
             status=Payment.Status.COMPLETED,
             reference=parsed.get('tracker', ''),
-            webhook_payload=dict(event),
+            webhook_payload=masked_payload(as_dict(event)),
         )
         deal.payment_ref = parsed.get('tracker', '')
         deal.save(update_fields=['payment_ref', 'updated_at'])

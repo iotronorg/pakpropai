@@ -1,3 +1,4 @@
+from apps.compliance.parsers import MaskedFormParser, MaskedMultiPartParser
 from apps.properties.taxonomy import property_type_expression  # T-1070g
 import datetime
 import logging
@@ -9,7 +10,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from rest_framework.parsers import JSONParser
 
 from .models import Organization, OrganizationConfig, OrganizationInvite, OrganizationMembership
 from .serializers import (
@@ -31,7 +32,7 @@ class OrganizationListView(APIView):
     POST /api/v1/organizations/  — create new org (admin only)
     """
     permission_classes = [IsAuthenticated]
-    parser_classes     = [MultiPartParser, FormParser, JSONParser]
+    parser_classes     = [MaskedMultiPartParser, MaskedFormParser, JSONParser]
 
     def get(self, request):
         role = request.user.role
@@ -83,7 +84,7 @@ class OrganizationDetailView(APIView):
     DELETE /api/v1/organizations/<id>/  — delete (admin only)
     """
     permission_classes = [IsAuthenticated, IsAdminOrOrgAdmin]
-    parser_classes     = [MultiPartParser, FormParser, JSONParser]
+    parser_classes     = [MaskedMultiPartParser, MaskedFormParser, JSONParser]
 
     def _get_org(self, pk, user):
         try:
@@ -144,7 +145,7 @@ class OrganizationMeView(APIView):
     PATCH /api/v1/organizations/me/ — update own organization
     """
     permission_classes = [IsAuthenticated]
-    parser_classes     = [MultiPartParser, FormParser, JSONParser]
+    parser_classes     = [MaskedMultiPartParser, MaskedFormParser, JSONParser]
 
     def _get_own_org(self, user):
         # T-1032b: the active org if the caller owns it, else their first owned org.

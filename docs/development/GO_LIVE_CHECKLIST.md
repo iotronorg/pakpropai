@@ -392,3 +392,8 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - **Worker queues (KI‑096):** confirm in the hosting console that the worker start command reads `default,high-resource,outbound` (or that separate workers do).
 - Leave `WA_API_URL` unset in production: access tokens are sent to it.
 - **Staging run (MVP 1):** `E2E_SEED_DATABASE=<db> E2E_AGENT_PHONE=<your phone> python scripts/e2e/seed.py`, then `scripts/e2e/consumer_journey.py` with the variables in its header, then `seed.py --remove`. The seeded listings are public while they exist.
+
+## 48. Session-24 change: form masking and provider callbacks (ADR‑047)
+- No migration. Text sent as a form is masked like JSON: check any client that posts forms with contact fields outside the allow-list.
+- Stripe billing callbacks need `stripe_webhook_secret` in the system configuration; without it they are refused.
+- Before enabling Stripe, Jumio or Onfido, wire their settings (KI‑098) and send a test callback from the provider's console.

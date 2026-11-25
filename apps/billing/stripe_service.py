@@ -26,6 +26,11 @@ def _price_id(plan: str) -> str:
     return getattr(settings, env_key, '') if env_key else ''
 
 
+def as_dict(obj) -> dict:
+    """A verified Stripe object as plain data (StripeObject is no longer a dict)."""
+    return obj.to_dict() if isinstance(obj, stripe.StripeObject) else dict(obj)
+
+
 class StripeService:
 
     @classmethod
@@ -78,11 +83,10 @@ class StripeService:
 
     @classmethod
     def construct_webhook_event(cls, payload: bytes, sig_header: str):
-        webhook_secret = getattr(settings, 'STRIPE_WEBHOOK_SECRET', '')
-        if not webhook_secret:
-            logger.warning('STRIPE_WEBHOOK_SECRET not set — skipping signature verification (dev)')
-            import json
-            return type('Event', (), {'data': type('D', (), {'object': json.loads(payload)})(), 'type': json.loads(payload).get('type', '')})()
+        from apps.config.services import SystemConfigService
+        webhook_secret = SystemConfigService.get('stripe_webhook_secret', '')
+        if not webhook_secret:                # an unsigned event could hand out a paid plan
+            raise ValueError('stripe_webhook_secret is not configured')
         return stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
 
     @classmethod

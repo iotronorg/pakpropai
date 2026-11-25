@@ -67,29 +67,45 @@ def _mask_strings_recursive(obj, pipeline):
     return obj, []
 
 
+def is_exempt(path: str, prefixes=None) -> bool:
+    if prefixes is None:
+        prefixes = getattr(settings, 'PRIVACY_MASK_EXEMPT_PATHS', _DEFAULT_EXEMPT)
+    return any(path.startswith(p) for p in prefixes)
+
+
+def allowed_fields(method: str, path: str, compiled=None) -> frozenset:
+    """Top-level keys that may carry raw contact PII on this endpoint (T-1033)."""
+    if compiled is None:
+        compiled = _compile_allowlist(getattr(settings, 'PRIVACY_MASK_FIELD_ALLOWLIST', ()))
+    allowed = set()
+    for regex, methods, fields in compiled:
+        if method in methods and regex.match(path):
+            allowed |= fields
+    return frozenset(allowed)
+
+
+def mask_fields(payload: dict, allowed) -> tuple[dict, list]:
+    """Allow-listed top-level fields pass through; every other value (bio, notes) is masked."""
+    rest, detections = _mask_strings_recursive({k: v for k, v in payload.items() if k not in allowed}, _pipeline)
+    return {k: (v if k in allowed else rest[k]) for k, v in payload.items()}, detections
+
+
+def report_detections(request, detections) -> None:
+    org_id = getattr(getattr(request, 'org', None), 'id', None)
+    threading.Thread(target=_fire_detection_events, args=(detections, org_id, request.path_info), daemon=True).start()
+
+
 class PIIMaskingMiddleware:
     """
     Intercepts POST/PATCH/PUT requests and masks PII from the JSON body
-    before the view processes it. Fail-open: any error logs WARNING and
-    passes the original request through unmodified.
+    before the view processes it (forms: ``apps.compliance.parsers``). Fail-open:
+    any error logs WARNING and passes the original request through unmodified.
     """
 
     def __init__(self, get_response):
         self.get_response = get_response
-        self.exempt_paths: list[str] = getattr(
-            settings, "PRIVACY_MASK_EXEMPT_PATHS", _DEFAULT_EXEMPT
-        )
-        self.field_allowlist = _compile_allowlist(
-            getattr(settings, "PRIVACY_MASK_FIELD_ALLOWLIST", ())
-        )
-
-    def allowed_fields(self, method: str, path: str) -> frozenset:
-        """Top-level JSON keys that may carry raw contact PII on this endpoint (T-1033)."""
-        allowed = set()
-        for regex, methods, fields in self.field_allowlist:
-            if method in methods and regex.match(path):
-                allowed |= fields
-        return frozenset(allowed)
+        self.exempt_paths: list[str] = getattr(settings, 'PRIVACY_MASK_EXEMPT_PATHS', _DEFAULT_EXEMPT)
+        self.field_allowlist = _compile_allowlist(getattr(settings, 'PRIVACY_MASK_FIELD_ALLOWLIST', ()))
 
     def __call__(self, request):
         if request.method in _MASK_METHODS:
@@ -98,11 +114,7 @@ class PIIMaskingMiddleware:
 
     def _process(self, request):
         path = request.path_info
-        if any(path.startswith(ep) for ep in self.exempt_paths):
-            return
-
-        content_type = request.META.get("CONTENT_TYPE", "")
-        if "application/json" not in content_type:
+        if is_exempt(path, self.exempt_paths) or 'application/json' not in request.META.get('CONTENT_TYPE', '').lower():
             return
 
         try:
@@ -111,32 +123,17 @@ class PIIMaskingMiddleware:
                 return
 
             payload = json.loads(raw)
-            allowed = self.allowed_fields(request.method, path)
-            if allowed and isinstance(payload, dict):
-                # Allow-listed structured fields pass through; every other
-                # value (free text such as bio/notes) is still masked.
-                kept = {k: v for k, v in payload.items() if k in allowed}
-                rest = {k: v for k, v in payload.items() if k not in allowed}
-                masked_rest, detections = _mask_strings_recursive(rest, _pipeline)
-                masked_payload = {k: (kept[k] if k in kept else masked_rest[k]) for k in payload}
+            if isinstance(payload, dict):
+                masked, detections = mask_fields(payload, allowed_fields(request.method, path, self.field_allowlist))
             else:
-                masked_payload, detections = _mask_strings_recursive(payload, _pipeline)
-
+                masked, detections = _mask_strings_recursive(payload, _pipeline)
             if not detections:
                 return
 
-            masked_bytes = json.dumps(masked_payload).encode("utf-8")
             # Replace the cached body so DRF and views see the masked payload.
-            request._body = masked_bytes
-            request.__dict__.pop("body", None)  # clear cached_property if set
-
-            org_id = getattr(getattr(request, "org", None), "id", None)
-            t = threading.Thread(
-                target=_fire_detection_events,
-                args=(detections, org_id, path),
-                daemon=True,
-            )
-            t.start()
+            request._body = json.dumps(masked).encode('utf-8')
+            request.__dict__.pop('body', None)  # clear cached_property if set
+            report_detections(request, detections)
 
         except Exception:
             logger.warning("PIIMaskingMiddleware: masking failed, passing original body", exc_info=True)

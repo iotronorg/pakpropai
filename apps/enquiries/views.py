@@ -149,8 +149,6 @@ class PostMessageSerializer(serializers.Serializer):
     def validate(self, d):
         if not d['body'] and not d['files']:
             raise serializers.ValidationError({'body': ['Write a message or add a photo.']})
-        from apps.compliance.privacy_guard import PIIMaskingPipeline     # the middleware reads JSON bodies only
-        d['body'] = PIIMaskingPipeline().mask(d['body']).masked_text
         return d
 
 

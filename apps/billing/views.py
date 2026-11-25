@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime
 
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.permissions import IsAuthenticated
@@ -130,7 +130,8 @@ class StripeWebhookView(APIView):
         # Idempotency guard: skip already-processed events
         from .models import WebhookEvent
         try:
-            WebhookEvent.objects.create(gateway='stripe', event_id=event.id)
+            with transaction.atomic():
+                WebhookEvent.objects.create(gateway='stripe', event_id=event.id)
         except IntegrityError:
             logger.info('Stripe webhook: duplicate event %s — skipping', event.id)
             return Response({'received': True})
@@ -139,19 +140,20 @@ class StripeWebhookView(APIView):
         obj        = event.data.object
 
         try:
-            from .stripe_service import StripeService
+            from .stripe_service import StripeService, as_dict
             if event_type == 'checkout.session.completed':
-                StripeService.handle_checkout_completed(dict(obj))
+                StripeService.handle_checkout_completed(as_dict(obj))
             elif event_type in ('customer.subscription.updated', 'customer.subscription.created'):
-                StripeService.handle_subscription_updated(dict(obj))
+                StripeService.handle_subscription_updated(as_dict(obj))
             elif event_type == 'customer.subscription.deleted':
-                StripeService.handle_subscription_deleted(dict(obj))
+                StripeService.handle_subscription_deleted(as_dict(obj))
             elif event_type == 'invoice.payment_failed':
-                StripeService.handle_payment_failed(dict(obj))
+                StripeService.handle_payment_failed(as_dict(obj))
             else:
                 logger.debug('Stripe webhook: unhandled event type %s', event_type)
         except Exception as exc:
             logger.error('Stripe webhook handler error event=%s: %s', event_type, exc)
+            WebhookEvent.objects.filter(gateway='stripe', event_id=event.id).delete()     # Stripe's retry must run
             return Response({'detail': 'Handler error.'}, status=500)
 
         return Response({'received': True})

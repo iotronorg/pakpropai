@@ -212,6 +212,11 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 
 REST_FRAMEWORK = {
+    'DEFAULT_PARSER_CLASSES': (                      # forms are masked like JSON (KI-094)
+        'rest_framework.parsers.JSONParser',
+        'apps.compliance.parsers.MaskedFormParser',
+        'apps.compliance.parsers.MaskedMultiPartParser',
+    ),
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'apps.users.authentication.JWTCookieOrHeaderAuthentication',
     ),
@@ -743,6 +748,11 @@ PRIVACY_MASK_EXEMPT_PATHS = [
     '/api/v1/auth/',
     '/api/v1/organizations/register/',
     '/api/v1/whatsapp/webhook/',
+    # Signed provider callbacks: a changed body fails its signature (KI-097).
+    '/api/v1/payments/webhook/',
+    '/api/v1/billing/webhook/',
+    '/api/v1/verification/webhook/',
+    '/api/v1/voice/webhook/',
     '/public/',  # viral referral endpoints — user voluntarily submits phone for WA deep-link
 ]
 
@@ -762,6 +772,8 @@ PRIVACY_MASK_FIELD_ALLOWLIST = [
      'fields': _AGENT_CONTACT},                               # agent edits own profile
     {'path': r'^/api/v1/agents/\d+/$', 'methods': ['PATCH', 'PUT'],
      'fields': _AGENT_CONTACT},                               # admin edits an agent
+    {'path': r'^/api/v1/organizations/$', 'methods': ['POST'],
+     'fields': ['phone', 'email']},                           # admin creates an org: business contact
     {'path': r'^/api/v1/organizations/(me|[0-9a-f-]{36})/$', 'methods': ['PATCH', 'PUT'],
      'fields': ['phone', 'email']},                           # org business contact
 ]
