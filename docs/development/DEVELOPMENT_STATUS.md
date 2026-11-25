@@ -1,17 +1,17 @@
 # Development Status
 
-_Last updated: 2026-11-25 (session 21; git commit subjects number sessions differently: `ab7af9a` "session 40" is session 20 here)_
+_Last updated: 2026-11-25 (session 22; git commit subjects number sessions differently: `0042a45` "session 41" is session 21 here)_
 
 | Item | Value |
 |---|---|
-| Branch | `development`. The owner committed through T‑2070 (`ab7af9a`). **Uncommitted:** T‑2071 |
+| Branch | `development`. The owner committed through T‑2071 (`0042a45`). **Uncommitted:** T‑2051 |
 | Current milestone | **M2 — AI agent MVP** ([MILESTONE_02](milestones/MILESTONE_02_AI_AGENT_MVP.md)), started 2026‑11‑23. M1 code complete (contracts T‑1070g‑2 / T‑1032b‑2 release‑gated); M0 awaiting the first GitHub Actions run |
 | M0 progress | All 17 tasks complete. Remaining exit criterion: CI green on GitHub Actions (owner pushes) |
 | M1 progress | 16 of 18 tasks done (T‑1010, T‑1011, T‑1020, T‑1021, T‑1022, T‑1030, T‑1031, T‑1033, T‑1040, T‑1050, T‑1060, T‑1080, T‑1090, T‑1100, T‑1110, T‑1120) plus subtasks T‑1032a, T‑1032c, T‑1070a–f and T‑1070g‑1 |
-| M2 progress | 15 of 17 tasks done (T‑2071 added). Open: T‑2051, T‑2072 (owner data and paid runs) |
-| Test suite | **2364 passed, 1 skipped, 0 failed** (session 21, T‑2071); eval gate 284/284. See [TESTING_STATUS](TESTING_STATUS.md) |
-| Last completed task | T‑2071 indirect prompt injection (ADR‑044) |
-| Next task | **T‑2051** thread attachments and report/block (KI‑072; FR-COM-001/007). Start in `apps/enquiries` (`models.py`, `services.py`, `views.py`), reuse the T‑1110 image sanitiser and the report model of `apps/moderation`; tests in `tests/test_enquiries.py`. Waiting on the owner: T‑2072. Then M2 closing work: staging end-to-end script for MVP criterion 1. Open: KI‑055…KI‑059, KI‑068, KI‑069, KI‑071…KI‑073, KI‑075…KI‑089, KI‑091…KI‑093 |
+| M2 progress | 16 of 17 tasks done. Open: T‑2072 (owner data and paid runs) |
+| Test suite | **2386 passed, 1 skipped, 0 failed** (session 22, T‑2051); eval gate 284/284. See [TESTING_STATUS](TESTING_STATUS.md) |
+| Last completed task | T‑2051 thread photos, block, report, warnings (ADR‑045) |
+| Next task | No M2 code task is left; T‑2072 waits on the owner. Next: the **staging end-to-end script for MVP criterion 1** (M2 closing work: register, search, compare, enquire, book, against a running server; start in `scripts/` and `docs/development/milestones/MILESTONE_02_AI_AGENT_MVP.md`), then KI‑094 (privacy masking of form bodies). Open: KI‑055…KI‑059, KI‑068, KI‑069, KI‑071, KI‑073, KI‑075…KI‑089, KI‑091…KI‑095 |
 
 ## Owner decisions (2026-11-23)
 - **T‑1032b:** staged like T‑1070g (b‑1 now, drops in a later release behind the reconcile gate); `Agent.organization` kept as a derived primary‑org pointer.
@@ -33,6 +33,7 @@ _Last updated: 2026-11-25 (session 21; git commit subjects number sessions diffe
 - Meta: re‑submit the OTP template body with the RealTron name.
 
 ## Operator actions before deploying these changes
+- **Session 22** (checklist §46): migration `enquiries 0002` (additive).
 - **Session 21** (checklist §45): no migration. Prompt versions changed; review organization listings flagged `assistant_instructions`.
 - **Session 20** (checklist §44): migration `ai 0008` (additive). Name who may stop the assistant.
 

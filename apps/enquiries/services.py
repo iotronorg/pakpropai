@@ -108,11 +108,23 @@ def check_allowed(user, listing=None) -> None:
                 user=user, organization_id=listing.organization_id, is_active=True).exists())):
         raise EnquiryError('This is your own listing.', 'own_listing')
     kind = _KINDS.get(listing.listing_owner_type, Enquiry.Kind.PLATFORM)
+    _check_blocks(user, listing, kind)
     if kind == Enquiry.Kind.ORGANIZATION and not listing.organization.is_active:
         raise EnquiryError('This lister is not available.', 'lister_unavailable')
     if kind == Enquiry.Kind.AGENT and not (agent.is_active and agent.user and agent.user.is_active):
         raise EnquiryError('This lister is not available.', 'lister_unavailable')
     if kind == Enquiry.Kind.OWNER and not (listing.owner and listing.owner.is_active):
+        raise EnquiryError('This lister is not available.', 'lister_unavailable')
+
+
+def _check_blocks(user, listing, kind) -> None:
+    from .safety import blocked_sides
+    sides = blocked_sides(user.pk, kind, listing.organization_id,
+                          (agent.user_id if (agent := listing.listed_by_agent) else None)
+                          if kind == Enquiry.Kind.AGENT else listing.owner_id)
+    if USER in sides:
+        raise EnquiryError('You blocked this lister. Unblock them first.', 'blocked_by_you')
+    if RESPONDER in sides:                  # they do not learn why
         raise EnquiryError('This lister is not available.', 'lister_unavailable')
 
 
@@ -172,6 +184,8 @@ def create(user, *, message: str, listing: Property | None = None, requirement: 
     now = timezone.now()
     with transaction.atomic():
         get_user_model().objects.select_for_update().get(pk=user.pk)     # one enquiry at a time per person
+        if listing is not None:              # again, under the lock a block takes
+            _check_blocks(user, listing, _KINDS.get(listing.listing_owner_type, Enquiry.Kind.PLATFORM))
         e = Enquiry.objects.filter(user=user, listing=listing, status=Enquiry.Status.OPEN).first()
         if e is not None:
             e.consented_at, e.consent_version, e.consent_via = now, CONSENT_VERSION, via
@@ -200,12 +214,15 @@ def create(user, *, message: str, listing: Property | None = None, requirement: 
 
 # ── Thread ────────────────────────────────────────────────────────────────────
 
-def post(e: Enquiry, sender, side: str, body: str) -> ConversationMessage:
+def post(e: Enquiry, sender, side: str, body: str, images=()) -> ConversationMessage:
     """Append a message and notify the other side (once per unread burst)."""
     with transaction.atomic():
         e = Enquiry.objects.select_for_update().get(pk=e.pk)
         if e.status != Enquiry.Status.OPEN:
             raise EnquiryError('This enquiry is closed.', 'closed')
+        if images:
+            from .safety import attach, check_files
+            check_files(e, sender)
         if e.lead is None:                    # the lead was deleted: the thread needs a home
             e.lead = Lead.objects.create(user=e.user, organization=e.organization, source=Lead.Source.WEB)
         now = timezone.now()
@@ -213,6 +230,8 @@ def post(e: Enquiry, sender, side: str, body: str) -> ConversationMessage:
             lead=e.lead, enquiry=e, sender=sender, body=body, channel=ConversationMessage.Channel.IN_APP,
             direction=(ConversationMessage.Direction.INBOUND if side == USER
                        else ConversationMessage.Direction.OUTBOUND))
+        if images:
+            attach(msg, sender, images)
         other = RESPONDER if side == USER else USER
         previous, read = getattr(e, f'{side}_last_at'), getattr(e, f'{other}_read_at')
         announce = previous is None or (read and read >= previous) or now - previous > RENOTIFY
@@ -288,6 +307,9 @@ def erase_user(user) -> int:
     """Delete the person's enquiries with their messages; empty what they wrote in other threads."""
     mine = Enquiry.objects.filter(user=user)
     ConversationMessage.objects.filter(enquiry__in=mine).delete()
-    n, _ = mine.delete()
+    n = mine.count()
+    mine.delete()
+    from .safety import erase_user as erase_safety
+    erase_safety(user)
     ConversationMessage.objects.filter(enquiry__isnull=False, sender=user).update(body='[REDACTED]', sender=None)
     return n

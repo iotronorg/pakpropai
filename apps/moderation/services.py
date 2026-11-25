@@ -238,6 +238,9 @@ def notify_overdue() -> int:
     ids = list(ModerationItem.objects.filter(status=I.OPEN, due_at__lt=now, overdue_notified_at__isnull=True)
                .values_list('pk', flat=True)[:500])
     n = ModerationItem.objects.filter(pk__in=ids, overdue_notified_at__isnull=True).update(overdue_notified_at=now)
+    from apps.enquiries.models import ThreadReport
+    n += ThreadReport.objects.filter(status=ThreadReport.Status.OPEN, due_at__lt=now,
+                                     overdue_notified_at__isnull=True).update(overdue_notified_at=now)
     if n:
         for person in get_user_model().objects.filter(role='admin', is_active=True,
                                                       platform_role__in=MODERATOR_ROLES).order_by('pk')[:10]:

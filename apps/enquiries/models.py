@@ -9,6 +9,8 @@ from django.conf import settings
 from django.db import models
 from django.db.models import Q
 
+from apps.core.crypto import EncryptedTextField
+
 
 class Enquiry(models.Model):
     class Kind(models.TextChoices):            # who answers
@@ -72,3 +74,89 @@ class Enquiry(models.Model):
     @property
     def contacts_shared(self) -> bool:
         return self.consent_revoked_at is None and self.responder_shared_at is not None
+
+
+class MessageAttachment(models.Model):
+    """A sanitised photo, encrypted in our database: never at a public media URL (T-2051)."""
+    id           = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    message      = models.ForeignKey('leads.ConversationMessage', on_delete=models.CASCADE, related_name='attachments')
+    sender       = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='+')
+    content_type = models.CharField(max_length=20)
+    size         = models.PositiveIntegerField()
+    width        = models.PositiveIntegerField()
+    height       = models.PositiveIntegerField()
+    payload      = EncryptedTextField(help_text='Base64')
+    created_at   = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'message_attachments'
+        ordering = ['created_at', 'id']
+        indexes = [models.Index(fields=['sender', '-created_at'], name='attachment_sender_idx')]
+
+    def __str__(self):
+        return f'{self.content_type} {self.id}'
+
+
+class EnquiryBlock(models.Model):
+    """One side of a consumer/lister pair stopped the contact. The lister is an organization or a person."""
+    id           = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user         = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='+')
+    organization = models.ForeignKey('organizations.Organization', on_delete=models.CASCADE, null=True, blank=True,
+                                     related_name='+')
+    responder    = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, null=True, blank=True,
+                                     related_name='+')
+    side         = models.CharField(max_length=10, choices=[('user', 'Consumer'), ('responder', 'Lister')])   # blocker
+    created_by   = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='+')
+    created_at   = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'enquiry_blocks'
+        constraints = [
+            models.UniqueConstraint(fields=['user', 'organization', 'side'], condition=Q(organization__isnull=False),
+                                    name='enquiry_block_org'),
+            models.UniqueConstraint(fields=['user', 'responder', 'side'], condition=Q(responder__isnull=False),
+                                    name='enquiry_block_responder')]
+
+    def __str__(self):
+        return f'Block by {self.side} {self.id}'
+
+
+class ThreadReport(models.Model):
+    class Category(models.TextChoices):
+        FRAUD    = 'fraud',    'Scam or fraud'
+        SPAM     = 'spam',     'Spam'
+        ABUSE    = 'abuse',    'Abuse or harassment'
+        DISCRIMINATION = 'discrimination', 'Discrimination'
+        OTHER    = 'other',    'Other'
+
+    class Status(models.TextChoices):
+        OPEN      = 'open',      'Open'
+        CLOSED    = 'closed',    'Thread closed'
+        DISMISSED = 'dismissed', 'No action'
+
+    id         = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    enquiry    = models.ForeignKey(Enquiry, on_delete=models.CASCADE, related_name='reports')
+    reporter   = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+                                   related_name='thread_reports')
+    side       = models.CharField(max_length=10, choices=[('user', 'Consumer'), ('responder', 'Lister')])
+    category   = models.CharField(max_length=15, choices=Category.choices)
+    text       = models.CharField(max_length=1000, blank=True)
+    status     = models.CharField(max_length=10, choices=Status.choices, default=Status.OPEN)
+    priority   = models.PositiveSmallIntegerField(default=0)
+    due_at     = models.DateTimeField()
+    overdue_notified_at = models.DateTimeField(null=True, blank=True)
+    decided_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+                                   related_name='+')
+    decided_at = models.DateTimeField(null=True, blank=True)
+    note       = models.CharField(max_length=500, blank=True)      # internal
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'thread_reports'
+        ordering = ['-priority', 'due_at', 'id']
+        indexes = [models.Index(fields=['status', '-priority', 'due_at'], name='thread_report_queue_idx')]
+        constraints = [models.UniqueConstraint(fields=['enquiry', 'reporter'], condition=Q(status='open'),
+                                               name='thread_report_one_open')]
+
+    def __str__(self):
+        return f'{self.category} {self.enquiry_id} ({self.status})'

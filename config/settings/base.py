@@ -301,6 +301,8 @@ SPECTACULAR_SETTINGS = {
         'ModerationReasonEnum': 'apps.moderation.models.ModerationItem.Reason',
         'CategoryEnum': 'apps.properties.models.Property.Category',
         'ReportCategoryEnum': 'apps.moderation.models.UserReport.Category',
+        'ThreadReportStatusEnum': 'apps.enquiries.models.ThreadReport.Status',
+        'ThreadReportCategoryEnum': 'apps.enquiries.models.ThreadReport.Category',
         'FavouriteKindEnum': 'apps.preferences.models.Favourite.Kind',
         'AlertChannelEnum': 'apps.preferences.models.SavedSearch.Channel',
         'AlertFrequencyEnum': 'apps.preferences.models.SavedSearch.Frequency',

@@ -245,6 +245,11 @@ def reschedule(appt: Appointment, user, start: datetime) -> Appointment:
         p = E.visible_listing(appt.property_id) if appt.property_id else None
         if p is None:
             raise ViewingError('This listing is no longer available.', 'listing_unavailable')
+        if appt.enquiry_id:
+            from apps.enquiries.safety import blocked_sides
+            e = appt.enquiry
+            if blocked_sides(e.user_id, e.kind, e.organization_id, e.responder_id):
+                raise ViewingError('This listing is no longer available.', 'listing_unavailable')
         slot = _hold(p, start, user, exclude=appt.pk)
         appt = Appointment.objects.select_for_update().get(pk=appt.pk)
         _check_open(appt)

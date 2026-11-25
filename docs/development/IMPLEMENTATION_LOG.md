@@ -558,3 +558,9 @@
 - **Added:** `apps/ai/untrusted.py`, `apps/ai/evals/data/indirect.jsonl` and its suite, `tests/test_indirect_injection.py`.
 - **Changed:** `runtime.py` (model's copy of tool results), `llm.render`, `context.py`, `grounding.py` (contact rule), `moderation/checks.py` (flag `assistant_instructions`); prompts `agent.system` 9, `agent.image` 2, `property.score` 3, `fraud.check` 3, `search.verdicts` 3, `document.ocr` 3, `lead.summary` 2, `lead.suggest_replies` 2, `campaign.reengage.user` 2.
 - **Fixed:** `apps/geo/search.py` readiness cache right after boot.
+
+### 2026-11-25 — session 22: T‑2051 thread photos, block, report, warnings
+- **Added:** `apps/enquiries/safety.py`, models `MessageAttachment`, `EnquiryBlock`, `ThreadReport` (migration `enquiries 0002`), `apps/moderation/thread_views.py`, `tests/test_thread_safety.py`.
+- **Endpoints:** multipart `POST threads/{id}/messages/`, `GET threads/{id}/attachments/{id}/`, `POST threads/{id}/report/`, `POST|DELETE threads/{id}/block/`; moderators: `moderation/threads/…`.
+- **Changed:** enquiry creation and viewing reschedule respect blocks; overdue notice, erasure and export cover the new data.
+- **Fixed:** `PIIMaskingMiddleware` and UUIDs; `core/idempotency.py` hashes uploaded files.

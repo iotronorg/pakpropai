@@ -927,3 +927,9 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
 - **Output rule:** the assistant repeats a link, email, phone or account number only if the user, the conversation, the system prompt, a non-listing tool or a result's own `url` gave it. Otherwise the reply is regenerated or replaced (grounding code `contact`). An organization's phone inside its listing text is therefore not read out by the assistant; enquiries and agent hand-off are the way.
 - **Moderation:** such a listing gets the flag `assistant_instructions` and waits for a person.
 - **Limit:** patterns are not a boundary. Confirmation records, tool policy and grounding are (KI‑093).
+
+### ADR‑045 — Photos, blocking and reports in threads (T‑2051, 2026-11-25)
+- **Photos:** through the T‑1110 sanitiser, at most 3 per message, stored encrypted in the database (as data exports are, KI‑066) and served only through an authenticated endpoint; media storage would give public URLs. A photo can show a phone number, so photos are sent and seen only while both sides share contacts.
+- **Block:** between a consumer and a lister (organization or person), by either side. Closes all their threads, ends the blocker's own sharing, refuses new enquiries, bookings and rescheduling. Only the blocking side can lift it. The blocked consumer sees "not available". The platform team cannot be blocked.
+- **Report:** reporting lets a moderator read that thread unmasked, only while the report is open, never if they are part of it or work for that organization; every read is in the audit log. Reports never close a thread by themselves; a moderator dismisses or closes. The reporter is not named and the other side is not told.
+- **Warnings:** codes for links, payment requests and one-time codes, computed on read and shown to the recipient only. They never hide or stop a message.

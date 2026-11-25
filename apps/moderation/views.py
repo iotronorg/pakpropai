@@ -9,6 +9,7 @@ from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.enquiries.models import ThreadReport
 from apps.enquiries.views import ThreadMessageThrottle
 from apps.properties.models import Property
 from apps.properties.public_listings import public_q
@@ -94,7 +95,8 @@ class QueueSummaryView(APIView):
         return Response({
             **{r: 0 for r in ModerationItem.Reason.values},
             **dict(qs.order_by().values_list('reason').annotate(n=Count('pk'))),
-            'overdue': qs.filter(due_at__lt=timezone.now()).count()})
+            'overdue': qs.filter(due_at__lt=timezone.now()).count(),
+            'threads': ThreadReport.objects.filter(status=ThreadReport.Status.OPEN).count()})
 
 
 class ItemListView(ListAPIView):

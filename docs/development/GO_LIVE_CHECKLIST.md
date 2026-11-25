@@ -381,3 +381,9 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - No migration. Nine prompts have new versions; run the live evals (T‑2072) before release.
 - **Behaviour:** the assistant no longer reads out phone numbers or links found in a listing's text, including an organization's own. Listings that address the assistant wait for moderation.
 - Watch traces for guard reason `indirect_injection` and grounding code `contact` during the beta.
+
+## 46. Session-22 change: thread photos, block, report (T‑2051, ADR‑045)
+- Migration `enquiries 0002` (three new tables, no data change).
+- Proxy body limit: allow 16 MB on `/api/v1/threads/` (3 photos of 5 MB).
+- Moderators: new queue `moderation/threads/`, same deadline (`MODERATION_SLA_HOURS`). Tell users in the privacy notice that reporting a thread lets a moderator read it.
+- Decide a retention period for photos and reports (KI‑095).

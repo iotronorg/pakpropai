@@ -96,7 +96,7 @@ Priority: P0 (blocker) → P3.
 | T‑2040 | [x] | P2 | Preferences with consent, favourites, saved searches + alerts | ADR‑038. `apps/preferences`; tools `save_listing`, `create_saved_search`, `remember_preferences`. `tests/test_preferences.py` |
 | T‑2041 | [x] | P2 | Consumer comparison | ADR‑039. `apps/properties/comparison*.py`, `apps/markets/fx.py`, tool `compare_listings`. `tests/test_comparison.py` |
 | T‑2050 | [x] | P1 | Enquiries → leads, threads, email notifications | ADR‑036. `apps/enquiries`, `create_enquiry` tool, outbox email. Attachments and report/block are split out to T‑2051. 40 tests |
-| T‑2051 | [ ] | P2 | Thread attachments and report/block (rest of FR‑COM‑001/007) | KI‑072 |
+| T‑2051 | [x] | P2 | Thread attachments and report/block (rest of FR-COM-001/007) | ADR‑045. `apps/enquiries/safety.py`, `apps/moderation/thread_views.py`. `tests/test_thread_safety.py` (22 tests) |
 | T‑2060 | [x] | P1 | Availability, viewing slots, booking, reminders, feedback | ADR‑037. `apps/viewings`, `find_viewing_slots` and `book_viewing` tools. 37 tests, including a real three‑thread booking race |
 | T‑2070 | [x] | P1 | Eval suites + CI gate; kill switch | ADR‑043. `apps/ai/kill_switch.py`, `apps/ai/evals/`, `manage.py run_ai_evals` (CI gate) and `ai_kill_switch`. `tests/test_kill_switch.py`, `tests/test_ai_evals.py`. Live scores are T‑2072 |
 | T‑2071 | [x] | P1 | Indirect prompt injection: lister text to the model as delimited data, injection in it neutralised, eval suite | ADR‑044. `apps/ai/untrusted.py`, contact rule in `grounding.py`, moderation flag, `indirect` suite. `tests/test_indirect_injection.py` |

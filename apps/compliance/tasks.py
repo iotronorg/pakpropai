@@ -95,6 +95,10 @@ def generate_data_export(request_id: str):
         from apps.leads.models import ConversationMessage
         data['thread_messages'] = list(ConversationMessage.objects.filter(enquiry__user=user).order_by(
             'created_at').values('enquiry_id', 'direction', 'body', 'created_at'))
+        from apps.enquiries.models import MessageAttachment
+        data['thread_photos'] = list(MessageAttachment.objects.filter(sender=user).values(
+            'id', 'message__enquiry_id', 'content_type', 'size', 'created_at'))     # GET threads/{id}/attachments/{id}/
+        data['thread_reports'] = list(user.thread_reports.values('enquiry_id', 'category', 'text', 'created_at'))
         payload = json.dumps(data, default=str)
         with transaction.atomic():
             DataExportFile.objects.update_or_create(request=req, defaults={

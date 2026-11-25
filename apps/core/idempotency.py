@@ -65,6 +65,10 @@ def _request_hash(request) -> str:
     except (TypeError, ValueError):
         body = repr(request.data)
     raw = f'{request.method}\n{request.path}\n{body}'
+    for name, files in sorted(request.FILES.lists()):        # the JSON above has names only, and one file per field
+        for f in files:
+            raw += f'\n{name}:{hashlib.sha256(b"".join(f.chunks())).hexdigest()}'
+            f.seek(0)
     return hashlib.sha256(raw.encode()).hexdigest()
 
 

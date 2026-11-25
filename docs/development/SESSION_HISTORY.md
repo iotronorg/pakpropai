@@ -414,3 +414,13 @@
 1. `git status`: uncommitted work is T‑2071. **Do not commit.**
 2. Next: **T‑2051** (starting files in DEVELOPMENT_STATUS).
 3. Owner decisions open: T‑2072, KI‑085, KI‑089; email provider and WhatsApp template (go-live).
+
+## Session 22 — 2026-11-25
+- **Verified:** the owner committed T‑2071 (`0042a45`); the tree was clean.
+- **Completed:** T‑2051 (ADR‑045). **Found and fixed:** the privacy masking corrupted ids with long digit runs, so about 1 in 850 listings could not be enquired about (seen as one unexplained 400 in an existing test); idempotency compared uploads by file name only; a viewing could be moved after a block.
+- **Found:** KI‑094, KI‑095. **Tests:** 2386 passed, 1 skipped, 0 failed. **Not committed.**
+
+### Handoff → session 23 (supersedes the one above)
+1. `git status`: uncommitted work is T‑2051. **Do not commit.**
+2. Next: staging end-to-end script for MVP criterion 1, then KI‑094.
+3. Owner decisions open: T‑2072, KI‑085, KI‑089; email provider and WhatsApp template (go-live).
