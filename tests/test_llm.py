@@ -146,9 +146,9 @@ class RouterTest(TestCase):
 class PromptRegistryTest(TestCase):
     # Bump the prompt's version when you change its text, then update the digest here.
     PINNED = {
-        'property.score': 2, 'fraud.check': 2, 'search.verdicts': 2, 'document.ocr': 2,
-        'lead.summary': 1, 'lead.suggest_replies': 1, 'campaign.reengage.system': 1,
-        'campaign.reengage.user': 1, 'agent.system': 8, 'agent.image': 1,
+        'property.score': 3, 'fraud.check': 3, 'search.verdicts': 3, 'document.ocr': 3,
+        'lead.summary': 2, 'lead.suggest_replies': 2, 'campaign.reengage.system': 1,
+        'campaign.reengage.user': 2, 'agent.system': 9, 'agent.image': 2,
         'faq.answer': 1,
     }
 

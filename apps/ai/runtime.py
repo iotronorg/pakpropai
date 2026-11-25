@@ -33,6 +33,7 @@ from django.conf import settings
 
 from . import grounding as G
 from . import tool_registry as R
+from .untrusted import for_model
 
 logger = logging.getLogger(__name__)
 
@@ -155,7 +156,8 @@ def run_turn(backend, message: str, history: list, specs: list, system: str, *,
                                          for r in result['properties'] if r.get('id') and 'match_score' in r})
             turn.tool_calls.append(record)
             logger.info('ai.tool %s', json.dumps(record, default=str)[:500])
-            messages.append({'role': 'tool', 'id': call.id, 'name': call.name, 'result': result})
+            messages.append({'role': 'tool', 'id': call.id, 'name': call.name,
+                             'result': for_model(result)})       # T-2071: third-party text neutralised
         if terminal:
             turn.terminal_tool, turn.text = terminal
             return turn

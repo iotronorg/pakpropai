@@ -404,3 +404,13 @@
 1. `git status`: uncommitted work is T‑2070. **Do not commit.**
 2. Next: **T‑2071** (starting files in DEVELOPMENT_STATUS), then T‑2051.
 3. Owner decisions open: T‑2072 (reviewers, API key and budget for live evals), KI‑085, KI‑089; email provider and WhatsApp template (go-live).
+
+## Session 21 — 2026-11-25
+- **Verified:** the owner committed T‑2070 (`ab7af9a`); the tree was clean.
+- **Completed:** T‑2071 (ADR‑044). **Found and fixed:** assistant replies could pass on links, phone or account numbers from a listing's text; listing titles and organization names entered the system prompt raw; geo search ignored PostGIS for up to 5 minutes after a host boot (cache age measured from 0).
+- **Found:** KI‑093. **Tests:** 2364 passed, 1 skipped, 0 failed. **Not committed.**
+
+### Handoff → session 22 (supersedes the one above)
+1. `git status`: uncommitted work is T‑2071. **Do not commit.**
+2. Next: **T‑2051** (starting files in DEVELOPMENT_STATUS).
+3. Owner decisions open: T‑2072, KI‑085, KI‑089; email provider and WhatsApp template (go-live).

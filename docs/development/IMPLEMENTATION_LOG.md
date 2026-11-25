@@ -553,3 +553,8 @@
 - **Added:** `AIKillSwitch` (`ai 0008`), `apps/ai/kill_switch.py`, `kill_switch_views.py`, `lang.py`, `apps/ai/evals/` (offline and live suites, data), commands `ai_kill_switch` and `run_ai_evals`, `.github/workflows/ai-evals-live.yml`, two test files.
 - **Changed:** `service.py`, `llm.py`, `confirmation.py`, `agent.py`, WhatsApp router and speech-to-text check the switch; `GuardrailEngine.inspect` (pure) split out of `check_input`; CI runs the eval gate.
 - **Fixed:** Urdu and Roman Urdu gaps in `guardrails.py`, `criteria.py` and `grounding.py` (see SESSION_HISTORY).
+
+### 2026-11-25 — session 21: T‑2071 indirect prompt injection
+- **Added:** `apps/ai/untrusted.py`, `apps/ai/evals/data/indirect.jsonl` and its suite, `tests/test_indirect_injection.py`.
+- **Changed:** `runtime.py` (model's copy of tool results), `llm.render`, `context.py`, `grounding.py` (contact rule), `moderation/checks.py` (flag `assistant_instructions`); prompts `agent.system` 9, `agent.image` 2, `property.score` 3, `fraud.check` 3, `search.verdicts` 3, `document.ocr` 3, `lead.summary` 2, `lead.suggest_replies` 2, `campaign.reengage.user` 2.
+- **Fixed:** `apps/geo/search.py` readiness cache right after boot.

@@ -50,6 +50,9 @@ def run(p: Property) -> list[str]:
         out.append('prohibited_content')
     if _LINK.search(text):
         out.append('external_link')
+    from apps.ai.untrusted import suspicious
+    if suspicious(text):                     # orders to the assistant (T-2071)
+        out.append('assistant_instructions')
     if _price_outlier(p):
         out.append('price_outlier')
     if _duplicate(p):

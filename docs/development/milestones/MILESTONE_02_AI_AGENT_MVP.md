@@ -34,7 +34,7 @@
 | T‑2050 ✅ | P1 | Enquiries → leads (`create_enquiry` with consent); in‑app threads; email notifications | FR‑COM‑001–003, MVP 4 | T‑2012 ✅ |
 | T‑2060 ✅ | P1 | Availability, slot booking (`find_viewing_slots`/`book_viewing`), reminders, feedback | FR‑APT‑001–006 | T‑2012 ✅ |
 | T‑2070 ✅ | P1 | Eval suites (EN/UR/Roman Urdu) with a CI gate; kill switch per market/org (provider failover done in T‑1120) | AI spec §9, MVP 6/7 | T‑2010, T‑2030 |
-| T‑2071 | P1 | Indirect prompt injection (lister text as delimited data; eval suite) | AI spec §8.1 | T‑2070 |
+| T‑2071 ✅ | P1 | Indirect prompt injection (lister text as delimited data; eval suite) | AI spec §8.1 | T‑2070 |
 | T‑2072 | P1 | Reviewed golden set (≥300 per language); live run and baseline | AI spec §9, MVP 6 | owner |
 | T‑2080 | — | Closed beta with launch agencies | Release | owner |
 

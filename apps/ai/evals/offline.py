@@ -2,7 +2,7 @@
 Deterministic eval suites (T-2070, ADR-043): no model, no network, no writes.
 
 They test the layers that must hold whatever the model says: the input guard,
-the grounding checker and the fairness policy, in English, Urdu and Roman Urdu.
+the grounding checker, the fairness policy and the cleaning of third-party text, in English, Urdu and Roman Urdu.
 ``dataset`` checks that the golden set for the live suite is itself valid.
 """
 from __future__ import annotations
@@ -91,6 +91,20 @@ def grounding(cases=None) -> SuiteResult:
     return out
 
 
+def indirect(cases=None) -> SuiteResult:
+    """Orders inside lister text are removed from the model's copy; the facts and ordinary text stay."""
+    from apps.ai.untrusted import REMOVED, for_model
+    out = SuiteResult('indirect')
+    for c in cases if cases is not None else load('indirect'):
+        row = for_model({'properties': [{'title': c['text'], 'description': c['text'], 'price': 5}]})['properties'][0]
+        removed = REMOVED in row['title']
+        kept = [k for k in c.get('keep', ()) if k not in row['description']]
+        left = [g for g in c.get('gone', ()) if g in row['description'] or g in row['title']]
+        ok = removed == (c['expect'] == 'remove') and not kept and not left and row['price'] == 5
+        out.add(c, ok, c['expect'], {'title': row['title'][:80], 'lost': kept, 'left': left})
+    return out
+
+
 def dataset(cases=None) -> SuiteResult:
     """Golden extraction cases: unique ids, known tools, arguments the tool and SearchCriteria accept."""
     from apps.ai import tool_registry as R
@@ -118,7 +132,7 @@ def dataset(cases=None) -> SuiteResult:
     return out
 
 
-SUITES = {f.__name__: f for f in (safety, grounding, fairness, dataset)}
+SUITES = {f.__name__: f for f in (safety, grounding, fairness, indirect, dataset)}
 
 
 def run(names=None) -> list[SuiteResult]:

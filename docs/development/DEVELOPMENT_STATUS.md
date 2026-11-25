@@ -1,17 +1,17 @@
 # Development Status
 
-_Last updated: 2026-11-25 (session 20; git commit subjects number sessions differently, the last one, `a33c7fa` "session 39", is session 19 here)_
+_Last updated: 2026-11-25 (session 21; git commit subjects number sessions differently: `ab7af9a` "session 40" is session 20 here)_
 
 | Item | Value |
 |---|---|
-| Branch | `development`. The owner committed through T‑2016 (`a33c7fa`). **Uncommitted:** T‑2070 |
+| Branch | `development`. The owner committed through T‑2070 (`ab7af9a`). **Uncommitted:** T‑2071 |
 | Current milestone | **M2 — AI agent MVP** ([MILESTONE_02](milestones/MILESTONE_02_AI_AGENT_MVP.md)), started 2026‑11‑23. M1 code complete (contracts T‑1070g‑2 / T‑1032b‑2 release‑gated); M0 awaiting the first GitHub Actions run |
 | M0 progress | All 17 tasks complete. Remaining exit criterion: CI green on GitHub Actions (owner pushes) |
 | M1 progress | 16 of 18 tasks done (T‑1010, T‑1011, T‑1020, T‑1021, T‑1022, T‑1030, T‑1031, T‑1033, T‑1040, T‑1050, T‑1060, T‑1080, T‑1090, T‑1100, T‑1110, T‑1120) plus subtasks T‑1032a, T‑1032c, T‑1070a–f and T‑1070g‑1 |
-| M2 progress | 14 of 17 tasks done (T‑2070 added to the earlier 13). Open: T‑2051, T‑2071 (new), T‑2072 (new, owner data and paid runs) |
-| Test suite | **2355 passed, 1 skipped, 0 failed** (session 20, T‑2070); eval gate 245/245. KI‑088 (intermittent) did not recur. See [TESTING_STATUS](TESTING_STATUS.md) |
-| Last completed task | T‑2070 AI kill switch, eval suites and CI gate (ADR‑043) |
-| Next task | **T‑2071** indirect prompt injection: listing, document and lister text reaches the model as plain tool output (AI spec §8.1, KI‑090). Start in `apps/ai/runtime.py` (`_execute` result → tool message), `apps/ai/_tools_listings.py` (`get_listing`, ~line 334), `apps/ai/guardrails.py` (`inspect`), and add an `indirect` suite to `apps/ai/evals/offline.py`. Then T‑2051 (`apps/enquiries`). Waiting on the owner: T‑2072. Open: KI‑055…KI‑059, KI‑068, KI‑069, KI‑071…KI‑073, KI‑075…KI‑092 |
+| M2 progress | 15 of 17 tasks done (T‑2071 added). Open: T‑2051, T‑2072 (owner data and paid runs) |
+| Test suite | **2364 passed, 1 skipped, 0 failed** (session 21, T‑2071); eval gate 284/284. See [TESTING_STATUS](TESTING_STATUS.md) |
+| Last completed task | T‑2071 indirect prompt injection (ADR‑044) |
+| Next task | **T‑2051** thread attachments and report/block (KI‑072; FR-COM-001/007). Start in `apps/enquiries` (`models.py`, `services.py`, `views.py`), reuse the T‑1110 image sanitiser and the report model of `apps/moderation`; tests in `tests/test_enquiries.py`. Waiting on the owner: T‑2072. Then M2 closing work: staging end-to-end script for MVP criterion 1. Open: KI‑055…KI‑059, KI‑068, KI‑069, KI‑071…KI‑073, KI‑075…KI‑089, KI‑091…KI‑093 |
 
 ## Owner decisions (2026-11-23)
 - **T‑1032b:** staged like T‑1070g (b‑1 now, drops in a later release behind the reconcile gate); `Agent.organization` kept as a derived primary‑org pointer.
@@ -33,6 +33,7 @@ _Last updated: 2026-11-25 (session 20; git commit subjects number sessions diffe
 - Meta: re‑submit the OTP template body with the RealTron name.
 
 ## Operator actions before deploying these changes
+- **Session 21** (checklist §45): no migration. Prompt versions changed; review organization listings flagged `assistant_instructions`.
 - **Session 20** (checklist §44): migration `ai 0008` (additive). Name who may stop the assistant.
 
 See **[GO_LIVE_CHECKLIST](GO_LIVE_CHECKLIST.md)**: DB backup, `FIELD_ENCRYPTION_KEYS`, config‑row check. Summary:

@@ -60,10 +60,11 @@ class DynamicContextBuilder:
         if org is None:
             return ''
         try:
-            lines = [f'═══ ACTIVE ORGANISATION: {org.name} ({org.get_org_type_display()}) ═══']
+            from .untrusted import line
+            lines = [f'═══ ACTIVE ORGANISATION: {line(org.name)} ({org.get_org_type_display()}) ═══']
 
             if org.city:
-                lines.append(f'HQ City: {org.city}')
+                lines.append(f'HQ City: {line(org.city)}')
             if org.country and org.country != 'PK':
                 lines.append(f'Country: {org.country}')
             if org.plan:
@@ -116,7 +117,7 @@ class DynamicContextBuilder:
                     # Names only: facts must come from a tool result (T-2013).
                     lines.append('Inventory sample (call search_listings for any details):')
                     for p in sample:
-                        lines.append(f"  • {p['title']} — {p['location']}, {p['city']}")
+                        lines.append(f"  • {line(p['title'])} — {line(p['location'])}, {line(p['city'])}")
             except Exception:
                 pass
 
@@ -146,6 +147,7 @@ class DynamicContextBuilder:
             if not lead:
                 return ''
 
+            from .untrusted import line
             lines = ['═══ ACTIVE LEAD CONTEXT ═══']
 
             _intent_labels = {
@@ -157,7 +159,7 @@ class DynamicContextBuilder:
                 lines.append(f'Intent: {_intent_labels.get(lead.intent, lead.intent)}')
 
             if lead.city_interest:
-                lines.append(f'City interest: {lead.city_interest}')
+                lines.append(f'City interest: {line(lead.city_interest)}')
 
             if lead.budget_max:
                 from apps.markets.services import default_currency
@@ -176,7 +178,7 @@ class DynamicContextBuilder:
             # Language from intent_signals (set by WhatsApp router on first interaction)
             signals = lead.intent_signals or {}
             if signals.get('language'):
-                lines.append(f'Preferred language: {signals["language"]}')
+                lines.append(f'Preferred language: {line(signals["language"])}')
 
             if lead.status:
                 lines.append(f'CRM status: {lead.status}')

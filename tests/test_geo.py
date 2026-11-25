@@ -126,6 +126,21 @@ class RadiusSearchTest(TestCase):
             geo.reset_ready_cache()
 
     @override_settings(GEO_POSTGIS_ENABLED=True)
+    def test_ready_is_checked_right_after_boot(self):
+        """monotonic() counts from boot: a reset cache must not look fresh on a new host."""
+        from unittest.mock import patch
+        with connection.cursor() as cur:
+            cur.execute("SET CONSTRAINTS ALL IMMEDIATE")
+        call_command('geo_setup', stdout=StringIO())
+        try:
+            from apps.geo.search import _ready_cache
+            _ready_cache['value'] = False
+            with patch('apps.geo.search.time.monotonic', return_value=12.0):
+                self.assertTrue(geo.postgis_ready())
+        finally:
+            geo.reset_ready_cache()
+
+    @override_settings(GEO_POSTGIS_ENABLED=True)
     def test_flag_on_without_extension_falls_back(self):
         geo.reset_ready_cache()
         with connection.cursor() as cur:

@@ -166,7 +166,8 @@ def _log(result: LLMResult, *, interaction_type: str, user=None, input_preview: 
 def render(prompt_name: str, values: dict | None = None, *, country: str | None = None) -> P.Rendered:
     """Render with market variables (market_name, currency, …) filled in unless given."""
     prompt = P.get(prompt_name)
-    merged = {**P.market_vars(country), **(values or {})}
+    from .untrusted import prompt_values
+    merged = {**P.market_vars(country), **prompt_values(values or {})}
     return prompt.render(**{k: merged[k] for k in prompt.variables if k in merged})
 
 

@@ -29,7 +29,7 @@ from .sql import GEOG_EXPR
 EARTH_RADIUS_KM = 6371.0088
 KM_PER_DEG_LAT = 111.32
 
-_ready_cache: dict = {'at': 0.0, 'value': False}
+_ready_cache: dict = {'at': float('-inf'), 'value': False}   # not 0.0: monotonic() may start near 0
 _READY_TTL = 300.0
 
 
@@ -47,7 +47,7 @@ def postgis_ready() -> bool:
 
 
 def reset_ready_cache():
-    _ready_cache['at'] = 0.0
+    _ready_cache['at'] = float('-inf')
 
 
 def validate_point(lat, lng) -> tuple[float, float]:

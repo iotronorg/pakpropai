@@ -137,6 +137,8 @@ class Evidence:
         self.rows: list[dict] = []
         self.numbers: set[Decimal] = set()
         self._listings: list[Listing] | None = None
+        # Contact details may be repeated from here, never from a listing's text (T-2071).
+        self.contact_text = '\n'.join([message or '', system or '', *(h.get('text') or '' for h in history or ())])
 
     def add(self, result) -> None:
         rows = _rows(result)
@@ -144,9 +146,11 @@ class Evidence:
             self.rows += [{k: r.get(k) for k in _KEEP} for r in rows]
             for r in rows:                     # recorded amounts other than the price
                 self._collect_numbers([r.get('deposit'), r.get('service_charge')])
+                self.contact_text += f"\n{r.get('url') or ''}"
             self._listings = None
         else:
             self._collect_numbers(result)
+            self.contact_text += f'\n{result}'
 
     def _collect_numbers(self, value) -> None:
         if isinstance(value, dict):
@@ -302,8 +306,30 @@ def _amenity_terms() -> dict[str, list[str]]:
     return terms
 
 
+_CONTACT_RE = re.compile(
+    r'(?P<email>[\w.+-]+@[\w-]+(?:\.[\w-]+)+)'
+    r'|(?P<link>(?:https?://|www\.)[^\s<>)\]]+|\b(?:bit\.ly|t\.me|wa\.me)/\S+)'
+    r'|(?P<iban>\b[A-Z]{2}\d{2}\s?(?:[A-Z]{4}\s?)(?:\d\s?){10,22})'
+    r'|(?P<phone>(?<![\w.,-])(?:\+|00)\d[\d\s().-]{7,18}\d|(?<![\w.,-])0\d{2,4}[\s-]?\d{3}[\s-]?\d{3,5}(?![\w]))', re.I)
+
+
+def contacts(text: str) -> set[str]:
+    """Links, emails, phone and account numbers, in a comparable form."""
+    out = set()
+    text = (text or '').translate(str.maketrans('۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩', '01234567890123456789'))
+    for m in _CONTACT_RE.finditer(text):
+        if m['phone']:
+            out.add('tel:' + re.sub(r'\D', '', m['phone'])[-9:])
+        else:
+            out.add(re.sub(r'^https?://(?:www\.)?|^www\.', '', re.sub(r'\s', '', m[0]).lower()).rstrip('.,;:!?*_/'))
+    return out
+
+
 def check(reply: str, evidence: Evidence) -> Verdict:
     verdict = Verdict()
+    if contacts(reply) - contacts(evidence.contact_text):
+        verdict.violations.append('contact: do not give links, phone numbers, emails or account numbers; '
+                                  'offer to send an enquiry or connect the user with an agent')
     listings = evidence.listings()
     other = evidence.numbers | {a for a, _ in money(evidence.system)}
     user_money = {a for a, _ in money(evidence.user_text)}

@@ -920,3 +920,10 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
 - **Baseline** carries a fingerprint (prompt, knowledge, tools, cases); CI warns when it no longer matches. A run with provider errors is never accepted.
 - **Why not `apps/ml/eval_harness.py`:** it grades with the assistant as its own judge, and falls back to 5.0 when the judge fails, so it cannot be a gate. Left unchanged.
 - **Data:** the sets are seeds written by the developer, not native reviewers (T‑2072).
+
+### ADR‑044 — Third-party text is data (T‑2071, 2026-11-25)
+- **Where:** the runtime gives the model a cleaned copy of every tool result; `llm.render` cleans the prompt variables that carry people's text; names placed in the system prompt become one cleaned line. Evidence, cards, storage and audit keep the original. Only top-level `instruction`, `message` and `error` of a tool are ours and left alone.
+- **How:** sentences with known attack wording, wording addressed to an assistant, or our tool names become `[removed]`; if an order is spread over sentences the whole text goes. `<` and `>` are replaced; descriptions are wrapped in `<lister_text>`; transcripts, inputs and listings sit between tags in their prompts. The trace records `indirect_injection`.
+- **Output rule:** the assistant repeats a link, email, phone or account number only if the user, the conversation, the system prompt, a non-listing tool or a result's own `url` gave it. Otherwise the reply is regenerated or replaced (grounding code `contact`). An organization's phone inside its listing text is therefore not read out by the assistant; enquiries and agent hand-off are the way.
+- **Moderation:** such a listing gets the flag `assistant_instructions` and waits for a person.
+- **Limit:** patterns are not a boundary. Confirmation records, tool policy and grounding are (KI‑093).

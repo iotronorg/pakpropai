@@ -376,3 +376,8 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - **Before release:** grow and review the golden set, create the GitHub environment `ai-evals` with `EVAL_GEMINI_API_KEY`, run the "AI evals (live model)" workflow, review and commit `apps/ai/evals/baseline.json`, archive the reports.
 - **Review:** have Urdu speakers check the paused notices (`apps/ai/kill_switch.py`) and the seed cases.
 - **Frontend:** confirming an action returns 409 "This action is paused." during a stop.
+
+## 45. Session-21 change: third-party text (T‑2071, ADR‑044)
+- No migration. Nine prompts have new versions; run the live evals (T‑2072) before release.
+- **Behaviour:** the assistant no longer reads out phone numbers or links found in a listing's text, including an organization's own. Listings that address the assistant wait for moderation.
+- Watch traces for guard reason `indirect_injection` and grounding code `contact` during the beta.
