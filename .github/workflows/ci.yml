@@ -134,9 +134,14 @@ jobs:
 
       - name: Prometheus SLO rules and alert unit tests (ADR-050)
         run: |
-          docker run --rm -v "$PWD/ops:/ops" -w /ops --entrypoint promtool prom/prometheus:v3.16.0 check config prometheus.yml
+          docker run --rm -v "$PWD/ops:/etc/prometheus" -v "$PWD/ops/targets:/etc/prometheus/targets" -v "$PWD/ops/dev-secrets:/etc/prometheus/secrets" --entrypoint promtool prom/prometheus:v3.16.0 check config /etc/prometheus/prometheus.yml
           docker run --rm -v "$PWD/ops:/ops" -w /ops --entrypoint promtool prom/prometheus:v3.16.0 test rules tests/slo-rules.test.yaml
-          docker run --rm -v "$PWD/ops:/ops" --entrypoint amtool prom/alertmanager:v0.28.1 check-config /ops/alertmanager.yml
+          docker run --rm -v "$PWD/ops:/ops" --entrypoint amtool prom/alertmanager:v0.28.1 check-config /ops/alertmanager/alertmanager.yml
+          echo ci-placeholder > /tmp/smtp_password
+          docker run --rm -v "$PWD/ops/alertmanager:/etc/alertmanager:ro" -v /tmp/smtp_password:/run/secrets/smtp_password:ro \
+            -e ALERT_SMTP_PASSWORD_FILE=/run/secrets/smtp_password -e ALERTMANAGER_RENDER_ONLY=1 -e ALERT_EMAIL_TO=oncall@example.com -e ALERT_EMAIL_FROM=alerts@example.com \
+            -e ALERT_SMTP_HOST=smtp.example.com:587 -e ALERT_SMTP_USER=alerts@example.com \
+            --entrypoint /bin/sh prom/alertmanager:v0.28.1 /etc/alertmanager/start.sh > /dev/null
 
       - name: AI eval gate (T-2070, deterministic suites, no model call)
         run: |

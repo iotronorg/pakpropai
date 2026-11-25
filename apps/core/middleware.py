@@ -255,6 +255,9 @@ class TenantDomainMiddleware:
 
     _CACHE_TTL    = 300   # seconds
     _SENTINEL     = '__none__'
+    # Operational endpoints are reached by internal names (``web:8000``) from Prometheus
+    # and load-balancer health checks; they belong to no tenant (ADR-050).
+    _OPERATIONAL_PATHS = ('/metrics/', '/health/')
 
     def __init__(self, get_response):
         self.get_response = get_response
@@ -271,6 +274,8 @@ class TenantDomainMiddleware:
         Returns a 404 JsonResponse only for unrecognized custom domains.
         """
         request.tenant_org = None
+        if request.path in self._OPERATIONAL_PATHS:
+            return None
 
         from django.conf import settings
         host = request.get_host().split(':')[0].lower()

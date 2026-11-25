@@ -184,17 +184,28 @@ def _scraper_allowed(remote_ip: str, allowed) -> bool:
     return False
 
 
+def _scraper_token_ok(request) -> bool:
+    """``Authorization: Bearer <PROMETHEUS_METRICS_TOKEN>`` (a monitoring stack on another host)."""
+    import hmac
+    token = getattr(settings, 'PROMETHEUS_METRICS_TOKEN', '') or ''
+    if len(token) < 16:                       # unset or too short to be a secret: tokens are off
+        return False
+    scheme, _, given = request.META.get('HTTP_AUTHORIZATION', '').partition(' ')
+    return scheme.lower() == 'bearer' and hmac.compare_digest(given.strip().encode(), token.encode())
+
+
 def metrics_view(request):
     """
     GET /metrics/
     Prometheus metrics endpoint — restricted to internal IPs only.
-    Set PROMETHEUS_ALLOWED_IPS in env (addresses or CIDR ranges) to control scraper access.
+    Set PROMETHEUS_ALLOWED_IPS in env (addresses or CIDR ranges) to control scraper access,
+    and/or PROMETHEUS_METRICS_TOKEN (≥ 16 characters) for a bearer token.
     Set PROMETHEUS_ALLOWED_IPS=0.0.0.0 to allow any IP (dev/Docker only).
     With PROMETHEUS_MULTIPROC_DIR set, the samples of every web process are added up;
     the outbox backlog is read from the database (ADR-050).
     """
     allowed = getattr(settings, 'PROMETHEUS_ALLOWED_IPS', ['127.0.0.1', '::1'])
-    if not _scraper_allowed(request.META.get('REMOTE_ADDR', ''), allowed):
+    if not (_scraper_allowed(request.META.get('REMOTE_ADDR', ''), allowed) or _scraper_token_ok(request)):
         return HttpResponseForbidden('Forbidden')
 
     from prometheus_client import generate_latest, CONTENT_TYPE_LATEST

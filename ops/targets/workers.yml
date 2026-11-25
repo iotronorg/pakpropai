@@ -1,0 +1,2 @@
+# Celery worker metrics (WORKER_METRICS_PORT). Keep this port on a private network.
+- targets: ["worker:9808"]

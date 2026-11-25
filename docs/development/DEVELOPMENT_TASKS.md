@@ -107,5 +107,6 @@ Priority: P0 (blocker) → P3.
 | ID | Status | P | Task | Notes |
 |---|---|---|---|---|
 | MVP‑4 | [x] | P1 | Enquiry notification delivery measured against one minute | Session 27, ADR‑050. `Notification.event`, `realtron_notification_delivery_seconds`, backlog alert, `manage.py notification_delivery_report`. Production numbers need the release running |
-| MVP‑14 | [x] | P1 | SLO dashboards and alerts for API, search, AI reply, webhooks | Session 27, ADR‑050. Built and tested (promtool in CI). **Live** waits for KI‑108 (receiver) and KI‑109 (production Prometheus) |
+| MVP‑14 | [x] | P1 | SLO dashboards and alerts for API, search, AI reply, webhooks | Session 27, ADR‑050; session 28, ADR‑051: self-hosted stack with email alerts, verified end to end. **Live** once deployed (checklist §52) |
+| OD‑1125 | [x] | P1 | Owner decisions 2026‑11‑25: email alerts, self-hosted monitoring, export for everyone, Cloudinary files erased | Session 28, ADR‑051. `tests/test_owner_decisions_s28.py`. Open: KI‑112 |
 | MVP‑15 | [ ] | P1 | Runbooks: LLM outage, WhatsApp token expiry, data incidents, harmful AI output | Next |

@@ -1,0 +1,6 @@
+# Production web instances (docker/docker-compose.prod.yml service names when the monitoring
+# stack runs on the same Docker network; otherwise private host:port addresses).
+- targets: ["web:8000"]
+# Remote over HTTPS:
+# - targets: ["api.example.com"]
+#   labels: {__scheme__: https}

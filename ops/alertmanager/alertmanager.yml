@@ -1,0 +1,12 @@
+# Alertmanager for local development (ADR-050): alerts are only shown in the UI.
+# The monitoring stack (docker/docker-compose.monitoring.yml) uses
+# alertmanager.email.yml.tmpl instead, rendered by start.sh from ALERT_* variables.
+route:
+  receiver: default
+  group_by: [alertname, slo, channel, kind]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  - name: default

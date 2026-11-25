@@ -1,0 +1,2 @@
+# Production workers: every worker container on port 9808 (private network only).
+- targets: ["worker:9808", "worker-hr:9808"]

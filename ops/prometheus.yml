@@ -1,3 +1,6 @@
+# Prometheus scrape configuration (ADR-050). Used by docker-compose.yml (dev) and by
+# docker/docker-compose.monitoring.yml (self-hosted monitoring stack). Targets are
+# files in /etc/prometheus/targets, so moving the app means editing a file, not this one.
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
@@ -5,24 +8,27 @@ global:
 rule_files:
   - "prometheus-alerts.yaml"
 
-# Alerts go to Alertmanager; ops/alertmanager.yml decides who hears about them.
 alerting:
   alertmanagers:
     - static_configs:
         - targets: ["alertmanager:9093"]
 
 scrape_configs:
+  # Web/API: /metrics/ with a bearer token (PROMETHEUS_METRICS_TOKEN on the app side).
+  # Over the internet use HTTPS: add `labels: {__scheme__: https}` to the target in api.yml.
   - job_name: realtron_api
-    static_configs:
-      # Docker Compose: "web" is the Django service name
-      # Standalone (outside Docker): change to "localhost:8000"
-      - targets: ["web:8000"]
     metrics_path: /metrics/
-    # In production: restrict scraper IP and use basic_auth or bearer_token_file
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/secrets/metrics_token
+    file_sd_configs:
+      - files: ["/etc/prometheus/targets/api*.yml"]
+        refresh_interval: 1m
 
   # Celery workers (ADR-050): AI replies to WhatsApp, webhook processing and outbox
   # deliveries are measured here. Each worker container serves WORKER_METRICS_PORT.
   - job_name: realtron_worker
-    static_configs:
-      - targets: ["worker:9808"]
     metrics_path: /
+    file_sd_configs:
+      - files: ["/etc/prometheus/targets/workers*.yml"]
+        refresh_interval: 1m

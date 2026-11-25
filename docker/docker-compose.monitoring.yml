@@ -1,0 +1,72 @@
+# Self-hosted monitoring stack (ADR-050; owner decision 2026-11-25, KI-109):
+# Prometheus + Alertmanager (email) + Grafana, deployable on any Docker host.
+#
+#   Same host as the app (shares the app's Docker network, so service names resolve):
+#     docker compose --env-file .env.monitoring -f docker/docker-compose.prod.yml -f docker/docker-compose.monitoring.yml up -d
+#   Separate host: list private host:port addresses in ops/targets.prod/*.yml and run
+#     docker compose --env-file .env.monitoring -f docker/docker-compose.monitoring.yml up -d
+#
+# Settings come from ../.env.monitoring (see docs/development/GO_LIVE_CHECKLIST.md §52):
+#   ALERT_EMAIL_TO, ALERT_EMAIL_FROM, ALERT_SMTP_HOST, ALERT_SMTP_USER, [ALERT_SMTP_REQUIRE_TLS],
+#   GRAFANA_ADMIN_PASSWORD, [GRAFANA_ROOT_URL], [MONITORING_BIND] (default 127.0.0.1).
+# Secrets are files in ../ops/secrets/ (not in git): metrics_token (same value as the
+# app's PROMETHEUS_METRICS_TOKEN) and smtp_password.
+# Prometheus and Alertmanager have no login: they listen on MONITORING_BIND only.
+# Grafana is the one page to publish (behind HTTPS).
+
+services:
+  prometheus:
+    image: prom/prometheus:v3.16.0
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=35d"     # the SLO dashboard looks back 30 days
+      - "--web.enable-lifecycle"
+    volumes:
+      - ../ops/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../ops/prometheus-alerts.yaml:/etc/prometheus/prometheus-alerts.yaml:ro
+      - ${MONITORING_TARGETS_DIR:-../ops/targets.prod}:/etc/prometheus/targets:ro
+      - ../ops/secrets/metrics_token:/etc/prometheus/secrets/metrics_token:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "${MONITORING_BIND:-127.0.0.1}:9090:9090"
+    depends_on:
+      - alertmanager
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/etc/alertmanager/start.sh"]
+    env_file: ../.env.monitoring
+    volumes:
+      - ../ops/alertmanager/start.sh:/etc/alertmanager/start.sh:ro
+      - ../ops/alertmanager/alertmanager.email.yml.tmpl:/etc/alertmanager/alertmanager.email.yml.tmpl:ro
+      - ../ops/secrets/smtp_password:/etc/alertmanager/secrets/smtp_password:ro
+      - alertmanager_data:/alertmanager
+    ports:
+      - "${MONITORING_BIND:-127.0.0.1}:9093:9093"
+
+  grafana:
+    image: grafana/grafana:12.3.0
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env.monitoring}
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SECURITY_COOKIE_SECURE: "${GRAFANA_COOKIE_SECURE:-false}"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    volumes:
+      - ../ops/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../ops/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "${GRAFANA_BIND:-0.0.0.0}:3000:3000"
+    depends_on:
+      - prometheus
+
+volumes:
+  prometheus_data:
+  alertmanager_data:
+  grafana_data:

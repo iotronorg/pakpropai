@@ -46,3 +46,6 @@ ruvector.db
 agentdb.rvf*
 .claude-flow/
 /openapi.yaml
+!.env.monitoring.example
+# Monitoring stack secrets (ADR-050)
+ops/secrets/

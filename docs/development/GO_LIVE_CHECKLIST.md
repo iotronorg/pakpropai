@@ -419,3 +419,10 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - **Choose where alerts go** (KI‑108): `ops/alertmanager.yml` has no receiver yet, so alerts are only visible in Alertmanager and Grafana.
 - Import `ops/grafana/dashboards/realtron-slo.json` and `realtron-overview.json`, or mount `ops/grafana/provisioning` as `docker-compose.yml` does. The dashboards use the data-source uid `prometheus`.
 - Weekly, or before a release: `python manage.py notification_delivery_report --hours 168 --fail-under-objective` (MVP criterion 4; outbox rows are kept 7 days).
+
+## 52. Session-28 change: monitoring stack, email alerts, export, file deletion (ADR‑051)
+- **Monitoring stack:** copy `.env.monitoring.example` to `.env.monitoring` and fill it; create `ops/secrets/metrics_token` (a random value of at least 16 characters, the same as the app's `PROMETHEUS_METRICS_TOKEN`) and `ops/secrets/smtp_password`. Same host as the app: `docker compose --env-file .env.monitoring -f docker/docker-compose.prod.yml -f docker/docker-compose.monitoring.yml up -d`. Another host: list private `host:port` targets in `ops/targets.prod/*.yml` (add `labels: {__scheme__: https}` for HTTPS) and run the monitoring file alone. Publish Grafana only, behind HTTPS (`GRAFANA_COOKIE_SECURE=true`).
+- **Worker port 9808 has no login:** reachable from the monitoring host only (same Docker network, VPN or firewall rule).
+- **Check:** in Prometheus, *Status → Targets* shows `realtron_api` and `realtron_worker` up; send a test alert (`docker compose … exec alertmanager amtool alert add Test severity=critical --alertmanager.url=http://localhost:9093`) and confirm the email arrives.
+- **Export:** consumers in every market can now request their data (`POST /api/v1/compliance/export/`); the frontend can show the button to everyone.
+- **Erasure** now deletes Cloudinary files; the Cloudinary credentials must be set wherever the erasure worker runs, or erasures of people with files stay failed (and are reported overdue).

@@ -91,6 +91,8 @@ class RTBFOrchestrator:
             except Exception as exc:
                 logger.exception('RTBF: step %s failed user=%s', name, user.pk)
                 errors[name] = type(exc).__name__       # messages can quote the data itself
+                if name in _STOP_ON_FAILURE:            # later steps delete what the retry needs
+                    break
         if errors:
             request.status, request.erasure_scope = DataDeletionRequest.Status.FAILED, {**scope, 'errors': errors}
             request.save(update_fields=['status', 'erasure_scope'])
@@ -145,6 +147,32 @@ def only_customer_of(user, org) -> bool:
 
 
 # ── Steps ─────────────────────────────────────────────────────────────────────
+
+def _cloud_files(user):
+    """
+    Report and audit PDFs and WhatsApp media at Cloudinary (KI-105). First, while the
+    messages and the audit links still exist; a failed delete fails the step.
+    """
+    from apps.audit.models import PropertyAudit
+    from apps.reports.models import Report
+    from apps.whatsapp.models import WhatsAppMessage, WhatsAppSession
+
+    from .cloud_files import delete_all
+    reports = Report.objects.filter(user=user).exclude(file_url='')
+    audits = PropertyAudit.objects.filter(Q(user=user) | Q(phone__in=_phones(user)))
+    sessions = WhatsAppSession.objects.filter(Q(user=user) | Q(user__isnull=True, phone__in=_phones(user)))
+    media = WhatsAppMessage.objects.filter(session__in=sessions).exclude(media_url='')
+    n = delete_all([*reports.values_list('file_url', flat=True),
+                    *audits.exclude(cloudinary_url='').values_list('cloudinary_url', flat=True),
+                    *media.values_list('media_url', flat=True)])
+    for audit in audits.exclude(pdf_file='').exclude(pdf_file__isnull=True):
+        f = audit.pdf_file
+        transaction.on_commit(lambda f=f: f.storage.delete(f.name), robust=True)
+    audits.update(cloudinary_url='', pdf_file=None)
+    reports.update(file_url='')
+    media.update(media_url='')
+    return n
+
 
 def _leads(user):
     from apps.leads.models import Lead
@@ -306,8 +334,13 @@ def _phones(user) -> list[str]:
     return [user.phone, user.phone.lstrip('+')]
 
 
+# External files go first and stop the run when they fail: the rows that hold their URLs
+# (reports, WhatsApp messages, audit links) are removed by the later steps.
+_STOP_ON_FAILURE = frozenset({'cloud_files_deleted'})
+
 # Viewings before enquiries, so the agent is told about cancelled visits.
 _STEPS = (
+    ('cloud_files_deleted', _cloud_files),
     ('leads_anonymized', _leads), ('lead_activities_redacted', _lead_activities),
     ('lead_messages_deleted', _lead_messages), ('wa_messages_deleted', _whatsapp),
     ('document_scans_deleted', _documents), ('campaign_recipients_deleted', _campaigns), ('voice_calls_emptied', _voice),

@@ -390,7 +390,7 @@ class WorkerExporterTest(SimpleTestCase):
         with patch('prometheus_client.start_http_server') as start, \
                 patch.dict(os.environ, {'PROMETHEUS_MULTIPROC_DIR': tempfile.gettempdir()}):
             self.assertEqual(start_metrics_server(), 9808)
-        self.assertEqual(start.call_args.args, (9808,))
+        self.assertEqual((start.call_args.args, start.call_args.kwargs['addr']), ((9808,), '0.0.0.0'))
         self.assertIsNot(start.call_args.kwargs['registry'], REGISTRY)
 
     @override_settings(WORKER_METRICS_PORT=9808)

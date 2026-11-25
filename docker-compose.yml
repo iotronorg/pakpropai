@@ -42,6 +42,7 @@ services:
       DJANGO_SETTINGS_MODULE: config.settings.dev
       # Allow Prometheus container to scrape /metrics/ (Docker bridge network)
       PROMETHEUS_ALLOWED_IPS: "0.0.0.0"
+      PROMETHEUS_METRICS_TOKEN: dev-only-metrics-token-not-secret   # ops/dev-secrets/metrics_token
     depends_on:
       db:
         condition: service_healthy
@@ -95,6 +96,8 @@ services:
     volumes:
       - ./ops/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./ops/prometheus-alerts.yaml:/etc/prometheus/prometheus-alerts.yaml:ro
+      - ./ops/targets:/etc/prometheus/targets:ro
+      - ./ops/dev-secrets:/etc/prometheus/secrets:ro
       - prometheus_data:/prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
@@ -109,7 +112,7 @@ services:
     ports:
       - "9093:9093"
     volumes:
-      - ./ops/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./ops/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
 
   grafana:
     image: grafana/grafana:latest

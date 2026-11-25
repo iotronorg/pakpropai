@@ -34,7 +34,8 @@ def start_metrics_server(sender=None, **kwargs):
                     'directory per container')
     from prometheus_client import start_http_server
     try:
-        start_http_server(port, registry=metrics_registry())
+        start_http_server(port, addr=getattr(settings, 'WORKER_METRICS_ADDR', '0.0.0.0'),  # nosec B104
+                          registry=metrics_registry())
     except OSError:
         # Another process on this host already serves the port.
         log.warning('worker metrics: port %s is in use; not serving from this worker', port)

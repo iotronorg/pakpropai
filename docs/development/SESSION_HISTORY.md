@@ -475,3 +475,14 @@
 1. `git status`: uncommitted work is session 27. **Do not commit.**
 2. Next: MVP criterion 15, runbooks (starting files in DEVELOPMENT_STATUS).
 3. Owner: KI‑108 alert receiver, KI‑109 production Prometheus/Grafana, KI‑085, KI‑105, KI‑098, staging E2E run, T‑2072, KI‑089, KI‑095, KI‑096; email provider and WhatsApp template.
+
+## Session 28 — 2026-11-25
+- **Verified:** the owner committed session 27 (`7d95593`).
+- **Asked the owner** the open blockers; answers in DEVELOPMENT_STATUS (2026‑11‑25).
+- **Completed:** ADR‑051: self-hosted monitoring stack with email alerts (checked end to end), bearer token for `/metrics/`, export for everyone, Cloudinary files deleted on erasure. **Found and fixed:** KI‑111. **Recorded:** KI‑112.
+- **Tests:** 2477 passed, 1 skipped, 0 failed. **Not committed.**
+
+### Handoff → session 29 (supersedes the one above)
+1. `git status`: uncommitted work is session 28. **Do not commit.**
+2. Next: MVP criterion 15, runbooks (starting files in DEVELOPMENT_STATUS).
+3. Owner: deploy the monitoring stack (§52), KI‑112, KI‑098, staging E2E run, T‑2072, KI‑089, KI‑095, KI‑096; email provider and WhatsApp template.

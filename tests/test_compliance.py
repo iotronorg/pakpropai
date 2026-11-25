@@ -61,7 +61,8 @@ class ComplianceModuleTest(TestCase):
         # must not run against the real service in tests (CELERY_TASK_ALWAYS_EAGER).
         from unittest.mock import patch
         from apps.compliance.models import DataExportRequest
-        with patch('apps.compliance.tasks.generate_data_export.delay') as delay:
+        with patch('apps.compliance.tasks.generate_data_export.delay') as delay, \
+                self.captureOnCommitCallbacks(execute=True):     # queued after the request commits
             response = self.api_client.get('/api/v1/compliance/export/')
         self.assertIn(response.status_code, [200, 202])
         delay.assert_called_once()

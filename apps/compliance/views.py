@@ -2,6 +2,7 @@ import csv
 import hashlib
 import io
 import logging
+from datetime import timedelta
 
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404
@@ -66,17 +67,37 @@ class ConsentView(APIView):
 
 
 class DataExportView(APIView):
+    """
+    Export one's own data. Open to every signed-in person in every market (KI-085,
+    owner decision 2026-11-25). A request still being prepared is returned instead of
+    starting another, so repeated clicks queue one export.
+    """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(request=None, responses=OpenApiTypes.OBJECT)
+    def post(self, request):
+        return self._request_export(request)
+
+    @extend_schema(request=None, responses=OpenApiTypes.OBJECT, deprecated=True,
+                   description='Kept for older clients; use POST.')
     def get(self, request):
-        _require_gdpr(request)
+        return self._request_export(request)
+
+    def _request_export(self, request):
+        from django.db import transaction
         from .tasks import generate_data_export
-        req = DataExportRequest.objects.create(user=request.user)
-        generate_data_export.delay(str(req.id))
-        return Response(
-            {'id': str(req.id), 'status': req.status},
-            status=status.HTTP_202_ACCEPTED,
-        )
+        S = DataExportRequest.Status
+        with transaction.atomic():
+            type(request.user).objects.select_for_update().filter(pk=request.user.pk).first()
+            open_req = DataExportRequest.objects.filter(
+                user=request.user, status__in=[S.PENDING, S.PROCESSING],
+                requested_at__gt=timezone.now() - timedelta(hours=1)).order_by('-requested_at').first()
+            if open_req is not None:
+                return Response({'id': str(open_req.id), 'status': open_req.status}, status=status.HTTP_200_OK)
+            req = DataExportRequest.objects.create(user=request.user)
+            req_id = str(req.id)
+            transaction.on_commit(lambda: generate_data_export.delay(req_id))
+        return Response({'id': req_id, 'status': req.status}, status=status.HTTP_202_ACCEPTED)
 
 
 class DataExportStatusView(APIView):

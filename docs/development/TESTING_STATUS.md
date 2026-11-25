@@ -168,6 +168,15 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | 2026-11-25 | Working tree, session 27 | Grafana (latest) with `ops/grafana/provisioning` | Both dashboards provisioned (SLO: 35 panels) | — |
 | 2026-11-25 | Working tree, session 27 | `makemigrations --check`; `notifications` 0006 → 0004 → 0006; `spectacular --validate`; Bandit on changed modules | No changes; reverse/forward OK; valid; 0 HIGH | — |
 
+### Session 28
+
+| Date | Code state | Command | Result | Duration |
+|---|---|---|---|---|
+| 2026-11-25 | Working tree, session 28 | `scripts/dev/test.sh` | **2477 passed, 1 skipped, 0 failed**, 229 subtests | 14m17s |
+| 2026-11-25 | Working tree, session 28 | Monitoring stack (`docker-compose.monitoring.yml`) + real web and prefork worker + Mailpit | Both targets up (web reached by bearer token from another container); test alert email received with subject and recipient; Grafana datasource healthy, both dashboards provisioned. Found KI‑111 | — |
+| 2026-11-25 | Working tree, session 28 | `promtool check config` (file targets, token file); `start.sh` render-only with sample values; bad value rejected | Valid; rendered config passes `amtool`; exit 1 on a quote | — |
+| 2026-11-25 | Working tree, session 28 | `makemigrations --check` | No changes | — |
+
 ## Coverage
 Not measured yet (no coverage run executed). CI is configured with `--cov=apps`.
 

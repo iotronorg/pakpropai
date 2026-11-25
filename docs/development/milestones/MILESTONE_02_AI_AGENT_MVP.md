@@ -17,8 +17,8 @@
 | 8 | Side‑effect tools never execute without a confirmation record (tests) | Met for the existing tools (T‑2012); a test requires every committing registry tool to be confirmable. Enquiry, booking and saved‑search tools come later |
 | 9 | AI cost per conversation and per qualified lead from real token data | Built (T‑2011, `GET /ai/costs/`); needs operator‑entered `ModelPrice` rows |
 | 10 | No plaintext secrets or national IDs in the database | Met in code: schema test and scan on test data (session 26); run `scan_plaintext` on production data |
-| 11 | Export and deletion cover conversations, memory, enquiries, messages, within the SLA | Built and tested (session 26); open: who may request (KI‑085), SLA confirmation and third-party files (KI‑105) |
-| 14 | SLO dashboards and alerts live for API, search, AI reply and webhooks | Built and tested (session 27, ADR‑050): objectives, burn-rate alerts (promtool tests in CI), SLO dashboard; worker metrics now exported. **Live** needs production scrape targets and an alert receiver (KI‑108, KI‑109) |
+| 11 | Export and deletion cover conversations, memory, enquiries, messages, within the SLA | Built and tested (session 26); session 28: export open to everyone, 30-day SLA confirmed, Cloudinary files deleted; open: self-service deletion outside GDPR markets (KI‑112) |
+| 14 | SLO dashboards and alerts live for API, search, AI reply and webhooks | Built and tested (session 27, ADR‑050): objectives, burn-rate alerts (promtool tests in CI), SLO dashboard; worker metrics now exported. Session 28: self-hosted stack with email alerts, tested end to end (scrape with token, alert email received). **Live** once deployed (checklist §52) |
 
 ## Tasks
 | ID | P | Deliverable | Ref | Depends on |
