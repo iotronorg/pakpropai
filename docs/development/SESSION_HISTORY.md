@@ -486,3 +486,13 @@
 1. `git status`: uncommitted work is session 28. **Do not commit.**
 2. Next: MVP criterion 15, runbooks (starting files in DEVELOPMENT_STATUS).
 3. Owner: deploy the monitoring stack (§52), KI‑112, KI‑098, staging E2E run, T‑2072, KI‑089, KI‑095, KI‑096; email provider and WhatsApp template.
+
+## Session 29 — 2026-11-25
+- **Completed:** MVP criterion 15 (ADR‑052): runbooks for LLM outage, WhatsApp token expiry, data incidents, harmful AI output, plus short notes for the other alerts; every alert links to one (checked by tests); five new alerts and the metrics behind them; token check covers organization tokens and emails admins; `rotate_field_keys` and `revoke_sessions`.
+- **Found and fixed:** KI‑113 (outbox WhatsApp sends counted as sent when only buffered), KI‑115. **Recorded:** KI‑114.
+- **Tests:** 2491 passed, 1 skipped, 0 failed. **Not committed.**
+
+### Handoff → session 30 (supersedes the one above)
+1. `git status`: uncommitted work is sessions 28 and 29. **Do not commit.**
+2. Next: MVP criterion 13 (CI, staging auto-deploy, production approval).
+3. Owner: deploy the monitoring stack (§52), runbook roles (§53), KI‑112, KI‑114 rule, KI‑098, staging E2E run, T‑2072, pentest (criterion 12).

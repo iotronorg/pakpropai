@@ -681,6 +681,7 @@ class AIServiceManager:
             logger.info("Guardrail blocked: %s", guard.reason)
             tracing.note(route='guard_blocked')
             tracing.note_guard('input', guard.reason)
+            ai_requests_total.labels(intent='unknown', route='guardrail_blocked').inc()
             return guard.fallback_reply
 
         org_id = str(organization.id) if organization else None
@@ -759,7 +760,7 @@ class AIServiceManager:
 
         # ── 5. Output guardrail ────────────────────────────────────────────────
         output_ok = GuardrailEngine.check_output(reply)
-        if not output_ok:
+        if not output_ok:          # counted below as route=guardrail_blocked (alert AIGuardrailBlocksSpike)
             logger.warning("LLM output failed guard — using fallback phone=%s", phone)
             tracing.note_guard('output', 'blocked')
             reply = GuardrailEngine.fallback_error_reply(intent.language)
@@ -790,7 +791,7 @@ class AIServiceManager:
         self._record_usage(org_id, intent)
 
         elapsed = time.time() - start
-        ai_requests_total.labels(intent=intent.intent, route='llm').inc()
+        ai_requests_total.labels(intent=intent.intent, route='llm' if output_ok else 'guardrail_blocked').inc()
         ai_request_duration_seconds.labels(route='llm').observe(elapsed)
         self._log_interaction(user, intent, message, reply,
                               int(elapsed * 1000), direct=False)

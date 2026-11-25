@@ -594,3 +594,9 @@
 - **Added:** `docker/docker-compose.monitoring.yml`, `.env.monitoring.example`, `ops/alertmanager/{start.sh,alertmanager.email.yml.tmpl,alertmanager.yml}`, `ops/targets/` (dev) and `ops/targets.prod/`, `ops/dev-secrets/metrics_token` (dev only), `apps/compliance/cloud_files.py`, erasure step `cloud_files_deleted`, settings `PROMETHEUS_METRICS_TOKEN`, `WORKER_METRICS_ADDR`, `tests/test_owner_decisions_s28.py` (13 tests); CI renders and checks the email config.
 - **Changed:** `ops/prometheus.yml` uses file discovery and a bearer token; `POST /compliance/export/` for every signed-in person (GET kept); `/metrics/` and `/health/` skip tenant resolution; a failed external-file step stops the erasure run; `ops/alertmanager.yml` moved to `ops/alertmanager/alertmanager.yml`; `.gitignore` ignores `ops/secrets/` and keeps `.env.monitoring.example`.
 - **Fixed:** KI‑111 (internal host names got 404 from the tenant middleware). **Resolved:** KI‑085, KI‑108 and KI‑109 in the repository; KI‑105 in part.
+
+### 2026-11-25 — session 29: runbooks (MVP criterion 15)
+- **Added:** `docs/runbooks/` (README, llm-outage, whatsapp-token-expiry, data-incident, harmful-ai-output); `manage.py rotate_field_keys`, `manage.py revoke_sessions`; metrics for LLM provider failures, no provider answering, WhatsApp API errors by status and token checks; alerts `LLMUnavailable`, `LLMProviderFailing`, `WhatsAppTokenInvalid`, `WhatsAppAuthErrors`, `AIGuardrailBlocksSpike`, with promtool tests (60 rules).
+- **Changed:** every alert has a `runbook` annotation; the token check covers organization tokens, treats 403 as invalid and emails admins; guardrail blocks are counted.
+- **Fixed:** KI‑113 (outbox WhatsApp sends counted as sent when only buffered), KI‑115 (guardrail metric never counted). **Recorded:** KI‑114.
+- **Tests:** `tests/test_runbooks.py` (14 tests).

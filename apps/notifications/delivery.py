@@ -25,6 +25,15 @@ def _wa_message_id(resp) -> str:
         return ''
 
 
+def _confirmed(resp) -> str:
+    """The Cloud API's message id; without one the send is not done and the outbox retries (KI-113)."""
+    from apps.whatsapp.client import WhatsAppSendFailed
+    message_id = _wa_message_id(resp)
+    if not message_id:
+        raise WhatsAppSendFailed('WhatsApp did not confirm the message')
+    return message_id
+
+
 # ── OTP ───────────────────────────────────────────────────────────────────────
 
 def enqueue_otp(otp):
@@ -43,7 +52,7 @@ def deliver_otp(msg, payload) -> str:
     phone, code = payload.get('phone'), payload.get('code')
     if not phone or not code:
         raise PermanentDeliveryError('payload missing phone/code')
-    return _wa_message_id(get_wa_client(None).send_otp(phone, code))
+    return _confirmed(get_wa_client(None).send_otp(phone, code, buffer_on_failure=False))
 
 
 # ── Notifications ─────────────────────────────────────────────────────────────
@@ -74,7 +83,8 @@ def deliver_notification(msg, payload) -> str:
         return n.wa_message_id  # idempotent: already delivered by an earlier attempt
 
     try:
-        resp = get_wa_client(None).send_text(n.user.phone, n.message)
+        resp = get_wa_client(None).send_text(n.user.phone, n.message, buffer_on_failure=False)
+        message_id = _confirmed(resp)
     except ValueError as exc:
         # Outside the 24h customer-service window: retrying cannot help.
         n.status, n.error = Notification.Status.FAILED, str(exc)[:1000]
@@ -91,7 +101,7 @@ def deliver_notification(msg, payload) -> str:
         raise
 
     n.status = Notification.Status.SENT
-    n.wa_message_id = _wa_message_id(resp)
+    n.wa_message_id = message_id
     n.sent_at = timezone.now()
     n.error = ''
     n.save(update_fields=['status', 'wa_message_id', 'sent_at', 'error'])
@@ -135,10 +145,10 @@ def deliver_whatsapp_text(msg, payload) -> str:
            if msg.organization_id else None)
     try:
         resp = get_wa_client(org).send_text(
-            phone, text, skip_window_check=bool(payload.get('skip_window_check')))
+            phone, text, skip_window_check=bool(payload.get('skip_window_check')), buffer_on_failure=False)
     except ValueError as exc:  # outside the 24h customer-service window
         raise PermanentDeliveryError(str(exc)) from exc
-    return _wa_message_id(resp)
+    return _confirmed(resp)
 
 
 # ── Email (T-2050, FR-COM-003) ────────────────────────────────────────────────

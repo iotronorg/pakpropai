@@ -37,6 +37,25 @@ def _wa_phone_id() -> str:
     return SystemConfigService.get('wa_phone_number_id')
 
 
+class WhatsAppSendFailed(RuntimeError):
+    """The Cloud API did not accept the message (transient for the outbox: it retries)."""
+
+
+def _post_checked(url: str, headers: dict, payload: dict) -> dict:
+    """POST to the Cloud API, counting failures by status (an expired token shows as 401)."""
+    from apps.core.metrics import whatsapp_api_error
+    try:
+        r = requests.post(url, headers=headers, json=payload, timeout=10)
+    except requests.RequestException:
+        whatsapp_api_error(None)
+        raise
+    status = getattr(r, 'status_code', None)
+    if isinstance(status, int) and status >= 400:
+        whatsapp_api_error(status)
+    r.raise_for_status()
+    return r.json()
+
+
 def get_wa_client(org=None) -> 'WhatsAppClient':
     """
     Return a WhatsAppClient configured with org credentials when available,
@@ -72,11 +91,17 @@ class WhatsAppClient:
     def _phone_url(self) -> str:
         return f"{WA_API_URL}/{self._phone_number_id}/messages"
 
-    def send_text(self, phone: str, body: str, skip_window_check: bool = False) -> dict:
+    def send_text(self, phone: str, body: str, skip_window_check: bool = False,
+                  buffer_on_failure: bool = True) -> dict:
         """
         Send a free-form text message.
         Raises ValueError if the 24-hour customer-service window has closed
         (unless skip_window_check=True, which is only for template-triggered flows).
+
+        On failure (or an open circuit) the message is put in ``MetaLocalBuffer`` and
+        ``{}`` is returned. Callers that retry on their own — the outbox — pass
+        ``buffer_on_failure=False`` and get :class:`WhatsAppSendFailed` instead, so a
+        message is never reported sent when it was only buffered (KI-113).
         """
         if not skip_window_check and not is_within_24h_window(phone):
             raise ValueError(
@@ -98,17 +123,17 @@ class WhatsAppClient:
         _org_id, _phone, _body = self._org_id, phone, body
 
         def _do_post():
-            r = requests.post(self._phone_url(), headers=self._headers(), json=payload, timeout=10)
-            r.raise_for_status()
-            return r.json()
+            return _post_checked(self._phone_url(), self._headers(), payload)
 
         def _buffer():
+            if not buffer_on_failure:
+                raise WhatsAppSendFailed('WhatsApp send failed or circuit open')
             MetaLocalBuffer.buffer_message(_org_id, _phone, _body)
             return {}
 
         return meta_cloud_api_circuit.call(_do_post, fallback_fn=_buffer)
 
-    def send_otp(self, phone: str, code: str) -> dict:
+    def send_otp(self, phone: str, code: str, buffer_on_failure: bool = True) -> dict:
         """
         Send OTP via a pre-approved Meta template when configured; otherwise
         falls back to free-form text (bypassing the 24h window check).
@@ -122,7 +147,7 @@ class WhatsAppClient:
             ]
             return self.send_template(phone, template_name, components=components)
         body = f"Your RealTron AI verification code is: *{code}*\n\nExpires in 5 minutes. Do not share."
-        return self.send_text(phone, body, skip_window_check=True)
+        return self.send_text(phone, body, skip_window_check=True, buffer_on_failure=buffer_on_failure)
 
     def send_template(self, phone: str, template_name: str, language: str = 'en_US',
                       components: list = None) -> dict:
@@ -139,9 +164,7 @@ class WhatsAppClient:
         }
         from .inbound_resilience import mark_side_effect
         mark_side_effect()  # T-1020: a retry after this point could duplicate the reply
-        r = requests.post(self._phone_url(), headers=self._headers(), json=payload, timeout=10)
-        r.raise_for_status()
-        return r.json()
+        return _post_checked(self._phone_url(), self._headers(), payload)
 
     def mark_read(self, message_id: str) -> None:
         """Send a read receipt (shows blue ticks to sender). Never blocks processing."""

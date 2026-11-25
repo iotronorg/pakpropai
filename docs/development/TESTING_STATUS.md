@@ -177,6 +177,14 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | 2026-11-25 | Working tree, session 28 | `promtool check config` (file targets, token file); `start.sh` render-only with sample values; bad value rejected | Valid; rendered config passes `amtool`; exit 1 on a quote | — |
 | 2026-11-25 | Working tree, session 28 | `makemigrations --check` | No changes | — |
 
+### Session 29
+
+| Date | Code state | Command | Result | Duration |
+|---|---|---|---|---|
+| 2026-11-25 | Working tree, session 29 | `scripts/dev/test.sh` | **2491 passed, 1 skipped, 0 failed**, 287 subtests | 10m24s |
+| 2026-11-25 | Working tree, session 29 | `promtool test rules ops/tests/slo-rules.test.yaml`; `promtool check rules` | Pass; 60 rules | — |
+| 2026-11-25 | Working tree, session 29 | `bandit -ll` on changed files | No high; two B608 on quoted identifiers marked `nosec` | — |
+
 ## Coverage
 Not measured yet (no coverage run executed). CI is configured with `--cov=apps`.
 

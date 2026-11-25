@@ -381,54 +381,71 @@ def _safe_route(message_data: dict, phone: str, phone_number_id: str) -> None:
 @shared_task
 def check_whatsapp_token_health():
     """
-    Runs every 6 hours. Verifies the stored wa_access_token by calling the
-    WhatsApp phone number info endpoint. Logs CRITICAL and creates admin
-    notifications if the token is invalid or the phone number is unreachable.
+    Runs every 6 hours. Verifies the global token (SystemConfig) and every active
+    organization's own token by calling the phone-number endpoint. Each result is
+    counted (``realtron_whatsapp_token_checks_total``, alert ``WhatsAppTokenInvalid``)
+    and an invalid token is reported to admins **by email and in the inbox**: the
+    WhatsApp channel itself is what has stopped working (runbook:
+    docs/runbooks/whatsapp-token-expiry.md).
+    Returns the global result.
     """
     from apps.config.services import SystemConfigService
+    from apps.core.metrics import whatsapp_token_checks_total
+
+    from .models import OrgWhatsAppConfig
 
     token    = SystemConfigService.get('wa_access_token')
     phone_id = SystemConfigService.get('wa_phone_number_id')
-
     if not token or not phone_id:
         logger.warning(
             "check_whatsapp_token_health: wa_access_token or wa_phone_number_id not "
-            "configured in SystemConfig — skipping health check."
+            "configured in SystemConfig — skipping the global check."
         )
-        return 'unconfigured'
+        result = 'unconfigured'
+    else:
+        result = _check_token(token, phone_id)
+    whatsapp_token_checks_total.labels(scope='global', result=result).inc()
+    if result == 'invalid_token':
+        logger.critical("WhatsApp token is INVALID or EXPIRED. Update wa_access_token in SystemConfig immediately.")
+        _alert_admins(
+            title='WhatsApp Token Expired',
+            message=('The WhatsApp access token is invalid or expired, so WhatsApp messaging is offline. '
+                     'Update wa_access_token in System Setup > WhatsApp API. '
+                     'Runbook: docs/runbooks/whatsapp-token-expiry.md'),
+        )
 
+    bad = []
+    for cfg in OrgWhatsAppConfig.objects.filter(is_active=True).exclude(phone_number_id='').select_related('organization'):
+        if not cfg.access_token:
+            continue
+        org_result = _check_token(cfg.access_token, cfg.phone_number_id)
+        whatsapp_token_checks_total.labels(scope='org', result=org_result).inc()
+        if org_result == 'invalid_token':
+            logger.critical('WhatsApp token invalid for organization=%s', cfg.organization_id)
+            bad.append(cfg.organization.name)
+    if bad:
+        _alert_admins(
+            title='WhatsApp Token Expired (organizations)',
+            message=(f'The WhatsApp token of {len(bad)} organization(s) is invalid or expired: '
+                     f'{", ".join(sorted(bad)[:20])}. Their WhatsApp numbers cannot send. '
+                     'Runbook: docs/runbooks/whatsapp-token-expiry.md'),
+        )
+    return result
+
+
+def _check_token(token: str, phone_id: str) -> str:
+    """ok | invalid_token | error. The token is never logged."""
     try:
-        r = requests.get(
-            f"{WA_API_URL}/{phone_id}",
-            headers={'Authorization': f'Bearer {token}'},
-            timeout=10,
-        )
-
-        if r.status_code == 401:
-            logger.critical(
-                "WhatsApp token is INVALID or EXPIRED. "
-                "Update wa_access_token in SystemConfig immediately."
-            )
-            _alert_admins(
-                title='WhatsApp Token Expired',
-                message=(
-                    '🚨 *WhatsApp token is invalid or expired.*\n\n'
-                    'Bot messaging is offline. Update `wa_access_token` in '
-                    'System Setup → WhatsApp API immediately.'
-                ),
-            )
-            return 'invalid_token'
-
-        r.raise_for_status()
-        logger.info("check_whatsapp_token_health: OK (phone_id=%s)", phone_id)
-        return 'ok'
-
-    except requests.exceptions.Timeout:
-        logger.error("check_whatsapp_token_health: request timed out")
-        return 'timeout'
+        r = requests.get(f"{WA_API_URL}/{phone_id}", headers={'Authorization': f'Bearer {token}'}, timeout=10)
     except requests.exceptions.RequestException as exc:
-        logger.error("check_whatsapp_token_health: request failed: %s", exc)
+        logger.error("check_whatsapp_token_health: request failed: %s", type(exc).__name__)
         return 'error'
+    if r.status_code in (401, 403):
+        return 'invalid_token'
+    if r.status_code >= 400:
+        logger.error("check_whatsapp_token_health: HTTP %s", r.status_code)
+        return 'error'
+    return 'ok'
 
 
 @shared_task
@@ -482,7 +499,7 @@ def _alert_admins(title: str, message: str):
         User = get_user_model()
         for admin in User.objects.filter(role='admin', is_active=True):
             try:
-                notify_user(admin, title=title, message=message)
+                notify_user(admin, title=title, message=message, send_email=True, event='ops.alert')
             except Exception as exc:
                 logger.warning("_alert_admins: could not notify admin %s: %s", admin.pk, exc)
     except Exception as exc:

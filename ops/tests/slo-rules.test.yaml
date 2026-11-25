@@ -40,6 +40,7 @@ tests:
             exp_annotations:
               summary: "SLO api_availability is burning its error budget fast"
               description: "10% of events missed the objective over the last hour; at this rate the 30-day budget is gone in about two days."
+              runbook: "docs/runbooks/README.md#sloerrorbudgetburnfast"
       - eval_time: 70m
         alertname: WorkerMetricsAbsent
         exp_alerts: []
@@ -67,6 +68,7 @@ tests:
             exp_annotations:
               summary: "No Celery worker is being scraped"
               description: "AI reply, webhook processing and notification delivery SLOs come from the workers (WORKER_METRICS_PORT)."
+              runbook: "docs/runbooks/README.md#workermetricsabsent"
 
   # Enquiry notifications: WhatsApp all late, email on time, in-app failing outright
   # (failures only, no successful delivery) — the failing channels alert, email does not.
@@ -106,10 +108,12 @@ tests:
             exp_annotations:
               summary: "SLO enquiry_notification (whatsapp) is burning its error budget fast"
               description: "100% of events missed the objective over the last hour; at this rate the 30-day budget is gone in about two days."
+              runbook: "docs/runbooks/README.md#sloerrorbudgetburnfast"
           - exp_labels: {severity: critical, slo: enquiry_notification, channel: in_app}
             exp_annotations:
               summary: "SLO enquiry_notification (in_app) is burning its error budget fast"
               description: "100% of events missed the objective over the last hour; at this rate the 30-day budget is gone in about two days."
+              runbook: "docs/runbooks/README.md#sloerrorbudgetburnfast"
       - eval_time: 5m
         alertname: EnquiryNotificationBacklog
         exp_alerts:
@@ -117,6 +121,7 @@ tests:
             exp_annotations:
               summary: "notification.whatsapp deliveries are waiting longer than a minute"
               description: "The oldest undelivered notification.whatsapp message is 2m 0s old. Check the outbound worker, the broker and the provider."
+              runbook: "docs/runbooks/whatsapp-token-expiry.md"
 
   # AI replies: 90 % take longer than 8 s (fast and slow burn); webhooks: 5 % errors, retries
   # not counted (slow burn only: 6x of a 0.5 % budget is 3 %, 14.4x is 7.2 %).
@@ -146,6 +151,7 @@ tests:
             exp_annotations:
               summary: "SLO ai_reply_latency is burning its error budget fast"
               description: "90% of events missed the objective over the last hour; at this rate the 30-day budget is gone in about two days."
+              runbook: "docs/runbooks/README.md#sloerrorbudgetburnfast"
       - eval_time: 380m
         alertname: SLOErrorBudgetBurnFast
         exp_alerts:
@@ -153,6 +159,7 @@ tests:
             exp_annotations:
               summary: "SLO ai_reply_latency is burning its error budget fast"
               description: "90% of events missed the objective over the last hour; at this rate the 30-day budget is gone in about two days."
+              runbook: "docs/runbooks/README.md#sloerrorbudgetburnfast"
       - eval_time: 380m
         alertname: SLOErrorBudgetBurnSlow
         exp_alerts:
@@ -160,7 +167,70 @@ tests:
             exp_annotations:
               summary: "SLO ai_reply_latency is burning its error budget"
               description: "90% of events missed the objective over the last 6 hours; at this rate the 30-day budget is gone in about five days."
+              runbook: "docs/runbooks/README.md#sloerrorbudgetburnslow"
           - exp_labels: {severity: warning, slo: webhook_processing}
             exp_annotations:
               summary: "SLO webhook_processing is burning its error budget"
               description: "5% of events missed the objective over the last 6 hours; at this rate the 30-day budget is gone in about five days."
+              runbook: "docs/runbooks/README.md#sloerrorbudgetburnslow"
+
+  # Runbook alerts: no provider answers; a token check is refused; 401s on send; guardrail spike.
+  - interval: 1m
+    input_series:
+      - series: 'realtron_llm_unavailable_total{operation="chat"}'
+        values: '0+1x30'
+      - series: 'realtron_llm_provider_failures_total{provider="gemini", error="Timeout"}'
+        values: '0+6x30'
+      - series: 'realtron_whatsapp_token_checks_total{scope="org", result="invalid_token"}'
+        values: '0 1x30'
+      - series: 'realtron_whatsapp_token_checks_total{scope="global", result="ok"}'
+        values: '0 1x30'
+      - series: 'realtron_whatsapp_api_errors_total{status="401"}'
+        values: '0+3x30'
+      - series: 'realtron_whatsapp_api_errors_total{status="5xx"}'
+        values: '0+3x30'
+      - series: 'realtron_ai_requests_total{intent="search", route="llm"}'
+        values: '0+10x60'
+      - series: 'realtron_ai_requests_total{intent="search", route="guardrail_blocked"}'
+        values: '0+2x60'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: LLMUnavailable
+        exp_alerts:
+          - exp_labels: {severity: critical}
+            exp_annotations:
+              summary: "No AI provider is answering"
+              description: "5 model calls in 5 minutes got no answer from any provider; users get the canned reply."
+              runbook: "docs/runbooks/llm-outage.md"
+      - eval_time: 10m
+        alertname: LLMProviderFailing
+        exp_alerts:
+          - exp_labels: {severity: warning, provider: gemini}
+            exp_annotations:
+              summary: "AI provider gemini is failing"
+              description: "0.10 failed calls/s. The router fails over when AI_PROVIDER_ORDER names another provider."
+              runbook: "docs/runbooks/llm-outage.md"
+      - eval_time: 5m
+        alertname: WhatsAppTokenInvalid
+        exp_alerts:
+          - exp_labels: {severity: critical, scope: org}
+            exp_annotations:
+              summary: "A WhatsApp access token (org) is invalid or expired"
+              description: "The 6-hourly token check was refused by Meta. Messages to and from that number are not being sent."
+              runbook: "docs/runbooks/whatsapp-token-expiry.md"
+      - eval_time: 10m
+        alertname: WhatsAppAuthErrors
+        exp_alerts:
+          - exp_labels: {severity: critical, status: "401"}
+            exp_annotations:
+              summary: "WhatsApp Cloud API refuses our token (HTTP 401)"
+              description: "Sends are failing with 401; the token has expired, was revoked or lost a permission."
+              runbook: "docs/runbooks/whatsapp-token-expiry.md"
+      - eval_time: 50m
+        alertname: AIGuardrailBlocksSpike
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations:
+              summary: "More than 5% of assistant turns are blocked by the guardrails"
+              description: "16.67% of turns were blocked in the last 30 minutes."
+              runbook: "docs/runbooks/harmful-ai-output.md"

@@ -1,17 +1,17 @@
 # Development Status
 
-_Last updated: 2026-11-25 (session 28; git commit subjects number sessions differently: `7d95593` "session 47" is session 27 here)_
+_Last updated: 2026-11-25 (session 29; git commit subjects number sessions differently: `7d95593` "session 47" is session 27 here)_
 
 | Item | Value |
 |---|---|
-| Branch | `development`. The owner committed through MVP criteria 4 and 14 (`7d95593`). **Uncommitted:** session 28 (owner decisions on monitoring, alerts, export, file deletion) |
+| Branch | `development`. The owner committed through session 27 (`7d95593`). **Uncommitted:** sessions 28 (owner decisions on monitoring, alerts, export, file deletion) and 29 (runbooks) |
 | Current milestone | **M2 — AI agent MVP** ([MILESTONE_02](milestones/MILESTONE_02_AI_AGENT_MVP.md)), started 2026‑11‑23. M1 code complete (contracts T‑1070g‑2 / T‑1032b‑2 release‑gated); M0 awaiting the first GitHub Actions run |
 | M0 progress | All 17 tasks complete. Remaining exit criterion: CI green on GitHub Actions (owner pushes) |
 | M1 progress | 16 of 18 tasks done (T‑1010, T‑1011, T‑1020, T‑1021, T‑1022, T‑1030, T‑1031, T‑1033, T‑1040, T‑1050, T‑1060, T‑1080, T‑1090, T‑1100, T‑1110, T‑1120) plus subtasks T‑1032a, T‑1032c, T‑1070a–f and T‑1070g‑1 |
 | M2 progress | 16 of 17 tasks done. Open: T‑2072 (owner data and paid runs) |
-| Test suite | **2477 passed, 1 skipped, 0 failed** (session 28); promtool rule tests pass; monitoring stack checked end to end. See [TESTING_STATUS](TESTING_STATUS.md) |
-| Last completed task | Owner decisions 2026‑11‑25 (ADR‑051): self-hosted monitoring stack, email alerts, export for everyone, Cloudinary files erased; KI‑111 fixed |
-| Next task | **MVP criterion 15** (MVP_SCOPE §6): runbooks for LLM outage, WhatsApp token expiry, data incidents and harmful AI output, linked from the alerts (`runbook_url`). Start in a new `docs/runbooks/`, `ops/prometheus-alerts.yaml`, `apps/ai/kill_switch.py`, `apps/whatsapp/tasks.py` (`check_whatsapp_token_health`). Waiting on the owner: deploy the monitoring stack (checklist §52), KI‑112 (self-service deletion outside GDPR markets), T‑2072, staging E2E run, KI‑098. Open: KI‑055…KI‑059, KI‑068, KI‑069, KI‑071, KI‑073, KI‑075…KI‑089, KI‑091…KI‑093, KI‑095, KI‑096 (deploy), KI‑098, KI‑101, KI‑104, KI‑105 (rest), KI‑110, KI‑112 |
+| Test suite | **2491 passed, 1 skipped, 0 failed** (session 29); promtool rule tests pass (60 rules). See [TESTING_STATUS](TESTING_STATUS.md) |
+| Last completed task | MVP criterion 15 (ADR‑052): runbooks in `docs/runbooks/`, linked from every alert, with alerts for LLM outage, WhatsApp token and guardrail spikes; incident commands `rotate_field_keys`, `revoke_sessions`; fixed KI‑113, KI‑115 |
+| Next task | **MVP criterion 13** (MVP_SCOPE §6): CI green with the eval gate; staging deploys automatically and production needs a manual approval. Start in `.github/workflows/`, `docker/docker-compose.prod.yml`, GO_LIVE_CHECKLIST. Deploy credentials and environments are the owner's. Waiting on the owner: deploy the monitoring stack (checklist §52), KI‑112 (self-service deletion outside GDPR markets), T‑2072, staging E2E run, KI‑098. Open: KI‑055…KI‑059, KI‑068, KI‑069, KI‑071, KI‑073, KI‑075…KI‑089, KI‑091…KI‑093, KI‑095, KI‑096 (deploy), KI‑098, KI‑101, KI‑104, KI‑105 (rest), KI‑110, KI‑112, KI‑114 |
 
 ## Owner decisions (2026-11-25)
 - **KI‑108:** alerts by **email**. **KI‑109:** **self-hosted Docker** monitoring stack, deployable anywhere. **KI‑085:** **any signed-in person** may export. **KI‑105:** 30-day SLA kept; **delete Cloudinary PDFs** on erasure.
@@ -36,6 +36,7 @@ _Last updated: 2026-11-25 (session 28; git commit subjects number sessions diffe
 - Meta: re‑submit the OTP template body with the RealTron name.
 
 ## Operator actions before deploying these changes
+- **Session 29** (checklist §53): no migration. Reload the Prometheus rules; set a fixed `FIELD_HASH_KEY`; name the on-call, privacy owner and AI-stop roles in the runbooks.
 - **Session 28** (checklist §52): no migration. Deploy `docker/docker-compose.monitoring.yml` with `.env.monitoring` and `ops/secrets/`; set `PROMETHEUS_METRICS_TOKEN` on the app; Cloudinary credentials on the erasure worker.
 - **Session 27** (checklist §51): migrations `notifications 0005` (additive) and `0006` (concurrent index; direct DB connection). Scrape the workers on :9808, keep 35 days, choose an alert receiver.
 - **Session 26** (checklist §50): **migrations that encrypt data; back up first.**

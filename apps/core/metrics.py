@@ -90,6 +90,43 @@ webhook_queue_delay_seconds = Histogram(
     buckets=[0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 300.0],
 )
 
+whatsapp_api_errors_total = Counter(
+    'realtron_whatsapp_api_errors_total',
+    'Failed calls to the WhatsApp Cloud API',
+    ['status'],  # 401|403|429|4xx|5xx|network
+)
+
+whatsapp_token_checks_total = Counter(
+    'realtron_whatsapp_token_checks_total',
+    'Scheduled WhatsApp token checks by result',
+    ['scope', 'result'],  # scope: global|org; result: ok|invalid_token|error|unconfigured
+)
+
+
+def whatsapp_api_error(status_code=None) -> None:
+    if status_code is None:
+        label = 'network'
+    elif status_code in (401, 403, 429):
+        label = str(status_code)
+    else:
+        label = f'{status_code // 100}xx'
+    whatsapp_api_errors_total.labels(status=label).inc()
+
+
+# ── LLM providers (runbook: LLM outage) ───────────────────────────────────────
+
+llm_provider_failures_total = Counter(
+    'realtron_llm_provider_failures_total',
+    'Model calls that failed at one provider (the router then tries the next)',
+    ['provider', 'error'],
+)
+
+llm_unavailable_total = Counter(
+    'realtron_llm_unavailable_total',
+    'Model calls for which no provider answered',
+    ['operation'],
+)
+
 # ── Notification delivery (MVP criterion 4) ───────────────────────────────────
 
 # Notification created (in the business transaction) → delivered to the channel.

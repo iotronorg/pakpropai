@@ -243,6 +243,7 @@ groups:
         annotations:
           summary: "SLO {{ $labels.slo }}{{ if $labels.channel }} ({{ $labels.channel }}){{ end }} is burning its error budget fast"
           description: "{{ $value | humanizePercentage }} of events missed the objective over the last hour; at this rate the 30-day budget is gone in about two days."
+          runbook: "docs/runbooks/README.md#sloerrorbudgetburnfast"
 
       - alert: SLOErrorBudgetBurnSlow
         expr: |
@@ -259,6 +260,7 @@ groups:
         annotations:
           summary: "SLO {{ $labels.slo }}{{ if $labels.channel }} ({{ $labels.channel }}){{ end }} is burning its error budget"
           description: "{{ $value | humanizePercentage }} of events missed the objective over the last 6 hours; at this rate the 30-day budget is gone in about five days."
+          runbook: "docs/runbooks/README.md#sloerrorbudgetburnslow"
 
       # Enquiries are rare, so a ratio can miss a stuck queue: watch the backlog itself.
       - alert: EnquiryNotificationBacklog
@@ -269,6 +271,7 @@ groups:
         annotations:
           summary: "{{ $labels.kind }} deliveries are waiting longer than a minute"
           description: "The oldest undelivered {{ $labels.kind }} message is {{ $value | humanizeDuration }} old. Check the outbound worker, the broker and the provider."
+          runbook: "docs/runbooks/whatsapp-token-expiry.md"
 
       - alert: OutboxBacklogStale
         expr: max by (kind) (realtron_outbox_oldest_undelivered_seconds) > 900
@@ -278,6 +281,7 @@ groups:
         annotations:
           summary: "Outbox {{ $labels.kind }} has undelivered messages older than 15 minutes"
           description: "Oldest is {{ $value | humanizeDuration }}. Retries back off up to 15 minutes; older means the relay or the workers are not running."
+          runbook: "docs/runbooks/README.md#outboxbacklogstale"
 
       - alert: MetricsTargetDown
         expr: up{job=~"realtron_.*"} == 0
@@ -287,6 +291,7 @@ groups:
         annotations:
           summary: "Prometheus cannot scrape {{ $labels.job }} ({{ $labels.instance }})"
           description: "SLOs measured on this target are blind while it is down."
+          runbook: "docs/runbooks/README.md#metricstargetdown"
 
       - alert: WorkerMetricsAbsent
         expr: absent(up{job="realtron_worker"} == 1)
@@ -296,6 +301,7 @@ groups:
         annotations:
           summary: "No Celery worker is being scraped"
           description: "AI reply, webhook processing and notification delivery SLOs come from the workers (WORKER_METRICS_PORT)."
+          runbook: "docs/runbooks/README.md#workermetricsabsent"
   - name: realtron_critical
     interval: 60s
     rules:
@@ -312,6 +318,7 @@ groups:
         annotations:
           summary: "High HTTP error rate (>5%) on RealTron API"
           description: "Error rate is {{ $value | humanizePercentage }} over the last 5 minutes."
+          runbook: "docs/runbooks/README.md#higherrorrate"
 
       # ── Latency ─────────────────────────────────────────────────────────────
       - alert: HighP95Latency
@@ -325,6 +332,7 @@ groups:
         annotations:
           summary: "p95 API latency exceeds 2 seconds"
           description: "p95 latency is {{ $value | humanizeDuration }}."
+          runbook: "docs/runbooks/README.md#highp95latency"
 
       # ── Database ─────────────────────────────────────────────────────────────
       - alert: DatabaseDown
@@ -335,6 +343,7 @@ groups:
         annotations:
           summary: "No database queries observed — database may be down"
           description: "django_db_execute_total has been 0 for 2 minutes. Check PostgreSQL connectivity."
+          runbook: "docs/runbooks/README.md#databasedown"
 
       # ── AI request volume drop ────────────────────────────────────────────────
       - alert: AIRequestsDrop
@@ -346,6 +355,7 @@ groups:
         annotations:
           summary: "AI request volume dropped to near-zero"
           description: "Less than 1 AI request per 100 seconds for 30 minutes. Check WhatsApp webhook / AI backend."
+          runbook: "docs/runbooks/llm-outage.md"
 
       # ── AI response latency ───────────────────────────────────────────────────
       - alert: AIHighLatency
@@ -359,6 +369,7 @@ groups:
         annotations:
           summary: "LLM route p95 latency exceeds 30 seconds"
           description: "p95 LLM latency is {{ $value | humanizeDuration }}. Check Gemini API / backend quota."
+          runbook: "docs/runbooks/llm-outage.md"
 
   - name: realtron_business
     interval: 120s
@@ -376,6 +387,7 @@ groups:
         annotations:
           summary: "Deal lock cancellation rate exceeds 50%"
           description: "More than half of initiated deals are being cancelled in the last hour."
+          runbook: "docs/runbooks/README.md#highdeallockcancellationrate"
 
       # ── Webhook signature failures ────────────────────────────────────────────
       - alert: WebhookSignatureFailures
@@ -387,6 +399,7 @@ groups:
         annotations:
           summary: "Webhook signature failures detected"
           description: "{{ $value | humanize }} invalid-signature webhook events/sec. Possible attack or misconfigured secret."
+          runbook: "docs/runbooks/data-incident.md"
 
       # ── WhatsApp message volume ────────────────────────────────────────────────
       - alert: WhatsAppMessageVolumeSpike
@@ -398,6 +411,7 @@ groups:
         annotations:
           summary: "WhatsApp inbound message spike (>100 msg/sec)"
           description: "Inbound rate is {{ $value | humanize }} msg/sec. Possible abuse or campaign blast."
+          runbook: "docs/runbooks/README.md#whatsappmessagevolumespike"
 
   - name: realtron_infrastructure
     interval: 60s
@@ -417,3 +431,63 @@ groups:
         annotations:
           summary: "Cache miss rate exceeds 80%"
           description: "Cache miss rate is {{ $value | humanizePercentage }}. Redis may be cold or evicting keys."
+          runbook: "docs/runbooks/README.md#highcachemissrate"
+
+  # ── Runbook alerts (MVP criterion 15) ───────────────────────────────────────
+  - name: realtron_runbook_alerts
+    interval: 60s
+    rules:
+      - alert: LLMProviderFailing
+        expr: sum by (provider) (rate(realtron_llm_provider_failures_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "AI provider {{ $labels.provider }} is failing"
+          description: "{{ printf \"%.2f\" $value }} failed calls/s. The router fails over when AI_PROVIDER_ORDER names another provider."
+          runbook: "docs/runbooks/llm-outage.md"
+
+      - alert: LLMUnavailable
+        expr: sum(increase(realtron_llm_unavailable_total[5m])) > 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No AI provider is answering"
+          description: "{{ $value | humanize }} model calls in 5 minutes got no answer from any provider; users get the canned reply."
+          runbook: "docs/runbooks/llm-outage.md"
+
+      - alert: WhatsAppTokenInvalid
+        expr: max by (scope) (increase(realtron_whatsapp_token_checks_total{result="invalid_token"}[7h])) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "A WhatsApp access token ({{ $labels.scope }}) is invalid or expired"
+          description: "The 6-hourly token check was refused by Meta. Messages to and from that number are not being sent."
+          runbook: "docs/runbooks/whatsapp-token-expiry.md"
+
+      - alert: WhatsAppAuthErrors
+        expr: sum by (status) (rate(realtron_whatsapp_api_errors_total{status=~"401|403"}[5m])) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "WhatsApp Cloud API refuses our token (HTTP {{ $labels.status }})"
+          description: "Sends are failing with {{ $labels.status }}; the token has expired, was revoked or lost a permission."
+          runbook: "docs/runbooks/whatsapp-token-expiry.md"
+
+      # A spike of blocked answers is the earliest automatic sign of harmful output or an attack.
+      - alert: AIGuardrailBlocksSpike
+        expr: |
+          (
+            sum(rate(realtron_ai_requests_total{route="guardrail_blocked"}[30m]))
+            / sum(rate(realtron_ai_requests_total[30m]))
+          ) > 0.05
+          and sum(increase(realtron_ai_requests_total[30m])) > 20
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "More than 5% of assistant turns are blocked by the guardrails"
+          description: "{{ $value | humanizePercentage }} of turns were blocked in the last 30 minutes."
+          runbook: "docs/runbooks/harmful-ai-output.md"

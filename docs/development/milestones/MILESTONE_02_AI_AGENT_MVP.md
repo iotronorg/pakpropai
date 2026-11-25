@@ -19,6 +19,7 @@
 | 10 | No plaintext secrets or national IDs in the database | Met in code: schema test and scan on test data (session 26); run `scan_plaintext` on production data |
 | 11 | Export and deletion cover conversations, memory, enquiries, messages, within the SLA | Built and tested (session 26); session 28: export open to everyone, 30-day SLA confirmed, Cloudinary files deleted; open: self-service deletion outside GDPR markets (KI‑112) |
 | 14 | SLO dashboards and alerts live for API, search, AI reply and webhooks | Built and tested (session 27, ADR‑050): objectives, burn-rate alerts (promtool tests in CI), SLO dashboard; worker metrics now exported. Session 28: self-hosted stack with email alerts, tested end to end (scrape with token, alert email received). **Live** once deployed (checklist §52) |
+| 15 | Runbooks for LLM outage, WhatsApp token expiry, data incidents, harmful AI output | Met (session 29, ADR‑052): `docs/runbooks/`, linked from every alert; new alerts for each situation; checked by `tests/test_runbooks.py`. Roles to be named by the owner (checklist §53) |
 
 ## Tasks
 | ID | P | Deliverable | Ref | Depends on |

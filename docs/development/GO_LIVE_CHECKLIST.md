@@ -426,3 +426,8 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - **Check:** in Prometheus, *Status → Targets* shows `realtron_api` and `realtron_worker` up; send a test alert (`docker compose … exec alertmanager amtool alert add Test severity=critical --alertmanager.url=http://localhost:9093`) and confirm the email arrives.
 - **Export:** consumers in every market can now request their data (`POST /api/v1/compliance/export/`); the frontend can show the button to everyone.
 - **Erasure** now deletes Cloudinary files; the Cloudinary credentials must be set wherever the erasure worker runs, or erasures of people with files stay failed (and are reported overdue).
+
+## 53. Session-29 change: runbooks (ADR‑052)
+- No migration. Reload the Prometheus rules (alerts now carry `runbook`) and restart web and workers.
+- **Before launch:** fill the roles in the runbooks: who is on call, who is the privacy owner (data incidents, 72-hour notification), who may stop the assistant. Rehearse on staging: an AI stop and release, a token check (`check_whatsapp_token_health`), and `rotate_field_keys --dry-run`.
+- **Set `FIELD_HASH_KEY`** to a fixed value now, so a key rotation in an incident does not change the lookup hashes.

@@ -128,6 +128,8 @@ def _run(op, *, what: str):
             raise
         except Exception as exc:              # provider failure → next one
             _fail(name)
+            from apps.core.metrics import llm_provider_failures_total
+            llm_provider_failures_total.labels(provider=name, error=type(exc).__name__[:40]).inc()
             errors.append(f'{name}: {type(exc).__name__}')
             logger.warning('llm.%s provider=%s failed: %s', what, name, type(exc).__name__)
             continue
@@ -136,6 +138,8 @@ def _run(op, *, what: str):
             from . import tracing
             tracing.note(fallback_used=True)
         return name, backend, out, int((time.monotonic() - started) * 1000)
+    from apps.core.metrics import llm_unavailable_total
+    llm_unavailable_total.labels(operation=what).inc()
     raise LLMUnavailable(f'no AI provider answered ({"; ".join(errors) or "none configured"})')
 
 
