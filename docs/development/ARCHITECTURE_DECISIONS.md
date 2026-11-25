@@ -933,3 +933,8 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
 - **Block:** between a consumer and a lister (organization or person), by either side. Closes all their threads, ends the blocker's own sharing, refuses new enquiries, bookings and rescheduling. Only the blocking side can lift it. The blocked consumer sees "not available". The platform team cannot be blocked.
 - **Report:** reporting lets a moderator read that thread unmasked, only while the report is open, never if they are part of it or work for that organization; every read is in the audit log. Reports never close a thread by themselves; a moderator dismisses or closes. The reporter is not named and the other side is not told.
 - **Warnings:** codes for links, payment requests and one-time codes, computed on read and shown to the recipient only. They never hide or stop a message.
+
+### ADR‑046 — End-to-end journey over HTTP (session 23, 2026-11-25)
+- The journey talks to a running server only through its public API and signed webhook, and checks outcomes (threads, viewings, pending actions), never wording, so the same script runs locally with a stand-in model and on staging with the release model.
+- Locally everything else is real: daphne, Celery workers started from the production entrypoint, Postgres, Redis. Stand-ins: the model and WhatsApp's API (`WA_API_URL`).
+- `seed.py` runs only when `E2E_SEED_DATABASE` names the connected database, because it creates public listings.

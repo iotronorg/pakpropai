@@ -424,3 +424,14 @@
 1. `git status`: uncommitted work is T‑2051. **Do not commit.**
 2. Next: staging end-to-end script for MVP criterion 1, then KI‑094.
 3. Owner decisions open: T‑2072, KI‑085, KI‑089; email provider and WhatsApp template (go-live).
+
+## Session 23 — 2026-11-25
+- **Verified:** the owner committed T‑2051 (`a64cf24`); the tree was clean.
+- **Completed:** the end-to-end journey for MVP criterion 1 (ADR‑046): web, assistant and WhatsApp, 69 checks, repeatable.
+- **Found and fixed:** KI‑096 (single-worker deployments did not read the `high-resource` queue).
+- **Tests:** 2388 passed, 1 skipped, 0 failed. The journey fails as it should with the AI worker stopped and with a wrong webhook signature. **Not done:** a staging run; a real model. **Not committed.**
+
+### Handoff → session 24 (supersedes the one above)
+1. `git status`: uncommitted work is the E2E journey. **Do not commit.**
+2. Next: KI‑094 (starting files in DEVELOPMENT_STATUS).
+3. Owner: staging E2E run, T‑2072, KI‑085, KI‑089, KI‑095 (retention), start command check (KI‑096); email provider and WhatsApp template.

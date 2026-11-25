@@ -565,6 +565,8 @@ CHANNEL_LAYERS = {
 }
 
 # WhatsApp
+# Only the local end-to-end run points this elsewhere. Access tokens are sent there.
+WA_API_URL = env('WA_API_URL', default='https://graph.facebook.com/v20.0').rstrip('/')
 WA_VERIFY_TOKEN    = env('WA_VERIFY_TOKEN', default='')
 WA_APP_SECRET      = env('WA_APP_SECRET', default='')
 WA_ACCESS_TOKEN    = env('WA_ACCESS_TOKEN', default='')

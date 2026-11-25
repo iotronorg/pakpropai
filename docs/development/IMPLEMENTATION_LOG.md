@@ -564,3 +564,7 @@
 - **Endpoints:** multipart `POST threads/{id}/messages/`, `GET threads/{id}/attachments/{id}/`, `POST threads/{id}/report/`, `POST|DELETE threads/{id}/block/`; moderators: `moderation/threads/…`.
 - **Changed:** enquiry creation and viewing reschedule respect blocks; overdue notice, erasure and export cover the new data.
 - **Fixed:** `PIIMaskingMiddleware` and UUIDs; `core/idempotency.py` hashes uploaded files.
+
+### 2026-11-25 — session 23: end-to-end journey (MVP criterion 1)
+- **Added:** `scripts/e2e/{consumer_journey,seed,stub_server}.py`, `scripts/dev/e2e.sh`, `config/settings/e2e.py`, `.github/workflows/e2e.yml` (manual start; not yet run on GitHub), `tests/test_worker_queues.py`.
+- **Changed:** `WA_API_URL` is a setting (same default); `Procfile` and `docker/entrypoint.worker.sh` name every queue.

@@ -1,11 +1,12 @@
 import logging
 import requests
 from datetime import timedelta
+from django.conf import settings
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
-WA_API_URL = "https://graph.facebook.com/v20.0"
+WA_API_URL = settings.WA_API_URL
 _24H = timedelta(hours=24)
 
 

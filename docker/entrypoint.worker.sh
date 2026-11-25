@@ -14,12 +14,11 @@ case "$MODE" in
     worker)
         # CELERY_QUEUES env var selects which queue(s) this worker consumes.
         # default = lightweight tasks; high-resource = WA processing, STT, ML.
-        # If unset, consume from all queues (useful for single-service deploys).
-        QUEUE_ARGS=""
-        if [ -n "${CELERY_QUEUES:-}" ]; then
-            QUEUE_ARGS="-Q ${CELERY_QUEUES}"
-        fi
-        echo "[worker] Starting Celery worker (queues=${CELERY_QUEUES:-all}, concurrency=${CELERY_CONCURRENCY:-4})..."
+        # If unset, consume from every queue by name (single-service deploys):
+        # without -Q Celery reads only the default queue, and WhatsApp is never answered.
+        CELERY_QUEUES="${CELERY_QUEUES:-default,high-resource,outbound}"
+        QUEUE_ARGS="-Q ${CELERY_QUEUES}"
+        echo "[worker] Starting Celery worker (queues=${CELERY_QUEUES}, concurrency=${CELERY_CONCURRENCY:-4})..."
         exec celery -A config worker \
             --loglevel "${CELERY_LOGLEVEL:-info}" \
             --concurrency "${CELERY_CONCURRENCY:-4}" \

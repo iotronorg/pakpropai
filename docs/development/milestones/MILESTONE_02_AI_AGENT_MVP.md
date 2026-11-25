@@ -7,10 +7,10 @@
 ## Exit criteria (MVP acceptance criteria 1–9)
 | # | Criterion | State |
 |---|---|---|
-| 1 | Discover → shortlist → enquire → book on web and WhatsApp with no staff intervention (staging E2E) | Not started |
-| 2 | The same `SearchCriteria` gives identical results via the search API and the AI tool | Not started |
+| 1 | Discover → shortlist → enquire → book on web and WhatsApp with no staff intervention (staging E2E) | Passes locally against real server, workers, Postgres and Redis with a stand-in model and WhatsApp API (`scripts/dev/e2e.sh`, session 23). The staging run with the release model is the owner's |
+| 2 | The same `SearchCriteria` gives identical results via the search API and the AI tool | Checked in the E2E journey for one query, web assistant and WhatsApp |
 | 3 | Every listing shown is published, in a live market, not sandbox, first‑party/licensed | Partly: sandbox exclusion (M0), lifecycle visibility (T‑1080) |
-| 4 | Agents receive enquiries within 1 minute and can reply | Not started |
+| 4 | Agents receive enquiries within 1 minute and can reply | Checked in the E2E journey (inbox and in-app notification, and reply). WhatsApp delivery to the agent needs the approved template |
 | 5 | Saved‑search alerts arrive within the configured frequency | Not started |
 | 6 | Criteria‑extraction F1 meets the Phase 2 baseline per launch language | Harness and 18 seed cases per language built (T‑2070); no live run or baseline yet (T‑2072) |
 | 7 | Zero critical hallucinations in the release eval suite; grounding checker live | Checker live (T‑2013); deterministic suite passes in CI form (T‑2070); a run with the release model is T‑2072 |
@@ -35,6 +35,7 @@
 | T‑2060 ✅ | P1 | Availability, slot booking (`find_viewing_slots`/`book_viewing`), reminders, feedback | FR‑APT‑001–006 | T‑2012 ✅ |
 | T‑2070 ✅ | P1 | Eval suites (EN/UR/Roman Urdu) with a CI gate; kill switch per market/org (provider failover done in T‑1120) | AI spec §9, MVP 6/7 | T‑2010, T‑2030 |
 | T‑2071 ✅ | P1 | Indirect prompt injection (lister text as delimited data; eval suite) | AI spec §8.1 | T‑2070 |
+| T‑2051 ✅ | P2 | Thread photos, block, report, warnings | FR-COM-001/007 | T‑2050 |
 | T‑2072 | P1 | Reviewed golden set (≥300 per language); live run and baseline | AI spec §9, MVP 6 | owner |
 | T‑2080 | — | Closed beta with launch agencies | Release | owner |
 

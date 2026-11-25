@@ -387,3 +387,8 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - Proxy body limit: allow 16 MB on `/api/v1/threads/` (3 photos of 5 MB).
 - Moderators: new queue `moderation/threads/`, same deadline (`MODERATION_SLA_HOURS`). Tell users in the privacy notice that reporting a thread lets a moderator read it.
 - Decide a retention period for photos and reports (KI‑095).
+
+## 47. Session-23 change: end-to-end journey (ADR‑046)
+- **Worker queues (KI‑096):** confirm in the hosting console that the worker start command reads `default,high-resource,outbound` (or that separate workers do).
+- Leave `WA_API_URL` unset in production: access tokens are sent to it.
+- **Staging run (MVP 1):** `E2E_SEED_DATABASE=<db> E2E_AGENT_PHONE=<your phone> python scripts/e2e/seed.py`, then `scripts/e2e/consumer_journey.py` with the variables in its header, then `seed.py --remove`. The seeded listings are public while they exist.
