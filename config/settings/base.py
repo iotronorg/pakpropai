@@ -262,6 +262,7 @@ FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:3000')
 
 # KI-066: days a prepared data export can be downloaded
 DATA_EXPORT_DAYS = env.int('DATA_EXPORT_DAYS', default=7)
+DATA_REQUEST_SLA_DAYS = env.int('DATA_REQUEST_SLA_DAYS', default=30)     # export and deletion (MVP acceptance 11)
 
 # T-2014: hours moderators have to decide
 MODERATION_SLA_HOURS = env.int('MODERATION_SLA_HOURS', default=24)
@@ -479,6 +480,10 @@ CELERY_BEAT_SCHEDULE = {
     'daily-agent-performance-snapshot': {
         'task':     'apps.agents.tasks.refresh_agent_performance_snapshots',
         'schedule': 86400,  # every 24 hours
+    },
+    'process-data-requests': {
+        'task':     'apps.compliance.tasks.process_data_requests',
+        'schedule': 3600,
     },
     'purge-data-exports': {
         'task':     'apps.compliance.tasks.purge_data_exports',
@@ -772,6 +777,8 @@ PRIVACY_MASK_FIELD_ALLOWLIST = [
      'fields': _AGENT_CONTACT},                               # agent edits own profile
     {'path': r'^/api/v1/agents/\d+/$', 'methods': ['PATCH', 'PUT'],
      'fields': _AGENT_CONTACT},                               # admin edits an agent
+    {'path': r'^/api/v1/verification/fraud/blacklist/$', 'methods': ['POST'],
+     'fields': ['token']},                                    # admin; a masked entry would match nobody (encrypted at rest)
     {'path': r'^/api/v1/organizations/$', 'methods': ['POST'],
      'fields': ['phone', 'email']},                           # admin creates an org: business contact
     {'path': r'^/api/v1/organizations/(me|[0-9a-f-]{36})/$', 'methods': ['PATCH', 'PUT'],

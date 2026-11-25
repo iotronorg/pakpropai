@@ -10,6 +10,12 @@ logger = logging.getLogger(__name__)
 FUZZY_FLAG_THRESHOLD = 0.85
 
 
+def hash_id(id_number: str) -> str:
+    """Keyed: a plain SHA-256 of a 13-digit ID is reversible by trying them all. Rows from before are re-keyed."""
+    from apps.core.crypto import blind_index
+    return blind_index(hashlib.sha256((id_number or '').strip().encode()).hexdigest())
+
+
 @dataclass
 class ScreeningResult:
     status: str          # clear | flagged | blocked
@@ -106,4 +112,4 @@ class AMLScreeningGateway:
 
     @staticmethod
     def _hash_id(id_number: str) -> str:
-        return hashlib.sha256((id_number or '').strip().encode()).hexdigest()
+        return hash_id(id_number)

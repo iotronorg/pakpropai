@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS agent_organization_memberships (
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('agents', '0015_collaboration_membership'),
+        ('agents', '0016_encrypt_more_fields'),
     ]
 
     operations = [

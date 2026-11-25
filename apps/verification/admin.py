@@ -21,5 +21,5 @@ class DocumentScanAdmin(admin.ModelAdmin):
 @admin.register(FraudBlacklist)
 class FraudBlacklistAdmin(admin.ModelAdmin):
     list_display  = ('token', 'reason', 'added_by', 'expires_at', 'created_at')
-    search_fields = ('token', 'reason')
+    search_fields = ('reason',)
     readonly_fields = ('created_at',)

@@ -12,3 +12,11 @@ class UsersConfig(AppConfig):
         admin.site.login_form = MfaAdminAuthenticationForm
         admin.site.login_template = 'admin/login.html'
 
+        from django.db.models.signals import pre_save
+        from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
+        pre_save.connect(_drop_token, sender=OutstandingToken, dispatch_uid='drop_refresh_token')
+
+
+def _drop_token(sender, instance, **kwargs):
+    """Revocation needs the jti only; a stored refresh token could be used by whoever reads the table (KI-102)."""
+    instance.token = ''

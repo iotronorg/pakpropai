@@ -48,7 +48,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('organizations', '0028_owner_projection_help'),
-        ('agents', '0015_collaboration_membership'),
+        ('agents', '0016_encrypt_more_fields'),
     ]
 
     operations = [

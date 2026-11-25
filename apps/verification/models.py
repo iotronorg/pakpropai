@@ -1,7 +1,7 @@
 import uuid
 from django.db import models
 
-from apps.core.crypto import EncryptedTextField
+from apps.core.crypto import EncryptedJSONField, EncryptedTextField, blind_index
 from django.conf import settings
 from django.utils import timezone
 
@@ -63,11 +63,11 @@ class DocumentScan(models.Model):
     authority           = models.CharField(max_length=200, blank=True)
 
     # Analysis
-    extracted_fields  = models.JSONField(default=dict)   # all key-value pairs from OCR
+    extracted_fields  = EncryptedJSONField(default=dict)   # all key-value pairs from OCR
     red_flags         = models.JSONField(default=list)   # suspicious items found
     confidence        = models.CharField(max_length=10, default='LOW')  # HIGH/MEDIUM/LOW
     raw_ocr           = EncryptedTextField(blank=True)
-    whatsapp_summary  = models.TextField(blank=True)
+    whatsapp_summary  = EncryptedTextField(blank=True)
     status            = models.CharField(max_length=20, choices=Status.choices,
                                          default=Status.UNREADABLE)
     created_at        = models.DateTimeField(auto_now_add=True)
@@ -107,7 +107,7 @@ class Verification(models.Model):
                         related_name='verification_requests'
                     )
     status        = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
-    ocr_data      = models.JSONField(default=dict, blank=True)
+    ocr_data      = EncryptedJSONField(default=dict, blank=True)
     fraud_flags   = models.JSONField(default=list, blank=True)
     notes            = models.TextField(blank=True)
     verified_at      = models.DateTimeField(null=True, blank=True)
@@ -128,8 +128,9 @@ class FraudBlacklist(models.Model):
     On save/delete the token is synced to the Redis cache so FraudCheckService
     fast-path checks stay consistent.
     """
-    token      = models.CharField(max_length=200, unique=True,
+    token      = EncryptedTextField(
                      help_text='Keyword, phone, CNIC, society name, or any fraud signal')
+    token_index = models.CharField(max_length=64, unique=True, editable=False)     # keyed hash, for lookups
     reason     = models.TextField(blank=True, help_text='Why this token was blacklisted')
     added_by   = models.ForeignKey(
                      settings.AUTH_USER_MODEL,
@@ -145,6 +146,20 @@ class FraudBlacklist(models.Model):
         db_table = 'fraud_blacklist'
         ordering = ['-created_at']
 
+    @staticmethod
+    def index(token: str) -> str:
+        return blind_index(f'fraud:{(token or "").strip().lower()}')
+
+    @classmethod
+    def cache_key(cls, token: str) -> str:
+        return f'fraud:blacklist:{cls.index(token)}'
+
+    def validate_unique(self, exclude=None):
+        from django.core.exceptions import ValidationError
+        if FraudBlacklist.objects.filter(token_index=self.index(self.token)).exclude(pk=self.pk).exists():
+            raise ValidationError({'token': 'Already on the blacklist.'})
+        super().validate_unique(exclude)
+
     def is_active(self) -> bool:
         return self.expires_at is None or self.expires_at > timezone.now()
 
@@ -154,15 +169,16 @@ class FraudBlacklist(models.Model):
             ttl = None
             if self.expires_at:
                 ttl = int((self.expires_at - timezone.now()).total_seconds())
-            cache.set(f'fraud:blacklist:{self.token.lower()}', True, ttl)
+            cache.set(self.cache_key(self.token), True, ttl)
         else:
-            cache.delete(f'fraud:blacklist:{self.token.lower()}')
+            cache.delete(self.cache_key(self.token))
 
     def remove_from_cache(self):
         from django.core.cache import cache
-        cache.delete(f'fraud:blacklist:{self.token.lower()}')
+        cache.delete(self.cache_key(self.token))
 
     def save(self, *args, **kwargs):
+        self.token_index = self.index(self.token)
         super().save(*args, **kwargs)
         self.sync_to_cache()
 
@@ -171,4 +187,4 @@ class FraudBlacklist(models.Model):
         super().delete(*args, **kwargs)
 
     def __str__(self):
-        return f"Blacklist: {self.token}"
+        return f"Blacklist {self.pk}"

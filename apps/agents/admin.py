@@ -14,7 +14,7 @@ class AgentAdmin(admin.ModelAdmin):
         'rating', 'total_leads', 'closed_deals',
     )
     list_filter  = ('agent_type', 'is_verified', 'is_active', 'is_featured', 'primary_city')
-    search_fields = ('name', 'phone', 'email', 'company_name', 'national_id_number', 'cnic_number', 'license_number')
+    search_fields = ('name', 'phone', 'email', 'company_name', 'license_number')
     readonly_fields = (
         'joined_at', 'updated_at', 'total_leads', 'total_listings',
         'closed_deals', 'last_active_at',

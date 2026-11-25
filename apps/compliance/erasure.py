@@ -4,6 +4,7 @@ import re
 import uuid
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -31,7 +32,13 @@ class RTBFOrchestrator:
 
         user = User.objects.filter(phone=phone_e164).first()
         if user is None:
-            raise ValueError(f"No user found for phone: {phone_e164}")
+            raise ValueError('No such customer.')
+        # An organization may erase its own customer, not someone who also uses the platform
+        # or other organizations. The answer is the same as for an unknown number.
+        if getattr(requested_by_user, 'role', None) == 'developer' and not only_customer_of(user, org):
+            raise ValueError('No such customer.')
+        if reason := blocked_reason(user):
+            raise ValueError(reason)
 
         regulation = JurisdictionComplianceGate().get_active_regulations(org)
         regulation_str = regulation[0] if regulation else 'LOCAL'
@@ -59,168 +66,257 @@ class RTBFOrchestrator:
 
     def execute(self, request):
         """
-        Atomic cascading erasure. Partial entity failures log ERROR and continue —
-        prefer incomplete erasure over silent skip.
+        Run every step, each in its own transaction. Safe to repeat. The account is blocked
+        first; its identity is removed, and the request completed, only when every other
+        step worked: a failed step needs the phone number to find the data again.
+        Raises ErasureIncomplete otherwise (the task and the hourly job try again).
         """
         from apps.compliance.models import DataDeletionRequest, PrivacyAuditLog
 
         if request.status == DataDeletionRequest.Status.COMPLETED:
             return
-
         request.status = DataDeletionRequest.Status.PROCESSING
         request.save(update_fields=['status'])
 
-        user   = request.user
-        errors = {}
-        scope  = {}
+        user = request.user
+        subject, org = _sha256(user.phone), _primary_org(user)
+        type(user).objects.filter(pk=user.pk).update(is_active=False)
+        scope, errors = {}, {}
+        for name, step in (*_STEPS, ('user_anonymized', _account)):
+            if step is _account and errors:
+                break
+            try:
+                with transaction.atomic():
+                    scope[name] = step(user)
+            except Exception as exc:
+                logger.exception('RTBF: step %s failed user=%s', name, user.pk)
+                errors[name] = type(exc).__name__       # messages can quote the data itself
+        if errors:
+            request.status, request.erasure_scope = DataDeletionRequest.Status.FAILED, {**scope, 'errors': errors}
+            request.save(update_fields=['status', 'erasure_scope'])
+            raise ErasureIncomplete(', '.join(errors))
 
-        # 1 — Lead rows
-        try:
-            from apps.leads.models import Lead
-            leads = list(Lead.objects.filter(user=user))
-            Lead.objects.filter(user=user).update(
-                notes=_REDACTED,
-                budget_min=None,
-                budget_max=None,
-                score=0,
-            )
-            scope['leads_anonymized'] = len(leads)
-        except Exception as exc:
-            logger.error("RTBF: Lead anonymization failed user=%s: %s", user.id, exc)
-            errors['leads'] = str(exc)
-
-        # 2 — WhatsApp session messages
-        try:
-            from apps.whatsapp.models import WhatsAppSession, WhatsAppMessage
-            sessions = WhatsAppSession.objects.filter(user=user)
-            deleted, _ = WhatsAppMessage.objects.filter(session__in=sessions).delete()
-            scope['wa_messages_deleted'] = deleted
-        except Exception as exc:
-            logger.error("RTBF: WhatsAppMessage purge failed user=%s: %s", user.id, exc)
-            errors['wa_messages'] = str(exc)
-
-        # 3 — LeadActivity notes
-        try:
-            from apps.leads.models import Lead, LeadActivity
-            lead_ids = Lead.objects.filter(user=user).values_list('id', flat=True)
-            updated = LeadActivity.objects.filter(lead_id__in=lead_ids).update(notes=_REDACTED)
-            scope['lead_activities_redacted'] = updated
-        except Exception as exc:
-            logger.error("RTBF: LeadActivity redaction failed user=%s: %s", user.id, exc)
-            errors['lead_activities'] = str(exc)
-
-        # 4 — DocumentScan rows
-        try:
-            from apps.verification.models import DocumentScan
-            deleted, _ = DocumentScan.objects.filter(user=user).delete()
-            scope['document_scans_deleted'] = deleted
-        except Exception as exc:
-            logger.error("RTBF: DocumentScan delete failed user=%s: %s", user.id, exc)
-            errors['document_scans'] = str(exc)
-
-        # 5 — CampaignRecipient: anonymize any phone reference via lead FK
-        try:
-            from apps.campaigns.models import CampaignRecipient
-            from apps.leads.models import Lead
-            lead_ids = Lead.objects.filter(user=user).values_list('id', flat=True)
-            updated = CampaignRecipient.objects.filter(lead_id__in=lead_ids).update(lead=None)
-            scope['campaign_recipients_anonymized'] = updated
-        except Exception as exc:
-            logger.error("RTBF: CampaignRecipient anonymization failed user=%s: %s", user.id, exc)
-            errors['campaign_recipients'] = str(exc)
-
-        # 5b — AI confirmations (arguments, summaries) and trace links
-        try:
-            from apps.ai.models import AITrace, PendingAction
-            deleted, _ = PendingAction.objects.filter(user=user).delete()
-            scope['ai_pending_actions_deleted'] = deleted
-            scope['ai_traces_unlinked'] = AITrace.objects.filter(user=user).update(
-                user=None, conversation_ref='')
-        except Exception as exc:
-            logger.error("RTBF: AI record erasure failed user=%s: %s", user.id, exc)
-            errors['ai_records'] = str(exc)
-
-        # 5c — Assistant conversations, and the text kept on per-call AI logs (KI-062)
-        try:
-            from apps.ai.models import AIInteraction
-            from apps.conversations.store import erase_user
-            scope['ai_conversations_deleted'] = erase_user(user)
-            scope['ai_interactions_redacted'] = AIInteraction.objects.filter(user=user).update(
-                input_data={}, output_data={}, user=None)
-        except Exception as exc:
-            logger.error("RTBF: conversation erasure failed user=%s: %s", user.id, exc)
-            errors['ai_conversations'] = str(exc)
-
-        # 5c2 — Viewings (T-2060); before 5d, so the agent is told about cancelled visits
-        try:
-            from apps.viewings.services import erase_user as erase_viewings
-            scope['viewings_redacted'] = erase_viewings(user)
-        except Exception as exc:
-            logger.error("RTBF: viewing erasure failed user=%s: %s", user.id, exc)
-            errors['viewings'] = str(exc)
-
-        # 5d — Enquiries and in-app threads (T-2050)
-        try:
-            from apps.enquiries.services import erase_user as erase_enquiries
-            scope['enquiries_deleted'] = erase_enquiries(user)
-        except Exception as exc:
-            logger.error("RTBF: enquiry erasure failed user=%s: %s", user.id, exc)
-            errors['enquiries'] = str(exc)
-
-        # 5e — Favourites, saved searches, preference profile (T-2040)
-        try:
-            from apps.preferences.services import erase_user as erase_preferences
-            scope['preferences_deleted'] = erase_preferences(user)
-        except Exception as exc:
-            logger.error("RTBF: preference erasure failed user=%s: %s", user.id, exc)
-            errors['preferences'] = str(exc)
-
-        # 5f — Listing reports and appeals (T-2014)
-        try:
-            from apps.moderation.services import erase_user as erase_moderation
-            scope['reports_redacted'] = erase_moderation(user)
-        except Exception as exc:
-            logger.error("RTBF: moderation erasure failed user=%s: %s", user.id, exc)
-            errors['moderation'] = str(exc)
-
-        # 5g — Prepared data exports (KI-066)
-        try:
-            from apps.compliance.models import DataExportFile
-            scope['export_files_deleted'] = DataExportFile.objects.filter(request__user=user).delete()[0]
-        except Exception as exc:
-            logger.error("RTBF: export file erasure failed user=%s: %s", user.id, exc)
-            errors['export_files'] = str(exc)
-
-        # 6 — User anonymization
-        try:
-            user.is_active = False
-            user.name      = _DELETED
-            user.email     = f'deleted_{uuid.uuid4().hex[:8]}@deleted.invalid'
-            user.save(update_fields=['is_active', 'name', 'email'])
-            scope['user_anonymized'] = True
-        except Exception as exc:
-            logger.error("RTBF: User anonymization failed user=%s: %s", user.id, exc)
-            errors['user'] = str(exc)
-
-        # 7 — Mark request complete
-        request.status       = DataDeletionRequest.Status.COMPLETED
-        request.completed_at = timezone.now()
+        request.status        = DataDeletionRequest.Status.COMPLETED
+        request.completed_at  = timezone.now()
         request.erasure_scope = scope
         request.save(update_fields=['status', 'completed_at', 'erasure_scope'])
-
-        # 8 — Audit log
         try:
             PrivacyAuditLog.objects.create(
-                org=_primary_org(request.user),
-                action=PrivacyAuditLog.Action.ERASURE_COMPLETED,
-                actor=request.requested_by,
-                subject_identifier=_sha256(user.phone),
-                regulation=request.regulation or 'LOCAL',
-                details={'scope': scope, 'errors': errors},
-                is_sensitive=True,
-            )
+                org=org, action=PrivacyAuditLog.Action.ERASURE_COMPLETED, actor=request.requested_by,
+                subject_identifier=subject, regulation=request.regulation or 'LOCAL',
+                details={'scope': scope, 'errors': {}}, is_sensitive=True)
         except Exception:
             logger.error("RTBF: PrivacyAuditLog write failed", exc_info=True)
+
+
+class ErasureIncomplete(Exception):
+    pass
+
+
+def blocked_reason(user) -> str:
+    """Why this account cannot be erased now ('' = it can)."""
+    from apps.escrow.models import EscrowDeal
+    from apps.organizations.models import OrganizationMembership
+    if user.is_staff or user.role == 'admin':
+        return 'Staff accounts are removed by an administrator.'
+    if OrganizationMembership.objects.filter(user=user, role='owner', is_active=True,
+                                             organization__is_active=True).exists():
+        return 'Transfer the ownership of your organization first.'
+    D = EscrowDeal.Status
+    if EscrowDeal.objects.filter(Q(buyer=user) | Q(seller=user), status__in=[D.INITIATED, D.LOCKED]).exists():
+        return 'A reservation is in progress.'
+    return ''
+
+
+def only_customer_of(user, org) -> bool:
+    """The person is known to this organization only; the platform holds nothing else about them."""
+    from apps.conversations.models import Conversation
+    from apps.leads.models import Lead
+    from apps.preferences.models import Favourite, PreferenceItem, SavedSearch
+    from apps.properties.models import Property
+    from apps.whatsapp.models import WhatsAppSession
+    mine = Q(organization=org)
+    if user.role != 'client' or not (Lead.objects.filter(mine, user=user).exists()
+                                     or WhatsAppSession.objects.filter(mine, user=user).exists()):
+        return False
+    elsewhere = [m.objects.filter(user=user).exclude(mine) for m in (Lead, WhatsAppSession, Conversation)]
+    elsewhere += [m.objects.filter(user=user) for m in (Favourite, SavedSearch, PreferenceItem)]
+    return not any(qs.exists() for qs in (*elsewhere, Property.objects.filter(owner=user)))
+
+
+# ── Steps ─────────────────────────────────────────────────────────────────────
+
+def _leads(user):
+    from apps.leads.models import Lead
+    return Lead.objects.filter(user=user).update(
+        notes=_REDACTED, budget_min=None, budget_max=None, score=0, intent_signals={}, score_factors={},
+        city_interest='', last_known_lat=None, last_known_lon=None)
+
+
+def _lead_activities(user):
+    from apps.leads.models import LeadActivity
+    return LeadActivity.objects.filter(lead__user=user).update(notes=_REDACTED, meta={})
+
+
+def _lead_messages(user):
+    """Messages of enquiry threads are handled with the enquiries."""
+    from apps.leads.models import ConversationMessage
+    ConversationMessage.objects.filter(sender=user, enquiry__isnull=True).update(body=_REDACTED)
+    return ConversationMessage.objects.filter(lead__user=user, enquiry__isnull=True).delete()[0]
+
+
+def _whatsapp(user):
+    from apps.whatsapp.models import WhatsAppMessage, WhatsAppSession
+    sessions = WhatsAppSession.objects.filter(Q(user=user) | Q(user__isnull=True, phone__in=_phones(user)))
+    n = WhatsAppMessage.objects.filter(session__in=sessions).delete()[0]
+    sessions.update(context={}, phone='', user=None)
+    return n
+
+
+def _documents(user):
+    from apps.verification.models import DocumentScan
+    return DocumentScan.objects.filter(Q(user=user) | Q(user__isnull=True, phone__in=_phones(user))).delete()[0]
+
+
+def _campaigns(user):
+    from apps.campaigns.models import CampaignRecipient
+    from apps.leads.models import CRMContact
+    CRMContact.objects.filter(phone__in=_phones(user)).delete()
+    return CampaignRecipient.objects.filter(Q(lead__user=user) | Q(phone__in=_phones(user))).delete()[0]
+
+
+def _voice(user):
+    from apps.voice.models import VoiceCallSession
+    calls = VoiceCallSession.objects.filter(
+        Q(lead__user=user) | Q(from_phone__in=_phones(user)) | Q(to_phone__in=_phones(user)))
+    calls.filter(from_phone__in=_phones(user)).update(from_phone='')
+    return VoiceCallSession.objects.filter(pk__in=list(calls.values_list('pk', flat=True))).update(
+        transcript='', ai_context_snapshot={}, recording_url='', to_phone='', from_phone='')
+
+
+def _ai_records(user):
+    from apps.ai.models import AITrace, PendingAction
+    AITrace.objects.filter(user=user).update(user=None, conversation_ref='')
+    return PendingAction.objects.filter(user=user).delete()[0]
+
+
+def _ai_conversations(user):
+    from apps.ai.models import AIInteraction
+    from apps.conversations.store import erase_user
+    AIInteraction.objects.filter(user=user).update(input_data={}, output_data={}, user=None)
+    return erase_user(user)
+
+
+def _security_logs(user):
+    from apps.audit.models import ComplianceViolation, PropertyAudit, SecurityTrace
+    phones = _phones(user)
+    PropertyAudit.objects.filter(Q(user=user) | Q(phone__in=phones)).update(phone='', user=None)
+    ComplianceViolation.objects.filter(phone__in=phones).update(phone='', details='')
+    return SecurityTrace.objects.filter(phone__in=phones).update(phone='', message_excerpt='')
+
+
+def _viewings(user):
+    from apps.viewings.services import erase_user
+    return erase_user(user)
+
+
+def _enquiries(user):
+    from apps.enquiries.services import erase_user
+    return erase_user(user)
+
+
+def _preferences(user):
+    from apps.preferences.services import erase_user
+    return erase_user(user)
+
+
+def _moderation(user):
+    from apps.moderation.services import erase_user
+    return erase_user(user)
+
+
+def _reports(user):
+    from apps.reports.models import Report
+    return Report.objects.filter(user=user).delete()[0]
+
+
+def _export_files(user):
+    from apps.compliance.models import DataExportFile
+    return DataExportFile.objects.filter(request__user=user).delete()[0]
+
+
+def _private_listings(user):
+    """A private person's own listings are taken down and emptied (an organization keeps its listings)."""
+    from apps.properties.models import Property, PropertyImage
+    mine = Property.objects.filter(owner=user, organization__isnull=True)
+    for image in PropertyImage.objects.filter(property__in=mine):
+        for f in (image.image, image.thumbnail):
+            if f:
+                transaction.on_commit(lambda f=f: f.storage.delete(f.name), robust=True)
+        image.delete()
+    return mine.update(status=Property.Status.ARCHIVED, is_active=False, title=_DELETED, description='',
+                       location='', raw_docs={}, ai_analysis={}, latitude=None, longitude=None, geo_lat=None,
+                       geo_lng=None)
+
+
+def _notifications(user):
+    from apps.notifications.models import Notification
+    return Notification.objects.filter(user=user).delete()[0]
+
+
+def _agent_profile(user):
+    from apps.agents.models import Agent
+    n = 0
+    for agent in Agent.objects.filter(user=user):
+        if agent.profile_photo:
+            f = agent.profile_photo
+            transaction.on_commit(lambda f=f: f.storage.delete(f.name), robust=True)
+        n += Agent.objects.filter(pk=agent.pk).update(
+            name=_DELETED, phone=_placeholder(), whatsapp_number='', email='', national_id_number='', cnic_number='',
+            tax_id_number='', ntn_number='', license_number='', registration_number='', bio='', website='',
+            office_address='', profile_photo='', is_active=False)
+    return n
+
+
+def _account(user):
+    from django.contrib.admin.models import LogEntry
+    from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
+
+    from apps.organizations.models import OrganizationMembership
+    from apps.users.models import MFADevice, MFARecoveryCode, OTPCode
+    OTPCode.objects.filter(phone__in=_phones(user)).delete()
+    for model in (MFADevice, MFARecoveryCode, OrganizationMembership, LogEntry):
+        model.objects.filter(user=user).delete()
+    OutstandingToken.objects.filter(user=user).update(user=None)
+    user.is_active, user.mfa_enabled, user.name, user.email = False, False, _DELETED, \
+        f'deleted_{uuid.uuid4().hex[:8]}@deleted.invalid'
+    user.phone, user.cnic, user.ntn = _placeholder(), None, None
+    user.set_unusable_password()
+    user.save()
+    return True
+
+
+def _placeholder() -> str:
+    """Unique, and not a phone number: the person can register again with theirs."""
+    return f'deleted-{uuid.uuid4().hex[:12]}'
+
+
+def _phones(user) -> list[str]:
+    """WhatsApp stores numbers without the plus sign."""
+    return [user.phone, user.phone.lstrip('+')]
+
+
+# Viewings before enquiries, so the agent is told about cancelled visits.
+_STEPS = (
+    ('leads_anonymized', _leads), ('lead_activities_redacted', _lead_activities),
+    ('lead_messages_deleted', _lead_messages), ('wa_messages_deleted', _whatsapp),
+    ('document_scans_deleted', _documents), ('campaign_recipients_deleted', _campaigns), ('voice_calls_emptied', _voice),
+    ('ai_pending_actions_deleted', _ai_records), ('ai_conversations_deleted', _ai_conversations),
+    ('security_logs_redacted', _security_logs), ('viewings_redacted', _viewings), ('enquiries_deleted', _enquiries),
+    ('preferences_deleted', _preferences), ('reports_redacted', _moderation), ('generated_reports_deleted', _reports),
+    ('export_files_deleted', _export_files), ('private_listings_removed', _private_listings),
+    ('notifications_deleted', _notifications), ('agent_profiles_redacted', _agent_profile),
+)
 
 
 def _primary_org(user):

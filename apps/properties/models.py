@@ -1,4 +1,5 @@
 import uuid
+from apps.core.crypto import EncryptedJSONField
 from django.contrib.postgres.indexes import GinIndex, OpClass
 from django.contrib.postgres.search import SearchVectorField
 from django.core.exceptions import ValidationError
@@ -311,7 +312,7 @@ class Property(models.Model):
     search_tsv    = SearchVectorField(null=True, editable=False)
     ai_score      = models.SmallIntegerField(null=True, blank=True)
     risk_level    = models.CharField(max_length=20, choices=RiskLevel.choices, null=True, blank=True)
-    raw_docs      = models.JSONField(default=dict, blank=True)
+    raw_docs      = EncryptedJSONField(default=dict, blank=True)
     ai_analysis   = models.JSONField(default=dict, blank=True)
     # Derived from ``status`` (T-1080): readers keep using it as "publicly visible".
     is_active     = models.BooleanField(default=True)

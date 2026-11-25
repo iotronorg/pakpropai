@@ -455,3 +455,13 @@
 1. `git status`: uncommitted work is session 25. **Do not commit.**
 2. Next: MVP criteria 10 and 11 (starting files in DEVELOPMENT_STATUS).
 3. Owner: KI‑098, staging E2E run, T‑2072, KI‑085, KI‑089, KI‑095, KI‑096; email provider and WhatsApp template; frontend check of checklist §49.
+
+## Session 26 — 2026-11-25
+- **Verified:** the owner committed session 25 (`65b93d2`); the tree was clean.
+- **Completed:** MVP criteria 10 and 11 (ADR‑049). **Found and fixed:** KI‑102, KI‑103. **Recorded:** KI‑104, KI‑105.
+- **Tests:** 2434 passed, 1 skipped, 0 failed. E2E journey 69 checks. **Not committed.**
+
+### Handoff → session 27 (supersedes the one above)
+1. `git status`: uncommitted work is session 26. **Do not commit.**
+2. Next: MVP criteria 4 and 14 (starting files in DEVELOPMENT_STATUS).
+3. Owner: KI‑085, KI‑105, KI‑098, staging E2E run, T‑2072, KI‑089, KI‑095, KI‑096; email provider and WhatsApp template.

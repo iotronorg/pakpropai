@@ -578,3 +578,9 @@
 - **Added:** `tests/test_mvp_listings_alerts.py`.
 - **Changed:** `Property.objects.visible_to()` also requires not expired and a market that is not inactive (`public_q` removed); consumer listing API, compare, trends and the WhatsApp location pin use it; listing detail hides owner data; reports check access; going live stamps `published_at`; alert backlog warning.
 - **Fixed:** `GET /external/inventory/`.
+
+### 2026-11-25 — session 26: data protection (MVP criteria 10 and 11)
+- **Added:** `EncryptedJSONField`, `manage.py scan_plaintext`, `process_data_requests` (hourly), `DATA_REQUEST_SLA_DAYS` (30), `tests/test_mvp_data_protection.py`.
+- **Migrations:** agents 0016, compliance 0006, inventory 0003, properties 0049, users 0015, verification 0009. The staged contract migrations depend on the new ones.
+- **Changed:** one erasure for all requests, step by step; wider export; refresh tokens not stored; blacklist looked up by keyed hash; organizations may erase only their own customers.
+- **Fixed:** the fraud-check report.

@@ -6,7 +6,6 @@ Usage:
     python manage.py sync_sanctions --lists ofac,un
     python manage.py sync_sanctions --lists eu
 """
-import hashlib
 import logging
 import unicodedata
 import xml.etree.ElementTree as ET
@@ -36,7 +35,8 @@ def _normalize(name: str) -> str:
 
 
 def _hash_id(id_number: str) -> str:
-    return hashlib.sha256((id_number or '').strip().encode()).hexdigest()
+    from apps.compliance.aml_gateway import hash_id
+    return hash_id(id_number)
 
 
 def _strip_ns(root) -> None:

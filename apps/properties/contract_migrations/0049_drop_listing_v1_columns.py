@@ -60,7 +60,7 @@ CREATE INDEX IF NOT EXISTS properties_propert_f38ecc_idx ON properties (property
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('properties', '0048_image_hardening'),
+        ('properties', '0049_encrypt_more_fields'),
     ]
 
     operations = [

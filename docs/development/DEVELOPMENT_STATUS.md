@@ -1,17 +1,17 @@
 # Development Status
 
-_Last updated: 2026-11-25 (session 25; git commit subjects number sessions differently: `90c13ed` "session 44" is session 24 here)_
+_Last updated: 2026-11-25 (session 26; git commit subjects number sessions differently: `65b93d2` "session 45" is session 25 here)_
 
 | Item | Value |
 |---|---|
-| Branch | `development`. The owner committed through KI‑094/KI‑097 (`90c13ed`). **Uncommitted:** MVP criteria 3 and 5 (session 25) |
+| Branch | `development`. The owner committed through MVP criteria 3 and 5 (`65b93d2`). **Uncommitted:** MVP criteria 10 and 11 (session 26) |
 | Current milestone | **M2 — AI agent MVP** ([MILESTONE_02](milestones/MILESTONE_02_AI_AGENT_MVP.md)), started 2026‑11‑23. M1 code complete (contracts T‑1070g‑2 / T‑1032b‑2 release‑gated); M0 awaiting the first GitHub Actions run |
 | M0 progress | All 17 tasks complete. Remaining exit criterion: CI green on GitHub Actions (owner pushes) |
 | M1 progress | 16 of 18 tasks done (T‑1010, T‑1011, T‑1020, T‑1021, T‑1022, T‑1030, T‑1031, T‑1033, T‑1040, T‑1050, T‑1060, T‑1080, T‑1090, T‑1100, T‑1110, T‑1120) plus subtasks T‑1032a, T‑1032c, T‑1070a–f and T‑1070g‑1 |
 | M2 progress | 16 of 17 tasks done. Open: T‑2072 (owner data and paid runs) |
-| Test suite | **2417 passed, 1 skipped, 0 failed** (session 25); end-to-end journey 69 checks, local. See [TESTING_STATUS](TESTING_STATUS.md) |
-| Last completed task | MVP criteria 3 and 5 proven; KI‑099, KI‑100 fixed (ADR‑048) |
-| Next task | **MVP criteria 10 and 11** (MVP_SCOPE §6): prove with a schema audit and data scan that no secret or national ID is stored in plain text, and that export and deletion cover conversations, memory, enquiries and messages. Start in `apps/compliance/` (export, erasure) and the encrypted fields in `apps/core`. Waiting on the owner: T‑2072, staging E2E run, KI‑098. Open: KI‑055…KI‑059, KI‑068, KI‑069, KI‑071, KI‑073, KI‑075…KI‑089, KI‑091…KI‑093, KI‑095, KI‑096 (deploy), KI‑098, KI‑101 |
+| Test suite | **2434 passed, 1 skipped, 0 failed** (session 26). Journey 69 checks, local. See [TESTING_STATUS](TESTING_STATUS.md) |
+| Last completed task | MVP criteria 10 and 11; KI‑102, KI‑103 fixed (ADR‑049) |
+| Next task | **MVP criteria 4 and 14** (MVP_SCOPE §6): measure enquiry notification delivery against one minute, and check that SLO dashboards and alerts exist for API, search, AI reply and webhooks. Start in `apps/enquiries/`, `apps/notifications/delivery.py`, `apps/core/metrics.py`. Waiting on the owner: T‑2072, staging E2E run, KI‑085, KI‑098, KI‑105. Open: KI‑055…KI‑059, KI‑068, KI‑069, KI‑071, KI‑073, KI‑075…KI‑089, KI‑091…KI‑093, KI‑095, KI‑096 (deploy), KI‑098, KI‑101, KI‑104, KI‑105 |
 
 ## Owner decisions (2026-11-23)
 - **T‑1032b:** staged like T‑1070g (b‑1 now, drops in a later release behind the reconcile gate); `Agent.organization` kept as a derived primary‑org pointer.
@@ -33,6 +33,7 @@ _Last updated: 2026-11-25 (session 25; git commit subjects number sessions diffe
 - Meta: re‑submit the OTP template body with the RealTron name.
 
 ## Operator actions before deploying these changes
+- **Session 26** (checklist §50): **migrations that encrypt data; back up first.**
 - **Session 25** (checklist §49): no migration; some API answers hide more.
 - **Session 24** (checklist §48): no migration; provider callbacks behave differently.
 - **Session 23** (checklist §47): no migration; the worker command now names every queue.

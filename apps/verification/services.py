@@ -59,13 +59,20 @@ class VerificationSignalService:
 
 class FraudCheckService:
 
-    BLACKLIST_KEY = 'fraud:blacklist:'
+    @staticmethod
+    def _key(token: str) -> str:
+        from .models import FraudBlacklist
+        return FraudBlacklist.cache_key(token)
+
+    @classmethod
+    def is_blacklisted(cls, token: str) -> bool:
+        return bool(cache.get(cls._key(token)))
 
     @classmethod
     def check(cls, query: str, user=None) -> dict:
         # 1. Quick blacklist lookup (fast path, no AI cost)
         for token in query.lower().split():
-            if cache.get(f"{cls.BLACKLIST_KEY}{token}"):
+            if cache.get(cls._key(token)):
                 return {
                     'risk': 'high',
                     'flags': [f'"{token}" is on the known fraud blacklist.'],
@@ -93,7 +100,7 @@ class FraudCheckService:
 
     @classmethod
     def add_to_blacklist(cls, token: str, ttl_days: int = 7):
-        cache.set(f"{cls.BLACKLIST_KEY}{token.lower()}", True, ttl_days * 86400)
+        cache.set(cls._key(token), True, ttl_days * 86400)
 
 
 # ── OCR Pipeline ───────────────────────────────────────────────────────────────

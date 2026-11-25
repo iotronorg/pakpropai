@@ -402,3 +402,10 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - No migration. Expired listings disappear at once. Set a market to `inactive` to hide its listings everywhere.
 - `GET /properties/{id}/`: `owner_phone`, `raw_docs` and `ai_analysis` are `null` for consumers. Check the frontend does not need them (contact goes through enquiries).
 - Alert on the log `saved_search.backlog`.
+
+## 50. Session-26 change: data protection (ADR‑049)
+- **Back up the database and the encryption keys first.** Six migrations encrypt stored values and re-key hashes (the re-keying cannot be undone). Stop the old web and worker processes while they run: old code cannot read the new columns.
+- `FIELD_ENCRYPTION_KEYS` is required. Do not change `FIELD_HASH_KEY` on a system that already has data: WhatsApp verify tokens, recovery codes, the blacklist and sanction matching depend on it. If it is unset, it is derived from the first encryption key, so set it (to a fixed value) only on a new system, or before any key rotation with a plan to re-create those hashes.
+- Afterwards run `python manage.py scan_plaintext` on production; it prints counts only and must find nothing. If the cache was unreachable, save each blacklist entry once.
+- Deploy beat (new hourly `process_data_requests`). Alert on `data_request.overdue`.
+- Confirm `DATA_REQUEST_SLA_DAYS` (30).

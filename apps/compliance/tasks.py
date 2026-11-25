@@ -54,6 +54,56 @@ def execute_rtbf_erasure(self, request_id: str):
         raise
 
 
+def _more(user) -> dict:
+    """Records outside the discovery journey."""
+    from django.db.models import Q
+
+    from apps.agents.models import Agent
+    from apps.ai.models import PendingAction
+    from apps.compliance.models import ConsentRecord
+    from apps.escrow.models import EscrowDeal
+    from apps.leads.models import ConversationMessage, LeadActivity
+    from apps.notifications.models import Notification
+    from apps.organizations.models import OrganizationMembership
+    from apps.payments.models import Payment
+    from apps.properties.models import Property
+    from apps.reports.models import Report
+    from apps.verification.models import DocumentScan
+    from apps.viewings.models import ViewingFeedback
+    from apps.voice.models import VoiceCallSession
+    from apps.whatsapp.models import WhatsAppMessage
+
+    def rows(qs, *fields):
+        return list(qs.values(*fields))
+    phones = [user.phone, user.phone.lstrip('+')]
+    return {
+        'whatsapp_messages': rows(WhatsAppMessage.objects.filter(
+            Q(session__user=user) | Q(session__user__isnull=True, session__phone__in=phones)),
+            'direction', 'msg_type', 'body', 'created_at'),
+        'agency_messages': rows(ConversationMessage.objects.filter(lead__user=user, enquiry__isnull=True).exclude(
+            channel=ConversationMessage.Channel.DASHBOARD, sender__isnull=False),
+            'direction', 'channel', 'body', 'created_at'),
+        'lead_history': rows(LeadActivity.objects.filter(lead__user=user), 'action', 'notes', 'created_at'),
+        'voice_calls': rows(VoiceCallSession.objects.filter(lead__user=user), 'direction', 'started_at',
+                            'duration_seconds', 'transcript'),
+        'confirmations': rows(PendingAction.objects.filter(user=user), 'tool', 'prompt', 'status', 'created_at'),
+        'viewing_feedback': rows(ViewingFeedback.objects.filter(author=user), 'appointment_id', 'notes'),
+        'notifications': rows(Notification.objects.filter(user=user), 'title', 'message', 'created_at'),
+        'consents': rows(ConsentRecord.objects.filter(user=user), 'purpose', 'is_active', 'revoked_at'),
+        'documents': rows(DocumentScan.objects.filter(user=user), 'document_type', 'owner_name', 'cnic_number',
+                          'property_address', 'extracted_fields', 'status', 'created_at'),
+        'listings': rows(Property.objects.filter(owner=user), 'ref_no', 'title', 'description', 'city', 'location',
+                         'price', 'currency', 'status', 'created_at'),
+        'payments': rows(Payment.objects.filter(user=user), 'amount', 'currency', 'purpose', 'status', 'created_at'),
+        'reservations': rows(EscrowDeal.objects.filter(Q(buyer=user) | Q(seller=user)), 'id', 'status', 'token_amount',
+                             'currency', 'created_at'),
+        'reports': rows(Report.objects.filter(user=user), 'report_type', 'content', 'created_at'),
+        'memberships': rows(OrganizationMembership.objects.filter(user=user), 'organization__name', 'role'),
+        'agent_profile': rows(Agent.objects.filter(user=user), 'name', 'phone', 'email', 'national_id_number',
+                              'cnic_number', 'tax_id_number', 'ntn_number', 'license_number', 'bio', 'office_address'),
+    }
+
+
 @shared_task
 def generate_data_export(request_id: str):
     """Everything we hold about the person, stored encrypted for a private download (KI-066)."""
@@ -70,10 +120,12 @@ def generate_data_export(request_id: str):
                 'phone': user.phone,
                 'name':  getattr(user, 'name', ''),
                 'email': getattr(user, 'email', ''),
+                'cnic': user.cnic, 'ntn': user.ntn, 'role': user.role,
+                'created_at': user.created_at, 'last_active': user.last_active,
             },
-            'leads': list(
-                Lead.objects.filter(user=user).values('id', 'created_at', 'status', 'intent')
-            ),
+            'leads': list(Lead.objects.filter(user=user).values(
+                'id', 'created_at', 'status', 'intent', 'organization__name', 'notes', 'city_interest', 'budget_min',
+                'budget_max', 'budget_currency', 'last_known_lat', 'last_known_lon')),
         }
         from apps.enquiries.models import Enquiry
         data['enquiries'] = list(Enquiry.objects.filter(user=user).values(
@@ -99,6 +151,7 @@ def generate_data_export(request_id: str):
         data['thread_photos'] = list(MessageAttachment.objects.filter(sender=user).values(
             'id', 'message__enquiry_id', 'content_type', 'size', 'created_at'))     # GET threads/{id}/attachments/{id}/
         data['thread_reports'] = list(user.thread_reports.values('enquiry_id', 'category', 'text', 'created_at'))
+        data |= _more(user)
         payload = json.dumps(data, default=str)
         with transaction.atomic():
             DataExportFile.objects.update_or_create(request=req, defaults={
@@ -134,29 +187,28 @@ def sync_aml_sanction_lists(self):
 
 @shared_task
 def execute_data_deletion(request_id: str):
-    """Anonymize all PII for the user. Sets status=completed."""
+    """The person's own request: the same erasure as any other (KI-103)."""
+    from apps.compliance.erasure import ErasureIncomplete, RTBFOrchestrator
     from apps.compliance.models import DataDeletionRequest
-    req = DataDeletionRequest.objects.get(id=request_id)
-    req.status = 'processing'
-    req.save(update_fields=['status'])
-
-    user = req.user
-    _REDACTED = '[REDACTED]'
     try:
-        from apps.leads.models import Lead
-        if hasattr(user, 'name'):
-            user.name = _REDACTED
-        if hasattr(user, 'email'):
-            user.email = ''
-        user.save()
-        # Lead has no client_name field; PII is on the User row already redacted above
-        Lead.objects.filter(user=user).update(notes='[REDACTED]')
+        RTBFOrchestrator().execute(DataDeletionRequest.objects.get(id=request_id))
+    except ErasureIncomplete:
+        logger.error('execute_data_deletion incomplete request_id=%s', request_id)     # process_data_requests repeats it
 
-        req.status       = 'completed'
-        req.completed_at = timezone.now()
-        req.save(update_fields=['status', 'completed_at'])
-    except Exception:
-        logger.exception('execute_data_deletion failed request_id=%s', request_id)
-        req.status = 'pending'
-        req.save(update_fields=['status'])
-        raise
+
+@shared_task
+def process_data_requests():
+    """Hourly: run again what did not finish, and report what is close to its deadline (MVP acceptance 11)."""
+    from apps.compliance.models import DataDeletionRequest, DataExportRequest
+    now = timezone.now()
+    late = now - timedelta(days=settings.DATA_REQUEST_SLA_DAYS) * 0.8
+    again = 0
+    for model, task, statuses in ((DataDeletionRequest, execute_data_deletion, ['pending', 'processing', 'failed']),
+                                  (DataExportRequest, generate_data_export, ['pending', 'processing'])):
+        for pk, asked in model.objects.filter(status__in=statuses, requested_at__lt=now - timedelta(hours=1)
+                                              ).values_list('pk', 'requested_at'):
+            if asked < late:
+                logger.error('data_request.overdue kind=%s request=%s requested_at=%s', model.__name__, pk, asked)
+            task.delay(str(pk))
+            again += 1
+    return again

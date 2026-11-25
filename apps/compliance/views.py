@@ -110,8 +110,11 @@ class DataDeletionView(APIView):
 
     def delete(self, request):
         _require_gdpr(request)
+        from .erasure import blocked_reason
         from .tasks import execute_data_deletion
-        req = DataDeletionRequest.objects.create(user=request.user)
+        if reason := blocked_reason(request.user):
+            return Response({'detail': reason}, status=status.HTTP_409_CONFLICT)
+        req = DataDeletionRequest.objects.create(user=request.user, request_source='api')
         execute_data_deletion.delay(str(req.id))
         return Response(
             {'id': str(req.id), 'status': req.status},

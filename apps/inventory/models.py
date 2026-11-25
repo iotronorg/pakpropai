@@ -1,4 +1,5 @@
 import uuid
+from apps.core.crypto import EncryptedTextField
 
 from django.conf import settings
 from django.db import models
@@ -37,8 +38,8 @@ class ExternalPlatformConnection(models.Model):
                               related_name='platform_connections',
                           )
     platform            = models.CharField(max_length=20, choices=Platform.choices)
-    api_key             = models.CharField(max_length=500, blank=True)
-    api_secret          = models.CharField(max_length=500, blank=True)
+    api_key             = EncryptedTextField(blank=True)
+    api_secret          = EncryptedTextField(blank=True)
     base_url            = models.URLField(blank=True, help_text='Required for custom platform')
     is_active           = models.BooleanField(default=True)
     sync_direction      = models.CharField(

@@ -395,8 +395,8 @@ class FraudBlacklistView(APIView):
             expires_at = timezone.now() + timedelta(days=ttl_days)
 
         entry, created = FraudBlacklist.objects.update_or_create(
-            token=token,
-            defaults={'reason': reason, 'added_by': request.user, 'expires_at': expires_at},
+            token_index=FraudBlacklist.index(token),
+            defaults={'token': token, 'reason': reason, 'added_by': request.user, 'expires_at': expires_at},
         )
         # sync_to_cache is called by model.save()
 

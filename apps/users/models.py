@@ -66,7 +66,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         help_text='Platform-level sub-role. Only set for role=admin users.',
     )
     is_filer  = models.BooleanField(default=False)
-    ntn       = models.CharField(max_length=20, blank=True, null=True)
+    ntn       = EncryptedTextField(blank=True, null=True)      # an individual's NTN is their CNIC
     cnic      = EncryptedTextField(blank=True, null=True,
                     help_text='National ID number (format varies by country)')
     is_active = models.BooleanField(default=True)

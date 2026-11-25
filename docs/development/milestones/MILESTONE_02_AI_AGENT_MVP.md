@@ -16,6 +16,8 @@
 | 7 | Zero critical hallucinations in the release eval suite; grounding checker live | Checker live (T‑2013); deterministic suite passes in CI form (T‑2070); a run with the release model is T‑2072 |
 | 8 | Side‑effect tools never execute without a confirmation record (tests) | Met for the existing tools (T‑2012); a test requires every committing registry tool to be confirmable. Enquiry, booking and saved‑search tools come later |
 | 9 | AI cost per conversation and per qualified lead from real token data | Built (T‑2011, `GET /ai/costs/`); needs operator‑entered `ModelPrice` rows |
+| 10 | No plaintext secrets or national IDs in the database | Met in code: schema test and scan on test data (session 26); run `scan_plaintext` on production data |
+| 11 | Export and deletion cover conversations, memory, enquiries, messages, within the SLA | Built and tested (session 26); open: who may request (KI‑085), SLA confirmation and third-party files (KI‑105) |
 
 ## Tasks
 | ID | P | Deliverable | Ref | Depends on |

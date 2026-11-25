@@ -106,15 +106,15 @@ class Agent(models.Model):
     # ── Business Information (Agencies / Developers) ──────────────────────────
     registration_number = models.CharField(max_length=100, blank=True,
                               help_text='SECP company registration or chamber of commerce number')
-    tax_id_number       = models.CharField(
-                              max_length=50, blank=True,
+    tax_id_number       = EncryptedTextField(
+                              blank=True,
                               help_text=(
                                   'Tax registration number. '
                                   'Format varies by country: NTN (PK), TRN (AE), '
                                   'UTR/VAT number (GB), EIN/TIN (US), etc.'
                               ),
                           )
-    ntn_number          = models.CharField(max_length=50, blank=True,
+    ntn_number          = EncryptedTextField(blank=True,
                               help_text='[Deprecated — use tax_id_number] Pakistan FBR National Tax Number')
     website             = models.URLField(blank=True)
     office_address      = models.TextField(blank=True,

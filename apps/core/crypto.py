@@ -20,6 +20,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import json
 from functools import lru_cache
 
 from django.conf import settings
@@ -122,6 +123,27 @@ class EncryptedTextField(models.TextField):
     def get_prep_value(self, value):
         value = super().get_prep_value(value)
         return encrypt_str(value)
+
+
+class EncryptedJSONField(models.JSONField):
+    """JSON encrypted at rest (a text column). No JSON lookups."""
+    description = 'Encrypted JSON'
+
+    def get_internal_type(self):
+        return 'TextField'         # migrations cast between jsonb and text
+
+    def db_type(self, connection):
+        return 'text'
+
+    def from_db_value(self, value, expression, connection):
+        if value is None:
+            return None
+        return json.loads(decrypt_str(value), cls=self.decoder)
+
+    def get_db_prep_value(self, value, connection, prepared=False):
+        if value is None:
+            return None
+        return encrypt_str(json.dumps(value, cls=self.encoder))
 
 
 # ── Migration helpers ─────────────────────────────────────────────────────────

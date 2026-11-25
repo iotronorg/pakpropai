@@ -9,7 +9,7 @@ class UserAdmin(DjangoUserAdmin):
     list_display  = ('phone', 'name', 'role', 'is_filer', 'is_active', 'mfa_enabled', 'last_active', 'created_at')
     list_filter   = ('role', 'is_filer', 'is_active', 'mfa_enabled')
     actions       = ['reset_mfa']
-    search_fields = ('phone', 'name', 'email', 'ntn', 'cnic')
+    search_fields = ('phone', 'name', 'email')
     readonly_fields = ('id', 'created_at', 'last_active', 'last_login', 'mfa_enabled')
 
     @admin.action(description='Reset MFA (user re-enrols; sessions ended; audited)')

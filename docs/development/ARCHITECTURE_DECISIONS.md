@@ -949,3 +949,10 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
 - "Live market" means not `inactive`: `beta` markets are shown, as before. `under_offer` listings are shown, as before.
 - Owner phone, raw documents and AI analysis are for those who manage the listing or belong to its organization.
 - When an organization goes live, its listings' `published_at` becomes that moment.
+
+### ADR‑049 — Data at rest and data requests (session 26, 2026-11-25)
+- **At rest:** secrets and national or tax IDs use encrypted fields; lookups use keyed hashes. A schema test refuses a new sensitive-looking plain column; `scan_plaintext` checks stored values.
+- **Erasure** has one implementation. Each step is its own transaction; the account is blocked first and loses its phone number last, and only then is the request complete. Failures are repeated hourly and reported at 80% of the deadline. A test lists every relation to a person and what happens to it.
+- **The phone number is removed**, so the person can register again. Payments and reservations stay, attached to an anonymous account.
+- **Refused:** staff, organization owners (transfer first), people in an active reservation.
+- **An organization** may erase only a person known to it alone; otherwise an administrator does it. The answer does not reveal whether a number is registered.

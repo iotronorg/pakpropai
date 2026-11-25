@@ -319,14 +319,14 @@ class ExecuteDataDeletionTest(TestCase):
         req = self._make_deletion_request()
         execute_data_deletion(str(req.id))
         self.user.refresh_from_db()
-        self.assertEqual(self.user.name, '[REDACTED]')
+        self.assertEqual(self.user.name, '[DELETED]')
 
     def test_clears_user_email(self):
         from apps.compliance.tasks import execute_data_deletion
         req = self._make_deletion_request()
         execute_data_deletion(str(req.id))
         self.user.refresh_from_db()
-        self.assertEqual(self.user.email, '')
+        self.assertTrue(self.user.email.endswith('@deleted.invalid'))
 
     def test_redacts_lead_notes(self):
         from apps.compliance.tasks import execute_data_deletion
