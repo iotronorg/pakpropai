@@ -109,8 +109,8 @@ Priority: P0 (blocker) → P3.
 | T‑3010 | [x] | P1 | Agent performance from real events | ADR‑056. `apps/reports/performance.py`, `GET /reports/agent-performance/`. `tests/test_agent_performance.py` (7) |
 | T‑3020 | [x] | P1 | Tasks and follow-ups with reminders | ADR‑057. `LeadTask` (`leads 0024`), `apps/leads/follow_ups.py`, `task_views.py`, beat `lead-task-reminders`, erasure step. `tests/test_lead_tasks.py` (9) |
 | T‑3060 | [x] | P1 | Listing analytics (impressions, views, saves, enquiries, conversion) | ADR‑058. `ListingDailyStat` (`properties 0050`), `apps/properties/analytics.py`, `apps/reports/listing_performance.py`, `GET /reports/listing-performance/`. `tests/test_listing_analytics.py` (19). Staged contract migrations renumbered 0051/0052. Recorded KI‑122 |
-| T‑3050 | [ ] | P1 | AI listing assistant | FR‑LAI‑001…003. Next |
-| T‑3070 | [ ] | P1 | Unified audit log | GAP‑104 |
+| T‑3050 | [x] | P1 | AI listing assistant | ADR‑059. `apps/ai/listing_assistant.py` (prompts `listing.describe`, `listing.extract` v1), `apps/properties/assistant_views.py` (`/properties/{id}/ai/missing-info|describe|extract/`), flag `feature_listing_assistant`, throttle `listing_assistant`, `ai 0009` (choice only), eval suite `listing_copy` (35 cases, en/ur/roman). `tests/test_listing_assistant.py` (15) |
+| T‑3070 | [ ] | P1 | Unified audit log | GAP‑104. Next |
 | T‑3090 | [ ] | P1 | AI ops console APIs | GAP‑103 |
 | T‑3030 | [ ] | P1 | Configurable pipeline stages | FR‑CRM‑002; frontend contract |
 | T‑3040 | [ ] | P1 | Team management and assignment rules | FR‑CRM‑007 |

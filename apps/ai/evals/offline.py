@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from decimal import Decimal
 from pathlib import Path
 
 DATA = Path(__file__).parent / 'data'
@@ -105,6 +106,41 @@ def indirect(cases=None) -> SuiteResult:
     return out
 
 
+from apps.markets.pk import CURRENCY as PK_CURRENCY  # noqa: E402 — the case listing is in the PK market
+
+# One listing for the listing-copy cases: a 10 marla house in DHA Phase 5, Lahore.
+COPY_LISTING = {
+    'facts': {'purpose': 'For Sale', 'category': 'Residential', 'subtype': 'House', 'city': 'Lahore',
+              'location': 'DHA Phase 5', 'price': f'{PK_CURRENCY} 35,000,000', 'size': '10 marla', 'bedrooms': '4',
+              'bathrooms': '3', 'parking_spaces': '2', 'year_built': '2018', 'amenities': 'Garden / lawn'},
+    'price': 35_000_000, 'size': (10, 'marla'), 'bedrooms': 4, 'bathrooms': 3, 'amenities': ['garden'],
+    'numbers': ['35000000', '10', '4', '3', '2', '2018', '5'],
+}
+
+
+def _copy_sources(notes: str):
+    from apps.ai import listing_assistant as LA
+    from apps.properties.models import Property
+    L = COPY_LISTING
+    value, unit = L['size']
+    return LA.Sources(facts=L['facts'], notes=notes, price_amounts=[Decimal(L['price'])],
+                      sizes=[float(value) * float(Property._SQM_FACTORS[unit])], bedrooms=L['bedrooms'],
+                      bathrooms=L['bathrooms'], amenities=set(L['amenities']),
+                      fact_numbers=set(L['numbers']) | LA._numbers(' '.join(L['facts'].values())),
+                      note_numbers=LA._numbers(notes))
+
+
+def listing_copy(cases=None) -> SuiteResult:
+    """Listing-assistant sentences (T-3050): unsupported facts and banned claims are marked; true ones pass."""
+    from apps.ai.listing_assistant import check_sentence
+    out = SuiteResult('listing_copy')
+    for c in cases if cases is not None else load('listing_copy'):
+        got = check_sentence(c['text'], c['sources'], _copy_sources(c.get('notes', '')))
+        ok = set(c['expect']) <= set(got) if c['expect'] else not got
+        out.add(c, ok, c['expect'], got)
+    return out
+
+
 def dataset(cases=None) -> SuiteResult:
     """Golden extraction cases: unique ids, known tools, arguments the tool and SearchCriteria accept."""
     from apps.ai import tool_registry as R
@@ -132,7 +168,7 @@ def dataset(cases=None) -> SuiteResult:
     return out
 
 
-SUITES = {f.__name__: f for f in (safety, grounding, fairness, indirect, dataset)}
+SUITES = {f.__name__: f for f in (safety, grounding, fairness, indirect, listing_copy, dataset)}
 
 
 def run(names=None) -> list[SuiteResult]:

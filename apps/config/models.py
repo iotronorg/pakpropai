@@ -100,6 +100,8 @@ class SystemConfig(models.Model):
         'feature_document_verification': 'true',
         'feature_property_audit':     'true',
         'feature_talk_to_agent':      'true',
+        # AI listing assistant drafts (T-3050); missing-info needs no model and is always on.
+        'feature_listing_assistant':  'true',
         # Frozen for MVP (regulated token payments — MVP_SCOPE §4.2). Do not enable
         # without a licensed payment partner and legal sign-off.
         'feature_deal_lock':          'false',

@@ -450,3 +450,8 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - **Staged contract migrations renumbered** to `0051_drop_listing_v1_columns` / `0052_drop_prop_fts_gin` (now on top of 0050); follow `apps/properties/contract_migrations/README.md` with the new names.
 - **New endpoint for the frontend:** `GET /api/v1/reports/listing-performance/`.
 - **Load:** one extra small write per search page, listing view, save and enquiry. If a CDN is put in front of `/api/v1/public/`, read KI‑122 first.
+
+## 57. Session-33 change: AI listing assistant (ADR‑059)
+- **Migration `ai 0009`** (choices only, no SQL change).
+- **New endpoints for the frontend:** `GET /api/v1/properties/{id}/ai/missing-info/`, `POST …/ai/describe/`, `POST …/ai/extract/`. Drafts are never saved; the frontend applies the accepted parts with `PATCH /properties/{id}/`.
+- **Paid model calls:** each describe or extract is one call. Rate `LISTING_ASSISTANT_RATE` (default 30/hour per user); turn it off with `feature_listing_assistant=false`. New prompts `listing.describe` v1 and `listing.extract` v1.

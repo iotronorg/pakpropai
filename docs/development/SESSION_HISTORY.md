@@ -535,9 +535,10 @@
 - **Completed:** T‑3060 (ADR‑058) listing analytics: daily counters per listing for impressions, detail views (once per visitor per day, keyed hash in the cache only), saves and enquiries, written at the event sites; `GET /api/v1/reports/listing-performance/` with rates, totals and a daily series.
 - **Fixed on the way:** the staged T‑1070g contract migrations renumbered to 0051/0052 on top of the new `properties 0050` (the guard test caught it).
 - **Recorded:** KI‑122 (CDN would hide cached reads).
-- **Tests:** 2542 passed, 1 skipped, 0 failed; no migration drift; OpenAPI valid. **Not committed.**
+- **Completed (continued on request):** T‑3050 (ADR‑059) AI listing assistant: missing-info from publish rules, category and market schema; title/description drafts whose sentences are re-checked against the fields and notes (unsupported ones left out); field suggestions from text that must quote it; nothing saved. Eval suite `listing_copy` added to the CI gate.
+- **Tests:** 2557 passed, 1 skipped, 0 failed at session end (2542 after T‑3060); no migration drift; OpenAPI valid; eval gate passed. **Not committed.**
 
 ### Handoff → session 34 (supersedes the one above)
-1. `git status`: uncommitted work is session 33. **Do not commit.**
-2. Dev: T‑3050 AI listing assistant (start files in DEVELOPMENT_STATUS), then T‑3070.
-3. Owner: as before (§54, §52, §53, staging E2E, T‑2072, pentest, KI‑112, KI‑114, KI‑121 document links, pricing for T‑3080, weekly-use metric); new: checklist §56.
+1. `git status`: the owner committed T‑3060 as `7a327cc`; uncommitted is T‑3050. **Do not commit.**
+2. Dev: T‑3070 unified audit log (start files in DEVELOPMENT_STATUS), then T‑3090.
+3. Owner: as before (§54, §52, §53, staging E2E, T‑2072, pentest, KI‑112, KI‑114, KI‑121 document links, pricing for T‑3080, weekly-use metric); new: checklist §56 and §57 (assistant model calls cost money; rate and flag).

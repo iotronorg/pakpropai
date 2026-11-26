@@ -201,6 +201,9 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | 2026-11-26 | Working tree, session 33 (T‑3060), first run | `scripts/dev/test.sh` | 2541 passed, 1 skipped, **1 failed**: `test_listing_contract.py::…::test_staged_files_are_outside_the_loaded_migrations` (staged contract migrations had to be renumbered on top of `properties 0050`); fixed | 9m27s |
 | 2026-11-26 | Working tree, session 33 end | `scripts/dev/test.sh` | **2542 passed, 1 skipped, 0 failed**, 294 subtests (19 new listing-analytics tests) | 10m09s |
 | 2026-11-26 | Working tree, session 33 | `makemigrations --check`; `manage.py check`; `spectacular --validate` | No changes; no issues; schema valid (exit 0) | — |
+| 2026-11-26 | Working tree, session 33 + T‑3050, first run | `scripts/dev/test.sh` | 2557 passed, 1 skipped, **1 failed** (subtest): `test_markets.py::…::test_remaining_pk_literals_do_not_grow`, a `'PKR …'` literal in the new eval fixture; now taken from the PK market pack | 14m09s |
+| 2026-11-26 | Working tree, session 33 end (T‑3060, T‑3050) | `scripts/dev/test.sh -rf` | **2557 passed, 1 skipped, 0 failed**, 295 subtests (15 listing-assistant tests) | 9m48s |
+| 2026-11-26 | Working tree, session 33 end | `makemigrations --check`; `manage.py check`; `spectacular --validate`; `run_ai_evals` | No changes after `ai 0009`; no issues; no new schema warnings; eval gate passed (`listing_copy` 35/35) | — |
 
 ## Coverage
 Not measured yet (no coverage run executed). CI is configured with `--cov=apps`.

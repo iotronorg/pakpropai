@@ -47,6 +47,7 @@ class AIInteraction(models.Model):
         LEAD_SUMMARY    = 'lead_summary',     'Lead summary'
         REPLY_SUGGEST   = 'reply_suggest',    'Reply suggestions'
         RE_ENGAGEMENT   = 're_engagement',    'Re-engagement message'
+        LISTING_ASSIST  = 'listing_assist',   'Listing assistant'
 
     id               = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user             = models.ForeignKey(

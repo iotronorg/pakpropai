@@ -149,11 +149,12 @@ class PromptRegistryTest(TestCase):
         'property.score': 3, 'fraud.check': 3, 'search.verdicts': 3, 'document.ocr': 3,
         'lead.summary': 2, 'lead.suggest_replies': 2, 'campaign.reengage.system': 1,
         'campaign.reengage.user': 2, 'agent.system': 10, 'agent.image': 2,
-        'faq.answer': 1,
+        'faq.answer': 1, 'listing.describe': 1, 'listing.extract': 1,
     }
 
     def test_library_complete_and_versioned(self):
         import apps.ai.faq  # noqa: F401
+        import apps.ai.listing_assistant  # noqa: F401
         import apps.ai.knowledge  # noqa: F401 — registers agent.*
         names = {p.name: p for p in P.all_prompts()}
         for name, version in self.PINNED.items():

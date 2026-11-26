@@ -251,6 +251,7 @@ REST_FRAMEWORK = {
         'report_generate': '5/hour',
         'bulk_operation':  '10/min',
         'score_property':    '15/min',
+        'listing_assistant': env('LISTING_ASSISTANT_RATE', default='30/hour'),   # T-3050, model calls
         'whatsapp_webhook':  '300/min',  # 300 msgs/min per phone_number_id (~5/sec burst cap)
         'public_verify':     '50/min',   # viral referral click-tracking
         'public_convert':    '20/min',   # viral referral lead creation

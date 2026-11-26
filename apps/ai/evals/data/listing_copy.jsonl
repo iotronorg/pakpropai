@@ -1,0 +1,35 @@
+{"id": "en-ok-01", "lang": "en", "expect": [], "sources": ["bedrooms", "bathrooms", "subtype"], "text": "This house has 4 bedrooms and 3 bathrooms."}
+{"id": "en-ok-02", "lang": "en", "expect": [], "sources": ["size", "location", "city"], "text": "A 10 marla house in DHA Phase 5, Lahore."}
+{"id": "en-ok-03", "lang": "en", "expect": [], "sources": ["price"], "text": "The asking price is PKR 3.5 crore."}
+{"id": "en-ok-04", "lang": "en", "expect": [], "sources": ["parking_spaces", "amenities"], "text": "It has parking for two cars and a garden."}
+{"id": "en-ok-05", "lang": "en", "expect": [], "sources": ["notes"], "notes": "New kitchen fitted in 2023, marble floors.", "text": "The kitchen was fitted in 2023 and the floors are marble."}
+{"id": "en-ok-06", "lang": "en", "expect": [], "sources": ["year_built"], "text": "Built in 2018."}
+{"id": "en-src-01", "lang": "en", "expect": ["no_source"], "sources": [], "text": "Contact us today to arrange a viewing."}
+{"id": "en-src-02", "lang": "en", "expect": ["unknown_source"], "sources": ["view"], "text": "It has a lovely view."}
+{"id": "en-rooms-01", "lang": "en", "expect": ["rooms"], "sources": ["bedrooms"], "text": "A spacious 5 bedroom home."}
+{"id": "en-rooms-02", "lang": "en", "expect": ["rooms"], "sources": ["bathrooms"], "text": "There are 4 bathrooms."}
+{"id": "en-price-01", "lang": "en", "expect": ["price"], "sources": ["price"], "text": "Offered at PKR 3 crore."}
+{"id": "en-size-01", "lang": "en", "expect": ["size"], "sources": ["size"], "text": "A 12 marla house."}
+{"id": "en-num-01", "lang": "en", "expect": ["number"], "sources": ["location"], "text": "Only 7 minutes from the main boulevard."}
+{"id": "en-num-02", "lang": "en", "expect": ["number"], "sources": ["notes"], "notes": "Quiet street.", "text": "The street is quiet and 300 metres from the park."}
+{"id": "en-amen-01", "lang": "en", "expect": ["amenity"], "sources": ["amenities"], "text": "Residents can use the gym."}
+{"id": "en-amen-02", "lang": "en", "expect": ["amenity"], "sources": ["amenities"], "text": "Enjoy the swimming pool in summer."}
+{"id": "en-amen-03", "lang": "en", "expect": [], "sources": ["notes"], "notes": "There is a lift to every floor.", "text": "A lift serves every floor."}
+{"id": "en-claim-01", "lang": "en", "expect": ["claim_superlative"], "sources": ["location"], "text": "The best house in DHA Phase 5."}
+{"id": "en-claim-02", "lang": "en", "expect": ["claim_school"], "sources": ["location"], "text": "Close to good schools in DHA Phase 5."}
+{"id": "en-claim-03", "lang": "en", "expect": ["claim_safety"], "sources": ["location"], "text": "DHA Phase 5 is a safe neighbourhood."}
+{"id": "en-claim-04", "lang": "en", "expect": ["claim_investment"], "sources": ["price"], "text": "A great investment with strong returns."}
+{"id": "en-claim-05", "lang": "en", "expect": ["claim_investment"], "sources": ["location"], "text": "Prices in DHA Phase 5 will rise."}
+{"id": "en-contact-01", "lang": "en", "expect": ["contact"], "sources": ["city"], "text": "Call 0300 1234567 for a viewing in Lahore."}
+{"id": "en-contact-02", "lang": "en", "expect": ["contact"], "sources": ["city"], "text": "See more at www.example.com."}
+{"id": "en-notes-01", "lang": "en", "expect": ["number"], "sources": ["bedrooms"], "notes": "Kitchen fitted in 2023.", "text": "The kitchen was fitted in 2023."}
+{"id": "roman-ok-01", "lang": "roman", "expect": [], "sources": ["bedrooms", "size"], "text": "10 marla ka ghar, 4 bedroom."}
+{"id": "roman-rooms-01", "lang": "roman", "expect": ["rooms"], "sources": ["bedrooms"], "text": "Ghar mein 6 kamre hain."}
+{"id": "roman-price-01", "lang": "roman", "expect": ["price"], "sources": ["price"], "text": "Qeemat 2 crore hai."}
+{"id": "roman-src-01", "lang": "roman", "expect": ["no_source"], "sources": [], "text": "Aaj hi rabta karein."}
+{"id": "roman-contact-01", "lang": "roman", "expect": ["contact"], "sources": ["city"], "text": "Lahore mein dekhne ke liye 0321-7654321 par call karein."}
+{"id": "ur-ok-01", "lang": "ur", "expect": [], "sources": ["size", "city"], "text": "لاہور میں ۱۰ مرلہ کا گھر۔"}
+{"id": "ur-size-01", "lang": "ur", "expect": ["size"], "sources": ["size"], "text": "۲۰ مرلہ کا گھر۔"}
+{"id": "ur-price-01", "lang": "ur", "expect": ["price"], "sources": ["price"], "text": "قیمت ۵ کروڑ روپے ہے۔"}
+{"id": "ur-rooms-01", "lang": "ur", "expect": ["rooms"], "sources": ["bedrooms"], "text": "گھر میں ۷ کمرے ہیں۔"}
+{"id": "ur-src-01", "lang": "ur", "expect": ["no_source"], "sources": [], "text": "ابھی رابطہ کریں۔"}
