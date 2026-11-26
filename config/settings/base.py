@@ -255,6 +255,8 @@ REST_FRAMEWORK = {
         'bulk_operation':  '10/min',
         'score_property':    '15/min',
         'listing_assistant': env('LISTING_ASSISTANT_RATE', default='30/hour'),   # T-3050, model calls
+        'investment':        env('INVESTMENT_RATE', default='60/min'),          # T-4010, calculator (no model)
+        'investment_commentary': env('INVESTMENT_COMMENTARY_RATE', default='20/hour'),   # T-4010, model calls
         'whatsapp_webhook':  '300/min',  # 300 msgs/min per phone_number_id (~5/sec burst cap)
         'public_verify':     '50/min',   # viral referral click-tracking
         'public_convert':    '20/min',   # viral referral lead creation

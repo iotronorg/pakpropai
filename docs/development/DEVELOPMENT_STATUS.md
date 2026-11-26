@@ -4,15 +4,15 @@ _Last updated: 2026-11-26 (session 34; git commit subjects number sessions diffe
 
 | Item | Value |
 |---|---|
-| Branch | `development`. The owner committed T‑3030 (`89982b9`), T‑3040 (`2a83b59`) and T‑3100a (`08560a1`). **Uncommitted:** T‑3100b |
+| Branch | `development`. The owner committed T‑3030 (`89982b9`), T‑3040 (`2a83b59`) and T‑3100a (`08560a1`). **Uncommitted:** T‑3100b, T‑4010 |
 | Current milestone | **M3 — Professional workspace** ([MILESTONE_03](milestones/MILESTONE_03_PROFESSIONAL_WORKSPACE.md)), started 2026‑11‑26 (session 32). M2 is code complete; open there only owner work (T‑2072, T‑2080). M1 contracts release‑gated; M0 awaiting the first Actions run |
 | M0 progress | All 17 tasks complete. Remaining exit criterion: CI green on GitHub Actions (owner pushes) |
 | M1 progress | 16 of 18 tasks done (T‑1010, T‑1011, T‑1020, T‑1021, T‑1022, T‑1030, T‑1031, T‑1033, T‑1040, T‑1050, T‑1060, T‑1080, T‑1090, T‑1100, T‑1110, T‑1120) plus subtasks T‑1032a, T‑1032c, T‑1070a–f and T‑1070g‑1 |
 | M2 progress | 16 of 17 tasks done. Open: T‑2072 (owner data and paid runs) |
 | M3 progress | 8 of 11 tasks done (T‑3010, T‑3020, T‑3060, T‑3050, T‑3070, T‑3090, T‑3030, T‑3040) + T‑3100a and T‑3100b; T‑3100c waits for the production backfill; T‑3080, T‑3110 owner-blocked |
-| Test suite | **2624 passed, 1 skipped, 0 failed** (after T‑3100b); no migration drift; `leads 0028` rehearsed forward/reverse on Postgres. See [TESTING_STATUS](TESTING_STATUS.md) |
-| Last completed task | T‑3100b (ADR‑064 addendum): one message log — `conversation_messages` gains session, organization, type and media (`leads 0028`, view v2); `apps/whatsapp/history.py` is the only WhatsApp writer (router, live chat, dashboard send); every reader (24-hour window, copilot, live-chat history, bot report, re-engagement, curator, export, erasure) reads both logs by session; `manage.py backfill_contact_messages`. Fixed KI‑124. Before it T‑3100a contacts and the unified view |
-| Next task | **Owner actions unblock the rest of the MVP** (unchanged): §54 servers/environments and first Actions run; §52 monitoring; §53 runbook roles; staging E2E; T‑2072; pentest; KI‑112, KI‑114 rule; §61, §62, **§63 (run the backfill after rollout)**; pricing for T‑3080. **Dev:** T‑3100c only after the production backfill prints `pending=0` and the owner decides the KI‑073 mirrors. With no dev task in M3 left that needs no owner input, the next dev work is release-gated contracts and P3 debt that needs none: T‑1091 (annotate schema-less `APIView`s, start with `tests/test_openapi_schema.py` budgets) and T‑1092 (raised DRF errors with codes, KI‑038); or start M4 (RAG, price context, documents) once the owner confirms M3 may close without T‑3080 |
+| Test suite | **2633 passed, 1 skipped, 0 failed** (after T‑4010); no migration drift. See [TESTING_STATUS](TESTING_STATUS.md) |
+| Last completed task | T‑4010 (ADR‑065, first M4 task): investment calculator — deterministic yields, cash flow, cash-on-cash, loan and the user's own scenarios, every figure with its formula and every assumption with its source (median asking rent of ≥5 comparable listings with N; fees from the market calculators); labelled AI commentary with numbers and advice checked, behind `feature_investment_commentary` (off until legal sign-off). Before it T‑3100b one message log |
+| Next task | **Dev:** T‑4020 indicative price context (FR‑VAL‑001…004), then T‑4030, T‑4060. **Owner:** as before (§54, §52, §53, staging E2E, T‑2072, pentest, KI‑112, KI‑114, §61–§63, pricing for T‑3080), plus §64 (legal sign-off before enabling investment commentary). T‑3100c after the production backfill |
 
 ## Owner decisions (2026-11-25, deploys)
 - **Deploys:** Docker over SSH for staging and production. **Approval:** required reviewers on the GitHub `production` environment.
@@ -40,7 +40,7 @@ _Last updated: 2026-11-26 (session 34; git commit subjects number sessions diffe
 - Meta: re‑submit the OTP template body with the RealTron name.
 
 ## Operator actions before deploying these changes
-- **Session 34** (checklist §61, §62, §63): migrations `leads 0026`, `0027` and `0028` (then `manage.py backfill_contact_messages` until `--check` prints `pending=0`) (additive; `0027` creates the view `unified_messages` and links old contact rows); bulk/manual assign now refuse agents outside the lead's organization; later migrations touching the viewed columns must re-create the view.
+- **Session 34** (checklist §61–§64): migrations `leads 0026`, `0027`, `0028` and `ai 0011` (then `manage.py backfill_contact_messages` until `--check` prints `pending=0`) (additive; `0027` creates the view `unified_messages` and links old contact rows); bulk/manual assign now refuse agents outside the lead's organization; later migrations touching the viewed columns must re-create the view.
 - **Session 33** (checklist §56, §57): migrations `properties 0050` (additive) and `ai 0009` (choices only); staged contract migrations are now `0051`/`0052`; new prompts `listing.describe`/`listing.extract` (paid calls, `LISTING_ASSISTANT_RATE`); migration `core 0004` (audit trail, §58), fixed `AUDIT_CHAIN_KEY`, beat `verify-audit-chain`; migration `ai 0010` and model prices entered (§59); migration `leads 0025` (§60).
 - **Session 32** (checklist §55): migration `leads 0024` (additive); restart celery beat for `lead-task-reminders`.
 - **Session 31:** no migration. **Image rebuild:** `sentence-transformers` and `numpy` removed (torch no longer installed). Prompt `agent.system` is v10 (new viewing tools). Visit reminders now say "reply here" while `feature_talk_to_agent` is on. Run the staging E2E with the new move/cancel steps.

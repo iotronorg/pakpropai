@@ -102,6 +102,9 @@ class SystemConfig(models.Model):
         'feature_talk_to_agent':      'true',
         # AI listing assistant drafts (T-3050); missing-info needs no model and is always on.
         'feature_listing_assistant':  'true',
+        # T-4010: AI commentary on investment figures (paid model call; the disclaimer
+        # needs legal sign-off, PRODUCT_ROADMAP Phase 4). The calculator itself is always on.
+        'feature_investment_commentary': 'false',
         # Frozen for MVP (regulated token payments — MVP_SCOPE §4.2). Do not enable
         # without a licensed payment partner and legal sign-off.
         'feature_deal_lock':          'false',

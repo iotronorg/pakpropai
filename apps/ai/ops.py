@@ -48,7 +48,7 @@ def window(first: str | None, last: str | None, default_days: int = 7) -> tuple[
 def _load_prompt_modules():
     """Modules that register prompts on import (the registry fills as code is used)."""
     import importlib
-    for name in ('apps.ai.faq', 'apps.ai.knowledge', 'apps.ai.listing_assistant'):
+    for name in ('apps.ai.faq', 'apps.ai.knowledge', 'apps.ai.listing_assistant', 'apps.ai.investment_commentary'):
         importlib.import_module(name)
 
 

@@ -121,6 +121,21 @@ Priority: P0 (blocker) → P3.
 | T‑3080 | [!] | P1 | Plans and entitlements as data | GAP‑100; owner: pricing |
 | T‑3110 | [!] | — | Public launch (primary market) | Owner |
 
+## M4 — AI intelligence ([MILESTONE_04](milestones/MILESTONE_04_AI_INTELLIGENCE.md))
+
+| ID | Status | P | Task | Notes |
+|---|---|---|---|---|
+| T‑4010 | [x] | P2 | Investment calculator + labelled commentary | ADR‑065. `apps/properties/investment.py` (yields, cash flow, cash-on-cash, loan, user scenarios; every figure with formula, every assumption with source; median asking rent of ≥5 comparable rent listings with N and quartiles; fees from `apps/markets/calculators`), `apps/ai/investment_commentary.py` (prompt `investment.commentary`, paragraphs with numbers not in the result or advice/promises left out), `POST /investment/calculate/` (public, `investment` throttle) and `/investment/commentary/` (signed in, flag `feature_investment_commentary` **off**, 20/hour). `ai 0011`. `tests/test_investment.py` (9) |
+| T‑4020 | [ ] | P2 | Indicative price context (FR‑VAL‑001…004) | Next |
+| T‑4030 | [ ] | P2 | Comparison narratives; running costs | |
+| T‑4040 | [ ] | P2 | RAG knowledge with citations | |
+| T‑4050 | [ ] | P2 | Duplicate clustering; fraud signals v2 | |
+| T‑4060 | [ ] | P2 | Offers register | |
+| T‑4070 | [ ] | P2 | Document intelligence (OCR) | Owner: vendor |
+| T‑4080 | [ ] | P2 | POI proximity search | Owner: data licence |
+| T‑4090 | [ ] | P3 | Learned re-ranking A/B | Needs volume |
+| T‑4100 | [ ] | P2 | Push; calendar sync | Owner: provider accounts |
+
 ## MVP acceptance criteria (MVP_SCOPE §6) — cross-milestone
 
 | ID | Status | P | Task | Notes |

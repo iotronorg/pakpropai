@@ -487,3 +487,8 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - **Migration `leads 0028`**: drops and re-creates the view `unified_messages`; adds nullable `session_id`, `organization_id`, and `msg_type`/`media_id`/`media_url` with defaults to `conversation_messages`; `lead_id` becomes nullable; adds a partial unique index on `(session_id, wa_message_id)`. Additive. Run it with the new code: old pods would keep writing the old WhatsApp log (the view still shows those rows, so nothing is lost, but run the backfill again afterwards).
 - **After rollout:** `python manage.py backfill_contact_messages` (re-runnable; `--batch`, `--limit`), then `--check` must print `pending=0`. Keep the output for T‑3100c.
 - **Behaviour:** the re-engagement prompt now only sees the chat with the lead's own organization; raw webhook payloads are no longer stored.
+
+## 64. Session-34 change: investment calculator (T‑4010, ADR‑065)
+- **Migration `ai 0011`**: choices only (no SQL change).
+- **New endpoints:** `POST /api/v1/investment/calculate/` (public; `INVESTMENT_RATE`, default 60/min) and `POST /api/v1/investment/commentary/` (signed in; `INVESTMENT_COMMENTARY_RATE`, default 20/hour; paid model call).
+- **Owner:** legal review of the disclaimer and the commentary label; only then set `feature_investment_commentary=true`. Optional `INVESTMENT_MIN_COMPARABLES` (default 5).

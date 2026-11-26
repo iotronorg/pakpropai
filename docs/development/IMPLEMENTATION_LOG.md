@@ -659,3 +659,7 @@
 - **Changed writers:** `MessageRouter._log_inbound`/`_send_and_log` (one row; `_persist_crm_*` removed; `_crm_lead` delegates), `AgentRoomConsumer._send_whatsapp`, `LeadViewSet.send_message`.
 - **Changed readers:** `whatsapp/client.is_within_24h_window`, `whatsapp/tasks.process_copilot_recommendations`, `whatsapp/views.NotificationDetailView` (ids are the stored rows' ids), `reports/views` bot report, `campaigns/re_engagement.LeadContextBuilder._wa_transcript` (own organization only), `ml/dataset_curator`, `compliance/tasks` export, `compliance/erasure` (`_cloud_files`, `_whatsapp`), `leads/contacts` (session match for every row).
 - **Tests:** `tests/test_message_log.py` (8); `tests/test_enquiries.py::CrmIsolationTest` and `tests/test_unified_contacts.py` updated to the single writer.
+
+### T‑4010 Investment calculator (ADR‑065)
+- **Added:** `apps/properties/investment.py` (`calculate`, `comparable_rent`, `numbers`), `apps/properties/investment_views.py`, `apps/properties/investment_urls.py` (`/api/v1/investment/`), `apps/ai/investment_commentary.py` (prompt `investment.commentary` v1, `check`, `commentary`); `AIInteraction.InteractionType.INVESTMENT_COMMENTARY` (`ai 0011`); flag `feature_investment_commentary` (off); throttles `investment`, `investment_commentary`; prompt module registered in `apps/ai/ops.py`.
+- **Tests:** `tests/test_investment.py` (9).

@@ -55,6 +55,7 @@ urlpatterns = [
         path('properties/',   include('apps.properties.urls')),
         path('public/listings/', include('apps.properties.public_urls')),
         path('compare/',      CompareView.as_view(), name='listing-compare'),
+        path('investment/',   include('apps.properties.investment_urls')),   # T-4010
         path('search/',       SearchView.as_view(), name='listing-search'),
         path('locations/',    include('apps.locations.urls')),
         path('verification/', include('apps.verification.urls')),
