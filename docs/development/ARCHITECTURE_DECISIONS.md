@@ -986,3 +986,12 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
 - **On the server (`scripts/deploy/remote_deploy.sh`):** pull → db and Redis → migrate (stop on failure, nothing switched) → start → wait for `/health/` to report the new `version` and `ok` → record `.deployed_tag`; otherwise start the previous tag and fail. Migrations are not reversed (expand-only, ADR‑023).
 - **Smoke test** after each deploy requires `ok`, the deployed version and a refused unsigned webhook.
 - **Rejected:** rebuilding per environment (what runs in production would not be what was tested); `docker compose up` alone (a failing migration loops under `restart: on-failure`); a `latest` tag (no way to say what runs or to roll back).
+
+### ADR‑054 — Visitors change or cancel viewings in the chat (KI‑076, session 31, 2026-11-26)
+- **Decision:**
+  - New assistant tools: `my_viewings` (read-only), and `cancel_viewing` and `reschedule_viewing`, which need confirmation (side effect `booking`, flag `feature_talk_to_agent`). They call the same `V.cancel` / `V.reschedule` services as `POST /viewings/{id}/cancel|reschedule/`, so locking, overlap checks, the visitor's limits, reminder reset and the agent's notice are the same.
+  - A viewing is named by its position in `my_viewings`, its id, or the listing's reference. The confirmation summary pins the viewing id and the new UTC start, so "1" cannot mean another viewing when the user says YES. A new time must be a free slot of the same listing (`slot_at`, excluding the visit itself); the current time and invented times are refused.
+  - **Scope:** only the person's own viewings that are upcoming and still open. In an organization's chat only that organization's viewings (`lead.organization`), so one agency's chat never shows a visit at another agency (as ADR‑036). On the platform number, all of them.
+  - Reminders and the booking reply say "reply here" only while `feature_talk_to_agent` is on; otherwise they point to the app as before. A reminder goes from the organization's number, so a reply reaches the chat with the same scope.
+- **Not done:** the visitor does not "confirm" a visit (only the agent confirms); a reply while a person handles the chat goes to that person, not the tools.
+- **Rejected:** keyword handling of "CANCEL" replies outside the assistant: a bare "cancel" already means NO to a pending action, and a second path would skip the confirmation record (MVP criterion 8).

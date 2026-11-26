@@ -148,7 +148,7 @@ class PromptRegistryTest(TestCase):
     PINNED = {
         'property.score': 3, 'fraud.check': 3, 'search.verdicts': 3, 'document.ocr': 3,
         'lead.summary': 2, 'lead.suggest_replies': 2, 'campaign.reengage.system': 1,
-        'campaign.reengage.user': 2, 'agent.system': 9, 'agent.image': 2,
+        'campaign.reengage.user': 2, 'agent.system': 10, 'agent.image': 2,
         'faq.answer': 1,
     }
 

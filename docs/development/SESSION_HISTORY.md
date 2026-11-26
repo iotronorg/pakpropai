@@ -507,3 +507,14 @@
 1. `git status`: uncommitted work is sessions 28–30. **Do not commit.**
 2. Owner: servers and GitHub environments (§54), then watch the first `main` run; monitoring (§52); runbook roles (§53); staging E2E; T‑2072; pentest; KI‑112; KI‑114 rule.
 3. Dev: open KIs, or plan Milestone 3.
+
+## Session 31 — 2026-11-26
+- **Verified:** the owner committed sessions 28–30 (`014affb`); the tree was clean. No MVP criterion is waiting on development alone, so the next ready backend KI was taken.
+- **Completed:** KI‑076 (ADR‑054): tools `my_viewings`, `cancel_viewing`, `reschedule_viewing`; changes only after YES with the viewing and time fixed in the summary; scoped to the conversation's organization; reminders say "reply here" while the tools are on; E2E journey covers move and cancel. KI‑088 mitigated (constraint named in the log).
+- **Found:** KI‑092's web path does not run: `run_verification_task` has no caller.
+- **Tests:** 2514 passed, 1 skipped, 0 failed; `test_deal_lock.py` 27 passed; E2E 94 checks; no migration drift. **Not committed.**
+
+### Handoff → session 32 (supersedes the one above)
+1. `git status`: uncommitted work is session 31. **Do not commit.**
+2. Dev: KI‑083 (streams addressed by session id; `apps/whatsapp/consumers.py`), then KI‑087, then M3 planning.
+3. Owner: servers and environments (§54), monitoring (§52), runbook roles (§53), staging E2E, T‑2072, pentest, KI‑112, KI‑114 rule.

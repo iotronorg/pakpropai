@@ -214,7 +214,7 @@ class WhatsApp:
 
 
 def assistant(label, p, agent, chat, ids):
-    print(f'{label}: discover → shortlist → enquire → book')
+    print(f'{label}: discover → shortlist → enquire → book → move → cancel')
     check(not p.threads() and not p.viewings(), f'{label}: starts with nothing')
     chat.say('I am looking for a house to buy in Lahore, keyword e2ejourney')
     shown = p.call('GET', f'conversations/{chat.pk}/state/')['last_results']
@@ -238,6 +238,21 @@ def assistant(label, p, agent, chat, ids):
     chat.say('yes')
     v = p.viewings()
     check(len(v) == 1 and v[0]['listing'] == ids[0] and v[0]['local_start'] == start, f'{label}: viewing booked', v)
+
+    # KI-076: change or cancel the viewing in the chat, each only after a yes.
+    chat.say('Which are my viewings?')
+    later = next((x['local_start'] for x in p.call('GET', 'viewing-slots/', params={'listing': ids[0], 'days': 7})['slots']
+                  if x['local_start'] != start), None)
+    check(later, f'{label}: another free time')
+    m = chat.say(f'Please move my viewing to {later}')
+    check(m['pending_action'] and p.viewings()[0]['local_start'] == start, f'{label}: nothing is moved before a yes', m)
+    chat.say('yes')
+    v = p.viewings()
+    check(len(v) == 1 and v[0]['local_start'] == later and v[0]['status'] == 'rescheduled', f'{label}: viewing moved', v)
+    m = chat.say('Please cancel my viewing')
+    check(m['pending_action'] and len(p.viewings()) == 1, f'{label}: nothing is cancelled before a yes', m)
+    chat.say('yes')
+    check(not p.viewings(), f'{label}: viewing cancelled', p.viewings())
 
 
 def main():

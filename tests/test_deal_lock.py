@@ -115,6 +115,30 @@ class DealLockInitiateViewTest(TestCase):
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('active deal lock', str(resp.data).lower())
 
+    def test_only_the_active_lock_constraint_means_already_locked(self):
+        """KI-088: another constraint is logged by name and not reported as an existing lock."""
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        from django.db import IntegrityError
+
+        def failing(name):
+            cause = Exception('db')                 # psycopg errors carry diag.constraint_name
+            cause.diag = SimpleNamespace(constraint_name=name)
+            exc = IntegrityError('boom')
+            exc.__cause__ = cause
+            return exc
+        self.client.force_authenticate(user=self.buyer)
+        body = {'property_id': str(self.prop.pk), 'token_amount': 25_000, 'payment_gateway': 'jazzcash'}
+        with patch.object(EscrowDeal.objects, 'create', side_effect=failing('unique_active_deal_lock_per_property')):
+            resp = self.client.post(reverse('deal-initiate'), body, format='json')
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('active deal lock', str(resp.data).lower())
+        with patch.object(EscrowDeal.objects, 'create', side_effect=failing('escrow_some_other_check')), \
+                self.assertLogs('apps.escrow.views', 'ERROR') as logs, self.assertRaises(IntegrityError):
+            self.client.post(reverse('deal-initiate'), body, format='json')
+        self.assertIn('constraint=escrow_some_other_check', logs.output[0])
+
     def test_inactive_property_returns_400(self):
         self.prop.is_active = False
         self.prop.save(update_fields=['is_active'])

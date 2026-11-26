@@ -607,3 +607,10 @@
 - **Changed:** `ci.yml`: one build per commit → staging → production gate → production with the same tag; ECS jobs removed (`infra/scripts/health_check.py` deleted); `main` never cancelled; `pip-audit` gate; TruffleHog pinned by commit; the fake migration-rollback step removed. Smoke test requires `ok`, the deployed version and a refused unsigned webhook.
 - **Fixed:** KI‑116 (health leaked error text), KI‑117 (HTTPS redirect broke internal probes and scraping), KI‑118 (14 vulnerable packages; DRF 3.18 needed `validators = []` on the kill-switch serializer), KI‑119 (prod entrypoint ignored commands; unwritable static directory), KI‑120 (compose read the wrong `.env`).
 - **Tests:** `tests/test_deploy_pipeline.py` (17 tests); local rehearsal with a registry and the real images.
+
+### 2026-11-26 — session 31: visitors change or cancel viewings in the chat (KI‑076), deal-lock error cause (KI‑088)
+- **Added:** tools `my_viewings`, `cancel_viewing`, `reschedule_viewing` (`apps/ai/_tools_viewings.py`; registry side effect `booking`, both changes confirmation-gated); confirmation summaries `_cancel_viewing`, `_reschedule_viewing` (`apps/ai/proposals.py`) that fix the viewing id and the new UTC start; `V.CHANGE_TEXT` and `V.change_text()` (`apps/viewings/services.py`).
+- **Changed:** system prompt `agent.system` v10 (tool guide and confirmation list); visit reminders and the booking reply say "reply here" while `feature_talk_to_agent` is on; the E2E journey (`scripts/e2e/`) moves and cancels the viewing after booking, on the web assistant and WhatsApp.
+- **Fixed:** KI‑088: the deal-lock view reports "already locked" only for `unique_active_deal_lock_per_property`; any other `IntegrityError` is logged with its constraint name and raised.
+- **Verified:** KI‑092's web verification path does not run (`run_verification_task` has no caller); recorded on the KI.
+- **Tests:** `tests/test_viewings.py::ChangeToolTest` (6 tests), `tests/test_deal_lock.py::…::test_only_the_active_lock_constraint_means_already_locked`; prompt pins in `tests/test_llm.py`, `tests/test_ai_traces.py`.

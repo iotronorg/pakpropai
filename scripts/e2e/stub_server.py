@@ -15,6 +15,12 @@ SENT = []
 
 def decide(text: str):
     t = text.lower()
+    if m := re.search(r'\bmove my viewing\b.*?(\d{4}-\d\d-\d\dt\d\d:\d\d)', t):
+        return 'reschedule_viewing', {'viewing': '1', 'start': m[1].upper()}
+    if 'cancel my viewing' in t:
+        return 'cancel_viewing', {'viewing': '1'}
+    if 'my viewings' in t:
+        return 'my_viewings', {}
     if m := re.search(r'\bbook\b.*?(\d{4}-\d\d-\d\dt\d\d:\d\d)', t):
         return 'book_viewing', {'listing': '1', 'start': m[1].upper()}
     if 'free times' in t:

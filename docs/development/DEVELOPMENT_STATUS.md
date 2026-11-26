@@ -1,17 +1,17 @@
 # Development Status
 
-_Last updated: 2026-11-26 (session 30; git commit subjects number sessions differently: `7d95593` "session 47" is session 27 here)_
+_Last updated: 2026-11-26 (session 31; git commit subjects number sessions differently: `7d95593` "session 47" is session 27 here)_
 
 | Item | Value |
 |---|---|
-| Branch | `development`. The owner committed through session 27 (`7d95593`). **Uncommitted:** sessions 28 (monitoring, alerts, export, file deletion), 29 (runbooks) and 30 (deploys, dependency upgrades) |
+| Branch | `development`. The owner committed through session 30 (`014affb`). **Uncommitted:** session 31 (KI‑076 viewing changes in the chat, KI‑088) |
 | Current milestone | **M2 — AI agent MVP** ([MILESTONE_02](milestones/MILESTONE_02_AI_AGENT_MVP.md)), started 2026‑11‑23. M1 code complete (contracts T‑1070g‑2 / T‑1032b‑2 release‑gated); M0 awaiting the first GitHub Actions run |
 | M0 progress | All 17 tasks complete. Remaining exit criterion: CI green on GitHub Actions (owner pushes) |
 | M1 progress | 16 of 18 tasks done (T‑1010, T‑1011, T‑1020, T‑1021, T‑1022, T‑1030, T‑1031, T‑1033, T‑1040, T‑1050, T‑1060, T‑1080, T‑1090, T‑1100, T‑1110, T‑1120) plus subtasks T‑1032a, T‑1032c, T‑1070a–f and T‑1070g‑1 |
 | M2 progress | 16 of 17 tasks done. Open: T‑2072 (owner data and paid runs) |
-| Test suite | **2506 passed, 1 skipped, 0 failed** (session 30, on the upgraded dependencies) plus the 2 entrypoint tests added after; promtool 60 rules; `pip-audit` clean; deploy rehearsed on real images. See [TESTING_STATUS](TESTING_STATUS.md) |
-| Last completed task | MVP criterion 13 (ADR‑053): one build per commit, automatic staging deploy over SSH with health-checked rollback, production behind a required reviewer; dependency vulnerabilities fixed and gated; KI‑116…KI‑120 fixed |
-| Next task | **Owner actions unblock the rest of the MVP**: servers and GitHub environments (checklist §54, [deploy runbook](../runbooks/deploy.md)), then the first Actions run on `main`; monitoring stack (§52); runbook roles (§53); staging E2E run (criterion 1); T‑2072 (criteria 6–7); pentest (criterion 12); KI‑112, KI‑114. **Next dev task:** none of the MVP criteria is blocked on development alone; pick from the open KIs (KI‑114 needs a product rule; KI‑110, KI‑104, KI‑101) or start Milestone 3 planning. Open: KI‑055…KI‑059, KI‑068, KI‑069, KI‑071, KI‑073, KI‑075…KI‑089, KI‑091…KI‑093, KI‑095, KI‑096, KI‑098, KI‑101, KI‑104, KI‑105 (rest), KI‑110, KI‑112, KI‑114 |
+| Test suite | **2514 passed, 1 skipped, 0 failed** (session 31), then `test_deal_lock.py` 27 passed with the new test; E2E journey 94 checks; no migration drift. See [TESTING_STATUS](TESTING_STATUS.md) |
+| Last completed task | KI‑076 (ADR‑054): visitors list, move and cancel their viewings in the chat (`my_viewings`, `cancel_viewing`, `reschedule_viewing`, each change after YES); prompt `agent.system` v10. KI‑088 mitigated; KI‑092 re-checked (its path has no caller) |
+| Next task | **Owner actions unblock the rest of the MVP** (unchanged): servers and GitHub environments (checklist §54), first Actions run on `main`; monitoring (§52); runbook roles (§53); staging E2E (criterion 1, now also move and cancel); T‑2072; pentest (criterion 12); KI‑112, KI‑114 rule. **Next dev task:** KI‑083 (address WhatsApp live-chat and copilot streams by session id, not phone; start in `apps/whatsapp/consumers.py` and the session list/stream views; the frontend must follow the new key), then KI‑087 (remove the unused `SemanticResponseCache`, `apps/ai/`), then M3 planning (create `milestones/MILESTONE_03_PROFESSIONAL_WORKSPACE.md` from PRODUCT_ROADMAP Phase 3). Open: KI‑055…KI‑059, KI‑068, KI‑069, KI‑071, KI‑073, KI‑075, KI‑077…KI‑089, KI‑091…KI‑093, KI‑095, KI‑096, KI‑098, KI‑101, KI‑104, KI‑105 (rest), KI‑110, KI‑112, KI‑114 |
 
 ## Owner decisions (2026-11-25, deploys)
 - **Deploys:** Docker over SSH for staging and production. **Approval:** required reviewers on the GitHub `production` environment.
@@ -39,6 +39,7 @@ _Last updated: 2026-11-26 (session 30; git commit subjects number sessions diffe
 - Meta: re‑submit the OTP template body with the RealTron name.
 
 ## Operator actions before deploying these changes
+- **Session 31:** no migration. Prompt `agent.system` is v10 (new viewing tools). Visit reminders now say "reply here" while `feature_talk_to_agent` is on. Run the staging E2E with the new move/cancel steps.
 - **Session 30** (checklist §54): no migration. Set up servers and GitHub environments; add `localhost` to `ALLOWED_HOSTS`; check uploads and PDFs on staging after the dependency upgrades.
 - **Session 29** (checklist §53): no migration. Reload the Prometheus rules; set a fixed `FIELD_HASH_KEY`; name the on-call, privacy owner and AI-stop roles in the runbooks.
 - **Session 28** (checklist §52): no migration. Deploy `docker/docker-compose.monitoring.yml` with `.env.monitoring` and `ops/secrets/`; set `PROMETHEUS_METRICS_TOKEN` on the app; Cloudinary credentials on the erasure worker.

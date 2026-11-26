@@ -86,6 +86,12 @@ REGISTRY: dict[str, ToolSpec] = {s.name: s for s in (
     ToolSpec('find_viewing_slots', flag='feature_talk_to_agent'),
     ToolSpec('book_viewing', side_effect=CONTACT_SHARE, requires_confirmation=True,
              flag='feature_talk_to_agent', terminal=True),
+    # KI-076: the visitor's own viewings; changing one asks first.
+    ToolSpec('my_viewings', flag='feature_talk_to_agent'),
+    ToolSpec('cancel_viewing', side_effect=BOOKING, requires_confirmation=True,
+             flag='feature_talk_to_agent', terminal=True),
+    ToolSpec('reschedule_viewing', side_effect=BOOKING, requires_confirmation=True,
+             flag='feature_talk_to_agent', terminal=True),
     # Reversible, the user's own list: no confirmation (AI spec §5).
     ToolSpec('save_listing', side_effect=SESSION, flag='feature_property_search'),
     ToolSpec('create_saved_search', side_effect=LOW, requires_confirmation=True,

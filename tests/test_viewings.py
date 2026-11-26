@@ -445,6 +445,103 @@ class ToolTest(Base):
         self.assertEqual(Appointment.objects.count(), 1)
 
 
+class ChangeToolTest(Base):
+    """KI-076: the visitor lists, cancels and moves their own viewings in the chat."""
+
+    def setUp(self):
+        super().setUp()
+        self.a = self.booked()
+
+    def ctx(self):
+        set_context(self.buyer, self.buyer.phone)
+
+    def ask(self, tool, user=None, org=None, **args):
+        set_context(user or self.buyer, (user or self.buyer).phone, org=org)
+        return confirmation.propose(R.REGISTRY[tool], args)
+
+    def yes(self, user=None):
+        return confirmation.resolve_reply((user or self.buyer).phone, 'yes', user=user or self.buyer)
+
+    def test_lists_only_own_upcoming_viewings(self):
+        from apps.ai.tools import my_viewings
+        past = self.booked(hour=11, p=make_property(org=self.org, title='Old Flat'))
+        Appointment.objects.filter(pk=past.pk).update(scheduled_at=timezone.now() - timedelta(hours=3))
+        self.booked(hour=12, user=make_client(), p=make_property(org=self.org))
+        self.ctx()
+        r = my_viewings()
+        self.assertEqual([(v['position'], v['viewing_id'], v['start'][-5:]) for v in r['viewings']],
+                         [(1, str(self.a.pk), '10:00')])
+        self.assertIn('Corner House', r['viewings'][0]['title'])
+        self.assertNotIn(self.agent.phone, json.dumps(r))
+        V.cancel(self.a)
+        self.assertEqual(my_viewings()['viewings'], [])
+        set_context(None, '1')
+        self.assertIn('error', my_viewings())
+
+    def test_cancel_only_after_yes(self):
+        r = self.ask('cancel_viewing', viewing='1')
+        for shown in ('Corner House', '10:00 (Asia/Karachi)', 'cancel'):
+            self.assertIn(shown, r['message'])
+        self.assertEqual(json.loads(PendingAction.objects.get().args), {'viewing': str(self.a.pk)})
+        self.a.refresh_from_db()
+        self.assertEqual(self.a.status, 'scheduled')
+        self.assertIn('cancelled', self.yes())
+        self.a.refresh_from_db()
+        self.assertEqual(self.a.status, 'cancelled')
+        self.assertTrue(Notification.objects.filter(user=self.ua, title='Viewing cancelled').exists())
+        self.assertEqual(self.hours(), [10, 11, 12])
+
+    def test_reschedule_only_after_yes(self):
+        Appointment.objects.update(reminder_sent_at=timezone.now(), day_reminder_sent_at=timezone.now())
+        r = self.ask('reschedule_viewing', viewing=self.p.ref_no, start=f'{self.day}T12:00')
+        self.assertIn('New time: ' + V.local_text(self.at(12), PKT), r['message'])
+        self.a.refresh_from_db()
+        self.assertEqual(self.a.scheduled_at, self.at(10))
+        self.assertIn('moved', self.yes())
+        self.a.refresh_from_db()
+        self.assertEqual((self.a.scheduled_at, self.a.status, self.a.reminder_sent_at, self.a.day_reminder_sent_at),
+                         (self.at(12), 'rescheduled', None, None))
+        self.assertEqual(self.hours(), [10, 11])
+        self.assertTrue(Notification.objects.filter(user=self.ua, title='Viewing rescheduled').exists())
+
+    def test_refusals_change_nothing(self):
+        stranger = make_client()
+        other_owner, other_org = make_developer(org=make_org(name='Other', operational_mode='production'))
+        for user, org, tool, args in (
+                (self.buyer, None, 'reschedule_viewing', {'viewing': '1', 'start': f'{self.day}T09:00'}),
+                (self.buyer, None, 'reschedule_viewing', {'viewing': '1', 'start': f'{self.day}T10:00'}),
+                (self.buyer, None, 'reschedule_viewing', {'viewing': '1', 'start': 'tomorrow'}),
+                (self.buyer, None, 'cancel_viewing', {'viewing': '2'}),
+                (self.buyer, None, 'cancel_viewing', {'viewing': 'RT-NOPE'}),
+                (stranger, None, 'cancel_viewing', {'viewing': str(self.a.pk)}),
+                (self.buyer, other_org, 'cancel_viewing', {'viewing': str(self.a.pk)})):   # another org's chat
+            self.assertIn('error', self.ask(tool, user=user, org=org, **args), (tool, args))
+        self.assertFalse(PendingAction.objects.exists())
+        self.assertIsNotNone(self.ask('cancel_viewing', org=self.org, viewing='1').get('pending_action_id'))
+
+    def test_time_taken_or_viewing_closed_before_the_yes(self):
+        self.ask('reschedule_viewing', viewing='1', start=f'{self.day}T12:00')
+        self.booked(hour=12, user=make_client(), p=make_property(org=self.org))
+        self.assertIn('not available', self.yes())
+        self.a.refresh_from_db()
+        self.assertEqual((self.a.scheduled_at, self.a.status), (self.at(10), 'scheduled'))
+        self.ask('cancel_viewing', viewing='1')
+        V.cancel(self.a)
+        self.assertIn('no longer', self.yes())
+
+    def test_reminder_says_a_reply_works_only_while_the_tools_are_on(self):
+        Appointment.objects.update(scheduled_at=timezone.now() + timedelta(minutes=30))
+        send_appointment_reminders()
+        self.assertIn(V.CHANGE_TEXT, json.loads(OutboxMessage.objects.filter(kind='whatsapp.text').last().payload)['text'])
+        OutboxMessage.objects.all().delete()
+        Appointment.objects.update(reminder_sent_at=None)
+        with patch('apps.config.services.SystemConfigService.get_features', return_value={'feature_talk_to_agent': False}):
+            send_appointment_reminders()
+        text = json.loads(OutboxMessage.objects.get(kind='whatsapp.text').payload)['text']
+        self.assertIn('in RealTron', text)
+        self.assertNotIn('reply here', text)
+
+
 @override_settings(CACHES=LOCMEM, EMAIL_HOST='')
 class RaceTest(World, TransactionTestCase):
     def test_two_people_one_slot(self):

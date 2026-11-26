@@ -30,6 +30,7 @@ MAX_WINDOW_DAYS = 14
 MAX_UPCOMING = 5
 MAX_DURATION = 480
 UTC = dt_tz.utc
+CHANGE_TEXT = 'To change or cancel it, reply here or use RealTron.'
 
 
 class ViewingError(Exception):
@@ -338,13 +339,21 @@ def _remind(appt, label: str) -> None:
             lines.append(f'🗺️ {appt.location}')
         if appt.meeting_url:
             lines.append(f'🔗 {appt.meeting_url}')
-        enqueue_whatsapp_text(visitor.phone, '\n'.join(lines + ['', 'You can change or cancel it in RealTron.']),
+        enqueue_whatsapp_text(visitor.phone, '\n'.join(lines + ['', change_text()]),
                               key=f'appt_reminder:{appt.pk}:{appt.scheduled_at.isoformat()}:{label}',
                               organization=appt.lead.organization, expires_at=appt.scheduled_at)
     message = f'Visit reminder: {what}, {local_text(appt.scheduled_at, tz)}.'
     notify_user(visitor, title='Visit reminder', message=message, send_whatsapp=False, send_email=True,
                 event_type='appointment_reminders', path=f'/viewings/{appt.pk}')
     notify_agent(appt, 'Visit reminder')
+
+
+def change_text() -> str:
+    """A reply reaches the assistant's viewing tools only while they are on (KI-076)."""
+    from apps.config.services import SystemConfigService
+    if SystemConfigService.get_features().get('feature_talk_to_agent', True):
+        return CHANGE_TEXT
+    return 'You can change or cancel it in RealTron.'
 
 
 def send_reminders() -> int:

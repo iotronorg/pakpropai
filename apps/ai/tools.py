@@ -12,7 +12,8 @@ from ._tools_search import search_properties                     # noqa: F401
 from ._tools_financial import calculate_7e_tax, check_loan_eligibility  # noqa: F401
 from ._tools_fraud import run_fraud_check                        # noqa: F401
 from ._tools_enquiries import create_enquiry                    # noqa: F401
-from ._tools_viewings import book_viewing, find_viewing_slots     # noqa: F401
+from ._tools_viewings import (book_viewing, cancel_viewing, find_viewing_slots, my_viewings,  # noqa: F401
+                              reschedule_viewing)
 from ._tools_preferences import create_saved_search, remember_preferences, save_listing  # noqa: F401
 from ._tools_moderation import submit_listing  # noqa: F401
 from ._tools_deals import initiate_deal_lock                     # noqa: F401

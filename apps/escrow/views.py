@@ -17,6 +17,7 @@ from apps.core.idempotency import IDEMPOTENCY_PARAMETER, idempotent
 from apps.markets.services import currency_for_country, format_local, org_country
 
 logger = logging.getLogger(__name__)
+ACTIVE_LOCK_CONSTRAINT = 'unique_active_deal_lock_per_property'
 
 def _get_payment_instructions(gateway: str, amount: int, currency: str, org=None) -> str:
     from apps.config.services import SystemConfigService
@@ -157,7 +158,12 @@ class DealLockInitiateView(APIView):
                     status                    = EscrowDeal.Status.INITIATED,
                     seller_confirmation_token = seller_token,
                 )
-        except IntegrityError:
+        except IntegrityError as exc:
+            # KI-088: only the one-active-lock rule means "already locked"; anything else is a bug to see.
+            constraint = getattr(getattr(exc.__cause__, 'diag', None), 'constraint_name', None) or 'unknown'
+            if constraint != ACTIVE_LOCK_CONSTRAINT:
+                logger.error('deal_lock.integrity_error constraint=%s property=%s', constraint, property_id)
+                raise
             raise DRFValidationError(
                 'This property already has an active deal lock. '
                 'Try again after it expires.'

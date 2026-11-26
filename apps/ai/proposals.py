@@ -149,6 +149,46 @@ def _book_viewing(a: dict):
     return f'Shall I book this viewing with {E.lister_name(listing)}?', '\n'.join(lines + [E.CONSENT_TEXT])
 
 
+def _own_viewing(a: dict):
+    """The viewing, pinned by id: "1" must not mean another viewing at the YES (KI-076)."""
+    from ._tools_viewings import find_viewing
+    user = _ctx_user.get()
+    if user is None:
+        raise Refused('The user must sign in or register on WhatsApp first.')
+    appt = find_viewing(a.get('viewing'), user, _ctx_org.get())
+    if appt is None:
+        raise Refused('No such upcoming viewing. Call my_viewings and use one of its positions.')
+    a['viewing'] = str(appt.pk)
+    return user, appt
+
+
+def _cancel_viewing(a: dict):
+    from ._tools_viewings import viewing_text
+    _, appt = _own_viewing(a)
+    return 'Shall I cancel this viewing?', f'🏠 {viewing_text(appt)}\nThe agent will be told.'
+
+
+def _reschedule_viewing(a: dict):
+    from apps.enquiries.services import visible_listing
+    from apps.viewings import services as V
+
+    from ._tools_viewings import parse_start, viewing_text
+    user, appt = _own_viewing(a)
+    tz = V.zone(appt)
+    p = visible_listing(appt.property_id, _ctx_org.get()) if appt.property_id else None
+    try:
+        start = parse_start(a.get('start'), tz)
+        slot = V.slot_at(p, start, user, exclude=appt.pk) if p else None
+    except (ValueError, OverflowError, TypeError):
+        slot = None
+    if slot is None or start == appt.scheduled_at:
+        raise Refused('That time is not free. Call find_viewing_slots for this listing and offer its times.')
+    a['start'] = slot.start.isoformat()
+    return 'Shall I move this viewing?', '\n'.join([
+        f'🏠 {viewing_text(appt)}', f'➡️ New time: {V.local_text(slot.start, tz)}, {slot.minutes} minutes',
+        'The agent will be told.'])
+
+
 def _current_search():
     """The criteria of the user's last search, validated again."""
     from apps.preferences import alerts as A
@@ -220,7 +260,8 @@ def _remember_preferences(a: dict):
 
 
 _BUILDERS = {'submit_listing': _submit_listing, 'create_saved_search': _create_saved_search, 'remember_preferences': _remember_preferences,
-             'book_viewing': _book_viewing, 'create_enquiry': _create_enquiry, 'list_property': _list_property, 'connect_to_agent': _connect_to_agent,
+             'book_viewing': _book_viewing, 'cancel_viewing': _cancel_viewing, 'reschedule_viewing': _reschedule_viewing,
+             'create_enquiry': _create_enquiry, 'list_property': _list_property, 'connect_to_agent': _connect_to_agent,
              'generate_property_audit': _generate_property_audit,
              'initiate_deal_lock': _initiate_deal_lock}
 
