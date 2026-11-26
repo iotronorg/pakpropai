@@ -619,3 +619,8 @@
 ### 2026-11-26 — session 32: M3 started; agent performance (T‑3010), tasks and follow-ups (T‑3020)
 - **Added:** `milestones/MILESTONE_03_PROFESSIONAL_WORKSPACE.md`; `apps/reports/performance.py` and `GET /api/v1/reports/agent-performance/` (ADR‑056); `LeadTask` (`leads 0024`), `apps/leads/follow_ups.py`, `apps/leads/task_views.py` (`/api/v1/leads/tasks/`), task `send_lead_task_reminders` and beat `lead-task-reminders`, erasure step `lead_tasks_redacted` (ADR‑057); enum overrides `LeadTaskKindEnum`, `LeadTaskStatusEnum`.
 - **Tests:** `tests/test_agent_performance.py` (7), `tests/test_lead_tasks.py` (9); `tests/test_mvp_data_protection.py` covers `LeadTask`.
+
+### 2026-11-26 — session 33: listing analytics (T‑3060)
+- **Added:** `ListingDailyStat` (`properties 0050`); `apps/properties/analytics.py` (`record`, `record_on_commit`, `shown`, `detail_viewed`, `detail_viewed_in_chat`, bot filter, once-a-day keyed-hash cache key); `apps/reports/listing_performance.py` and `ListingPerformanceView` (`GET /api/v1/reports/listing-performance/`) (ADR‑058).
+- **Changed:** counting hooks in `apps/properties/public_views.py` (search, detail), `apps/properties/search_views.py`, `apps/properties/views.py` (`PropertyViewSet.retrieve`), `apps/ai/_tools_listings.py` (`search_listings`, `get_listing`), `apps/preferences/services.keep` (new saves), `apps/enquiries/services.create` (new threads). Staged contract migrations renamed `0051_drop_listing_v1_columns`, `0052_drop_prop_fts_gin` (dependency on 0050); README and `tests/test_listing_contract.py` follow.
+- **Tests:** `tests/test_listing_analytics.py` (19).

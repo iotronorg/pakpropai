@@ -208,6 +208,9 @@ def create(user, *, message: str, listing: Property | None = None, requirement: 
             requirement=requirement, lead=lead, preferred_channel=preferred_channel,
             consent_version=CONSENT_VERSION, consent_via=via, consented_at=now, last_message_at=now)
         post(e, user, USER, message)
+        if listing is not None:
+            from apps.properties.analytics import ENQUIRIES, record_on_commit
+            record_on_commit(ENQUIRIES, listing)        # T-3060: new threads only
     logger.info('enquiry.created id=%s kind=%s via=%s', e.pk, kind, via)
     return e, True
 

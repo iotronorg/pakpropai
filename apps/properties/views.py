@@ -242,6 +242,20 @@ class PropertyViewSet(viewsets.ModelViewSet):
             qs = apply_text_search(qs, search_term)
         return qs
 
+    def retrieve(self, request, *args, **kwargs):
+        response = super().retrieve(request, *args, **kwargs)
+        listing = getattr(self, '_retrieved', None)          # set by get_object below
+        if listing is not None and listing.status in Property.VISIBLE_STATUSES and listing.is_active:
+            from .analytics import detail_viewed
+            detail_viewed(request, listing)       # T-3060; the lister's own side is not counted
+        return response
+
+    def get_object(self):
+        obj = super().get_object()
+        if self.action == 'retrieve':
+            self._retrieved = obj
+        return obj
+
     def perform_create(self, serializer):
         from .models import Property as _P
         from apps.organizations.models import Organization

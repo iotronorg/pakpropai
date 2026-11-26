@@ -7,6 +7,7 @@ import logging
 import re
 
 from apps.markets.services import org_country
+from apps.properties import analytics as A
 from apps.properties import criteria as C
 from apps.properties import listing_search as S
 from apps.properties.public_listings import public_text
@@ -169,6 +170,7 @@ def _run(base: dict, args: dict, asked=()) -> dict:
         return _ask(echo, missing, [_QUESTIONS[m] for m in ('location', 'purpose') if m in missing])
 
     found = S.execute(crit, viewer_org=_ctx_org.get(), limit=LIMIT)
+    A.shown(None, [h.listing for h in found.hits])
     out = {'count': found.total, 'criteria': echo, 'ranking_version': found.ranking_version,
            'properties': [_row(h.listing, h) for h in found.hits]}
     if remembered:
@@ -329,6 +331,7 @@ def get_listing(listing: str) -> dict:
         p = S.find(listing, _ctx_org.get(), (state.last_results or []) if state else [])
         if p is None:
             return {'found': False, 'error': 'Listing not found or no longer available.'}
+        A.detail_viewed_in_chat(_ctx_user.get(), p)
         row = _row(p)
         row.update(
             description=public_text(p, p.description)[:800], floor=p.floor, total_floors=p.total_floors,

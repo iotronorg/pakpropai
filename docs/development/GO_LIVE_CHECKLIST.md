@@ -444,3 +444,9 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - **Migration `leads 0024`** (new table `lead_tasks`, additive, rolling-safe).
 - **Beat job `lead-task-reminders`** (every 5 minutes): restart celery beat after deploy so it is scheduled.
 - **New endpoints for the frontend:** `GET /api/v1/reports/agent-performance/`, `/api/v1/leads/tasks/`. Agent-room stream events may carry `phone: null`.
+
+## 56. Session-33 change: listing analytics (ADR‑058)
+- **Migration `properties 0050`** (new table `listing_daily_stats`, additive, rolling-safe). No backfill: counts start at deploy.
+- **Staged contract migrations renumbered** to `0051_drop_listing_v1_columns` / `0052_drop_prop_fts_gin` (now on top of 0050); follow `apps/properties/contract_migrations/README.md` with the new names.
+- **New endpoint for the frontend:** `GET /api/v1/reports/listing-performance/`.
+- **Load:** one extra small write per search page, listing view, save and enquiry. If a CDN is put in front of `/api/v1/public/`, read KI‑122 first.

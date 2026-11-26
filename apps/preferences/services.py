@@ -37,12 +37,15 @@ def visible(ids) -> dict:
 def keep(user, listing: Property, *, kind: str = Favourite.Kind.SAVED, note: str | None = None) -> Favourite:
     with transaction.atomic():
         _lock(user)
-        if (not Favourite.objects.filter(user=user, listing=listing).exists()
-                and Favourite.objects.filter(user=user).count() >= MAX_FAVOURITES):
+        before = Favourite.objects.filter(user=user, listing=listing).values_list('kind', flat=True).first()
+        if before is None and Favourite.objects.filter(user=user).count() >= MAX_FAVOURITES:
             raise PreferenceError(f'You can keep {MAX_FAVOURITES} listings.', 'limit')
         fields = {'kind': kind, **({'note': note} if note is not None else {})}
         fav, _ = Favourite.objects.update_or_create(user=user, listing=listing, defaults=fields)
         infer(user)
+        if kind == Favourite.Kind.SAVED and before != Favourite.Kind.SAVED:
+            from apps.properties.analytics import SAVES, record_on_commit
+            record_on_commit(SAVES, listing)            # T-3060: a new save, not a note edit
     return fav
 
 

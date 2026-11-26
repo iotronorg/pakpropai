@@ -595,6 +595,78 @@ class AgentPerformanceView(APIView):
         return Response(P.report(org, period, agents))
 
 
+class ListingPerformanceView(APIView):
+    """
+    GET /reports/listing-performance/?from&to[&listing=<id>][&organization=<id>][&sort][&limit][&offset]
+
+    T-3060 (ADR-058). Impressions, detail views, saves and enquiries per listing, with
+    the rates between them. Managers of the active organization see all of its
+    listings; everyone else sees the listings they own, list or are assigned to.
+    Platform admins name the organization or the listing. ``listing`` adds a
+    day-by-day series. Local days, at most 366.
+    """
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        parameters=[OpenApiParameter('from', str, description='First local day, YYYY-MM-DD (default: 29 days before "to")'),
+                    OpenApiParameter('to', str, description='Last local day, YYYY-MM-DD (default: today)'),
+                    OpenApiParameter('listing', str, description='One listing: adds its daily series'),
+                    OpenApiParameter('organization', str, description='Platform admins only'),
+                    OpenApiParameter('sort', str, enum=['impressions', 'detail_views', 'saves', 'enquiries']),
+                    OpenApiParameter('limit', int, description='1–200, default 50'),
+                    OpenApiParameter('offset', int)],
+        responses={200: OpenApiResponse(description='Per-listing counts and rates, with totals'),
+                   400: OpenApiResponse(description='Invalid parameter'),
+                   404: OpenApiResponse(description='Listing not found or not yours')})
+    def get(self, request):
+        from rest_framework import exceptions
+
+        from apps.core.permissions import _SALES_MANAGER_ROLES, active_org_role
+        from apps.organizations.models import Organization
+        from apps.properties.models import Property
+
+        from . import listing_performance as L
+        from . import performance as P
+        user, q = request.user, request.query_params
+        sort = q.get('sort') or 'impressions'
+        if sort not in L.SORTS:
+            raise exceptions.ValidationError({'sort': f'One of {", ".join(L.SORTS)}.'})
+        try:
+            limit = int(q.get('limit') or L.DEFAULT_LIMIT)
+            offset = int(q.get('offset') or 0)
+            if not 1 <= limit <= L.MAX_LIMIT or not 0 <= offset <= 100_000:
+                raise ValueError
+        except ValueError:
+            raise exceptions.ValidationError({'limit': f'limit 1–{L.MAX_LIMIT}, offset ≥ 0.'}) from None
+        listing_id = q.get('listing')
+        if listing_id and not _is_uuid(listing_id):
+            raise exceptions.ValidationError({'listing': 'A listing id.'})
+
+        if user.role == 'admin':
+            org = Organization.objects.filter(pk=q['organization']).first() if _is_uuid(q.get('organization')) else None
+            if org is not None:
+                listings = Property.objects.filter(organization=org)
+            elif listing_id:
+                listings = Property.objects.all()
+            else:
+                raise exceptions.ValidationError({'organization': 'Name the organization or the listing.'})
+        else:
+            org = get_user_org(user)
+            listings = Property.objects.filter(L.scope_q(user, org, active_org_role(user) in _SALES_MANAGER_ROLES))
+        one = None
+        if listing_id:
+            one = listings.filter(pk=listing_id).first()
+            if one is None:
+                raise exceptions.NotFound('Listing not found.')
+            listings = Property.objects.filter(pk=one.pk)
+            org = org or one.organization
+        try:
+            period = P.period(org, q.get('from'), q.get('to'))
+        except P.PeriodInvalid as exc:
+            raise exceptions.ValidationError({'period': str(exc)}) from None
+        return Response(L.report(listings, period, sort=sort, limit=limit, offset=offset, daily_for=one))
+
+
 def _is_uuid(value) -> bool:
     import uuid
     try:

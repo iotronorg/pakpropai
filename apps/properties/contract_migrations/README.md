@@ -5,8 +5,8 @@ They drop what T-1070g-1 (`properties 0040/0041`) stopped using:
 
 | File | Does |
 |---|---|
-| `0049_drop_listing_v1_columns.py` | Gate (refuses unless `check_listing_contract` passes), drops the v1 mirror trigger and the columns `area_marla`, `area_unit`, `area_sqm`, `property_type` |
-| `0050_drop_prop_fts_gin.py` | `DROP INDEX CONCURRENTLY prop_fts_gin` (non-atomic) |
+| `0051_drop_listing_v1_columns.py` | Gate (refuses unless `check_listing_contract` passes), drops the v1 mirror trigger and the columns `area_marla`, `area_unit`, `area_sqm`, `property_type` |
+| `0052_drop_prop_fts_gin.py` | `DROP INDEX CONCURRENTLY prop_fts_gin` (non-atomic) |
 
 ## When and how
 
@@ -16,15 +16,15 @@ They drop what T-1070g-1 (`properties 0040/0041`) stopped using:
    print `OK`. If it reports drift, the trigger was bypassed — investigate
    before going on.
 3. For release **N+2**, move both files into place:
-   `git mv apps/properties/contract_migrations/004[56]_*.py apps/properties/migrations/`
+   `git mv apps/properties/contract_migrations/005[12]_*.py apps/properties/migrations/`
    If other `properties` migrations were added in between, renumber these and
-   point 0049's dependency at the latest one.
-4. Deploy N+2; migrate with a direct (non-pooled) DB connection, because 0050
-   is `CONCURRENTLY`. 0049 refuses on its own if the gate fails.
+   point 0051's dependency at the latest one.
+4. Deploy N+2; migrate with a direct (non-pooled) DB connection, because 0052
+   is `CONCURRENTLY`. 0051 refuses on its own if the gate fails.
 5. Afterwards: delete this directory, `listing_contract.py`'s trigger SQL and
    the `check_listing_contract` command (follow-up cleanup).
 
-Rollback: **with the N+2 build** (an older build does not contain 0049/0050
+Rollback: **with the N+2 build** (an older build does not contain 0051/0052
 and cannot unapply them), run `migrate properties 0041`. This restores the
 columns (refilled from `size_*`/`category`), their index, the trigger and
 `prop_fts_gin`. Then roll the code back to N+1.

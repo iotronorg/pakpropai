@@ -725,6 +725,28 @@ class PriceHistory(models.Model):
         return f"{self.property_id} {self.currency} {self.price} @ {self.changed_at:%Y-%m-%d}"
 
 
+class ListingDailyStat(models.Model):
+    """
+    How often a listing was shown, opened, saved and enquired about on one local
+    day of its market (T-3060, FR-LST-012, ADR-058). Counts only: no person,
+    address or device is stored. Written by ``apps.properties.analytics``.
+    """
+    listing      = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='daily_stats')
+    day          = models.DateField()
+    impressions  = models.PositiveIntegerField(default=0, db_default=0)   # shown in search results
+    detail_views = models.PositiveIntegerField(default=0, db_default=0)   # opened (once per visitor per day)
+    saves        = models.PositiveIntegerField(default=0, db_default=0)   # newly saved as a favourite
+    enquiries    = models.PositiveIntegerField(default=0, db_default=0)   # new enquiry threads
+
+    class Meta:
+        db_table = 'listing_daily_stats'
+        ordering = ['-day']
+        constraints = [models.UniqueConstraint(fields=['listing', 'day'], name='listing_stat_once')]
+
+    def __str__(self):
+        return f'{self.listing_id} {self.day}'
+
+
 class ListingTransition(models.Model):
     """Append-only audit of listing status changes (FR-LST-005, T-1080)."""
 

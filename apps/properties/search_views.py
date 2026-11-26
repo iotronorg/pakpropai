@@ -8,6 +8,7 @@ from rest_framework.views import APIView
 
 from apps.core.throttles import PropertySearchThrottle
 
+from . import analytics as A
 from . import criteria as C
 from . import listing_search as S
 
@@ -88,6 +89,7 @@ class SearchView(APIView):
         except C.LocationAmbiguous as exc:
             return Response({'detail': f'Several places are called "{exc.text}".', 'code': 'location.ambiguous',
                              'candidates': exc.candidates}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+        A.shown(request, [h.listing for h in found.hits])
         return Response(SearchResponseSerializer({
             'results': [{'listing': S.summary(h.listing), 'match_score': h.score, 'reasons': h.reasons,
                          'tradeoffs': h.tradeoffs, 'sponsored': False} for h in found.hits],

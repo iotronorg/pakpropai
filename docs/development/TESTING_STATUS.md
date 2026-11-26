@@ -198,6 +198,9 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | 2026-11-26 | Working tree | `actionlint`; `shellcheck scripts/deploy/remote_deploy.sh` | Clean (one existing, intentional note in `ai-evals-live.yml`) | — |
 | 2026-11-26 | Working tree | Deploy rehearsal: local registry, real prod images, `docker-compose.prod.yml`, `remote_deploy.sh` | Runs 1–2 found KI‑120 and KI‑119. Run 3: good release migrated, healthy with its version, live; `/metrics/` 200 over plain HTTP; bad release not healthy → rolled back, all services on the good tag | — |
 | 2026-11-26 | Working tree | GitHub Actions | **Not run**: needs the owner's servers, environments and secrets | — |
+| 2026-11-26 | Working tree, session 33 (T‑3060), first run | `scripts/dev/test.sh` | 2541 passed, 1 skipped, **1 failed**: `test_listing_contract.py::…::test_staged_files_are_outside_the_loaded_migrations` (staged contract migrations had to be renumbered on top of `properties 0050`); fixed | 9m27s |
+| 2026-11-26 | Working tree, session 33 end | `scripts/dev/test.sh` | **2542 passed, 1 skipped, 0 failed**, 294 subtests (19 new listing-analytics tests) | 10m09s |
+| 2026-11-26 | Working tree, session 33 | `makemigrations --check`; `manage.py check`; `spectacular --validate` | No changes; no issues; schema valid (exit 0) | — |
 
 ## Coverage
 Not measured yet (no coverage run executed). CI is configured with `--cov=apps`.

@@ -529,3 +529,15 @@
 1. `git status`: uncommitted work is session 32. **Do not commit.**
 2. Dev: T‑3060 listing analytics (start in `apps/properties/public_listings.py`, `listing_search.py`, a daily counter model), then T‑3050.
 3. Owner: as before (§54, §52, §53, staging E2E, T‑2072, pentest, KI‑112, KI‑114, KI‑121 document links); new: checklist §55, pricing for T‑3080, the weekly-use metric (M3 exit 3).
+
+## Session 33 — 2026-11-26
+- **Verified:** the owner committed session 32 (`c9ae6c0`); the tree was clean; T‑3010/T‑3020 code and tests present.
+- **Completed:** T‑3060 (ADR‑058) listing analytics: daily counters per listing for impressions, detail views (once per visitor per day, keyed hash in the cache only), saves and enquiries, written at the event sites; `GET /api/v1/reports/listing-performance/` with rates, totals and a daily series.
+- **Fixed on the way:** the staged T‑1070g contract migrations renumbered to 0051/0052 on top of the new `properties 0050` (the guard test caught it).
+- **Recorded:** KI‑122 (CDN would hide cached reads).
+- **Tests:** 2542 passed, 1 skipped, 0 failed; no migration drift; OpenAPI valid. **Not committed.**
+
+### Handoff → session 34 (supersedes the one above)
+1. `git status`: uncommitted work is session 33. **Do not commit.**
+2. Dev: T‑3050 AI listing assistant (start files in DEVELOPMENT_STATUS), then T‑3070.
+3. Owner: as before (§54, §52, §53, staging E2E, T‑2072, pentest, KI‑112, KI‑114, KI‑121 document links, pricing for T‑3080, weekly-use metric); new: checklist §56.

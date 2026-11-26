@@ -13,6 +13,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 
+from . import analytics as A
 from . import criteria as C
 from . import listing_search as S
 from . import public_listings as P
@@ -200,6 +201,7 @@ class PublicListingSearchView(PublicView):
             return Response({'detail': f'Several places are called "{exc.text}".', 'code': 'location.ambiguous',
                              'candidates': exc.candidates}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
         prefetch_related_objects([h.listing for h in found.hits], P.safe_images())
+        A.shown(request, [h.listing for h in found.hits])
         return self.cached(request, PublicSearchSerializer({
             'results': [{'listing': P.card(h.listing, request), 'match_score': h.score, 'reasons': h.reasons,
                          'tradeoffs': h.tradeoffs} for h in found.hits],
@@ -215,4 +217,5 @@ class PublicListingDetailView(PublicView):
         listing = P.lookup(slug_or_id)
         if listing is None:
             raise exceptions.NotFound('Listing not found.')
+        A.detail_viewed(request, listing)
         return self.cached(request, PublicListingSerializer(P.detail(listing, request)).data)
