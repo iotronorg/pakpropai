@@ -55,7 +55,7 @@ def _sanitize(text: str) -> str:
 
 from apps.users.models import User
 from .client import WhatsAppClient, get_wa_client
-from .models import WhatsAppMessage, WhatsAppSession
+from .models import WhatsAppSession
 
 logger = logging.getLogger(__name__)
 
@@ -581,83 +581,33 @@ class MessageRouter:
             media_id   = _media_obj.get('id', '')
             media_url  = _media_obj.get('_cdn_url', '')  # populated by dedicated media workers
 
+        # T-3100b (ADR-064): one row in the message log, with the session and the
+        # organization's lead of the person (no separate WhatsApp log and CRM mirror).
         try:
-            WhatsAppMessage.objects.update_or_create(
-                wa_message_id=wa_message_id,
-                defaults={
-                    'session':     session_db,
-                    'direction':   'inbound',
-                    'msg_type':    msg_type,
-                    'body':        body[:2000],
-                    'media_id':    media_id,
-                    'media_url':   media_url,
-                    'raw_payload': message_data,
-                },
-            )
+            from .history import record
+            record(session_db, direction='inbound', body=body, msg_type=msg_type, wa_message_id=wa_message_id,
+                   media_id=media_id, media_url=media_url)
         except Exception:
-            pass
-        # Mirror inbound messages to CRM conversation log (enables dashboard chat view)
-        cls._persist_crm_inbound(session_db.user, body, wa_message_id, session_db.organization_id)
+            logger.exception('whatsapp.log_inbound_failed')
 
     @staticmethod
     def _crm_lead(user, org_id):
         """The lead of this chat's own organization: a chat is never filed under another lister (T-2050)."""
-        from apps.leads.models import Lead
-        mine = Lead.objects.filter(user=user).order_by('-created_at')
-        if org_id:
-            return mine.filter(organization_id=org_id).first()
-        return mine.filter(organization__isnull=True, enquiries__isnull=True).first()
-
-    @classmethod
-    def _persist_crm_inbound(cls, user, body: str, wa_message_id: str, org_id=None):
-        try:
-            from apps.leads.models import ConversationMessage
-            lead = cls._crm_lead(user, org_id)
-            if lead and body:
-                ConversationMessage.objects.get_or_create(
-                    wa_message_id=wa_message_id,
-                    defaults={
-                        'lead':      lead,
-                        'direction': ConversationMessage.Direction.INBOUND,
-                        'channel':   ConversationMessage.Channel.WHATSAPP,
-                        'body':      body[:2000],
-                    },
-                )
-        except Exception:
-            pass
+        from .history import crm_lead
+        return crm_lead(user, org_id)
 
     @classmethod
     def _send_and_log(cls, phone: str, body: str, session_db, org=None):
         try:
             client = get_wa_client(org)
             resp   = client.send_text(phone, body, skip_window_check=True)
-            wa_id  = resp.get('messages', [{}])[0].get('id', '') or f"out-{timezone.now().timestamp()}"
-            WhatsAppMessage.objects.create(
-                session       = session_db,
-                wa_message_id = wa_id,
-                direction     = 'outbound',
-                msg_type      = 'text',
-                body          = body[:2000],
-                raw_payload   = resp,
-            )
-            cls._persist_crm_outbound(session_db.user, body, wa_id, org.pk if org else session_db.organization_id)
         except Exception as exc:
             logger.error(f"Failed to send reply to {phone}: {exc}")
-
-    @classmethod
-    def _persist_crm_outbound(cls, user, body: str, wa_message_id: str, org_id=None):
+            return
         try:
-            from apps.leads.models import ConversationMessage
-            lead = cls._crm_lead(user, org_id)
-            if lead and body:
-                ConversationMessage.objects.get_or_create(
-                    wa_message_id=wa_message_id,
-                    defaults={
-                        'lead':      lead,
-                        'direction': ConversationMessage.Direction.OUTBOUND,
-                        'channel':   ConversationMessage.Channel.WHATSAPP,
-                        'body':      body[:2000],
-                    },
-                )
+            from .history import fallback_id, record
+            wa_id = (resp.get('messages') or [{}])[0].get('id', '') or fallback_id('out')
+            record(session_db, direction='outbound', body=body, wa_message_id=wa_id,
+                   organization_id=org.pk if org else session_db.organization_id)
         except Exception:
-            pass
+            logger.exception('whatsapp.log_outbound_failed')

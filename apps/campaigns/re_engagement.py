@@ -79,11 +79,12 @@ class LeadContextBuilder:
         if not lead.user or not lead.user.phone:
             return ''
         try:
-            from apps.whatsapp.models import WhatsAppMessage
-            phone = lead.user.phone.lstrip('+')
+            # T-3100b: both logs, and only the chat with the lead's own organization
+            # (was: every session with this phone, other organizations' chats included).
+            from apps.leads.contacts import sessions
+            from apps.whatsapp.history import sessions_log
             msgs  = (
-                WhatsAppMessage.objects
-                .filter(session__phone=phone)
+                sessions_log(sessions(lead.user, lead.organization_id))
                 .order_by('-created_at')[:_MAX_WA_MESSAGES]
             )
             if not msgs:

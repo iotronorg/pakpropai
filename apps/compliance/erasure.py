@@ -162,15 +162,18 @@ def _cloud_files(user):
     audits = PropertyAudit.objects.filter(Q(user=user) | Q(phone__in=_phones(user)))
     sessions = WhatsAppSession.objects.filter(Q(user=user) | Q(user__isnull=True, phone__in=_phones(user)))
     media = WhatsAppMessage.objects.filter(session__in=sessions).exclude(media_url='')
+    from apps.leads.models import ConversationMessage
+    logged = ConversationMessage.objects.filter(session__in=sessions).exclude(media_url='')      # T-3100b
     n = delete_all([*reports.values_list('file_url', flat=True),
                     *audits.exclude(cloudinary_url='').values_list('cloudinary_url', flat=True),
-                    *media.values_list('media_url', flat=True)])
+                    *media.values_list('media_url', flat=True), *logged.values_list('media_url', flat=True)])
     for audit in audits.exclude(pdf_file='').exclude(pdf_file__isnull=True):
         f = audit.pdf_file
         transaction.on_commit(lambda f=f: f.storage.delete(f.name), robust=True)
     audits.update(cloudinary_url='', pdf_file=None)
     reports.update(file_url='')
     media.update(media_url='')
+    logged.update(media_url='')
     return n
 
 
@@ -202,6 +205,8 @@ def _whatsapp(user):
     from apps.whatsapp.models import WhatsAppMessage, WhatsAppSession
     sessions = WhatsAppSession.objects.filter(Q(user=user) | Q(user__isnull=True, phone__in=_phones(user)))
     n = WhatsAppMessage.objects.filter(session__in=sessions).delete()[0]
+    from apps.leads.models import ConversationMessage
+    n += ConversationMessage.objects.filter(session__in=sessions).delete()[0]     # T-3100b: the one log
     sessions.update(context={}, phone='', user=None)
     return n
 

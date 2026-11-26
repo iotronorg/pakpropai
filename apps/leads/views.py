@@ -182,14 +182,14 @@ class LeadViewSet(viewsets.ModelViewSet):
         except Exception as exc:
             logger.warning(f"WhatsApp send failed for lead {lead.id}: {exc}")
 
-        msg = ConversationMessage.objects.create(
-            lead=lead,
-            direction=ConversationMessage.Direction.OUTBOUND,
-            channel=ConversationMessage.Channel.WHATSAPP,
-            body=body,
-            sender=request.user,
-            wa_message_id=wa_id,
-        )
+        # T-3100b: one row in the message log, in the person's session with the
+        # organization's number when there is one (the chat history and window see it).
+        from apps.whatsapp.history import record
+        from .contacts import sessions
+        session = sessions(lead.user, lead.organization_id).order_by('-last_message_at').first()
+        msg = record(session, direction=ConversationMessage.Direction.OUTBOUND, body=body, sender=request.user,
+                     wa_message_id=wa_id, lead=lead,
+                     organization_id=lead.organization_id)
 
         lead.last_contacted_at = timezone.now()
         lead.save(update_fields=['last_contacted_at'])

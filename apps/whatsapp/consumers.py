@@ -124,21 +124,18 @@ class AgentRoomConsumer(AsyncWebsocketConsumer):
 
     @sync_to_async
     def _send_whatsapp(self, session_id, body):
-        from apps.whatsapp.models import WhatsAppSession, WhatsAppMessage
+        from apps.whatsapp.models import WhatsAppSession
         from apps.whatsapp.client import get_wa_client
+        from apps.whatsapp.history import fallback_id, record
         try:
             session = WhatsAppSession.objects.select_related("organization").get(id=session_id)
             wa_client = get_wa_client(session.organization)
             response = wa_client.send_text(session.phone, body)
-            wa_msg_id = response.get("messages", [{}])[0].get("id", "")
-            WhatsAppMessage.objects.create(
-                session=session,
-                wa_message_id=wa_msg_id or f"agent-{session_id[:8]}",
-                direction="outbound",
-                msg_type="text",
-                body=body,
-                raw_payload=response,
-            )
+            wa_msg_id = (response.get("messages") or [{}])[0].get("id", "")
+            # T-3100b: one row in the message log, with the agent as sender (was: the
+            # WhatsApp log only, under a fixed fallback id per session).
+            record(session, direction="outbound", body=body, wa_message_id=wa_msg_id or fallback_id("agent"),
+                   sender=self.user)
         except Exception:
             logger.exception("AgentRoomConsumer._send_whatsapp failed")
 

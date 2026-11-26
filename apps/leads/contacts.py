@@ -8,9 +8,10 @@ organization's number, and what the organization notes about them
 in step: the list is read from the leads, and a ``CRMContact`` row is written
 only when someone names or tags the person.
 
-**Messages** are read from the ``unified_messages`` view over the CRM log
-(``ConversationMessage``) and the WhatsApp log (``WhatsAppMessage``). What a
-caller sees is decided here, with the rules that already applied:
+**Messages** are read from the ``unified_messages`` view over the message log
+(``ConversationMessage``, the one writer since T-3100b) and the old WhatsApp log
+(``WhatsAppMessage``, until the backfill and T-3100c). What a caller sees is
+decided here, with the rules that already applied:
 - CRM rows of a lead: ``Lead.crm_messages()`` (never another lister's thread);
 - WhatsApp rows: the person's sessions with the same organization's number
   (sessions not yet linked to the account are matched by phone, as erasure does).
@@ -58,8 +59,8 @@ def sessions(user, organization_id):
 def lead_messages(lead):
     """Everything said with the lead's person under the lead's organization: its CRM log and the WhatsApp chat."""
     return UnifiedMessage.objects.filter(
-        Q(source='crm', row_id__in=lead.crm_messages().values('pk'))
-        | Q(source='whatsapp', session_id__in=sessions(lead.user, lead.organization_id).values('pk')))
+        Q(row_id__in=lead.crm_messages().values('pk'))
+        | Q(session_id__in=sessions(lead.user, lead.organization_id).values('pk')))
 
 
 def contact_messages(org, user, leads):
@@ -67,8 +68,7 @@ def contact_messages(org, user, leads):
     crm = ConversationMessage.objects.filter(lead__in=leads).filter(
         Q(enquiry__isnull=True) | Q(enquiry__organization=org))
     return UnifiedMessage.objects.filter(
-        Q(source='crm', row_id__in=crm.values('pk'))
-        | Q(source='whatsapp', session_id__in=sessions(user, org.pk).values('pk')))
+        Q(row_id__in=crm.values('pk')) | Q(session_id__in=sessions(user, org.pk).values('pk')))
 
 
 def _cursor(m) -> str:

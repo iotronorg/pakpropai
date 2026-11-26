@@ -446,10 +446,11 @@ class BotReportView(APIView):
     permission_classes = [IsAdminUser]
 
     def get(self, request):
-        from apps.whatsapp.models import WhatsAppMessage, WhatsAppSession
+        from apps.leads.models import UnifiedMessage
+        from apps.whatsapp.models import WhatsAppSession
 
         now  = timezone.now()
-        msgs = WhatsAppMessage.objects.all()
+        msgs = UnifiedMessage.objects.filter(session__isnull=False)      # T-3100b: both logs
 
         cutoff_30d = now - datetime.timedelta(days=30)
         cutoff_7d  = now - datetime.timedelta(days=7)

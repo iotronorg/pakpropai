@@ -114,7 +114,8 @@ class ConversationScanner:
     @staticmethod
     def _extract_messages(session) -> list[dict]:
         msgs = []
-        for msg in session.messages.order_by('created_at'):
+        from apps.whatsapp.history import session_log          # T-3100b: both logs
+        for msg in session_log(session).order_by('created_at'):
             body = (msg.body or '').strip()
             if not body:
                 continue

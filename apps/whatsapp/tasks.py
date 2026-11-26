@@ -586,7 +586,8 @@ def process_copilot_recommendations(self, session_id: str):
     import time
     t0 = time.perf_counter()
     try:
-        from apps.whatsapp.models import WhatsAppSession, WhatsAppMessage, CopilotRecommendation
+        from apps.whatsapp.models import WhatsAppSession, CopilotRecommendation
+        from apps.whatsapp.history import session_log          # T-3100b: both logs, agent sends included
         from apps.whatsapp.copilot_stream import CopilotIntentExtractor, CopilotRecommendationEngine
 
         session = WhatsAppSession.objects.select_related('organization').get(id=session_id)
@@ -596,8 +597,8 @@ def process_copilot_recommendations(self, session_id: str):
 
         # Get latest inbound message text
         latest = (
-            WhatsAppMessage.objects
-            .filter(session=session, direction='inbound')
+            session_log(session)
+            .filter(direction='inbound')
             .order_by('-created_at')
             .values('body', 'msg_type')
             .first()
@@ -606,7 +607,7 @@ def process_copilot_recommendations(self, session_id: str):
             return
 
         message_text = latest.get('body') or f"[{latest.get('msg_type', 'unknown')}]"
-        msg_index = WhatsAppMessage.objects.filter(session=session).count()
+        msg_index = session_log(session).count()
 
         # Extract intent
         intent = CopilotIntentExtractor.extract(message_text)

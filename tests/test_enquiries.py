@@ -343,19 +343,26 @@ class NotifyTest(Base):
 
 class CrmIsolationTest(Base):
     def test_whatsapp_chat_is_filed_under_its_own_organization(self):
-        from apps.whatsapp.router import MessageRouter
+        from apps.whatsapp.history import record
+        from apps.whatsapp.models import WhatsAppSession
         upsert_lead(self.buyer, '', organization=self.org)
         self.enquire(listing=self.live(make_property(org=self.other_org)))      # the newest lead
-        for org_id, name in ((self.org.pk, 'Prime'), (None, None)):
-            MessageRouter._persist_crm_inbound(self.buyer, 'private', f'w{name}', org_id)
-        self.assertEqual([m.lead.organization for m in ConversationMessage.objects.filter(body='private')], [self.org])
+        for org, name in ((self.org, 'Prime'), (None, None)):
+            s = WhatsAppSession.objects.create(phone=f'{name}', user=self.buyer, organization=org)
+            record(s, direction='inbound', body='private', wa_message_id=f'w{name}')
+        # T-3100b: both chats are logged once; only the organization's own one is on its lead
+        rows = ConversationMessage.objects.filter(body='private')
+        self.assertEqual(rows.count(), 2)
+        self.assertEqual([m.lead.organization for m in rows.filter(lead__isnull=False)], [self.org])
 
     def test_platform_chat_never_lands_on_a_lister_lead(self):
-        from apps.whatsapp.router import MessageRouter
         fu, fa = make_agent(is_active=True)
         self.enquire(listing=self.live(make_property(listing_owner_type='freelance_agent', listed_by_agent=fa)))
-        MessageRouter._persist_crm_outbound(self.buyer, 'private', 'w1', None)
-        self.assertFalse(ConversationMessage.objects.filter(body='private').exists())
+        from apps.whatsapp.history import record
+        from apps.whatsapp.models import WhatsAppSession
+        record(WhatsAppSession.objects.create(phone='p', user=self.buyer), direction='outbound', body='private',
+               wa_message_id='w1')
+        self.assertFalse(ConversationMessage.objects.filter(body='private', lead__isnull=False).exists())
         upsert_lead(self.buyer, 'buy', organization=self.org)
         self.assertEqual(Lead.objects.filter(user=self.buyer, organization=self.org).count(), 1)
         self.assertEqual(Enquiry.objects.get().lead.organization, None)

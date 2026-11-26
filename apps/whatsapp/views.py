@@ -329,7 +329,8 @@ class NotificationDetailView(APIView):
             except Exception:
                 return Response({'detail': 'Not authorized.'}, status=403)
 
-        msgs_qs = session.messages.order_by('created_at')
+        from .history import session_log          # T-3100b: both logs
+        msgs_qs = session_log(session).order_by('created_at', 'id')
 
         if direction := request.query_params.get('direction'):
             msgs_qs = msgs_qs.filter(direction=direction)
@@ -341,7 +342,7 @@ class NotificationDetailView(APIView):
 
         messages = [
             {
-                'id':           str(m.id),
+                'id':           str(m.row_id),
                 'wa_message_id': m.wa_message_id,
                 'direction':    m.direction,
                 'msg_type':     m.msg_type,

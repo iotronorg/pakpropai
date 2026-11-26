@@ -60,7 +60,7 @@ class ViewTest(TestCase):
         wa(self.session, 'w2', 'agent live chat', 'outbound')           # consumer: no CRM mirror
         crm(self.lead, 'from the dashboard', 'w3', 'outbound', sender=self.owner)   # send-message: no WA row
         self.assertEqual(self.bodies(), ['agent live chat', 'from the dashboard', 'hello'])
-        self.assertEqual(UnifiedMessage.objects.get(body='hello').source, 'crm')
+        self.assertEqual(UnifiedMessage.objects.get(body='hello').source, 'whatsapp')    # the old row, with its session
 
     def test_misfiled_mirror_stays_with_its_own_organization(self):
         other = make_org(name='Other')

@@ -215,6 +215,8 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | 2026-11-26 | Working tree, T‑3040 | `makemigrations --check`; `manage.py check`; `spectacular --validate` | No changes after `leads 0026`; no issues; no warnings from the new views | — |
 | 2026-11-26 | Working tree, T‑3100a | `scripts/dev/test.sh tests/ apps/ -rf` | **2616 passed, 1 skipped, 0 failed**, 303 subtests (9 unified-contact tests; erasure/export tests extended) | 15m12s |
 | 2026-11-26 | Working tree, T‑3100a | `makemigrations --check`; `manage.py check`; `spectacular --validate` | No changes after `leads 0027`; no issues; only the existing `LeadViewSet` path-id warning (budget test passes) | — |
+| 2026-11-26 | Working tree, T‑3100b | `scripts/dev/test.sh tests/ apps/ -rf` | **2624 passed, 1 skipped, 0 failed**, 303 subtests (8 message-log tests) | 10m03s |
+| 2026-11-26 | Working tree, T‑3100b | `makemigrations --check`; `manage.py check`; `migrate` → `migrate leads 0026` → `migrate leads` on Postgres; `backfill_contact_messages --check` | No changes after `leads 0028`; no issues; forward, reverse and forward again succeed (view dropped and re-created each way); check prints `pending=0` | — |
 
 ## Coverage
 Not measured yet (no coverage run executed). CI is configured with `--cov=apps`.

@@ -275,7 +275,19 @@ class Appointment(models.Model):
 
 
 class ConversationMessage(models.Model):
-    """CRM message log — one record per message exchanged with a lead."""
+    """
+    The message log (T-3100b, ADR-064): CRM notes and sends, enquiry threads and,
+    since phase B, every WhatsApp message (``session`` set, written once by
+    ``apps.whatsapp.history.record``; ``lead`` is the organization's lead of the
+    person, or empty when there is none yet).
+    """
+
+    class MsgType(models.TextChoices):
+        TEXT     = 'text',     'Text'
+        AUDIO    = 'audio',    'Audio'
+        IMAGE    = 'image',    'Image'
+        DOCUMENT = 'document', 'Document'
+        TEMPLATE = 'template', 'Template'
 
     class Direction(models.TextChoices):
         INBOUND  = 'inbound',  'Inbound (from client)'
@@ -287,7 +299,11 @@ class ConversationMessage(models.Model):
         IN_APP    = 'in_app',    'In-app thread'
 
     id        = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    lead      = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name='messages')
+    lead      = models.ForeignKey(Lead, on_delete=models.CASCADE, null=True, blank=True, related_name='messages')
+    session   = models.ForeignKey('whatsapp.WhatsAppSession', on_delete=models.CASCADE, null=True, blank=True,
+                                  related_name='log_messages')            # T-3100b: WhatsApp rows
+    organization = models.ForeignKey('organizations.Organization', on_delete=models.SET_NULL, null=True,
+                                     blank=True, related_name='+')       # the WhatsApp number's organization
     enquiry   = models.ForeignKey('enquiries.Enquiry', on_delete=models.SET_NULL, null=True, blank=True,
                                   related_name='messages')      # in-app thread (T-2050)
     direction = models.CharField(max_length=10, choices=Direction.choices)
@@ -302,11 +318,18 @@ class ConversationMessage(models.Model):
                     help_text='Set for outbound dashboard messages; null for inbound/AI replies'
                 )
     wa_message_id = models.CharField(max_length=200, blank=True, db_index=True)
+    msg_type   = models.CharField(max_length=20, choices=MsgType.choices, default=MsgType.TEXT)
+    media_id   = models.CharField(max_length=100, blank=True, default='')
+    media_url  = models.URLField(blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = 'conversation_messages'
         ordering = ['created_at']
+        constraints = [
+            models.UniqueConstraint(fields=['session', 'wa_message_id'], condition=~models.Q(wa_message_id=''),
+                                    name='conv_msg_session_wa_id_unique'),
+        ]
 
     def __str__(self):
         return f"{self.direction} [{self.channel}] — lead {self.lead_id}"
@@ -511,10 +534,11 @@ class AgentRouting(models.Model):
 
 class UnifiedMessage(models.Model):
     """
-    One read view over the CRM log and the WhatsApp log (T-3100, GAP-016, ADR-064):
-    the SQL view ``unified_messages`` (``leads 0027``), not a table. A WhatsApp row
-    mirrored into the CRM log of the same organization appears once (as the CRM row);
-    a CRM row mirrored from another organization's WhatsApp chat (KI-073) is left out.
+    One read view over the message log and the old WhatsApp log (T-3100, GAP-016,
+    ADR-064): the SQL view ``unified_messages`` (``leads 0028``), not a table. An old
+    CRM mirror of a WhatsApp message is left out when the WhatsApp row exists (that
+    row, with its session and media, shows instead; this also hides KI-073 mirrors
+    filed under another organization); a WhatsApp row copied by the backfill shows once.
     Ids are plain columns, so filter on ``row_id``/``lead_id``/``session_id`` (indexed
     in the base tables). Read through ``apps.leads.contacts``.
     """
@@ -522,7 +546,8 @@ class UnifiedMessage(models.Model):
     source          = models.CharField(max_length=10)                       # crm | whatsapp
     row_id          = models.UUIDField()
     lead_id         = models.UUIDField(null=True)
-    session_id      = models.UUIDField(null=True)
+    session         = models.ForeignKey('whatsapp.WhatsAppSession', on_delete=models.DO_NOTHING, null=True,
+                                        db_constraint=False, related_name='+')
     enquiry_id      = models.UUIDField(null=True)
     organization_id = models.UUIDField(null=True)
     sender_id       = models.UUIDField(null=True)
@@ -532,6 +557,7 @@ class UnifiedMessage(models.Model):
     body            = models.TextField()
     wa_message_id   = models.CharField(max_length=200)
     has_media       = models.BooleanField()
+    media_url       = models.CharField(max_length=200)
     created_at      = models.DateTimeField()
 
     class Meta:

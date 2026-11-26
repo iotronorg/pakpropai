@@ -71,16 +71,19 @@ def _more(user) -> dict:
     from apps.verification.models import DocumentScan
     from apps.viewings.models import ViewingFeedback
     from apps.voice.models import VoiceCallSession
-    from apps.whatsapp.models import WhatsAppMessage
+    from apps.leads.models import UnifiedMessage
+    from apps.whatsapp.models import WhatsAppSession
 
     def rows(qs, *fields):
         return list(qs.values(*fields))
     phones = [user.phone, user.phone.lstrip('+')]
     return {
-        'whatsapp_messages': rows(WhatsAppMessage.objects.filter(
-            Q(session__user=user) | Q(session__user__isnull=True, session__phone__in=phones)),
+        # T-3100b: WhatsApp messages from both logs (the old one until the backfill is done)
+        'whatsapp_messages': rows(UnifiedMessage.objects.filter(session__in=WhatsAppSession.objects.filter(
+            Q(user=user) | Q(user__isnull=True, phone__in=phones))).order_by('created_at'),
             'direction', 'msg_type', 'body', 'created_at'),
-        'agency_messages': rows(ConversationMessage.objects.filter(lead__user=user, enquiry__isnull=True).exclude(
+        'agency_messages': rows(ConversationMessage.objects.filter(
+            lead__user=user, enquiry__isnull=True, session__isnull=True).exclude(
             channel=ConversationMessage.Channel.DASHBOARD, sender__isnull=False),
             'direction', 'channel', 'body', 'created_at'),
         'lead_history': rows(LeadActivity.objects.filter(lead__user=user), 'action', 'notes', 'created_at'),

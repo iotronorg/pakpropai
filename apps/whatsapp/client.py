@@ -22,7 +22,8 @@ def is_within_24h_window(phone: str) -> bool:
         if not session:
             return False
         cutoff = timezone.now() - _24H
-        return session.messages.filter(direction='inbound', created_at__gte=cutoff).exists()
+        from .history import session_log         # T-3100b: both logs
+        return session_log(session).filter(direction='inbound', created_at__gte=cutoff).exists()
     except Exception:
         return False
 

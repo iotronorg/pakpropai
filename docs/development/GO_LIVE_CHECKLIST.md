@@ -482,3 +482,8 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - **Migration `leads 0027`**: `crm_contacts` gains `user_id` and `updated_at` (nullable), `phone` may be blank, the `(organization, phone)` unique becomes partial; old phone-only rows are linked to registered people; creates the view `unified_messages`. Additive; run before new pods serve the contacts API.
 - **Later migrations** that alter or drop columns of `conversation_messages`, `whatsapp_messages`, `whatsapp_sessions`, `leads` or `enquiries` must drop and re-create the view (ADR‑064).
 - **Frontend:** the person view at `/api/v1/leads/contacts/…`; the lead's chat at `/api/v1/leads/<id>/messages/` (paged with `next`); `/conversations/` is deprecated. Summaries and suggested replies now include WhatsApp messages that were not mirrored before.
+
+## 63. Session-34 change: one message log (ADR‑064 phase B)
+- **Migration `leads 0028`**: drops and re-creates the view `unified_messages`; adds nullable `session_id`, `organization_id`, and `msg_type`/`media_id`/`media_url` with defaults to `conversation_messages`; `lead_id` becomes nullable; adds a partial unique index on `(session_id, wa_message_id)`. Additive. Run it with the new code: old pods would keep writing the old WhatsApp log (the view still shows those rows, so nothing is lost, but run the backfill again afterwards).
+- **After rollout:** `python manage.py backfill_contact_messages` (re-runnable; `--batch`, `--limit`), then `--check` must print `pending=0`. Keep the output for T‑3100c.
+- **Behaviour:** the re-engagement prompt now only sees the chat with the lead's own organization; raw webhook payloads are no longer stored.
