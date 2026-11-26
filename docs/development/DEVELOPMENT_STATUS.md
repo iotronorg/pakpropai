@@ -1,18 +1,18 @@
 # Development Status
 
-_Last updated: 2026-11-26 (session 33; git commit subjects number sessions differently: `7d95593` "session 47" is session 27 here)_
+_Last updated: 2026-11-26 (session 34; git commit subjects number sessions differently: `89982b9` "session 58" is session 33 here)_
 
 | Item | Value |
 |---|---|
-| Branch | `development`. The owner committed T‑3060 (`7a327cc`), T‑3050 (`0106087`), T‑3070 (`fb063cf`) and T‑3090 (`0d8eb0a`). **Uncommitted:** T‑3030 |
+| Branch | `development`. The owner committed T‑3030 (`89982b9`); the tree was clean at session start. **Uncommitted:** T‑3040 |
 | Current milestone | **M3 — Professional workspace** ([MILESTONE_03](milestones/MILESTONE_03_PROFESSIONAL_WORKSPACE.md)), started 2026‑11‑26 (session 32). M2 is code complete; open there only owner work (T‑2072, T‑2080). M1 contracts release‑gated; M0 awaiting the first Actions run |
 | M0 progress | All 17 tasks complete. Remaining exit criterion: CI green on GitHub Actions (owner pushes) |
 | M1 progress | 16 of 18 tasks done (T‑1010, T‑1011, T‑1020, T‑1021, T‑1022, T‑1030, T‑1031, T‑1033, T‑1040, T‑1050, T‑1060, T‑1080, T‑1090, T‑1100, T‑1110, T‑1120) plus subtasks T‑1032a, T‑1032c, T‑1070a–f and T‑1070g‑1 |
 | M2 progress | 16 of 17 tasks done. Open: T‑2072 (owner data and paid runs) |
-| M3 progress | 7 of 11 tasks done (T‑3010, T‑3020, T‑3060, T‑3050, T‑3070, T‑3090, T‑3030) |
-| Test suite | **2593 passed, 1 skipped, 0 failed** (after T‑3030); no migration drift; OpenAPI schema valid; eval gate passed. See [TESTING_STATUS](TESTING_STATUS.md) |
-| Last completed task | T‑3030 (ADR‑062): pipeline stages per organization (`leads 0025`, `apps/leads/pipeline.py`, `/api/v1/leads/pipeline/…`, `move-stage`), beside the AI's `Lead.status`. Before it T‑3090 (ADR‑061) AI ops console |
-| Next task | **Owner actions unblock the rest of the MVP** (unchanged): servers and GitHub environments (checklist §54), first Actions run on `main`; monitoring (§52); runbook roles (§53); staging E2E (criterion 1, now also move and cancel); T‑2072; pentest (criterion 12); KI‑112, KI‑114 rule. **Next dev task:** T‑3040 team management and assignment rules (FR‑CRM‑007): rules per organization (round-robin, area, language, load) extending auto-assign. Start with `apps/leads/services.py` (`suggest_agents_for_lead`, `assign_agent_to_lead`), the auto-assign paths (`LeadViewSet.auto_assign`, `BulkAssignLeadsView`) and the agents' fields in `apps/agents/models.py` (areas, languages, capacity). Then T‑3100 (unified contact and messages). Open: KI‑055…KI‑059, KI‑068, KI‑069, KI‑071, KI‑073, KI‑075, KI‑077…KI‑082, KI‑084…KI‑086, KI‑089, KI‑091…KI‑093, KI‑095, KI‑096, KI‑098, KI‑101, KI‑104, KI‑105 (rest), KI‑110, KI‑112, KI‑114, KI‑121 (document links), KI‑122, KI‑123 |
+| M3 progress | 8 of 11 tasks done (T‑3010, T‑3020, T‑3060, T‑3050, T‑3070, T‑3090, T‑3030, T‑3040); open T‑3100; T‑3080, T‑3110 owner-blocked |
+| Test suite | **2607 passed, 1 skipped, 0 failed** (after T‑3040); no migration drift; `manage.py check` clean; no schema warnings from the new views. See [TESTING_STATUS](TESTING_STATUS.md) |
+| Last completed task | T‑3040 (ADR‑063): team assignment rules per organization (`leads 0026`, `apps/leads/assignment.py`, `/api/v1/leads/assignment/rules|team/`): best match / round robin / least loaded, city/area/language/specialization off·prefer·require, caps, pause, availability; manual and bulk assign kept inside the organization. Before it T‑3030 (ADR‑062) pipeline stages |
+| Next task | **Owner actions unblock the rest of the MVP** (unchanged): servers and GitHub environments (checklist §54), first Actions run on `main`; monitoring (§52); runbook roles (§53); staging E2E; T‑2072; pentest (criterion 12); KI‑112, KI‑114 rule; new §61. **Next dev task:** T‑3100 unified contact and messages (FR‑CRM‑001, GAP‑016): one person ↔ their leads across organizations and one message view over `leads.ConversationMessage` and `whatsapp.WhatsAppMessage`. It needs a migration plan first (expand/contract like ADR‑023): start by inventorying `apps/leads/models.py` (`ConversationMessage`, `Lead.crm_messages`), `apps/whatsapp/models.py` (`WhatsAppMessage`, `WhatsAppSession`), `apps/conversations/models.py` and `apps/leads/admin_views.py` (`MergeLeadsView`). Open KIs as before plus none new |
 
 ## Owner decisions (2026-11-25, deploys)
 - **Deploys:** Docker over SSH for staging and production. **Approval:** required reviewers on the GitHub `production` environment.
@@ -40,6 +40,7 @@ _Last updated: 2026-11-26 (session 33; git commit subjects number sessions diffe
 - Meta: re‑submit the OTP template body with the RealTron name.
 
 ## Operator actions before deploying these changes
+- **Session 34** (checklist §61): migration `leads 0026` (additive); bulk/manual assign now refuse agents outside the lead's organization.
 - **Session 33** (checklist §56, §57): migrations `properties 0050` (additive) and `ai 0009` (choices only); staged contract migrations are now `0051`/`0052`; new prompts `listing.describe`/`listing.extract` (paid calls, `LISTING_ASSISTANT_RATE`); migration `core 0004` (audit trail, §58), fixed `AUDIT_CHAIN_KEY`, beat `verify-audit-chain`; migration `ai 0010` and model prices entered (§59); migration `leads 0025` (§60).
 - **Session 32** (checklist §55): migration `leads 0024` (additive); restart celery beat for `lead-task-reminders`.
 - **Session 31:** no migration. **Image rebuild:** `sentence-transformers` and `numpy` removed (torch no longer installed). Prompt `agent.system` is v10 (new viewing tools). Visit reminders now say "reply here" while `feature_talk_to_agent` is on. Run the staging E2E with the new move/cancel steps.

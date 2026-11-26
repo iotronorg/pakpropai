@@ -641,3 +641,10 @@
 ### 2026-11-26 — session 33 (continued): pipeline stages (T‑3030)
 - **Added:** `PipelineStage`, `Lead.stage`, `Lead.stage_changed_at`, `LeadActivity.ActionType.STAGE` (`leads 0025`); `apps/leads/pipeline.py` (stages with defaults, current stage, counts, add, update, reorder, archive, move, board); `apps/leads/pipeline_views.py` and routes under `/api/v1/leads/pipeline/`; `LeadViewSet.move_stage`; `stage` on `LeadSerializer` (ADR‑062).
 - **Tests:** `tests/test_pipeline_stages.py` (11).
+
+## 2026-11-26 — Session 34
+
+### T‑3040 Team management and assignment rules (ADR‑063)
+- **Added:** `AssignmentRules`, `AgentRouting` (`leads 0026`); `apps/leads/assignment.py` (rules with defaults, `update_rules`, `org_agents`, `agent_org_ids`, open-lead counts, `update_routing`, `team`, lead language and areas, `rank`, `auto_assign`); `apps/leads/assignment_views.py` and routes `/api/v1/leads/assignment/rules/`, `team/`, `team/<agent_id>/`.
+- **Changed:** `apps/leads/services.py` — `suggest_agents_for_lead` ranks through the rules (signature kept, optional `rules`); `assign_agent_to_lead` sets `routing_state`, counts `total_leads`/`last_active_at`, records the rule, `notify=False` for batches. `apps/leads/tasks.py` job and `LeadViewSet.auto_assign` use `assignment.auto_assign` (locks lead and rules; round-robin cursor). `LeadViewSet.assign` and `BulkAssignLeadsView` take only agents who work for the lead's organization; bulk: ≤200 ids, UUID check, per-lead activity, one notification.
+- **Tests:** `tests/test_assignment_rules.py` (14); existing `test_auto_assign.py` and `test_service_layer.py` pass unchanged.

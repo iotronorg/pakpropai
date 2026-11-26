@@ -17,7 +17,7 @@
 | T‑3010 ✅ | P1 | Agent performance from real events: enquiry first-reply time, viewings held / missed, visitor feedback, lead conversion, per period in the organization's time | FR‑CRM‑008 | — |
 | T‑3020 ✅ | P1 | Tasks and follow-ups with due dates and reminders (outbox), on leads | FR‑CRM‑004 | — |
 | T‑3030 ✅ | P1 | Configurable pipeline stages per organization (default new → contacted → qualified → viewing → offer → won/lost), expand/contract over the fixed `Lead.Status`; `routing_state` kept | FR‑CRM‑002 | frontend contract |
-| T‑3040 | P1 | Team management and assignment rules (round-robin, area, language, load) extending auto-assign | FR‑CRM‑007 | T‑3030 |
+| T‑3040 ✅ | P1 | Team management and assignment rules (round-robin, area, language, load) extending auto-assign | FR‑CRM‑007 | T‑3030 |
 | T‑3050 ✅ | P1 | AI listing assistant: title/description only from structured fields and seller notes (unsupported sentences marked), missing-information check against the market schema, attribute suggestions from free text that need confirmation | FR‑LAI‑001…003 | eval cases (T‑2070 harness) |
 | T‑3060 ✅ | P1 | Listing analytics: impressions, detail views, saves, enquiries, conversion (aggregate counts, no personal tracking) | FR‑LST‑012 | — |
 | T‑3070 ✅ | P1 | Unified audit log: one trail for the three overlapping logs, with a tamper-evident chain | GAP‑104 | — |

@@ -24,7 +24,6 @@ def auto_assign_unassigned_leads():
     Only runs for orgs that have feature_auto_assign enabled.
     """
     from .models import Lead
-    from .services import suggest_agents_for_lead, assign_agent_to_lead
     from apps.organizations.models import OrganizationConfig
     from apps.config.services import SystemConfigService
 
@@ -54,14 +53,13 @@ def auto_assign_unassigned_leads():
             status__in=(Lead.Status.NEW, Lead.Status.WARM),
         ).select_related('organization', 'user')
 
+    # T-3040: the organization's assignment rules pick the agent (apps.leads.assignment).
+    from .assignment import auto_assign
     assigned_count = 0
-    for lead in unassigned:
-        candidates = suggest_agents_for_lead(lead, limit=1)
-        if not candidates:
-            continue
+    for lead in unassigned.exclude(routing_state=Lead.RoutingState.CLOSED):
         try:
-            assign_agent_to_lead(lead, candidates[0], actor=None, auto=True)
-            assigned_count += 1
+            if auto_assign(lead) is not None:
+                assigned_count += 1
         except Exception as exc:
             logger.warning(f"auto_assign failed for lead {lead.id}: {exc}")
 

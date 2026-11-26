@@ -126,46 +126,80 @@ class BulkAssignLeadsView(APIView):
     """
     POST /leads/bulk-assign/
     Body: {"lead_ids": ["uuid1", ...], "agent_id": 123}
-    Assigns multiple leads to one agent in a single call. Admin + developer only.
+    Assigns up to 200 leads to one agent. Admin + developer only.
+
+    T-3040: a developer's agent must be one of the organization's agents (its own
+    or an active freelance collaborator); each lead gets its routing state and an
+    activity row, and the agent one notification for the batch.
     """
     permission_classes = [permissions.IsAuthenticated]
     throttle_classes = [BulkOperationThrottle]
+    MAX_LEADS = 200
 
     def post(self, request):
         if request.user.role not in ('admin', 'developer'):
             return Response({'error': 'Admin or developer access required.'},
                             status=status.HTTP_403_FORBIDDEN)
 
-        lead_ids = request.data.get('lead_ids', [])
-        agent_id = request.data.get('agent_id')
+        data = request.data if isinstance(request.data, dict) else {}
+        lead_ids = data.get('lead_ids', [])
+        agent_id = data.get('agent_id')
 
-        if not lead_ids or not agent_id:
+        if not lead_ids or not agent_id or not isinstance(lead_ids, list):
             return Response({'error': 'lead_ids (list) and agent_id are required.'},
                             status=status.HTTP_400_BAD_REQUEST)
+        if len(lead_ids) > self.MAX_LEADS:
+            return Response({'error': f'At most {self.MAX_LEADS} leads at a time.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        import uuid as _uuid
+        try:
+            lead_ids = [_uuid.UUID(str(i)) for i in lead_ids]
+        except ValueError:
+            return Response({'error': 'lead_ids must be lead ids.'}, status=status.HTTP_400_BAD_REQUEST)
 
         from apps.agents.models import Agent
-        try:
-            agent = Agent.objects.get(id=agent_id, is_active=True)
-        except Agent.DoesNotExist:
+        from .assignment import org_agents
+
+        org = None
+        if request.user.role == 'developer':
+            from apps.core.permissions import get_admin_org
+            org = get_admin_org(request.user)
+            if org is None:
+                return Response({'error': 'Developer org not found.'},
+                                status=status.HTTP_403_FORBIDDEN)
+        agents = org_agents(org) if org is not None else Agent.objects.filter(is_active=True)
+        agent = agents.filter(pk=agent_id).first() if str(agent_id).isdigit() else None
+        if agent is None:
             return Response({'error': 'Agent not found or inactive.'},
                             status=status.HTTP_404_NOT_FOUND)
 
         qs = Lead.objects.filter(id__in=lead_ids)
+        if org is not None:
+            from django.db.models import Q as Qfilter
+            qs = qs.filter(
+                Qfilter(organization=org) |
+                Qfilter(organization__isnull=True, assigned_agent__isnull=True)
+            )
+        else:
+            from .assignment import agent_org_ids
+            # An organization's lead goes only to an agent who works for it.
+            from django.db.models import Q as Qfilter
+            qs = qs.filter(Qfilter(organization__isnull=True) | Qfilter(organization_id__in=agent_org_ids(agent)))
 
-        if request.user.role == 'developer':
+        from django.db import transaction
+        from .services import assign_agent_to_lead
+        count = 0
+        with transaction.atomic():
+            for lead in qs.select_related('assigned_agent').select_for_update(of=('self',)):
+                if lead.assigned_agent_id == agent.pk:
+                    continue
+                assign_agent_to_lead(lead, agent, actor=request.user, notify=False)
+                count += 1
+        if count and agent.user_id:
             try:
-                from apps.core.permissions import get_admin_org
-                org = get_admin_org(request.user)
-                if org is None:
-                    raise LookupError('no administered org')
-                from django.db.models import Q as Qfilter
-                qs = qs.filter(
-                    Qfilter(organization=org) |
-                    Qfilter(organization__isnull=True, assigned_agent__isnull=True)
-                )
+                from apps.notifications.services import notify_user
+                notify_user(agent.user, title='New Leads Assigned',
+                            message=f'You have been assigned {count} new lead(s). Check your dashboard for details.')
             except Exception:
-                return Response({'error': 'Developer org not found.'},
-                                status=status.HTTP_403_FORBIDDEN)
-
-        count = qs.update(assigned_agent=agent)
+                logger.warning('bulk-assign notification failed for agent %s', agent.pk)
         return Response({'assigned': count, 'agent_id': agent_id})

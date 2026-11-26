@@ -211,6 +211,8 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | 2026-11-26 | Working tree, T‑3090 | `makemigrations --check`; `manage.py check` | No changes after `ai 0010`; no issues | — |
 | 2026-11-26 | Working tree, T‑3030 | `scripts/dev/test.sh -rf` | **2593 passed, 1 skipped, 0 failed**, 303 subtests (11 pipeline-stage tests) | 9m40s |
 | 2026-11-26 | Working tree, T‑3030 | `makemigrations --check`; `manage.py check` | No changes after `leads 0025`; no issues | — |
+| 2026-11-26 | Working tree, T‑3040 | `scripts/dev/test.sh` | **2607 passed, 1 skipped, 0 failed**, 303 subtests (14 assignment-rule tests) | 14m50s |
+| 2026-11-26 | Working tree, T‑3040 | `makemigrations --check`; `manage.py check`; `spectacular --validate` | No changes after `leads 0026`; no issues; no warnings from the new views | — |
 
 ## Coverage
 Not measured yet (no coverage run executed). CI is configured with `--cov=apps`.

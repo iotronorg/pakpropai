@@ -427,3 +427,67 @@ class LeadTask(models.Model):
 
     def __str__(self):
         return f'{self.title} ({self.status}, due {self.due_at:%Y-%m-%d %H:%M})'
+
+
+class AssignmentRules(models.Model):
+    """
+    How an organization's new leads are given to its agents (T-3040, FR-CRM-007,
+    ADR-063). No row = the defaults, which are the matching from before rules
+    (best match, city required, specialization preferred, no cap).
+
+    Each match is ``off``, ``prefer`` (keep the agents that match; everyone when
+    nobody does) or ``require`` (nobody matches → the lead waits in the queue).
+    """
+    class Strategy(models.TextChoices):
+        BEST_MATCH   = 'best_match',   'Best match (rating, verification, city, load)'
+        ROUND_ROBIN  = 'round_robin',  'Round robin'
+        LEAST_LOADED = 'least_loaded', 'Fewest open leads'
+
+    class Match(models.TextChoices):
+        OFF     = 'off',     'Ignore'
+        PREFER  = 'prefer',  'Prefer'
+        REQUIRE = 'require', 'Require'
+
+    id                   = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization         = models.OneToOneField('organizations.Organization', on_delete=models.CASCADE,
+                                                related_name='assignment_rules')
+    strategy             = models.CharField(max_length=12, choices=Strategy.choices, default=Strategy.BEST_MATCH)
+    match_city           = models.CharField(max_length=7, choices=Match.choices, default=Match.REQUIRE)
+    match_area           = models.CharField(max_length=7, choices=Match.choices, default=Match.OFF)
+    match_language       = models.CharField(max_length=7, choices=Match.choices, default=Match.OFF)
+    match_specialization = models.CharField(max_length=7, choices=Match.choices, default=Match.PREFER)
+    only_available       = models.BooleanField(default=False, help_text='Skip agents marked busy or offline')
+    max_open_leads       = models.PositiveSmallIntegerField(null=True, blank=True,
+                                                            help_text='Open leads per agent; empty = no cap')
+    last_agent           = models.ForeignKey('agents.Agent', on_delete=models.SET_NULL, null=True, blank=True,
+                                             related_name='+', help_text='Round-robin position')
+    updated_by           = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+                                             blank=True, related_name='+')
+    updated_at           = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'lead_assignment_rules'
+
+    def __str__(self):
+        return f'{self.organization_id}: {self.strategy}'
+
+
+class AgentRouting(models.Model):
+    """One agent's lead routing in one organization (T-3040): paused, or a cap of their own."""
+    id             = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization   = models.ForeignKey('organizations.Organization', on_delete=models.CASCADE,
+                                       related_name='agent_routing')
+    agent          = models.ForeignKey('agents.Agent', on_delete=models.CASCADE, related_name='routing')
+    accepts_leads  = models.BooleanField(default=True)
+    max_open_leads = models.PositiveSmallIntegerField(null=True, blank=True,
+                                                      help_text="Overrides the organization's cap")
+    updated_by     = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+                                       blank=True, related_name='+')
+    updated_at     = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'lead_agent_routing'
+        constraints = [models.UniqueConstraint(fields=['organization', 'agent'], name='agent_routing_unique')]
+
+    def __str__(self):
+        return f'{self.agent_id} in {self.organization_id}'

@@ -472,3 +472,8 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - **Migration `leads 0025`**: new table `lead_pipeline_stages`, nullable `leads.stage_id` and `leads.stage_changed_at`. Additive; no backfill (a lead without a stage is in the first stage).
 - **Frontend:** the lead board moves to `/api/v1/leads/pipeline/board/` and `POST /api/v1/leads/<id>/move-stage/`; `status` stays the AI's qualification badge.
 - **Reports:** leads moved to a won or lost stage now get `routing_state = closed`, so "closed leads" counts start to rise from deploy.
+
+## 61. Session-34 change: team assignment rules (ADR‑063)
+- **Migration `leads 0026`**: new tables `lead_assignment_rules` and `lead_agent_routing`. Additive; no backfill. Organizations without rules keep the old matching.
+- **Behaviour changes:** `bulk-assign` and `assign` refuse agents who do not work for the lead's organization (also for platform admins); bulk assign takes at most 200 leads and now writes activity rows and `routing_state`; every assignment sets `routing_state = agent_assigned` and raises `Agent.total_leads`.
+- **Frontend:** team routing settings at `/api/v1/leads/assignment/rules/` and `/assignment/team/`; `suggest-agents` items carry `assignment` (why this agent).

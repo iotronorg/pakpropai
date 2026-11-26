@@ -85,16 +85,20 @@ class LeadViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'], url_path='suggest-agents')
     def suggest_agents(self, request, pk=None):
-        """GET /leads/{id}/suggest-agents/ — top 3 agent candidates for this lead."""
+        """GET /leads/{id}/suggest-agents/ — top 3 candidates under the organization's rules (T-3040).
+
+        Each agent carries ``assignment``: strategy, matched rules, open leads and cap.
+        """
         lead = self.get_object()
         from .services import suggest_agents_for_lead
         from apps.agents.serializers import AgentSerializer
         agents = suggest_agents_for_lead(lead, limit=3)
-        return Response(AgentSerializer(agents, many=True).data)
+        rows = AgentSerializer(agents, many=True, context={'request': request}).data
+        return Response([{**row, 'assignment': getattr(a, 'assignment', None)} for row, a in zip(rows, agents)])
 
     @action(detail=True, methods=['post'], url_path='assign')
     def assign(self, request, pk=None):
-        """POST /leads/{id}/assign/ — assign an agent to this lead."""
+        """POST /leads/{id}/assign/ — assign one of the organization's agents to this lead."""
         if request.user.role not in ('admin', 'developer'):
             return Response({'detail': 'Admin or developer access required.'},
                             status=status.HTTP_403_FORBIDDEN)
@@ -104,32 +108,35 @@ class LeadViewSet(viewsets.ModelViewSet):
             return Response({'detail': 'agent_id is required.'},
                             status=status.HTTP_400_BAD_REQUEST)
         from apps.agents.models import Agent
-        try:
-            if request.user.role == 'admin':
-                agent = Agent.objects.get(id=agent_id, is_active=True)
-            else:
-                agent = Agent.objects.get(id=agent_id, is_active=True, organization=lead.organization)
-        except Agent.DoesNotExist:
+        from .assignment import org_agents
+        # T-3040: an organization's lead goes to its own agents or its active freelance
+        # collaborators (was: internal agents only); platform admins may pick any agent.
+        if request.user.role == 'admin' and lead.organization_id is None:
+            agents = Agent.objects.filter(is_active=True)
+        elif lead.organization_id is None:
+            agents = Agent.objects.none()
+        else:
+            agents = org_agents(lead.organization)
+        agent = agents.filter(pk=agent_id).first() if str(agent_id).isdigit() else None
+        if agent is None:
             return Response({'detail': 'Agent not found or inactive.'},
                             status=status.HTTP_404_NOT_FOUND)
         from .services import assign_agent_to_lead
         assign_agent_to_lead(lead, agent, actor=request.user)
-        return Response(LeadSerializer(lead).data)
+        return Response(LeadSerializer(self.get_queryset().get(pk=lead.pk)).data)
 
     @action(detail=True, methods=['post'], url_path='auto-assign')
     def auto_assign(self, request, pk=None):
-        """POST /leads/{id}/auto-assign/ — system picks and assigns the best agent."""
+        """POST /leads/{id}/auto-assign/ — the organization's assignment rules pick the agent (T-3040)."""
         if request.user.role not in ('admin', 'developer'):
             return Response({'detail': 'Admin or developer access required.'},
                             status=status.HTTP_403_FORBIDDEN)
         lead = self.get_object()
-        from .services import suggest_agents_for_lead, assign_agent_to_lead
-        candidates = suggest_agents_for_lead(lead, limit=1)
-        if not candidates:
+        from .assignment import auto_assign
+        if auto_assign(lead, actor=request.user, reassign=True) is None:
             return Response({'detail': 'No suitable agent found for this lead.'},
                             status=status.HTTP_404_NOT_FOUND)
-        assign_agent_to_lead(lead, candidates[0], actor=request.user)
-        return Response(LeadSerializer(lead).data)
+        return Response(LeadSerializer(self.get_queryset().get(pk=lead.pk)).data)
 
     @action(detail=True, methods=['get'], url_path='conversations')
     def conversations(self, request, pk=None):

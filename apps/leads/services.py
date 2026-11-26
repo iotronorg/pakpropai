@@ -1,109 +1,49 @@
 """
-Lead auto-assignment — matches a lead to the best available agent.
+Lead assignment entry points. The matching itself lives in ``apps.leads.assignment``
+(T-3040, ADR-063): the organization's rules (strategy, city/area/language/
+specialization matches, caps, paused agents) decide who may get a lead and in
+which order. Without rules the order is the old score:
 
-Scoring formula (higher = better):
-  base  = rating * 4
-  bonus = +6 if is_featured
-         +4 if is_verified
-         +2 if city is primary_city
-  load  = -0.5 per assigned lead (prevents pile-up on popular agents)
+  rating * 4, +6 featured, +4 verified, +2 primary city, -0.5 per open lead
 """
 import logging
-from typing import Optional
+
+from django.db.models import F
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
-# Intent → expected agent specialization mapping
-_INTENT_SPEC_MAP = {
-    'buy':    {'residential_buy', 'plots', 'new_projects', 'luxury'},
-    'sell':   {'residential_buy', 'plots', 'new_projects', 'luxury'},
-    'rent':   {'residential_rent'},
-    'invest': {'new_projects', 'plots', 'luxury', 'commercial'},
-    'loan':   {'residential_buy'},
-    'tax':    set(),  # any agent
-}
 
-
-def suggest_agents_for_lead(lead, limit: int = 3) -> list:
+def suggest_agents_for_lead(lead, limit: int = 3, rules=None) -> list:
     """
-    Return up to `limit` ranked Agent objects suited for this lead.
-    Never raises — returns [] on any error.
+    Up to ``limit`` ranked agents for this lead under its organization's rules;
+    each carries ``agent.assignment`` (strategy, matched rules, open leads, cap).
+    Never raises: returns [] on any error.
     """
-    from apps.agents.models import Agent
-    from apps.leads.models import Lead
-
+    from .assignment import rank
     try:
-        from django.db.models import Q
-        candidates = Agent.objects.filter(is_active=True).prefetch_related()
-
-        # Org boundary: match internal agents + freelancers with active org membership
-        if getattr(lead, 'organization_id', None):
-            from apps.agents.models import AgentOrgMembership
-            # T-1032b: terms whose canonical membership was deactivated (member
-            # removed) no longer route leads; unlinked legacy rows still do.
-            freelance_ids = AgentOrgMembership.objects.filter(
-                organization_id=lead.organization_id,
-                status='active',
-                can_receive_leads=True,
-            ).exclude(membership__is_active=False).values_list('agent_id', flat=True)
-            candidates = candidates.filter(
-                Q(organization_id=lead.organization_id) | Q(id__in=freelance_ids)
-            )
-
-        # City filter: agent.cities JSON array contains lead.city_interest
-        city = (lead.city_interest or '').strip().lower()
-        if city:
-            candidates = candidates.filter(cities__icontains=city)
-
-        # Specialization filter: if intent maps to a known spec set, filter loosely
-        specs = _INTENT_SPEC_MAP.get(lead.intent or '', set())
-        if specs:
-            # Keep agents with ANY matching specialization (JSON overlap check)
-            spec_filtered = [
-                a for a in candidates
-                if not specs or any(s in (a.specializations or []) for s in specs)
-            ]
-            # Fall back to all city-matched candidates if no spec match
-            candidates = spec_filtered if spec_filtered else list(candidates)
-        else:
-            candidates = list(candidates)
-
-        # Load count per agent
-        agent_ids = [a.id for a in candidates]
-        from django.db.models import Count
-        load_map = dict(
-            Lead.objects.filter(assigned_agent_id__in=agent_ids)
-                        .values_list('assigned_agent_id')
-                        .annotate(c=Count('id'))
-                        .values_list('assigned_agent_id', 'c')
-        )
-
-        # Score each candidate
-        def _score(agent) -> float:
-            s  = float(agent.rating) * 4
-            s += 6 if agent.is_featured  else 0
-            s += 4 if agent.is_verified  else 0
-            s += 2 if agent.primary_city.lower() == city else 0
-            s -= load_map.get(agent.id, 0) * 0.5
-            return s
-
-        ranked = sorted(candidates, key=_score, reverse=True)
-        return ranked[:limit]
-
+        return [c.agent for c in rank(lead, rules)[:limit]]
     except Exception as exc:
-        logger.error(f"suggest_agents_for_lead failed for lead {lead.id}: {exc}")
+        logger.error(f"suggest_agents_for_lead failed for lead {getattr(lead, 'id', None)}: {exc}")
         return []
 
 
-def assign_agent_to_lead(lead, agent, actor=None, auto: bool = False) -> None:
-    """Assign agent to lead and log the activity."""
-    from apps.leads.models import LeadActivity
+def assign_agent_to_lead(lead, agent, actor=None, auto: bool = False, reason: dict | None = None,
+                         notify: bool = True) -> None:
+    """Assign agent to lead, mark its routing as assigned (unless closed) and log the activity."""
+    from apps.agents.models import Agent
+    from apps.leads.models import Lead, LeadActivity
 
     old_agent = lead.assigned_agent
     lead.assigned_agent = agent
     if agent.organization_id and not lead.organization_id:
         lead.organization_id = agent.organization_id
-    lead.save(update_fields=['assigned_agent', 'organization'])
+    fields = ['assigned_agent', 'organization']
+    if lead.routing_state != Lead.RoutingState.CLOSED:
+        lead.routing_state = Lead.RoutingState.AGENT_ASSIGNED
+        fields.append('routing_state')
+    lead.save(update_fields=fields)
+    Agent.objects.filter(pk=agent.pk).update(total_leads=F('total_leads') + 1, last_active_at=timezone.now())
 
     LeadActivity.objects.create(
         lead=lead,
@@ -115,8 +55,11 @@ def assign_agent_to_lead(lead, agent, actor=None, auto: bool = False) -> None:
             'new_agent_id': agent.id,
             'new_agent_name': agent.name,
             'auto': auto,
+            **({'rule': reason} if reason else {}),
         },
     )
+    if not notify:
+        return
 
     # Notify the newly assigned agent (dashboard bell + WhatsApp)
     try:
