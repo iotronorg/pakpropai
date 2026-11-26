@@ -221,6 +221,8 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | 2026-11-26 | Working tree, T‑4010 | `makemigrations --check`; `manage.py check`; `spectacular --validate` | No changes after `ai 0011`; no issues; schema error count within the `tests/test_openapi_schema.py` budget | — |
 | 2026-11-26 | Working tree, T‑4020 | `scripts/dev/test.sh tests/ apps/ -rf` | **2638 passed, 1 skipped, 1 failed** (`test_viewings.py::VisitorTest::test_cancel_frees_the_slot`, KI‑125; the file passes 43/43 when rerun twice), 303 subtests (6 price-context tests) | 10m37s |
 | 2026-11-26 | Working tree, T‑4020 | `makemigrations --check`; `manage.py check` | No changes; no issues | — |
+| 2026-11-26 | Working tree, T‑4030 | `scripts/dev/test.sh tests/ apps/ -rf --tb=long` | **2645 passed, 1 skipped, 0 failed**, 303 subtests (6 narrative tests); KI‑125 test passed | 9m60s |
+| 2026-11-26 | Working tree, T‑4030 | `makemigrations --check`; `manage.py check` | No changes after `ai 0012`; no issues | — |
 
 ## Coverage
 Not measured yet (no coverage run executed). CI is configured with `--cov=apps`.

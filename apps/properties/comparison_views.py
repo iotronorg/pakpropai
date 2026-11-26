@@ -5,9 +5,10 @@ from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_sche
 from rest_framework import exceptions, serializers, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import UserRateThrottle
 from rest_framework.views import APIView
 
-from apps.core.permissions import get_user_org
+from apps.core.permissions import FeatureEnabled, get_user_org
 from apps.core.throttles import PropertySearchThrottle
 
 from . import comparison as K
@@ -44,6 +45,8 @@ class ComparedListingSerializer(serializers.Serializer):
     amenities_only_here = serializers.ListField(child=serializers.CharField())
     match = serializers.DictField(child=serializers.CharField(), allow_null=True,
                                   help_text='Condition → yes, no or unknown')
+    running_costs = serializers.JSONField(allow_null=True, help_text='Estimated purchase fees and yearly costs '
+                                          '(sale listings in markets with a calculator; T-4030)')
 
 
 class FxBasisSerializer(serializers.Serializer):
@@ -155,3 +158,38 @@ class CompareView(APIView):
         except C.LocationAmbiguous as exc:
             return _ambiguous(exc)
         return Response(answer, headers={'Cache-Control': 'private, no-store'})
+
+
+class NarrativeThrottle(UserRateThrottle):
+    scope = 'comparison_narrative'           # each call is a paid model call
+
+
+class CompareNarrativeView(APIView):
+    """
+    ``GET /compare/narrative/?ids=…`` (T-4030, FR-CMP-003): the comparison plus a short
+    written comparison built only from its cells. Signed in; flag ``feature_comparison_narrative``.
+    """
+    permission_classes = [IsAuthenticated, FeatureEnabled('feature_comparison_narrative')]
+    throttle_classes = [NarrativeThrottle]
+
+    @extend_schema(operation_id='compare_narrative', parameters=_QUERY[:2], responses={
+        200: OpenApiResponse(description='Comparison plus `narrative` (cited sentences, unknowns, left out)'),
+        403: OpenApiResponse(description='Feature off'), 404: OpenApiResponse(description='Fewer than two listings'),
+        503: OpenApiResponse(description='No model available')})
+    def get(self, request):
+        from apps.ai.comparison_narrative import narrative
+        from apps.ai.llm import AIStopped, LLMUnavailable
+        viewer_org = get_user_org(request.user) if request.user.role in ('agent', 'developer') else None
+        ids, currency = _ids(request.query_params), _currency(request.query_params)
+        listings = K.load(ids, viewer_org)
+        if len(listings) < K.MIN:
+            raise exceptions.NotFound('Fewer than two of these listings are available.')
+        out = K.compare(listings, currency=currency, viewer_org=viewer_org)
+        headers = {'Cache-Control': 'private, no-store'}
+        try:
+            text = narrative(out, country=listings[0].country, user=request.user)
+        except LLMUnavailable as exc:
+            stopped = isinstance(exc, AIStopped)
+            return Response({**out, 'narrative': None, 'code': 'ai.stopped' if stopped else 'ai.unavailable'},
+                            status=status.HTTP_503_SERVICE_UNAVAILABLE, headers=headers)
+        return Response({**out, 'narrative': text}, headers=headers)

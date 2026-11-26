@@ -497,3 +497,8 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - No migration. New public endpoint `GET /api/v1/price-context/` (`PRICE_CONTEXT_RATE`, default 60/min); optional `PRICE_CONTEXT_MIN_SAMPLE` (default 8).
 - Audit reports (JSON and PDF) gain a "Comparable asking prices" section beside the benchmarks.
 - **Owner:** legal review of the price-context disclaimer wording (PRD Phase 4 criterion 2); decide whether the audit's benchmark score should later be driven by these figures.
+
+## 66. Session-34 change: comparison narrative and running costs (T‑4030, ADR‑067)
+- **Migration `ai 0012`**: choices only.
+- `compare/` and `public/listings/compare/` items gain `running_costs` (additive field; frontend can show it).
+- New `GET /api/v1/compare/narrative/` (signed in; `COMPARISON_NARRATIVE_RATE`, default 30/hour; paid model call). Flag `feature_comparison_narrative` is **on** by default; turn it off in SystemConfig to stop the spend.

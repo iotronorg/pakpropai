@@ -22,7 +22,7 @@ from django.conf.urls.static import static
 from apps.core.urls import api_urlpatterns as core_api_urlpatterns
 from apps.core.views import metrics_view
 from apps.organizations.theme_views import ThemeConfigView
-from apps.properties.comparison_views import CompareView
+from apps.properties.comparison_views import CompareNarrativeView, CompareView
 from apps.properties.price_context_views import PriceContextView
 from apps.properties.search_views import SearchView
 from apps.moderation.views import ReportListingView
@@ -56,6 +56,7 @@ urlpatterns = [
         path('properties/',   include('apps.properties.urls')),
         path('public/listings/', include('apps.properties.public_urls')),
         path('compare/',      CompareView.as_view(), name='listing-compare'),
+        path('compare/narrative/', CompareNarrativeView.as_view(), name='listing-compare-narrative'),   # T-4030
         path('investment/',   include('apps.properties.investment_urls')),   # T-4010
         path('price-context/', PriceContextView.as_view(), name='price-context'),   # T-4020
         path('search/',       SearchView.as_view(), name='listing-search'),

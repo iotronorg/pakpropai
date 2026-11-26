@@ -105,6 +105,8 @@ class SystemConfig(models.Model):
         # T-4010: AI commentary on investment figures (paid model call; the disclaimer
         # needs legal sign-off, PRODUCT_ROADMAP Phase 4). The calculator itself is always on.
         'feature_investment_commentary': 'false',
+        # T-4030: written comparison of 2-4 listings (paid model call; facts only, checked).
+        'feature_comparison_narrative': 'true',
         # Frozen for MVP (regulated token payments — MVP_SCOPE §4.2). Do not enable
         # without a licensed payment partner and legal sign-off.
         'feature_deal_lock':          'false',

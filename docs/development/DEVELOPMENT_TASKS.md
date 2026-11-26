@@ -127,10 +127,10 @@ Priority: P0 (blocker) → P3.
 |---|---|---|---|---|
 | T‑4010 | [x] | P2 | Investment calculator + labelled commentary | ADR‑065. `apps/properties/investment.py` (yields, cash flow, cash-on-cash, loan, user scenarios; every figure with formula, every assumption with source; median asking rent of ≥5 comparable rent listings with N and quartiles; fees from `apps/markets/calculators`), `apps/ai/investment_commentary.py` (prompt `investment.commentary`, paragraphs with numbers not in the result or advice/promises left out), `POST /investment/calculate/` (public, `investment` throttle) and `/investment/commentary/` (signed in, flag `feature_investment_commentary` **off**, 20/hour). `ai 0011`. `tests/test_investment.py` (9) |
 | T‑4020 | [x] | P2 | Indicative price context (FR‑VAL‑001…004) | ADR‑066. `apps/properties/price_context.py`: asking price per m² of ≥8 comparable live sale listings (country, currency, category, subtype, ±30% size; locality first, then city), quartiles, min/max, spread, data age, confidence with reasons, provenance `listing_asking_price` on every figure, per-market "not a valuation" disclaimer; the subject's percentile and position, no value verdict. `GET /price-context/` (public, `price_context` throttle). Audit gains `listing_comparables` beside its benchmarks, and a PDF block. `tests/test_price_context.py` (6) |
-| T‑4030 | [ ] | P2 | Comparison narratives; running costs | Next |
+| T‑4030 | [x] | P2 | Comparison narratives; running costs | ADR‑067. `comparison.running_costs`: each priced sale listing gets estimated purchase fees, yearly property tax (market calculators, the T‑4010 basis) and its service charge, labelled estimates (`compare/` and public compare). `apps/ai/comparison_narrative.py`: the table as cells (`A.price` …), every sentence cites cells; sentences with uncited/unknown cells, numbers not in the cited cells (or their difference), or judgements/advice are left out; unknowns listed deterministically. `GET /compare/narrative/` (signed in, flag `feature_comparison_narrative` on, 30/hour). `ai 0012`. `tests/test_comparison_narrative.py` (6) |
 | T‑4040 | [ ] | P2 | RAG knowledge with citations | |
 | T‑4050 | [ ] | P2 | Duplicate clustering; fraud signals v2 | |
-| T‑4060 | [ ] | P2 | Offers register | |
+| T‑4060 | [ ] | P2 | Offers register | Next |
 | T‑4070 | [ ] | P2 | Document intelligence (OCR) | Owner: vendor |
 | T‑4080 | [ ] | P2 | POI proximity search | Owner: data licence |
 | T‑4090 | [ ] | P3 | Learned re-ranking A/B | Needs volume |

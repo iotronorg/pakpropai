@@ -131,6 +131,35 @@ def match(listings: list[Property], c: SearchCriteria, viewer_org=None) -> dict:
 
 # ── Table ─────────────────────────────────────────────────────────────────────
 
+def running_costs(p: Property, target: str, rates) -> dict | None:
+    """Estimated costs of buying and holding a priced sale listing (T-4030, FR-CMP-004).
+
+    Purchase fees and yearly property tax from the market calculator (as for an investor
+    buying another property, the T-4010 basis), and the listing's own service charge.
+    ``None`` for rent listings, hidden prices, or a market with no calculator.
+    """
+    if p.purpose != Property.Purpose.SALE or p.price_type != 'total' or p.price_on_request or not p.price:
+        return None
+    from .investment import _taxes
+    tax = _taxes((p.country or '').upper(), Decimal(p.price))
+    if not tax['supported']:
+        return None
+    cur = (p.currency or '').upper()
+
+    def m(amount, source, basis='year'):
+        return {**_money(Decimal(amount), basis, cur, target, rates), 'source': source}
+
+    out = {'estimate': True,
+           'purchase_costs': m(tax['purchase'], 'market_calculator', 'once'),
+           'annual_property_tax': m(tax['annual'], 'market_calculator'),
+           'annual_service_charge': m(p.service_charge, 'listing') if p.service_charge else None,
+           'notes': tax['notes'][:3],
+           'label': 'Estimates from the market\'s published rates, not quotes; check with a conveyancer or tax adviser.'}
+    yearly = tax['annual'] + (p.service_charge or 0)
+    out['annual_total'] = m(yearly, 'sum')
+    return out
+
+
 def _best(values: dict, pick, same=()) -> str | None:
     """The single best listing; None when a value is unknown, tied, or not comparable."""
     if None in values.values() or len(set(same)) > 1:
@@ -170,6 +199,7 @@ def compare(listings: list[Property], *, currency: str = '', criteria: SearchCri
             'verification': p.legal_status, 'status': p.status,
             'listed_days': max(0, (now - (p.published_at or p.created_at)).days),
             'amenities_only_here': sorted(keys - shared), 'match': matches.get(p.pk),
+            'running_costs': running_costs(p, target, rates),
         })
 
     def money(name):

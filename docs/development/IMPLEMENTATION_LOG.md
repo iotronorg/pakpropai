@@ -668,3 +668,8 @@
 - **Added:** `apps/properties/price_context.py` (`context`, `for_listing`, `disclaimer`), `apps/properties/price_context_views.py` (`/api/v1/price-context/`), throttle `price_context`.
 - **Changed:** `apps/audit/services.py` (`_listing_comparables`, report key `listing_comparables`), `apps/audit/pdf.py` (`_comparables_block` on page 1), `config/urls.py`.
 - **Tests:** `tests/test_price_context.py` (6).
+
+### T‑4030 Comparison narrative and running costs (ADR‑067)
+- **Added:** `apps/ai/comparison_narrative.py` (prompt `comparison.narrative` v1, `cells`, `table`, `unknowns`, `check`, `narrative`), `CompareNarrativeView` (`/api/v1/compare/narrative/`), `AIInteraction` type `comparison_narrative` (`ai 0012`), flag `feature_comparison_narrative`, throttle `comparison_narrative`.
+- **Changed:** `apps/properties/comparison.py` (`running_costs`, item key), `comparison_views.py` (serializer field), `apps/ai/ops.py` (prompt module), `config/urls.py`.
+- **Tests:** `tests/test_comparison_narrative.py` (6).

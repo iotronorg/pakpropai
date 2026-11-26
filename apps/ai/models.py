@@ -49,6 +49,7 @@ class AIInteraction(models.Model):
         RE_ENGAGEMENT   = 're_engagement',    'Re-engagement message'
         LISTING_ASSIST  = 'listing_assist',   'Listing assistant'
         INVESTMENT_COMMENTARY = 'investment_commentary', 'Investment commentary'   # T-4010
+        COMPARISON_NARRATIVE = 'comparison_narrative', 'Comparison narrative'      # T-4030
 
     id               = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user             = models.ForeignKey(
