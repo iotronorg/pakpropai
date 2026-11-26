@@ -633,3 +633,7 @@
 - **Added:** `AuditEvent` (`core 0004` with trigger `audit_events_guard`); `apps/core/audit.py` (`record`, `safe_record`, `verify`, `redact_person`, mirrors and `connect_mirrors` from `CoreConfig.ready`); `apps/core/audit_views.py` (`/api/v1/audit-events/`, `/verify/`); `manage.py verify_audit_chain`; task `apps.core.tasks.verify_audit_chain` and beat `verify-audit-chain`; metrics `realtron_audit_write_failures_total`, `realtron_audit_chain_ok`; setting `AUDIT_CHAIN_KEY`; erasure step `audit_events_redacted` (ADR‑060).
 - **Changed:** `AuditLog.log` builds and saves the row itself so the mirror knows the target's organization.
 - **Tests:** `tests/test_audit_trail.py` (14, including a six-thread writer test and tampering with the trigger disabled).
+
+### 2026-11-26 — session 33 (continued): AI ops console APIs (T‑3090)
+- **Added:** `AIEvalRun` (`ai 0010`); `apps/ai/ops.py` (window, prompts, prompt detail, models, tools, eval runs, traces, overview); `apps/ai/ops_views.py` with ten routes under `/api/v1/ai/ops/` in `apps/ai/urls.py` (ADR‑061). Price additions and eval runs go to the audit trail.
+- **Tests:** `tests/test_ai_ops.py` (11).

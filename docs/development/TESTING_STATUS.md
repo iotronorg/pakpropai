@@ -206,6 +206,9 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | 2026-11-26 | Working tree, session 33 end | `makemigrations --check`; `manage.py check`; `spectacular --validate`; `run_ai_evals` | No changes after `ai 0009`; no issues; no new schema warnings; eval gate passed (`listing_copy` 35/35) | — |
 | 2026-11-26 | Working tree, T‑3070 | `scripts/dev/test.sh -rf` | **2571 passed, 1 skipped, 0 failed**, 299 subtests (14 audit-trail tests, including six concurrent writers) | 10m31s |
 | 2026-11-26 | Working tree, T‑3070 | `makemigrations --check`; `manage.py check`; `spectacular --validate` | No changes after `core 0004`; no issues; no warnings from the new views | — |
+| 2026-11-26 | Working tree, T‑3090 | `scripts/dev/test.sh -rf` | 2581 passed, 1 failed (`test_openapi_schema` warning budget: three operationId collisions from the new list/detail routes), 1 skipped | 10m15s |
+| 2026-11-26 | Working tree, T‑3090 fix | explicit operation ids on the three list views; `tests/test_openapi_schema.py` + `tests/test_ai_ops.py` | **23 passed**; full suite therefore 2582 passed, 1 skipped, 0 failed | — |
+| 2026-11-26 | Working tree, T‑3090 | `makemigrations --check`; `manage.py check` | No changes after `ai 0010`; no issues | — |
 
 ## Coverage
 Not measured yet (no coverage run executed). CI is configured with `--cov=apps`.

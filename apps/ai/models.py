@@ -270,3 +270,28 @@ class AIKillSwitch(models.Model):
 
     def __str__(self):
         return f'{self.scope} {self.market_id or self.organization_id or ""}'.strip()
+
+
+class AIEvalRun(models.Model):
+    """
+    One run of the deterministic eval suites from the AI ops console (T-3090, ADR-061).
+    CI runs the same suites as its gate; this keeps a history operators can compare.
+    Live (paid) runs stay on the command line (``run_ai_evals --live``).
+    """
+    id          = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    kind        = models.CharField(max_length=10, default='offline')
+    passed      = models.BooleanField()
+    total       = models.PositiveIntegerField(default=0)
+    failed      = models.PositiveIntegerField(default=0)
+    suites      = models.JSONField(default=list)          # [{suite, total, passed, by_language, failures[:20]}]
+    started_by  = models.CharField(max_length=64, blank=True, default='')     # user id; not a FK, history stays
+    app_version = models.CharField(max_length=64, blank=True, default='')
+    duration_ms = models.PositiveIntegerField(default=0)
+    created_at  = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = 'ai_eval_runs'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.kind} {"passed" if self.passed else "failed"} {self.created_at:%Y-%m-%d %H:%M}'

@@ -462,3 +462,8 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - **Beat job `verify-audit-chain`** (daily 02:30 UTC): restart celery beat. Its log line `audit.chain.ok … head_hash=…` should reach the log store outside the database; an `audit.chain.broken` line is an incident ([data incident runbook](../runbooks/data-incident.md)).
 - **Run once after deploy:** `python manage.py verify_audit_chain`.
 - **New endpoint for the frontend:** `GET /api/v1/audit-events/` (organization owners and admins see their organization's trail).
+
+## 59. Session-33 change: AI ops console (ADR‑061)
+- **Migration `ai 0010`**: new table `ai_eval_runs`. Additive.
+- **Roles:** give operators `platform_role` `ai_admin` (changes prices, runs evals) or `ops_admin` (reads). Nothing else to configure.
+- **Enter model prices** at `POST /api/v1/ai/ops/model-prices/` from the providers' price lists before launch; until then turns are `unpriced` (unchanged since T‑2011).
