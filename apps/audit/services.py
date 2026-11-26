@@ -137,6 +137,30 @@ def _get_benchmark(city: str, location: str) -> dict:
     return _tag(BENCHMARKS['default']['default'], 'built_in_default', 'global')
 
 
+def _listing_comparables(city, property_type, area_sqm, currency, value) -> dict:
+    """Asking price per m² of comparable live listings (T-4020, provenance ``listing_asking_price``).
+
+    Shown beside the benchmark figures, never mixed into them; never fails the audit.
+    """
+    try:
+        from apps.markets.services import get_market
+        from apps.properties import price_context as PC
+        from apps.properties.models import Property
+        from apps.properties.taxonomy import category_for_property_type
+        category = category_for_property_type((property_type or '').lower())
+        country = 'PK' if (currency or PK_CURRENCY).upper() == PK_CURRENCY else ''   # PK pack (KI-045)
+        if not country:
+            return {'available': False, 'reason': 'market_not_supported'}
+        info = get_market(country)
+        return PC.context(country=country, city=city, currency=currency or PK_CURRENCY, size_m2=area_sqm,
+                          category=category if category in Property.Category.values else None,
+                          asking_price=value or None,
+                          market_name=getattr(info, 'name', '') or country)
+    except Exception:
+        logger.exception('audit: listing comparables failed')
+        return {'available': False, 'reason': 'error'}
+
+
 # ─── Fraud patterns (copied from apps/ai/tools.py to avoid circular imports) ──
 
 _FRAUD_PATTERNS = [
@@ -531,8 +555,11 @@ class AuditEngine:
         if risk >= 7:
             red_flags.append(f'High risk score ({risk}/10) — proceed with extreme caution')
 
+        comparables = _listing_comparables(city, property_type, area_sqm, value_currency, estimated_value)
+
         # ── Final Assembly ────────────────────────────────────────────────────
         return {
+            'listing_comparables': comparables,
             'provenance': {
                 'engine': 'deterministic_benchmark_v1',   # no AI model involved
                 'benchmark_source': bench.get('_provenance', {}).get('source', 'unknown'),

@@ -293,6 +293,27 @@ def _table_style(header_bg=BRAND_BLUE, row_alt=LIGHT_GREY):
 
 # ─── Page builders ────────────────────────────────────────────────────────────
 
+def _comparables_block(audit: dict, s: dict) -> list:
+    """T-4020: asking prices of comparable live listings, labelled apart from the benchmark figures."""
+    c = audit.get('listing_comparables') or {}
+    if not c.get('available'):
+        return []
+    from xml.sax.saxutils import escape
+    pm, comp = c['price_per_m2'], c['comparables']
+    cur = escape(str(c.get('currency', '')))
+    rows = [['Comparable asking prices (platform listings)', ''],
+            ['Listings compared', f"{comp['n']} in {escape(str(comp.get('place') or ''))} ({comp['scope']})"],
+            ['Asking price / m² (middle half)', f"{cur} {pm['p25']['value']:,} – {pm['p75']['value']:,}"],
+            ['Median asking price / m²', f"{cur} {pm['median']['value']:,}"],
+            ['Confidence', c['confidence']['level']]]
+    if c.get('subject'):
+        rows.append(['This value / m²', f"{cur} {c['subject']['asking_price_per_m2']['value']:,} "
+                                          f"(percentile {c['subject']['percentile']})"])
+    tbl = Table(rows, colWidths=[6 * cm, 9 * cm])
+    tbl.setStyle(_table_style())
+    return [tbl, Paragraph(escape(c['disclaimer']), s['disclaimer']), Spacer(1, 10)]
+
+
 def _page1_executive_summary(audit: dict, s: dict, measurement_system: str = 'pk_traditional', brand_context=None) -> list:
     """Page 1 — Executive Summary."""
     ov = audit.get('overview', {})
@@ -328,6 +349,7 @@ def _page1_executive_summary(audit: dict, s: dict, measurement_system: str = 'pk
     prop_tbl.setStyle(_table_style())
     elements.append(prop_tbl)
     elements.append(Spacer(1, 10))
+    elements.extend(_comparables_block(audit, s))
 
     # Score badges (Risk, Grade, Liquidity) side by side
     risk = sc.get('risk_score', 5)

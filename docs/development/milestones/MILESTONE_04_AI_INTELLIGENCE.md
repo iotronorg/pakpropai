@@ -14,7 +14,7 @@
 | ID | P | Deliverable | Ref | Depends on |
 |---|---|---|---|---|
 | T‑4010 ✅ | P2 | Investment calculator (deterministic, formulas and sourced assumptions) + labelled AI commentary | FR‑INV‑001…004 | — |
-| T‑4020 | P2 | Indicative price context: price-per-m² distribution of comparable listings, N, dispersion, age, provenance, hidden below a threshold (audit redesign) | FR‑VAL‑001…004 | — |
+| T‑4020 ✅ | P2 | Indicative price context: price-per-m² distribution of comparable listings, N, dispersion, age, provenance, hidden below a threshold (audit redesign) | FR‑VAL‑001…004 | — |
 | T‑4030 | P2 | Comparison narratives constrained to the comparison table; running-cost estimates from market calculators | FR‑CMP‑003/004 | T‑4010 (costs) |
 | T‑4040 | P2 | RAG knowledge (market + organization), `KnowledgeChunk`, hybrid retrieval, citations | AI spec §7 | embedding model (pgvector present) |
 | T‑4050 | P2 | Persistent duplicate clustering; fraud signals v2 | FR‑LST‑010 | — |

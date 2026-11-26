@@ -219,6 +219,8 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | 2026-11-26 | Working tree, T‑3100b | `makemigrations --check`; `manage.py check`; `migrate` → `migrate leads 0026` → `migrate leads` on Postgres; `backfill_contact_messages --check` | No changes after `leads 0028`; no issues; forward, reverse and forward again succeed (view dropped and re-created each way); check prints `pending=0` | — |
 | 2026-11-26 | Working tree, T‑4010 | `scripts/dev/test.sh tests/ apps/ -rf` | **2633 passed, 1 skipped, 0 failed**, 303 subtests (9 investment tests) | 9m59s |
 | 2026-11-26 | Working tree, T‑4010 | `makemigrations --check`; `manage.py check`; `spectacular --validate` | No changes after `ai 0011`; no issues; schema error count within the `tests/test_openapi_schema.py` budget | — |
+| 2026-11-26 | Working tree, T‑4020 | `scripts/dev/test.sh tests/ apps/ -rf` | **2638 passed, 1 skipped, 1 failed** (`test_viewings.py::VisitorTest::test_cancel_frees_the_slot`, KI‑125; the file passes 43/43 when rerun twice), 303 subtests (6 price-context tests) | 10m37s |
+| 2026-11-26 | Working tree, T‑4020 | `makemigrations --check`; `manage.py check` | No changes; no issues | — |
 
 ## Coverage
 Not measured yet (no coverage run executed). CI is configured with `--cov=apps`.

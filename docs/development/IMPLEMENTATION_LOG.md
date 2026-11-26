@@ -663,3 +663,8 @@
 ### T‑4010 Investment calculator (ADR‑065)
 - **Added:** `apps/properties/investment.py` (`calculate`, `comparable_rent`, `numbers`), `apps/properties/investment_views.py`, `apps/properties/investment_urls.py` (`/api/v1/investment/`), `apps/ai/investment_commentary.py` (prompt `investment.commentary` v1, `check`, `commentary`); `AIInteraction.InteractionType.INVESTMENT_COMMENTARY` (`ai 0011`); flag `feature_investment_commentary` (off); throttles `investment`, `investment_commentary`; prompt module registered in `apps/ai/ops.py`.
 - **Tests:** `tests/test_investment.py` (9).
+
+### T‑4020 Indicative price context (ADR‑066)
+- **Added:** `apps/properties/price_context.py` (`context`, `for_listing`, `disclaimer`), `apps/properties/price_context_views.py` (`/api/v1/price-context/`), throttle `price_context`.
+- **Changed:** `apps/audit/services.py` (`_listing_comparables`, report key `listing_comparables`), `apps/audit/pdf.py` (`_comparables_block` on page 1), `config/urls.py`.
+- **Tests:** `tests/test_price_context.py` (6).

@@ -492,3 +492,8 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - **Migration `ai 0011`**: choices only (no SQL change).
 - **New endpoints:** `POST /api/v1/investment/calculate/` (public; `INVESTMENT_RATE`, default 60/min) and `POST /api/v1/investment/commentary/` (signed in; `INVESTMENT_COMMENTARY_RATE`, default 20/hour; paid model call).
 - **Owner:** legal review of the disclaimer and the commentary label; only then set `feature_investment_commentary=true`. Optional `INVESTMENT_MIN_COMPARABLES` (default 5).
+
+## 65. Session-34 change: indicative price context (T‑4020, ADR‑066)
+- No migration. New public endpoint `GET /api/v1/price-context/` (`PRICE_CONTEXT_RATE`, default 60/min); optional `PRICE_CONTEXT_MIN_SAMPLE` (default 8).
+- Audit reports (JSON and PDF) gain a "Comparable asking prices" section beside the benchmarks.
+- **Owner:** legal review of the price-context disclaimer wording (PRD Phase 4 criterion 2); decide whether the audit's benchmark score should later be driven by these figures.

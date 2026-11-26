@@ -126,8 +126,8 @@ Priority: P0 (blocker) → P3.
 | ID | Status | P | Task | Notes |
 |---|---|---|---|---|
 | T‑4010 | [x] | P2 | Investment calculator + labelled commentary | ADR‑065. `apps/properties/investment.py` (yields, cash flow, cash-on-cash, loan, user scenarios; every figure with formula, every assumption with source; median asking rent of ≥5 comparable rent listings with N and quartiles; fees from `apps/markets/calculators`), `apps/ai/investment_commentary.py` (prompt `investment.commentary`, paragraphs with numbers not in the result or advice/promises left out), `POST /investment/calculate/` (public, `investment` throttle) and `/investment/commentary/` (signed in, flag `feature_investment_commentary` **off**, 20/hour). `ai 0011`. `tests/test_investment.py` (9) |
-| T‑4020 | [ ] | P2 | Indicative price context (FR‑VAL‑001…004) | Next |
-| T‑4030 | [ ] | P2 | Comparison narratives; running costs | |
+| T‑4020 | [x] | P2 | Indicative price context (FR‑VAL‑001…004) | ADR‑066. `apps/properties/price_context.py`: asking price per m² of ≥8 comparable live sale listings (country, currency, category, subtype, ±30% size; locality first, then city), quartiles, min/max, spread, data age, confidence with reasons, provenance `listing_asking_price` on every figure, per-market "not a valuation" disclaimer; the subject's percentile and position, no value verdict. `GET /price-context/` (public, `price_context` throttle). Audit gains `listing_comparables` beside its benchmarks, and a PDF block. `tests/test_price_context.py` (6) |
+| T‑4030 | [ ] | P2 | Comparison narratives; running costs | Next |
 | T‑4040 | [ ] | P2 | RAG knowledge with citations | |
 | T‑4050 | [ ] | P2 | Duplicate clustering; fraud signals v2 | |
 | T‑4060 | [ ] | P2 | Offers register | |
