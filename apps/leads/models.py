@@ -338,3 +338,55 @@ class ClientProfile(models.Model):
 
     def __str__(self):
         return f"ClientProfile({self.wa_phone_number})"
+
+class LeadTask(models.Model):
+    """
+    A follow-up on a lead with a due time and one reminder (T-3020, FR-CRM-004, ADR-057).
+    The organization is the lead's, fixed at creation; the assignee is an agent of it.
+    """
+
+    class Status(models.TextChoices):
+        OPEN      = 'open',      'Open'
+        DONE      = 'done',      'Done'
+        CANCELLED = 'cancelled', 'Cancelled'
+
+    class Kind(models.TextChoices):
+        CALL      = 'call',      'Call'
+        MESSAGE   = 'message',   'Message'
+        MEETING   = 'meeting',   'Meeting'
+        DOCUMENTS = 'documents', 'Documents'
+        OTHER     = 'other',     'Other'
+
+    id           = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    lead         = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name='tasks')
+    organization = models.ForeignKey('organizations.Organization', on_delete=models.CASCADE, related_name='lead_tasks')
+    assignee     = models.ForeignKey('agents.Agent', on_delete=models.SET_NULL, null=True, blank=True,
+                                     related_name='lead_tasks')
+    kind         = models.CharField(max_length=12, choices=Kind.choices, default=Kind.CALL)
+    title        = models.CharField(max_length=200)
+    notes        = models.TextField(blank=True, max_length=2000)
+    due_at       = models.DateTimeField()
+    remind_at    = models.DateTimeField()
+    reminded_at  = models.DateTimeField(null=True, blank=True)
+    status       = models.CharField(max_length=10, choices=Status.choices, default=Status.OPEN)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    created_by   = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+                                     related_name='+')
+    created_at   = models.DateTimeField(auto_now_add=True)
+    updated_at   = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'lead_tasks'
+        ordering = ['due_at', 'pk']
+        indexes  = [
+            models.Index(fields=['organization', 'status', 'due_at'], name='lead_task_org_due'),
+            models.Index(fields=['assignee', 'status', 'due_at'], name='lead_task_assignee_due'),
+            models.Index(fields=['remind_at'], name='lead_task_remind_due',
+                         condition=models.Q(status='open', reminded_at__isnull=True)),
+        ]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(remind_at__lte=models.F('due_at')), name='lead_task_remind_before_due'),
+        ]
+
+    def __str__(self):
+        return f'{self.title} ({self.status}, due {self.due_at:%Y-%m-%d %H:%M})'

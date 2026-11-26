@@ -21,7 +21,7 @@ from apps.compliance.models import ConsentRecord, DataDeletionRequest, DataExpor
 from apps.conversations import store
 from apps.conversations.models import Conversation
 from apps.core.crypto import EncryptedJSONField, EncryptedTextField
-from apps.leads.models import ConversationMessage, Lead, LeadActivity
+from apps.leads.models import LeadTask, ConversationMessage, Lead, LeadActivity
 from apps.notifications.models import Notification
 from apps.organizations.models import OrganizationMembership
 from apps.preferences.models import SavedSearch
@@ -168,7 +168,7 @@ RELATIONS = {
     'preferences.Favourite.user': ERASED, 'preferences.SavedSearch.user': ERASED,
     'preferences.PreferenceItem.user': ERASED, 'moderation.UserReport.reporter': ERASED, 'reports.Report.user': ERASED,
     'audit.PropertyAudit.user': ERASED, 'agents.Agent.user': ERASED,
-    'leads.LeadActivity.lead': ERASED, 'leads.Appointment.lead': ERASED, 'leads.ConversationMessage.lead': ERASED,
+    'leads.LeadActivity.lead': ERASED, 'leads.LeadTask.lead': ERASED, 'leads.Appointment.lead': ERASED, 'leads.ConversationMessage.lead': ERASED,
     'enquiries.Enquiry.lead': ERASED, 'campaigns.CampaignRecipient.lead': ERASED, 'voice.VoiceCallSession.lead': ERASED,
     'core.AuditLog.actor': KEPT, 'sysconfig.SystemConfig.updated_by': KEPT, 'organizations.Organization.admin_user': KEPT,
     'organizations.OrganizationConfig.updated_by': KEPT, 'organizations.OrganizationInvite.invitee': KEPT,
@@ -206,6 +206,8 @@ class PersonTest(TestCase):
         u, w, phone = self.user, self.WORDS, self.phone.lstrip('+')
         self.lead = make_lead(u, org=self.org, notes=w, city_interest='Lahore', intent_signals={'x': w})
         LeadActivity.objects.create(lead=self.lead, action='note', notes=w, meta={'m': w})
+        due = timezone.now()
+        LeadTask.objects.create(lead=self.lead, organization=self.org, title=w, notes=w, due_at=due, remind_at=due)
         ConversationMessage.objects.create(lead=self.lead, direction='inbound', body=w)
         s = WhatsAppSession.objects.create(phone=phone, organization=self.org, context={'m': w})     # not linked yet
         WhatsAppMessage.objects.create(session=s, wa_message_id='m1', direction='inbound', body=w)

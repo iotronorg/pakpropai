@@ -518,3 +518,14 @@
 1. `git status`: the owner committed KI‑076/KI‑088 as `b955b80`; uncommitted is the rest of session 31 (KI‑083, KI‑121, KI‑087), including the deleted `tests/test_semantic_cache.py` (unstaged). **Do not commit.** Rebuild the test image (`REBUILD=1`) if it predates this session.
 2. Dev: M3 planning (create `milestones/MILESTONE_03_PROFESSIONAL_WORKSPACE.md` from PRODUCT_ROADMAP Phase 3), then its first task that needs no owner input.
 3. Owner: servers and environments (§54), monitoring (§52), runbook roles (§53), staging E2E, T‑2072, pentest, KI‑112, KI‑114 rule, KI‑121 document links.
+
+## Session 32 — 2026-11-26
+- **Verified:** the owner committed session 31 (`b955b80`, `2179546`); the tree was clean.
+- **Started M3:** milestone file from PRODUCT_ROADMAP Phase 3 with 11 tasks, additive ones first.
+- **Completed:** T‑3010 (ADR‑056) agent performance from enquiry replies, viewings, feedback and leads; T‑3020 (ADR‑057) tasks and follow-ups with reminders.
+- **Tests:** 2523 passed, 1 skipped, 0 failed; no migration drift. **Not committed.**
+
+### Handoff → session 33 (supersedes the one above)
+1. `git status`: uncommitted work is session 32. **Do not commit.**
+2. Dev: T‑3060 listing analytics (start in `apps/properties/public_listings.py`, `listing_search.py`, a daily counter model), then T‑3050.
+3. Owner: as before (§54, §52, §53, staging E2E, T‑2072, pentest, KI‑112, KI‑114, KI‑121 document links); new: checklist §55, pricing for T‑3080, the weekly-use metric (M3 exit 3).

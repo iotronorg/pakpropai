@@ -1002,3 +1002,24 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - The agent can still reply in the session: replies are sent by the server to the stored number, which never leaves it.
   - `SemanticResponseCache` and its embedding model are deleted, with `sentence-transformers` and `numpy`. Answer reuse stays the exact-words FAQ path (ADR‑042).
 - **Rejected:** dropping the number from every stream event for everyone (the frontend uses it to label sessions, and the owner kept numbers visible for people who share them, KI‑074); keeping the cache "for retrieval" (RAG in M4 needs its own design, AI spec §7).
+
+### ADR‑056 — Agent performance from recorded events (T‑3010, FR‑CRM‑008, session 32, 2026-11-26)
+- **Decision:**
+  - `GET /api/v1/reports/agent-performance/?from&to[&agent][&organization]`, computed on request from rows M2 already writes; no new tables, no stored aggregates.
+  - **Enquiries:** the organization's enquiries created in the period whose lead is assigned to the agent. First reply = the first outbound message in the thread, by anyone on the organization's side. Median first-reply minutes, the share answered within one hour (of all received, so unanswered ones count against it), unanswered count.
+  - **Viewings:** the agent's visits for this organization scheduled in the period, by outcome; no-show share of visits that took place (completed + no-show); visitors' own feedback (the agent's rating of the visitor is not counted).
+  - **Leads:** the organization's leads assigned to the agent, created in the period; conversion = closed (`routing_state=closed`) / assigned.
+  - **Period:** local days of the organization (inclusive), default the last 30, at most 366. Wall-clock times, no business hours.
+  - **Access:** managers of the active organization (owner, org admin, team or sales manager) see every agent, optionally one; an agent sees only their own row, and totals cover only the rows shown; viewers and others get 403; platform admins name the organization. No phone numbers or other contact details.
+- **Limits:** attribution follows the lead's current agent, so reassigning a lead moves its history; at organization scale the enquiries are read row by row (fine for thousands per period; add a materialised daily table if it grows). The older `GET /reports/agents/` and `apps/agents/stats.py` (activity-based response time) stay unchanged for the current frontend.
+- **Rejected:** measuring from `LeadActivity` "contacted" rows (depends on agents logging them); attributing by message sender (unanswered enquiries would belong to nobody).
+
+### ADR‑057 — Tasks and follow-ups on leads (T‑3020, FR‑CRM‑004, session 32, 2026-11-26)
+- **Decision:**
+  - New `LeadTask` (`leads 0024`, additive): lead, the lead's organization (fixed at creation), assignee (an agent), kind, title, notes, due time, reminder time (≤ due, default the due time), status open / done / cancelled. API `GET/POST /api/v1/leads/tasks/`, `GET/PATCH /api/v1/leads/tasks/{id}/`; filters `lead`, `status`, `mine`, `due=overdue|today|upcoming` (today in the organization's time).
+  - **Who** (membership role, ADR‑020, not `user.role`): staff of the organization (owner, org admin, team or sales manager, CRM operator) see and change every task there and assign any active agent of it; an agent sees tasks on their own leads and tasks given to them, creates tasks only on their own leads and only for themselves, and cannot reassign; viewers and others see nothing (404). Platform admins see all.
+  - **Times:** due at most a year ahead, not in the past (5-minute grace). Moving the due time keeps the reminder's lead time; moving either resets the reminder; a closed task must be reopened before it is moved.
+  - **Reminder:** one notice to the assignee at the reminder time (in-app, email and WhatsApp by their `lead_updates` preference), claimed once per reminder time by a 5-minute beat job (`lead-task-reminders`). It names the task and due time, never the client's contact details.
+  - Creating, completing, cancelling and reopening a task write a lead activity.
+  - **Privacy:** erasure redacts the title and notes of tasks about the person (`lead_tasks_redacted`); they are internal notes, so they are not in the person's export (as appointment notes, ADR‑037).
+- **Not done:** recurring tasks, automatic tasks from pipeline stages (T‑3030), calendar sync.

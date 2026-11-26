@@ -310,6 +310,8 @@ SPECTACULAR_SETTINGS = {
         'ThreadReportStatusEnum': 'apps.enquiries.models.ThreadReport.Status',
         'ThreadReportCategoryEnum': 'apps.enquiries.models.ThreadReport.Category',
         'FavouriteKindEnum': 'apps.preferences.models.Favourite.Kind',
+        'LeadTaskKindEnum': 'apps.leads.models.LeadTask.Kind',          # T-3020
+        'LeadTaskStatusEnum': 'apps.leads.models.LeadTask.Status',
         'AlertChannelEnum': 'apps.preferences.models.SavedSearch.Channel',
         'AlertFrequencyEnum': 'apps.preferences.models.SavedSearch.Frequency',
     },
@@ -500,6 +502,10 @@ CELERY_BEAT_SCHEDULE = {
     'purge-stale-preferences': {
         'task':     'apps.preferences.tasks.purge_stale_preferences',
         'schedule': 86400,
+    },
+    'lead-task-reminders': {
+        'task':     'apps.leads.tasks.send_lead_task_reminders',
+        'schedule': 300,    # every 5 minutes (T-3020)
     },
     'appointment-reminders': {
         'task':     'apps.leads.tasks.send_appointment_reminders',

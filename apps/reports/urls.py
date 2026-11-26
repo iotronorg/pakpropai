@@ -3,7 +3,7 @@ from .views import (
     LeadReportView, AgentReportView, PropertyReportView, DealReportView,
     RevenueReportView, BotReportView, AgentPersonalReportView,
     ReportGenerateView, ReportStatusView, ReportDownloadView, MyReportsView,
-    MonthlyReportListView,
+    MonthlyReportListView, AgentPerformanceView,
 )
 from .bi_views import FunnelAnalyticsView, WaTokenUsageView, AgentSpeedLeaderboardView
 
@@ -11,6 +11,7 @@ urlpatterns = [
     # Analytics dashboards
     path('leads/',       LeadReportView.as_view(),             name='report-leads'),
     path('agents/',      AgentReportView.as_view(),            name='report-agents'),
+    path('agent-performance/', AgentPerformanceView.as_view(),   name='report-agent-performance'),
     path('properties/',  PropertyReportView.as_view(),         name='report-properties'),
     path('deals/',       DealReportView.as_view(),             name='report-deals'),
     path('revenue/',     RevenueReportView.as_view(),          name='report-revenue'),

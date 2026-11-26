@@ -1,6 +1,7 @@
 from django.urls import path
 from rest_framework.routers import DefaultRouter, SimpleRouter
 from .views import LeadViewSet, AppointmentViewSet
+from .task_views import LeadTaskViewSet
 from .admin_views import DuplicateLeadView, BulkAssignLeadsView, MergeLeadsView
 
 router = DefaultRouter()
@@ -10,6 +11,7 @@ router.register('', LeadViewSet, basename='leads')
 # would intercept the leads-list URL when appt_router.urls is placed first.
 appt_router = SimpleRouter()
 appt_router.register('appointments', AppointmentViewSet, basename='appointments')
+appt_router.register('tasks', LeadTaskViewSet, basename='lead-tasks')   # T-3020
 
 urlpatterns = [
     # Fixed paths and appt_router MUST come before router.urls so they are not

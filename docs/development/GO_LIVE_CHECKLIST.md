@@ -437,3 +437,10 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - **Dependencies upgraded** (KI‑118): Pillow 13, Django 5.2.17, DRF 3.18.2, PyJWT 2.15, simplejwt 5.5.1, requests 2.33, urllib3 2.8, lxml 6.1 and others. The full suite passes; check image upload and PDF reports on staging.
 - **`/health/` now reports `version`** and hides error details outside DEBUG. Add `localhost` to `ALLOWED_HOSTS`.
 - **First run on GitHub:** the pipeline has been linted and rehearsed locally, not yet run on Actions. Watch the first `main` run, especially the production gate's access to the environment API.
+
+## 55. Session-31/32 changes: chat viewing changes, stream masking, image without torch, agent performance, lead tasks (ADR‑054…057)
+- **Image rebuild:** `sentence-transformers` and `numpy` were removed (KI‑087); the image no longer installs torch.
+- **Prompt** `agent.system` v10 (viewing tools). Visit reminders say "reply here" while `feature_talk_to_agent` is on.
+- **Migration `leads 0024`** (new table `lead_tasks`, additive, rolling-safe).
+- **Beat job `lead-task-reminders`** (every 5 minutes): restart celery beat after deploy so it is scheduled.
+- **New endpoints for the frontend:** `GET /api/v1/reports/agent-performance/`, `/api/v1/leads/tasks/`. Agent-room stream events may carry `phone: null`.

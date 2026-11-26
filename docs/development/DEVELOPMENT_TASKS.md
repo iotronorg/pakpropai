@@ -102,6 +102,22 @@ Priority: P0 (blocker) → P3.
 | T‑2071 | [x] | P1 | Indirect prompt injection: lister text to the model as delimited data, injection in it neutralised, eval suite | ADR‑044. `apps/ai/untrusted.py`, contact rule in `grounding.py`, moderation flag, `indirect` suite. `tests/test_indirect_injection.py` |
 | T‑2072 | [ ] | P1 | Golden set to ≥300 reviewed utterances per language; first live run and baseline | Owner: native reviewers, `EVAL_GEMINI_API_KEY`, paid model calls. MVP 6 |
 
+## M3 — Professional workspace ([MILESTONE_03](milestones/MILESTONE_03_PROFESSIONAL_WORKSPACE.md))
+
+| ID | Status | P | Task | Notes |
+|---|---|---|---|---|
+| T‑3010 | [x] | P1 | Agent performance from real events | ADR‑056. `apps/reports/performance.py`, `GET /reports/agent-performance/`. `tests/test_agent_performance.py` (7) |
+| T‑3020 | [x] | P1 | Tasks and follow-ups with reminders | ADR‑057. `LeadTask` (`leads 0024`), `apps/leads/follow_ups.py`, `task_views.py`, beat `lead-task-reminders`, erasure step. `tests/test_lead_tasks.py` (9) |
+| T‑3060 | [ ] | P1 | Listing analytics (impressions, views, saves, enquiries, conversion) | FR‑LST‑012. Next |
+| T‑3050 | [ ] | P1 | AI listing assistant | FR‑LAI‑001…003 |
+| T‑3070 | [ ] | P1 | Unified audit log | GAP‑104 |
+| T‑3090 | [ ] | P1 | AI ops console APIs | GAP‑103 |
+| T‑3030 | [ ] | P1 | Configurable pipeline stages | FR‑CRM‑002; frontend contract |
+| T‑3040 | [ ] | P1 | Team management and assignment rules | FR‑CRM‑007 |
+| T‑3100 | [ ] | P1 | Unified contact and messages | FR‑CRM‑001, GAP‑016 |
+| T‑3080 | [!] | P1 | Plans and entitlements as data | GAP‑100; owner: pricing |
+| T‑3110 | [!] | — | Public launch (primary market) | Owner |
+
 ## MVP acceptance criteria (MVP_SCOPE §6) — cross-milestone
 
 | ID | Status | P | Task | Notes |

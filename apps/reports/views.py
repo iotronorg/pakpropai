@@ -10,6 +10,7 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 
 from apps.core.throttles import ReportGenerateThrottle
 from apps.core.permissions import IsAdminUser, IsAdminOrOrgAdmin, IsAgentOrAdmin, get_user_org
@@ -543,3 +544,61 @@ class MonthlyReportListView(APIView):
             }
             for r in qs
         ])
+
+
+class AgentPerformanceView(APIView):
+    """
+    GET /reports/agent-performance/?from=YYYY-MM-DD&to=YYYY-MM-DD[&agent=<id>][&organization=<id>]
+
+    T-3010 (ADR-056). Managers of the active organization (owner, org admin, team or
+    sales manager) see every agent; an agent sees only their own row; platform admins
+    name the organization. Local dates of the organization, at most 366 days.
+    """
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        parameters=[OpenApiParameter('from', str, description='First local day, YYYY-MM-DD (default: 29 days before "to")'),
+                    OpenApiParameter('to', str, description='Last local day, YYYY-MM-DD (default: today)'),
+                    OpenApiParameter('agent', int, description='One agent (managers only)'),
+                    OpenApiParameter('organization', str, description='Platform admins only')],
+        responses={200: OpenApiResponse(description='Per-agent enquiries, viewings and leads, with totals'),
+                   400: OpenApiResponse(description='Invalid period'), 403: OpenApiResponse(description='Not a manager or agent')})
+    def get(self, request):
+        from rest_framework import exceptions
+
+        from apps.core.permissions import _SALES_MANAGER_ROLES, active_org_role
+        from apps.organizations.models import Organization
+
+        from . import performance as P
+        user, q = request.user, request.query_params
+        if user.role == 'admin':
+            org = Organization.objects.filter(pk=q['organization']).first() if _is_uuid(q.get('organization')) else None
+            if org is None:
+                raise exceptions.ValidationError({'organization': 'Name the organization.'})
+            manager = True
+        else:
+            org, role = get_user_org(user), active_org_role(user)
+            manager = role in _SALES_MANAGER_ROLES
+            if org is None or not (manager or getattr(user, 'agent_profile', None)):
+                raise exceptions.PermissionDenied('Only the organization\'s managers and agents see this report.')
+        agents = P.agents_of(org)
+        if not manager:
+            agents = agents.filter(user=user)
+        elif q.get('agent'):
+            if not str(q['agent']).isdigit():
+                raise exceptions.ValidationError({'agent': 'An agent id.'})
+            agents = agents.filter(pk=int(q['agent']))
+        try:
+            period = P.period(org, q.get('from'), q.get('to'))
+        except P.PeriodInvalid as exc:
+            raise exceptions.ValidationError({'period': str(exc)}) from None
+        return Response(P.report(org, period, agents))
+
+
+def _is_uuid(value) -> bool:
+    import uuid
+    try:
+        uuid.UUID(str(value))
+        return True
+    except ValueError:
+        return False

@@ -190,6 +190,13 @@ def send_stale_lead_reminders():
 
 
 @shared_task
+def send_lead_task_reminders():
+    """Every 5 min: reminders of tasks and follow-ups (T-3020)."""
+    from .follow_ups import send_reminders
+    return send_reminders()
+
+
+@shared_task
 def send_appointment_reminders():
     """Every 15 min: visit reminders (a day and an hour before) and feedback requests (T-2060)."""
     from apps.viewings.services import request_feedback, send_reminders

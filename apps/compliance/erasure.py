@@ -186,6 +186,11 @@ def _lead_activities(user):
     return LeadActivity.objects.filter(lead__user=user).update(notes=_REDACTED, meta={})
 
 
+def _lead_tasks(user):
+    from apps.leads.follow_ups import erase_user
+    return erase_user(user)
+
+
 def _lead_messages(user):
     """Messages of enquiry threads are handled with the enquiries."""
     from apps.leads.models import ConversationMessage
@@ -341,7 +346,7 @@ _STOP_ON_FAILURE = frozenset({'cloud_files_deleted'})
 # Viewings before enquiries, so the agent is told about cancelled visits.
 _STEPS = (
     ('cloud_files_deleted', _cloud_files),
-    ('leads_anonymized', _leads), ('lead_activities_redacted', _lead_activities),
+    ('leads_anonymized', _leads), ('lead_activities_redacted', _lead_activities), ('lead_tasks_redacted', _lead_tasks),
     ('lead_messages_deleted', _lead_messages), ('wa_messages_deleted', _whatsapp),
     ('document_scans_deleted', _documents), ('campaign_recipients_deleted', _campaigns), ('voice_calls_emptied', _voice),
     ('ai_pending_actions_deleted', _ai_records), ('ai_conversations_deleted', _ai_conversations),
