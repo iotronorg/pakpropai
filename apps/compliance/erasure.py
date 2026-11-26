@@ -248,6 +248,12 @@ def _security_logs(user):
     return SecurityTrace.objects.filter(phone__in=phones).update(phone='', message_excerpt='')
 
 
+def _audit_events(user):
+    """The unified trail keeps what happened; addresses, details and values about the person go (ADR-060)."""
+    from apps.core.audit import redact_person
+    return redact_person(user, _phones(user))
+
+
 def _viewings(user):
     from apps.viewings.services import erase_user
     return erase_user(user)
@@ -350,7 +356,7 @@ _STEPS = (
     ('lead_messages_deleted', _lead_messages), ('wa_messages_deleted', _whatsapp),
     ('document_scans_deleted', _documents), ('campaign_recipients_deleted', _campaigns), ('voice_calls_emptied', _voice),
     ('ai_pending_actions_deleted', _ai_records), ('ai_conversations_deleted', _ai_conversations),
-    ('security_logs_redacted', _security_logs), ('viewings_redacted', _viewings), ('enquiries_deleted', _enquiries),
+    ('security_logs_redacted', _security_logs), ('audit_events_redacted', _audit_events), ('viewings_redacted', _viewings), ('enquiries_deleted', _enquiries),
     ('preferences_deleted', _preferences), ('reports_redacted', _moderation), ('generated_reports_deleted', _reports),
     ('export_files_deleted', _export_files), ('private_listings_removed', _private_listings),
     ('notifications_deleted', _notifications), ('agent_profiles_redacted', _agent_profile),

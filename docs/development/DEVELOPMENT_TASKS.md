@@ -110,8 +110,8 @@ Priority: P0 (blocker) → P3.
 | T‑3020 | [x] | P1 | Tasks and follow-ups with reminders | ADR‑057. `LeadTask` (`leads 0024`), `apps/leads/follow_ups.py`, `task_views.py`, beat `lead-task-reminders`, erasure step. `tests/test_lead_tasks.py` (9) |
 | T‑3060 | [x] | P1 | Listing analytics (impressions, views, saves, enquiries, conversion) | ADR‑058. `ListingDailyStat` (`properties 0050`), `apps/properties/analytics.py`, `apps/reports/listing_performance.py`, `GET /reports/listing-performance/`. `tests/test_listing_analytics.py` (19). Staged contract migrations renumbered 0051/0052. Recorded KI‑122 |
 | T‑3050 | [x] | P1 | AI listing assistant | ADR‑059. `apps/ai/listing_assistant.py` (prompts `listing.describe`, `listing.extract` v1), `apps/properties/assistant_views.py` (`/properties/{id}/ai/missing-info|describe|extract/`), flag `feature_listing_assistant`, throttle `listing_assistant`, `ai 0009` (choice only), eval suite `listing_copy` (35 cases, en/ur/roman). `tests/test_listing_assistant.py` (15) |
-| T‑3070 | [ ] | P1 | Unified audit log | GAP‑104. Next |
-| T‑3090 | [ ] | P1 | AI ops console APIs | GAP‑103 |
+| T‑3070 | [x] | P1 | Unified audit log | ADR‑060. `AuditEvent` (`core 0004`, append-only trigger), `apps/core/audit.py` (record, verify, redact, mirrors of `AuditLog`/`PrivacyAuditLog`/`ApiSecurityEvent`), `GET /api/v1/audit-events/` and `/verify/`, `manage.py verify_audit_chain`, beat `verify-audit-chain`, erasure step `audit_events_redacted`. `tests/test_audit_trail.py` (14). Contract (readers off the old tables) recorded as KI‑123 |
+| T‑3090 | [ ] | P1 | AI ops console APIs | GAP‑103. Next |
 | T‑3030 | [ ] | P1 | Configurable pipeline stages | FR‑CRM‑002; frontend contract |
 | T‑3040 | [ ] | P1 | Team management and assignment rules | FR‑CRM‑007 |
 | T‑3100 | [ ] | P1 | Unified contact and messages | FR‑CRM‑001, GAP‑016 |

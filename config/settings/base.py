@@ -13,6 +13,9 @@ ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=[])
 # Field-level encryption (ADR-008). Comma-separated Fernet keys, newest first.
 FIELD_ENCRYPTION_KEYS = env.list('FIELD_ENCRYPTION_KEYS', default=[])
 FIELD_HASH_KEY = env('FIELD_HASH_KEY', default='')
+# Unified audit trail hash chain (ADR-060). Default SECRET_KEY: set a fixed value so a key change
+# does not make the whole chain fail verification.
+AUDIT_CHAIN_KEY = env('AUDIT_CHAIN_KEY', default='')
 FIELD_ENCRYPTION_ALLOW_DERIVED_KEY = False   # dev/test only
 
 DJANGO_APPS = [
@@ -435,6 +438,10 @@ CELERY_BEAT_SCHEDULE = {
     'purge-outbox': {
         'task':     'apps.core.tasks.purge_outbox',
         'schedule': 86400,  # daily
+    },
+    'verify-audit-chain': {
+        'task':     'apps.core.tasks.verify_audit_chain',
+        'schedule': crontab(hour=2, minute=30),   # daily (T-3070, ADR-060)
     },
     'purge-idempotency-records': {
         'task':     'apps.core.tasks.purge_idempotency_records',

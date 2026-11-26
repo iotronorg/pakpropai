@@ -628,3 +628,8 @@
 ### 2026-11-26 — session 33 (continued): AI listing assistant (T‑3050)
 - **Added:** `apps/ai/listing_assistant.py` (`missing_info`, `describe`, `extract`, `check_sentence`, prompts `listing.describe` / `listing.extract` v1); `apps/properties/assistant_views.py` and routes `/api/v1/properties/{id}/ai/missing-info|describe|extract/`; config flag `feature_listing_assistant`; throttle scope `listing_assistant` (`LISTING_ASSISTANT_RATE`); `AIInteraction.InteractionType.LISTING_ASSIST` (`ai 0009`); eval suite `listing_copy` (`apps/ai/evals/offline.py`, `data/listing_copy.jsonl`) (ADR‑059).
 - **Tests:** `tests/test_listing_assistant.py` (15); `tests/test_llm.py` pins the two prompts.
+
+### 2026-11-26 — session 33 (continued): unified audit trail (T‑3070)
+- **Added:** `AuditEvent` (`core 0004` with trigger `audit_events_guard`); `apps/core/audit.py` (`record`, `safe_record`, `verify`, `redact_person`, mirrors and `connect_mirrors` from `CoreConfig.ready`); `apps/core/audit_views.py` (`/api/v1/audit-events/`, `/verify/`); `manage.py verify_audit_chain`; task `apps.core.tasks.verify_audit_chain` and beat `verify-audit-chain`; metrics `realtron_audit_write_failures_total`, `realtron_audit_chain_ok`; setting `AUDIT_CHAIN_KEY`; erasure step `audit_events_redacted` (ADR‑060).
+- **Changed:** `AuditLog.log` builds and saves the row itself so the mirror knows the target's organization.
+- **Tests:** `tests/test_audit_trail.py` (14, including a six-thread writer test and tampering with the trigger disabled).

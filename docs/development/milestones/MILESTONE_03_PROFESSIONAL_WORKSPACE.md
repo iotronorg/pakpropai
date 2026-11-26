@@ -20,7 +20,7 @@
 | T‑3040 | P1 | Team management and assignment rules (round-robin, area, language, load) extending auto-assign | FR‑CRM‑007 | T‑3030 |
 | T‑3050 ✅ | P1 | AI listing assistant: title/description only from structured fields and seller notes (unsupported sentences marked), missing-information check against the market schema, attribute suggestions from free text that need confirmation | FR‑LAI‑001…003 | eval cases (T‑2070 harness) |
 | T‑3060 ✅ | P1 | Listing analytics: impressions, detail views, saves, enquiries, conversion (aggregate counts, no personal tracking) | FR‑LST‑012 | — |
-| T‑3070 | P1 | Unified audit log: one trail for the three overlapping logs, with a tamper-evident chain | GAP‑104 | — |
+| T‑3070 ✅ | P1 | Unified audit log: one trail for the three overlapping logs, with a tamper-evident chain | GAP‑104 | — |
 | T‑3080 | P1 | Plans and entitlements as data; limits enforced from them | GAP‑100 | owner: pricing |
 | T‑3090 | P1 | AI ops console APIs: prompts, models and prices, eval runs, traces, cost, kill switch | GAP‑103 | — |
 | T‑3100 | P1 | Unified contact (person ↔ leads) and unified messages (`ConversationMessage` + `WhatsAppMessage`) | FR‑CRM‑001, GAP‑016 | T‑3030; migration plan |

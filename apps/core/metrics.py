@@ -151,6 +151,19 @@ outbox_deliveries_total = Counter(
     ['kind', 'result'],  # result: sent|retry|failed|expired
 )
 
+# ── Audit trail (T-3070, ADR-060) ─────────────────────────────────────────────
+
+audit_write_failures_total = Counter(
+    'realtron_audit_write_failures_total',
+    'Audit events that could not be written to the unified trail',
+)
+
+audit_chain_ok = Gauge(
+    'realtron_audit_chain_ok',
+    '1 when the last check of the audit hash chain passed, 0 when it found a break',
+    multiprocess_mode='min',
+)
+
 
 def metric_event(event: str) -> str:
     """Bounded label values: only known notification events get their own series."""

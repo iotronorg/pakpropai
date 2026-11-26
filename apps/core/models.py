@@ -62,7 +62,7 @@ class AuditLog(models.Model):
         ip   = cls._get_ip(request) if request else None
         ua   = request.headers.get('User-Agent', '') if request else ''
 
-        return cls.objects.create(
+        row = cls(
             actor=actor,
             action=action,
             target_model=target_model,
@@ -73,6 +73,11 @@ class AuditLog(models.Model):
             ip_address=ip,
             user_agent=ua,
         )
+        # Read by the unified trail's mirror (T-3070): the organization the target belongs to.
+        from apps.core.permissions import _object_org_id
+        row._organization_id = str(_object_org_id(target) or '') if target is not None else ''
+        row.save()
+        return row
 
     @staticmethod
     def _get_ip(request):
@@ -80,6 +85,47 @@ class AuditLog(models.Model):
         if forwarded:
             return forwarded.split(',')[0].strip()
         return request.META.get('REMOTE_ADDR')
+
+
+class AuditEvent(models.Model):
+    """
+    The one audit trail (T-3070, GAP-104, ADR-060): append-only and hash-chained.
+
+    ``record_hash`` = HMAC-SHA256 over the row's fixed fields, the digest of
+    ``personal`` and the previous row's hash, so a changed, removed or inserted
+    row breaks the chain from there on (``apps.core.audit.verify``). Personal
+    data (addresses, browser, free text, before/after values) sits only in
+    ``personal``, which erasure may empty: its digest stays, so the chain still
+    verifies. A database trigger refuses every other UPDATE and every DELETE.
+    Written only through ``apps.core.audit.record``.
+    """
+    seq            = models.BigIntegerField(unique=True)
+    at             = models.DateTimeField()
+    category       = models.CharField(max_length=20, db_index=True)   # admin | organization | privacy | security | ai
+    action         = models.CharField(max_length=80, db_index=True)   # e.g. membership.role_changed
+    actor_id       = models.CharField(max_length=64, blank=True, db_index=True)   # not a FK: rows never change
+    organization_id = models.CharField(max_length=64, blank=True, db_index=True)
+    target_type    = models.CharField(max_length=60, blank=True)
+    target_id      = models.CharField(max_length=100, blank=True)
+    source         = models.CharField(max_length=40, blank=True)      # the legacy table it mirrors, if any
+    meta           = models.JSONField(default=dict, blank=True)       # non-personal details (severity, codes)
+    personal       = models.JSONField(default=dict, blank=True)       # redactable
+    personal_digest = models.CharField(max_length=64)
+    redacted_at    = models.DateTimeField(null=True, blank=True)
+    prev_hash      = models.CharField(max_length=64)
+    record_hash    = models.CharField(max_length=64, unique=True)
+
+    class Meta:
+        db_table = 'audit_events'
+        ordering = ['-seq']
+        indexes = [
+            models.Index(fields=['organization_id', '-seq'], name='audit_evt_org_idx'),
+            models.Index(fields=['target_type', 'target_id'], name='audit_evt_target_idx'),
+            models.Index(fields=['at'], name='audit_evt_at_idx'),
+        ]
+
+    def __str__(self):
+        return f'#{self.seq} {self.action}'
 
 
 class OutboxMessage(models.Model):

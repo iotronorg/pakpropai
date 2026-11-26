@@ -204,6 +204,8 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | 2026-11-26 | Working tree, session 33 + T‑3050, first run | `scripts/dev/test.sh` | 2557 passed, 1 skipped, **1 failed** (subtest): `test_markets.py::…::test_remaining_pk_literals_do_not_grow`, a `'PKR …'` literal in the new eval fixture; now taken from the PK market pack | 14m09s |
 | 2026-11-26 | Working tree, session 33 end (T‑3060, T‑3050) | `scripts/dev/test.sh -rf` | **2557 passed, 1 skipped, 0 failed**, 295 subtests (15 listing-assistant tests) | 9m48s |
 | 2026-11-26 | Working tree, session 33 end | `makemigrations --check`; `manage.py check`; `spectacular --validate`; `run_ai_evals` | No changes after `ai 0009`; no issues; no new schema warnings; eval gate passed (`listing_copy` 35/35) | — |
+| 2026-11-26 | Working tree, T‑3070 | `scripts/dev/test.sh -rf` | **2571 passed, 1 skipped, 0 failed**, 299 subtests (14 audit-trail tests, including six concurrent writers) | 10m31s |
+| 2026-11-26 | Working tree, T‑3070 | `makemigrations --check`; `manage.py check`; `spectacular --validate` | No changes after `core 0004`; no issues; no warnings from the new views | — |
 
 ## Coverage
 Not measured yet (no coverage run executed). CI is configured with `--cov=apps`.

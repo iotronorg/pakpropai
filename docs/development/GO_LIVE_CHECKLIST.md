@@ -455,3 +455,10 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - **Migration `ai 0009`** (choices only, no SQL change).
 - **New endpoints for the frontend:** `GET /api/v1/properties/{id}/ai/missing-info/`, `POST …/ai/describe/`, `POST …/ai/extract/`. Drafts are never saved; the frontend applies the accepted parts with `PATCH /properties/{id}/`.
 - **Paid model calls:** each describe or extract is one call. Rate `LISTING_ASSISTANT_RATE` (default 30/hour per user); turn it off with `feature_listing_assistant=false`. New prompts `listing.describe` v1 and `listing.extract` v1.
+
+## 58. Session-33 change: unified audit trail (ADR‑060)
+- **Migration `core 0004`**: new table `audit_events` with a trigger that refuses UPDATE (except erasure's redaction) and DELETE. Additive. History before the deploy is not copied; the trail starts at deploy.
+- **Set a fixed `AUDIT_CHAIN_KEY`** (default `SECRET_KEY`): if the key changes, every older row fails verification.
+- **Beat job `verify-audit-chain`** (daily 02:30 UTC): restart celery beat. Its log line `audit.chain.ok … head_hash=…` should reach the log store outside the database; an `audit.chain.broken` line is an incident ([data incident runbook](../runbooks/data-incident.md)).
+- **Run once after deploy:** `python manage.py verify_audit_chain`.
+- **New endpoint for the frontend:** `GET /api/v1/audit-events/` (organization owners and admins see their organization's trail).
