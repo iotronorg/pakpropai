@@ -336,6 +336,12 @@ class LeadScoreHistory(models.Model):
 
 
 class CRMContact(models.Model):
+    """
+    What an organization keeps about one person (T-3100, FR-CRM-001, ADR-064): a name
+    of its own and tags. The person is ``user``; their requirements are their leads in
+    the organization. Rows without ``user`` are from before (phone only) and linked by
+    ``leads 0027`` where the phone is a registered person. New rows store no phone.
+    """
 
     class Source(models.TextChoices):
         WHATSAPP = 'whatsapp', 'WhatsApp'
@@ -347,22 +353,32 @@ class CRMContact(models.Model):
         on_delete=models.CASCADE,
         related_name='crm_contacts',
     )
-    phone      = models.CharField(max_length=20, help_text='E.164 format')
+    user       = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, null=True, blank=True,
+                                   related_name='crm_contacts')
+    phone      = models.CharField(max_length=20, blank=True, default='',
+                                  help_text='Deprecated (rows from before T-3100); E.164')
     name       = models.CharField(max_length=100, blank=True)
     source     = models.CharField(max_length=20, choices=Source.choices, default=Source.WHATSAPP)
     tags       = models.JSONField(default=list)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True, null=True)
 
     class Meta:
         db_table        = 'crm_contacts'
-        unique_together = [('organization', 'phone')]
         indexes         = [models.Index(fields=['organization', 'phone'])]
+        constraints     = [
+            models.UniqueConstraint(fields=['organization', 'user'], condition=models.Q(user__isnull=False),
+                                    name='crm_contact_org_user_unique'),
+            models.UniqueConstraint(fields=['organization', 'phone'], condition=~models.Q(phone=''),
+                                    name='crm_contact_org_phone_unique'),
+        ]
 
     def __str__(self):
-        return f"{self.name or self.phone} ({self.organization.name})"
+        return f"{self.name or self.user_id or self.phone} ({self.organization_id})"
 
 
 class ClientProfile(models.Model):
+    """Deprecated (T-3100, ADR-064): nothing writes or reads it; dropped in the contract phase."""
     contact            = models.OneToOneField(CRMContact, on_delete=models.CASCADE,
                              related_name='client_profile')
     wa_phone_number    = models.CharField(max_length=20)
@@ -491,3 +507,34 @@ class AgentRouting(models.Model):
 
     def __str__(self):
         return f'{self.agent_id} in {self.organization_id}'
+
+
+class UnifiedMessage(models.Model):
+    """
+    One read view over the CRM log and the WhatsApp log (T-3100, GAP-016, ADR-064):
+    the SQL view ``unified_messages`` (``leads 0027``), not a table. A WhatsApp row
+    mirrored into the CRM log of the same organization appears once (as the CRM row);
+    a CRM row mirrored from another organization's WhatsApp chat (KI-073) is left out.
+    Ids are plain columns, so filter on ``row_id``/``lead_id``/``session_id`` (indexed
+    in the base tables). Read through ``apps.leads.contacts``.
+    """
+    id              = models.CharField(primary_key=True, max_length=50)     # 'crm:<uuid>' or 'wa:<uuid>'
+    source          = models.CharField(max_length=10)                       # crm | whatsapp
+    row_id          = models.UUIDField()
+    lead_id         = models.UUIDField(null=True)
+    session_id      = models.UUIDField(null=True)
+    enquiry_id      = models.UUIDField(null=True)
+    organization_id = models.UUIDField(null=True)
+    sender_id       = models.UUIDField(null=True)
+    direction       = models.CharField(max_length=10)
+    channel         = models.CharField(max_length=20)
+    msg_type        = models.CharField(max_length=20)
+    body            = models.TextField()
+    wa_message_id   = models.CharField(max_length=200)
+    has_media       = models.BooleanField()
+    created_at      = models.DateTimeField()
+
+    class Meta:
+        managed  = False
+        db_table = 'unified_messages'
+        ordering = ['created_at']

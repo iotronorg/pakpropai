@@ -62,7 +62,7 @@ def _more(user) -> dict:
     from apps.ai.models import PendingAction
     from apps.compliance.models import ConsentRecord
     from apps.escrow.models import EscrowDeal
-    from apps.leads.models import ConversationMessage, LeadActivity
+    from apps.leads.models import ConversationMessage, CRMContact, LeadActivity
     from apps.notifications.models import Notification
     from apps.organizations.models import OrganizationMembership
     from apps.payments.models import Payment
@@ -84,6 +84,7 @@ def _more(user) -> dict:
             channel=ConversationMessage.Channel.DASHBOARD, sender__isnull=False),
             'direction', 'channel', 'body', 'created_at'),
         'lead_history': rows(LeadActivity.objects.filter(lead__user=user), 'action', 'notes', 'created_at'),
+        'agency_contact_notes': rows(CRMContact.objects.filter(user=user), 'organization__name', 'name', 'tags'),  # T-3100
         'voice_calls': rows(VoiceCallSession.objects.filter(lead__user=user), 'direction', 'started_at',
                             'duration_seconds', 'transcript'),
         'confirmations': rows(PendingAction.objects.filter(user=user), 'tool', 'prompt', 'status', 'created_at'),

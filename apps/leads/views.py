@@ -8,7 +8,7 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 
 from apps.core.idempotency import IDEMPOTENCY_PARAMETER, idempotent
 from apps.core.permissions import get_user_org
@@ -18,6 +18,12 @@ from .serializers import (AppointmentSerializer, ConversationMessageSerializer,
                           LeadSerializer, LeadActivitySerializer, LeadScoreHistorySerializer)
 
 logger = logging.getLogger(__name__)
+
+
+def _lead_log(lead):
+    """T-3100: summaries and suggested replies read the CRM log and the WhatsApp chat (text only)."""
+    from .contacts import lead_messages
+    return lead_messages(lead).exclude(body='')
 
 
 class IsDashboardUser(permissions.BasePermission):
@@ -138,9 +144,18 @@ class LeadViewSet(viewsets.ModelViewSet):
                             status=status.HTTP_404_NOT_FOUND)
         return Response(LeadSerializer(self.get_queryset().get(pk=lead.pk)).data)
 
+    @extend_schema(parameters=[OpenApiParameter('before', str), OpenApiParameter('limit', int)],
+                   responses={200: OpenApiResponse(description='Messages newest first, with a `next` cursor')})
+    @action(detail=True, methods=['get'], url_path='messages')
+    def messages(self, request, pk=None):
+        """GET /leads/{id}/messages/ — the lead's CRM log and WhatsApp chat in one list (T-3100)."""
+        from .contact_views import messages_response
+        from .contacts import lead_messages
+        return messages_response(request, lead_messages(self.get_object()))
+
     @action(detail=True, methods=['get'], url_path='conversations')
     def conversations(self, request, pk=None):
-        """GET /leads/{id}/conversations/ — full message history for a lead."""
+        """GET /leads/{id}/conversations/ — the CRM log only. Deprecated: use ``messages/`` (T-3100)."""
         lead = self.get_object()
         msgs = lead.crm_messages().select_related('sender').order_by('created_at')
         serializer = ConversationMessageSerializer(msgs, many=True)
@@ -190,7 +205,7 @@ class LeadViewSet(viewsets.ModelViewSet):
         """
         lead = self.get_object()
         msgs = list(
-            lead.crm_messages().order_by('-created_at')[:30]
+            _lead_log(lead).order_by('-created_at')[:30]
         )[::-1]  # last 30 messages, oldest first
 
         if not msgs:
@@ -224,7 +239,7 @@ class LeadViewSet(viewsets.ModelViewSet):
         Returns 3 context-aware reply suggestions for the agent.
         """
         lead = self.get_object()
-        msgs = list(lead.crm_messages().order_by('-created_at')[:10])[::-1]
+        msgs = list(_lead_log(lead).order_by('-created_at')[:10])[::-1]
 
         if not msgs:
             return Response({'suggestions': []})

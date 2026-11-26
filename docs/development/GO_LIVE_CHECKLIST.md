@@ -477,3 +477,8 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - **Migration `leads 0026`**: new tables `lead_assignment_rules` and `lead_agent_routing`. Additive; no backfill. Organizations without rules keep the old matching.
 - **Behaviour changes:** `bulk-assign` and `assign` refuse agents who do not work for the lead's organization (also for platform admins); bulk assign takes at most 200 leads and now writes activity rows and `routing_state`; every assignment sets `routing_state = agent_assigned` and raises `Agent.total_leads`.
 - **Frontend:** team routing settings at `/api/v1/leads/assignment/rules/` and `/assignment/team/`; `suggest-agents` items carry `assignment` (why this agent).
+
+## 62. Session-34 change: unified contact and messages (ADR‑064)
+- **Migration `leads 0027`**: `crm_contacts` gains `user_id` and `updated_at` (nullable), `phone` may be blank, the `(organization, phone)` unique becomes partial; old phone-only rows are linked to registered people; creates the view `unified_messages`. Additive; run before new pods serve the contacts API.
+- **Later migrations** that alter or drop columns of `conversation_messages`, `whatsapp_messages`, `whatsapp_sessions`, `leads` or `enquiries` must drop and re-create the view (ADR‑064).
+- **Frontend:** the person view at `/api/v1/leads/contacts/…`; the lead's chat at `/api/v1/leads/<id>/messages/` (paged with `next`); `/conversations/` is deprecated. Summaries and suggested replies now include WhatsApp messages that were not mirrored before.

@@ -5,6 +5,7 @@ from .task_views import LeadTaskViewSet
 from .admin_views import DuplicateLeadView, BulkAssignLeadsView, MergeLeadsView
 from . import pipeline_views as PV
 from . import assignment_views as AV
+from . import contact_views as CV
 
 router = DefaultRouter()
 router.register('', LeadViewSet, basename='leads')
@@ -31,4 +32,8 @@ urlpatterns = [
     path('assignment/rules/', AV.RulesView.as_view(), name='assignment-rules'),
     path('assignment/team/', AV.TeamView.as_view(), name='assignment-team'),
     path('assignment/team/<int:agent_id>/', AV.TeamMemberView.as_view(), name='assignment-team-member'),
+    # T-3100 unified contact and messages
+    path('contacts/', CV.ContactListView.as_view(), name='lead-contacts'),
+    path('contacts/<uuid:user_id>/', CV.ContactDetailView.as_view(), name='lead-contact'),
+    path('contacts/<uuid:user_id>/messages/', CV.ContactMessagesView.as_view(), name='lead-contact-messages'),
 ] + appt_router.urls + router.urls

@@ -21,7 +21,7 @@ from apps.compliance.models import ConsentRecord, DataDeletionRequest, DataExpor
 from apps.conversations import store
 from apps.conversations.models import Conversation
 from apps.core.crypto import EncryptedJSONField, EncryptedTextField
-from apps.leads.models import LeadTask, ConversationMessage, Lead, LeadActivity
+from apps.leads.models import LeadTask, ConversationMessage, CRMContact, Lead, LeadActivity
 from apps.notifications.models import Notification
 from apps.organizations.models import OrganizationMembership
 from apps.preferences.models import SavedSearch
@@ -163,7 +163,7 @@ RELATIONS = {
     'properties.Property.owner': ERASED, 'ai.AIInteraction.user': ERASED, 'ai.PendingAction.user': ERASED,
     'ai.AITrace.user': ERASED, 'conversations.Conversation.user': ERASED, 'notifications.Notification.user': ERASED,
     'whatsapp.WhatsAppSession.user': ERASED, 'verification.DocumentScan.user': ERASED, 'leads.Lead.user': ERASED,
-    'leads.ConversationMessage.sender': ERASED, 'enquiries.Enquiry.user': ERASED,
+    'leads.ConversationMessage.sender': ERASED, 'leads.CRMContact.user': ERASED, 'enquiries.Enquiry.user': ERASED,
     'enquiries.ThreadReport.reporter': ERASED, 'viewings.ViewingFeedback.author': ERASED,
     'preferences.Favourite.user': ERASED, 'preferences.SavedSearch.user': ERASED,
     'preferences.PreferenceItem.user': ERASED, 'moderation.UserReport.reporter': ERASED, 'reports.Report.user': ERASED,
@@ -209,6 +209,7 @@ class PersonTest(TestCase):
         due = timezone.now()
         LeadTask.objects.create(lead=self.lead, organization=self.org, title=w, notes=w, due_at=due, remind_at=due)
         ConversationMessage.objects.create(lead=self.lead, direction='inbound', body=w)
+        CRMContact.objects.create(organization=self.org, user=u, name=w, tags=[w])
         s = WhatsAppSession.objects.create(phone=phone, organization=self.org, context={'m': w})     # not linked yet
         WhatsAppMessage.objects.create(session=s, wa_message_id='m1', direction='inbound', body=w)
         store.add_exchange(phone, None, u, w, 'noted')
@@ -355,7 +356,8 @@ class ExportTest(PersonTest):
         T.generate_data_export(str(req.pk))
         data = json.loads(req.file.payload)
         for key in ('leads', 'lead_history', 'agency_messages', 'whatsapp_messages', 'assistant_messages',
-                    'confirmations', 'saved_searches', 'notifications', 'reports', 'documents', 'voice_calls', 'listings'):
+                    'confirmations', 'saved_searches', 'notifications', 'reports', 'documents', 'voice_calls', 'listings',
+                    'agency_contact_notes'):
             self.assertIn(self.WORDS, json.dumps(data[key]), key)
         for key in ('enquiries', 'thread_messages', 'preferences', 'favourites', 'viewings', 'consents', 'payments',
                     'reservations', 'memberships', 'agent_profile', 'viewing_feedback'):

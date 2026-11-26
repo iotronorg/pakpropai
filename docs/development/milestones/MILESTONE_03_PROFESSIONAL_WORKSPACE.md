@@ -23,7 +23,7 @@
 | T‑3070 ✅ | P1 | Unified audit log: one trail for the three overlapping logs, with a tamper-evident chain | GAP‑104 | — |
 | T‑3080 | P1 | Plans and entitlements as data; limits enforced from them | GAP‑100 | owner: pricing |
 | T‑3090 ✅ | P1 | AI ops console APIs: prompts, models and prices, eval runs, traces, cost, kill switch | GAP‑103 | — |
-| T‑3100 | P1 | Unified contact (person ↔ leads) and unified messages (`ConversationMessage` + `WhatsAppMessage`) | FR‑CRM‑001, GAP‑016 | T‑3030; migration plan |
+| T‑3100 (a ✅; b, c open) | P1 | Unified contact (person ↔ leads) and unified messages (`ConversationMessage` + `WhatsAppMessage`) | FR‑CRM‑001, GAP‑016 | T‑3030; migration plan |
 | T‑3110 | — | Public launch in the primary market (consumer beta → GA) | Release | owner |
 
 ## Order

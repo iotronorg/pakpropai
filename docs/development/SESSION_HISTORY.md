@@ -550,9 +550,10 @@
 - **Verified:** the owner committed T‑3030 (`89982b9`); the tree was clean; pipeline code and tests present.
 - **Completed:** T‑3040 (ADR‑063) team management and assignment rules: per-organization strategy (best match, round robin, least loaded), city/area/language/specialization matches (off, prefer, require), caps per organization and per agent, pausing an agent, availability; team roster API; auto-assign job and endpoint on the rules.
 - **Fixed on the way:** `bulk-assign` let a developer assign leads to another organization's agent and bypassed activity rows and `routing_state`; no assign path set `routing_state = agent_assigned`; `assign` refused the organization's freelance collaborators.
-- **Tests:** 2607 passed, 1 skipped, 0 failed (14 new); no migration drift after `leads 0026`; `manage.py check` clean; no schema warnings from the new views. **Not committed.**
+- **Completed (continued on request):** T‑3100a (ADR‑064, migration plan A/B/C) unified contact and messages, expand phase: SQL view over both message logs (mirrors shown once, KI‑073 mirrors left out), contacts API (person ↔ their leads, organization notes and tags), lead and contact message lists with cursor paging; summaries and suggested replies now see the whole chat. **Recorded:** KI‑124 (writers still split until T‑3100b); KI‑073 partly resolved.
+- **Tests:** 2616 passed, 1 skipped, 0 failed at session end (2607 after T‑3040); no migration drift; `manage.py check` clean; OpenAPI budget test passes. **Not committed.**
 
 ### Handoff → session 35 (supersedes the one above)
-1. `git status`: uncommitted is T‑3040 (session 34). **Do not commit.**
-2. Dev: T‑3100 unified contact and messages — write the migration plan first (start files in DEVELOPMENT_STATUS), then expand.
-3. Owner: as before (§54, §52, §53, staging E2E, T‑2072, pentest, KI‑112, KI‑114, KI‑121 document links, pricing for T‑3080, weekly-use metric); new: checklist §61.
+1. `git status`: the owner committed T‑3040 (`2a83b59`); uncommitted is T‑3100a (session 34). **Do not commit.**
+2. Dev: T‑3100b one writer table `messages` (start files in DEVELOPMENT_STATUS), then T‑3100c one release later.
+3. Owner: as before (§54, §52, §53, staging E2E, T‑2072, pentest, KI‑112, KI‑114, KI‑121 document links, pricing for T‑3080, weekly-use metric); new: checklist §61, §62; decide whether web assistant chats should be visible to organizations (ADR‑064 "not done").

@@ -214,7 +214,7 @@ def _documents(user):
 def _campaigns(user):
     from apps.campaigns.models import CampaignRecipient
     from apps.leads.models import CRMContact
-    CRMContact.objects.filter(phone__in=_phones(user)).delete()
+    CRMContact.objects.filter(Q(user=user) | Q(phone__in=_phones(user))).delete()   # T-3100: by person too
     return CampaignRecipient.objects.filter(Q(lead__user=user) | Q(phone__in=_phones(user))).delete()[0]
 
 
