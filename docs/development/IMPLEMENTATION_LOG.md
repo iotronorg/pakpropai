@@ -637,3 +637,7 @@
 ### 2026-11-26 — session 33 (continued): AI ops console APIs (T‑3090)
 - **Added:** `AIEvalRun` (`ai 0010`); `apps/ai/ops.py` (window, prompts, prompt detail, models, tools, eval runs, traces, overview); `apps/ai/ops_views.py` with ten routes under `/api/v1/ai/ops/` in `apps/ai/urls.py` (ADR‑061). Price additions and eval runs go to the audit trail.
 - **Tests:** `tests/test_ai_ops.py` (11).
+
+### 2026-11-26 — session 33 (continued): pipeline stages (T‑3030)
+- **Added:** `PipelineStage`, `Lead.stage`, `Lead.stage_changed_at`, `LeadActivity.ActionType.STAGE` (`leads 0025`); `apps/leads/pipeline.py` (stages with defaults, current stage, counts, add, update, reorder, archive, move, board); `apps/leads/pipeline_views.py` and routes under `/api/v1/leads/pipeline/`; `LeadViewSet.move_stage`; `stage` on `LeadSerializer` (ADR‑062).
+- **Tests:** `tests/test_pipeline_stages.py` (11).

@@ -24,12 +24,22 @@ class LeadSerializer(serializers.ModelSerializer):
         source='assigned_agent.name', read_only=True, allow_null=True, default=None
     )
     wa_session_id = serializers.SerializerMethodField()
+    stage = serializers.SerializerMethodField(help_text='Pipeline stage (T-3030); null without an organization')
 
     def get_phone(self, obj) -> str | None:
         return privacy.phone(obj)
 
     def get_contact_withheld(self, obj) -> bool:
         return privacy.withheld(obj)
+
+    def get_stage(self, obj) -> dict | None:
+        from . import pipeline
+        if obj.organization_id is None:
+            return None
+        firsts = self.context.setdefault('_first_stage', {}) if isinstance(self.context, dict) else {}
+        if obj.organization_id not in firsts:
+            firsts[obj.organization_id] = pipeline.first_stage(obj.organization)
+        return pipeline.stage_dict(pipeline.current(obj, firsts[obj.organization_id]))
 
     def get_wa_session_id(self, obj) -> str | None:
         if privacy.withheld(obj):
@@ -49,7 +59,7 @@ class LeadSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'phone', 'name', 'intent', 'intent_score',
             'location_interest', 'budget_min', 'budget_max', 'budget_currency',
-            'status', 'priority', 'routing_state',
+            'status', 'stage', 'stage_changed_at', 'priority', 'routing_state',
             'notes', 'source', 'intent_signals', 'score_factors',
             'organization',
             'assigned_agent_id', 'assigned_agent_name',
@@ -59,7 +69,7 @@ class LeadSerializer(serializers.ModelSerializer):
         read_only_fields = (
             'id', 'phone', 'name', 'intent', 'intent_score',
             'location_interest', 'budget_min', 'budget_max', 'budget_currency',
-            'priority', 'routing_state',
+            'priority', 'routing_state', 'stage_changed_at',
             'source', 'intent_signals', 'score_factors',
             'organization',
             'assigned_agent_id', 'assigned_agent_name',

@@ -467,3 +467,8 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - **Migration `ai 0010`**: new table `ai_eval_runs`. Additive.
 - **Roles:** give operators `platform_role` `ai_admin` (changes prices, runs evals) or `ops_admin` (reads). Nothing else to configure.
 - **Enter model prices** at `POST /api/v1/ai/ops/model-prices/` from the providers' price lists before launch; until then turns are `unpriced` (unchanged since T‑2011).
+
+## 60. Session-33 change: pipeline stages (ADR‑062)
+- **Migration `leads 0025`**: new table `lead_pipeline_stages`, nullable `leads.stage_id` and `leads.stage_changed_at`. Additive; no backfill (a lead without a stage is in the first stage).
+- **Frontend:** the lead board moves to `/api/v1/leads/pipeline/board/` and `POST /api/v1/leads/<id>/move-stage/`; `status` stays the AI's qualification badge.
+- **Reports:** leads moved to a won or lost stage now get `routing_state = closed`, so "closed leads" counts start to rise from deploy.

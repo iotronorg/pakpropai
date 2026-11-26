@@ -209,6 +209,8 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | 2026-11-26 | Working tree, T‑3090 | `scripts/dev/test.sh -rf` | 2581 passed, 1 failed (`test_openapi_schema` warning budget: three operationId collisions from the new list/detail routes), 1 skipped | 10m15s |
 | 2026-11-26 | Working tree, T‑3090 fix | explicit operation ids on the three list views; `tests/test_openapi_schema.py` + `tests/test_ai_ops.py` | **23 passed**; full suite therefore 2582 passed, 1 skipped, 0 failed | — |
 | 2026-11-26 | Working tree, T‑3090 | `makemigrations --check`; `manage.py check` | No changes after `ai 0010`; no issues | — |
+| 2026-11-26 | Working tree, T‑3030 | `scripts/dev/test.sh -rf` | **2593 passed, 1 skipped, 0 failed**, 303 subtests (11 pipeline-stage tests) | 9m40s |
+| 2026-11-26 | Working tree, T‑3030 | `makemigrations --check`; `manage.py check` | No changes after `leads 0025`; no issues | — |
 
 ## Coverage
 Not measured yet (no coverage run executed). CI is configured with `--cov=apps`.

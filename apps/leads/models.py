@@ -102,6 +102,11 @@ class Lead(SandboxFollowsOrg, models.Model):
     referral_code       = models.CharField(max_length=40, blank=True, default='',
                               help_text='Viral referral link code that originated this lead')
     status              = models.CharField(max_length=20, choices=Status.choices, default=Status.NEW)
+    # T-3030 (ADR-062): where the organization's team has the lead. ``status`` stays the
+    # AI's qualification; null = the organization's first stage (leads from before stages).
+    stage               = models.ForeignKey('PipelineStage', on_delete=models.PROTECT, null=True, blank=True,
+                                            related_name='leads')
+    stage_changed_at    = models.DateTimeField(null=True, blank=True)
     notes               = models.TextField(blank=True)
     last_contacted_at   = models.DateTimeField(null=True, blank=True)
     follow_up_sent_at   = models.DateTimeField(null=True, blank=True)
@@ -139,6 +144,37 @@ class Lead(SandboxFollowsOrg, models.Model):
         return f"Lead: {self.user.phone} — score {self.score}"
 
 
+class PipelineStage(models.Model):
+    """
+    One column of an organization's lead pipeline (T-3030, ADR-062). Each
+    organization gets the default stages on first use and may rename, add,
+    reorder and archive them. ``kind`` says whether a lead there is still open,
+    won or lost; won and lost close the lead's routing.
+    """
+    class Kind(models.TextChoices):
+        OPEN = 'open', 'Open'
+        WON  = 'won',  'Won'
+        LOST = 'lost', 'Lost'
+
+    id           = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey('organizations.Organization', on_delete=models.CASCADE,
+                                     related_name='pipeline_stages')
+    key          = models.SlugField(max_length=40)
+    name         = models.CharField(max_length=60)
+    kind         = models.CharField(max_length=4, choices=Kind.choices, default=Kind.OPEN)
+    position     = models.PositiveSmallIntegerField(default=0)
+    archived_at  = models.DateTimeField(null=True, blank=True)
+    created_at   = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'lead_pipeline_stages'
+        ordering = ['organization', 'position']
+        constraints = [models.UniqueConstraint(fields=['organization', 'key'], name='pipeline_stage_key_unique')]
+
+    def __str__(self):
+        return f'{self.name} ({self.kind})'
+
+
 class LeadActivity(models.Model):
     """Chronological timeline of all events on a lead."""
 
@@ -151,6 +187,7 @@ class LeadActivity(models.Model):
         SCORED     = 'scored',     'Score Updated'
         DEAL_LOCK  = 'deal_lock',  'Deal Lock Initiated'
         HANDOVER   = 'handover',   'Handover'
+        STAGE      = 'stage',      'Pipeline Stage Changed'
 
     lead       = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name='activities')
     actor      = models.ForeignKey(

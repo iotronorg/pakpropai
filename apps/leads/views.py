@@ -37,7 +37,7 @@ class LeadViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         from .privacy import withheld_q
-        qs = Lead.objects.select_related('user', 'assigned_agent').annotate(
+        qs = Lead.objects.select_related('user', 'assigned_agent', 'stage', 'organization').annotate(
             contact_withheld=Case(When(withheld_q(), then=True), default=False, output_field=BooleanField()))
         role = self.request.user.role
 
@@ -75,6 +75,13 @@ class LeadViewSet(viewsets.ModelViewSet):
             'avg_score':  round(avg_score, 1) if avg_score is not None else None,
             'new_today':  new_today,
         })
+
+    @extend_schema(request=None, responses=LeadSerializer)
+    @action(detail=True, methods=['post'], url_path='move-stage')
+    def move_stage(self, request, pk=None):
+        """POST /leads/{id}/move-stage/ {stage, note?} — move the lead in its organization's pipeline (T-3030)."""
+        from .pipeline_views import move_stage
+        return move_stage(self, request, pk)
 
     @action(detail=True, methods=['get'], url_path='suggest-agents')
     def suggest_agents(self, request, pk=None):
