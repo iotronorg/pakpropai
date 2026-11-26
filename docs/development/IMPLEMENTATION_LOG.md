@@ -673,3 +673,8 @@
 - **Added:** `apps/ai/comparison_narrative.py` (prompt `comparison.narrative` v1, `cells`, `table`, `unknowns`, `check`, `narrative`), `CompareNarrativeView` (`/api/v1/compare/narrative/`), `AIInteraction` type `comparison_narrative` (`ai 0012`), flag `feature_comparison_narrative`, throttle `comparison_narrative`.
 - **Changed:** `apps/properties/comparison.py` (`running_costs`, item key), `comparison_views.py` (serializer field), `apps/ai/ops.py` (prompt module), `config/urls.py`.
 - **Tests:** `tests/test_comparison_narrative.py` (6).
+
+### T‑4060 Offers register (ADR‑068)
+- **Added:** `LeadOffer`, `LeadActivity.ActionType.OFFER` (`leads 0029`), `apps/leads/offers.py`, `apps/leads/offer_views.py` (`/api/v1/leads/offers/`), task `expire_lead_offers` + beat `lead-offer-expiry`.
+- **Changed:** `apps/compliance/erasure.py` (`lead_offers_redacted`), `apps/compliance/tasks.py` (export `offers`), `apps/leads/urls.py`, `tests/test_mvp_data_protection.py` (relation coverage).
+- **Tests:** `tests/test_lead_offers.py` (6).

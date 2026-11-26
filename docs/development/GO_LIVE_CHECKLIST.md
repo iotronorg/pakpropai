@@ -502,3 +502,8 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - **Migration `ai 0012`**: choices only.
 - `compare/` and `public/listings/compare/` items gain `running_costs` (additive field; frontend can show it).
 - New `GET /api/v1/compare/narrative/` (signed in; `COMPARISON_NARRATIVE_RATE`, default 30/hour; paid model call). Flag `feature_comparison_narrative` is **on** by default; turn it off in SystemConfig to stop the spend.
+
+## 67. Session-34 change: offers register (T‑4060, ADR‑068)
+- **Migration `leads 0029`**: new table `lead_offers` (partial unique index, check constraint) and a new activity choice. Additive.
+- **New beat job** `lead-offer-expiry` (`apps.leads.tasks.expire_lead_offers`, every 15 min): make sure the beat schedule is reloaded on deploy.
+- New API `/api/v1/leads/offers/` (frontend: lead page offer list, counter and decide). Recording an offer moves the lead into the `offer` pipeline stage when it is earlier.

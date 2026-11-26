@@ -223,6 +223,8 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | 2026-11-26 | Working tree, T‑4020 | `makemigrations --check`; `manage.py check` | No changes; no issues | — |
 | 2026-11-26 | Working tree, T‑4030 | `scripts/dev/test.sh tests/ apps/ -rf --tb=long` | **2645 passed, 1 skipped, 0 failed**, 303 subtests (6 narrative tests); KI‑125 test passed | 9m60s |
 | 2026-11-26 | Working tree, T‑4030 | `makemigrations --check`; `manage.py check` | No changes after `ai 0012`; no issues | — |
+| 2026-11-26 | Working tree, T‑4060 | `scripts/dev/test.sh tests/ apps/ -rf --tb=long` | 2650 passed, 1 skipped, **1 failed**: `test_openapi_schema` warning budget (29 > 28) — the new `DecisionSerializer` clashed by name with moderation's. Renamed `OfferDecisionSerializer`; `test_openapi_schema.py` + `test_lead_offers.py` then **18 passed** (rename only, no other change) | 10m11s |
+| 2026-11-26 | Working tree, T‑4060 | `makemigrations --check`; `manage.py check` | No changes after `leads 0029`; no issues | — |
 
 ## Coverage
 Not measured yet (no coverage run executed). CI is configured with `--cov=apps`.

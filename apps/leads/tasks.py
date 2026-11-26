@@ -188,6 +188,13 @@ def send_stale_lead_reminders():
 
 
 @shared_task
+def expire_lead_offers():
+    """Every 15 min: open offers past their expiry become expired (T-4060)."""
+    from .offers import expire_due
+    return expire_due()
+
+
+@shared_task
 def send_lead_task_reminders():
     """Every 5 min: reminders of tasks and follow-ups (T-3020)."""
     from .follow_ups import send_reminders

@@ -188,6 +188,7 @@ class LeadActivity(models.Model):
         DEAL_LOCK  = 'deal_lock',  'Deal Lock Initiated'
         HANDOVER   = 'handover',   'Handover'
         STAGE      = 'stage',      'Pipeline Stage Changed'
+        OFFER      = 'offer',      'Offer'                       # T-4060
 
     lead       = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name='activities')
     actor      = models.ForeignKey(
@@ -414,6 +415,67 @@ class ClientProfile(models.Model):
 
     def __str__(self):
         return f"ClientProfile({self.wa_phone_number})"
+
+class LeadOffer(models.Model):
+    """
+    An offer on a lead (T-4060, FR-CRM-009, ADR-068): who offered what, for which listing,
+    and what happened to it. A counter-offer is a new row pointing at the one it answers
+    (``previous``), which becomes ``countered``; the chain is the negotiation.
+    Recording offers moves no money and changes no listing.
+    """
+
+    class Status(models.TextChoices):
+        OPEN      = 'open',      'Open'
+        COUNTERED = 'countered', 'Countered'
+        ACCEPTED  = 'accepted',  'Accepted'
+        REJECTED  = 'rejected',  'Rejected'
+        WITHDRAWN = 'withdrawn', 'Withdrawn'
+        EXPIRED   = 'expired',   'Expired'
+
+    class Party(models.TextChoices):
+        CLIENT       = 'client',       'Client (the lead)'
+        COUNTERPARTY = 'counterparty', 'Owner / landlord side'
+
+    class Basis(models.TextChoices):
+        TOTAL     = 'total',     'Total'
+        PER_MONTH = 'per_month', 'Per month'
+        PER_YEAR  = 'per_year',  'Per year'
+
+    id           = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    lead         = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name='offers')
+    organization = models.ForeignKey('organizations.Organization', on_delete=models.CASCADE, related_name='lead_offers')
+    property     = models.ForeignKey('properties.Property', on_delete=models.SET_NULL, null=True, blank=True,
+                                     related_name='lead_offers')
+    previous     = models.OneToOneField('self', on_delete=models.SET_NULL, null=True, blank=True,
+                                        related_name='counter')
+    party        = models.CharField(max_length=12, choices=Party.choices, default=Party.CLIENT)
+    amount       = models.BigIntegerField()
+    currency     = models.CharField(max_length=3)
+    basis        = models.CharField(max_length=10, choices=Basis.choices, default=Basis.TOTAL)
+    conditions   = models.TextField(blank=True, max_length=1000)
+    expires_at   = models.DateTimeField(null=True, blank=True)
+    status       = models.CharField(max_length=10, choices=Status.choices, default=Status.OPEN)
+    decided_at   = models.DateTimeField(null=True, blank=True)
+    decision_note = models.CharField(max_length=300, blank=True)
+    created_by   = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+                                     related_name='+')
+    created_at   = models.DateTimeField(auto_now_add=True)
+    updated_at   = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'lead_offers'
+        ordering = ['-created_at', 'pk']
+        indexes  = [models.Index(fields=['organization', 'status', '-created_at'], name='lead_offer_org_status'),
+                    models.Index(fields=['status', 'expires_at'], name='lead_offer_expiry')]
+        constraints = [
+            models.UniqueConstraint(fields=['lead', 'property'], condition=models.Q(status='accepted'),
+                                    name='lead_offer_one_accepted'),
+            models.CheckConstraint(condition=models.Q(amount__gt=0), name='lead_offer_amount_positive'),
+        ]
+
+    def __str__(self):
+        return f'{self.currency} {self.amount:,} ({self.status})'
+
 
 class LeadTask(models.Model):
     """

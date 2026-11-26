@@ -2,6 +2,7 @@ from django.urls import path
 from rest_framework.routers import DefaultRouter, SimpleRouter
 from .views import LeadViewSet, AppointmentViewSet
 from .task_views import LeadTaskViewSet
+from .offer_views import LeadOfferViewSet
 from .admin_views import DuplicateLeadView, BulkAssignLeadsView, MergeLeadsView
 from . import pipeline_views as PV
 from . import assignment_views as AV
@@ -15,6 +16,7 @@ router.register('', LeadViewSet, basename='leads')
 appt_router = SimpleRouter()
 appt_router.register('appointments', AppointmentViewSet, basename='appointments')
 appt_router.register('tasks', LeadTaskViewSet, basename='lead-tasks')   # T-3020
+appt_router.register('offers', LeadOfferViewSet, basename='lead-offers')   # T-4060
 
 urlpatterns = [
     # Fixed paths and appt_router MUST come before router.urls so they are not

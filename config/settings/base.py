@@ -515,6 +515,10 @@ CELERY_BEAT_SCHEDULE = {
         'task':     'apps.preferences.tasks.purge_stale_preferences',
         'schedule': 86400,
     },
+    'lead-offer-expiry': {
+        'task':     'apps.leads.tasks.expire_lead_offers',
+        'schedule': 900,    # every 15 minutes (T-4060)
+    },
     'lead-task-reminders': {
         'task':     'apps.leads.tasks.send_lead_task_reminders',
         'schedule': 300,    # every 5 minutes (T-3020)

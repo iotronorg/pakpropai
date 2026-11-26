@@ -4,15 +4,15 @@ _Last updated: 2026-11-26 (session 34; git commit subjects number sessions diffe
 
 | Item | Value |
 |---|---|
-| Branch | `development`. The owner committed T‑3030 (`89982b9`), T‑3040 (`2a83b59`) and T‑3100a (`08560a1`). **Uncommitted:** T‑3100b, T‑4010, T‑4020, T‑4030 |
+| Branch | `development`. The owner committed T‑3030 (`89982b9`), T‑3040 (`2a83b59`) and T‑3100a (`08560a1`). **Uncommitted:** T‑3100b, T‑4010, T‑4020, T‑4030, T‑4060 |
 | Current milestone | **M3 — Professional workspace** ([MILESTONE_03](milestones/MILESTONE_03_PROFESSIONAL_WORKSPACE.md)), started 2026‑11‑26 (session 32). M2 is code complete; open there only owner work (T‑2072, T‑2080). M1 contracts release‑gated; M0 awaiting the first Actions run |
 | M0 progress | All 17 tasks complete. Remaining exit criterion: CI green on GitHub Actions (owner pushes) |
 | M1 progress | 16 of 18 tasks done (T‑1010, T‑1011, T‑1020, T‑1021, T‑1022, T‑1030, T‑1031, T‑1033, T‑1040, T‑1050, T‑1060, T‑1080, T‑1090, T‑1100, T‑1110, T‑1120) plus subtasks T‑1032a, T‑1032c, T‑1070a–f and T‑1070g‑1 |
 | M2 progress | 16 of 17 tasks done. Open: T‑2072 (owner data and paid runs) |
 | M3 progress | 8 of 11 tasks done (T‑3010, T‑3020, T‑3060, T‑3050, T‑3070, T‑3090, T‑3030, T‑3040) + T‑3100a and T‑3100b; T‑3100c waits for the production backfill; T‑3080, T‑3110 owner-blocked |
-| Test suite | **2645 passed, 1 skipped, 0 failed** (after T‑4030); no migration drift. The one flaky failure after T‑4020 (KI‑125) did not recur. See [TESTING_STATUS](TESTING_STATUS.md) |
-| Last completed task | T‑4030 (ADR‑067): comparison items carry labelled running-cost estimates (purchase fees, yearly tax, service charge); `GET /compare/narrative/` writes a short comparison in which every sentence cites table cells and is checked (numbers, judgement/advice wording); unknowns listed by code. Before it T‑4020 price context, T‑4010 investment calculator |
-| Next task | **Dev:** T‑4060 offers register on leads, then T‑4050 duplicate clustering / fraud signals v2. **Owner:** as before (§54, §52, §53, staging E2E, T‑2072, pentest, KI‑112, KI‑114, §61–§63, pricing for T‑3080), plus §64–§66 (legal review of investment and price-context disclaimers; §66 narrative flag is on by default). T‑3100c after the production backfill |
+| Test suite | After T‑4060: 2650 passed, 1 skipped, 1 failed (schema warning budget from a serializer name clash), fixed by a rename and re-verified (schema + offer tests 18 passed); expected 2651/0 on the next full run. No migration drift. See [TESTING_STATUS](TESTING_STATUS.md) |
+| Last completed task | T‑4060 (ADR‑068): offers register — immutable offers with counter chains, accept/reject/withdraw, expiry (on read + beat), one accepted offer per lead and listing, forward move into the `offer` stage, activity + audit, erasure and export; `/api/v1/leads/offers/`. Before it T‑4030 comparison narrative, T‑4020 price context, T‑4010 investment calculator |
+| Next task | **Dev:** T‑4050 persistent duplicate clustering and fraud signals v2, then T‑4040 RAG knowledge (needs an embedding-model choice). **Owner:** as before (§54, §52, §53, staging E2E, T‑2072, pentest, KI‑112, KI‑114, §61–§63, pricing for T‑3080), plus §64–§67 (legal review of investment and price-context disclaimers; narrative flag; reload beat for `lead-offer-expiry`). T‑3100c after the production backfill |
 
 ## Owner decisions (2026-11-25, deploys)
 - **Deploys:** Docker over SSH for staging and production. **Approval:** required reviewers on the GitHub `production` environment.
@@ -40,7 +40,7 @@ _Last updated: 2026-11-26 (session 34; git commit subjects number sessions diffe
 - Meta: re‑submit the OTP template body with the RealTron name.
 
 ## Operator actions before deploying these changes
-- **Session 34** (checklist §61–§66): migrations `leads 0026`, `0027`, `0028` `ai 0011` and `ai 0012` (then `manage.py backfill_contact_messages` until `--check` prints `pending=0`) (additive; `0027` creates the view `unified_messages` and links old contact rows); bulk/manual assign now refuse agents outside the lead's organization; later migrations touching the viewed columns must re-create the view.
+- **Session 34** (checklist §61–§67): migrations `leads 0026`, `0027`, `0028` `ai 0011`, `ai 0012` and `leads 0029` (then `manage.py backfill_contact_messages` until `--check` prints `pending=0`) (additive; `0027` creates the view `unified_messages` and links old contact rows); bulk/manual assign now refuse agents outside the lead's organization; later migrations touching the viewed columns must re-create the view.
 - **Session 33** (checklist §56, §57): migrations `properties 0050` (additive) and `ai 0009` (choices only); staged contract migrations are now `0051`/`0052`; new prompts `listing.describe`/`listing.extract` (paid calls, `LISTING_ASSISTANT_RATE`); migration `core 0004` (audit trail, §58), fixed `AUDIT_CHAIN_KEY`, beat `verify-audit-chain`; migration `ai 0010` and model prices entered (§59); migration `leads 0025` (§60).
 - **Session 32** (checklist §55): migration `leads 0024` (additive); restart celery beat for `lead-task-reminders`.
 - **Session 31:** no migration. **Image rebuild:** `sentence-transformers` and `numpy` removed (torch no longer installed). Prompt `agent.system` is v10 (new viewing tools). Visit reminders now say "reply here" while `feature_talk_to_agent` is on. Run the staging E2E with the new move/cancel steps.

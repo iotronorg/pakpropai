@@ -168,7 +168,7 @@ RELATIONS = {
     'preferences.Favourite.user': ERASED, 'preferences.SavedSearch.user': ERASED,
     'preferences.PreferenceItem.user': ERASED, 'moderation.UserReport.reporter': ERASED, 'reports.Report.user': ERASED,
     'audit.PropertyAudit.user': ERASED, 'agents.Agent.user': ERASED,
-    'leads.LeadActivity.lead': ERASED, 'leads.LeadTask.lead': ERASED, 'leads.Appointment.lead': ERASED, 'leads.ConversationMessage.lead': ERASED,
+    'leads.LeadActivity.lead': ERASED, 'leads.LeadTask.lead': ERASED, 'leads.LeadOffer.lead': ERASED, 'leads.Appointment.lead': ERASED, 'leads.ConversationMessage.lead': ERASED,
     'enquiries.Enquiry.lead': ERASED, 'campaigns.CampaignRecipient.lead': ERASED, 'voice.VoiceCallSession.lead': ERASED,
     'core.AuditLog.actor': KEPT, 'sysconfig.SystemConfig.updated_by': KEPT, 'organizations.Organization.admin_user': KEPT,
     'organizations.OrganizationConfig.updated_by': KEPT, 'organizations.OrganizationInvite.invitee': KEPT,
