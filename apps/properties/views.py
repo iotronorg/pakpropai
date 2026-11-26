@@ -439,7 +439,7 @@ class PropertyViewSet(viewsets.ModelViewSet):
                                 status=status.HTTP_400_BAD_REQUEST)
             created = [PropertyImage.objects.create(
                 property=prop, image=c.content, thumbnail=c.thumbnail, order=len(existing) + i,
-                alt_text=alt, width=c.width, height=c.height, size_bytes=c.size, sha256=c.sha256,
+                alt_text=alt, width=c.width, height=c.height, size_bytes=c.size, sha256=c.sha256, dhash=c.dhash,
                 uploaded_by=request.user) for i, c in enumerate(cleaned)]
         serializer = PropertyImageSerializer(created, many=True, context={'request': request})
         return Response(serializer.data, status=status.HTTP_201_CREATED)

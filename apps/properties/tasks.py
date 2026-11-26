@@ -225,3 +225,20 @@ def expire_listings():
     """T-1080: expire overdue listings and remind owners of upcoming expiry."""
     from apps.properties.lifecycle import expire_due, remind_expiring
     return {'expired': expire_due(), 'reminded': remind_expiring()}
+
+
+@shared_task(name='apps.properties.tasks.refresh_duplicate_cluster')
+def refresh_duplicate_cluster(property_id):
+    """After a listing or its photos change: its duplicate cluster (T-4050)."""
+    from .duplicates import refresh
+    from .models import Property
+    p = Property.objects.filter(pk=property_id).first()
+    cluster = refresh(p) if p is not None else None
+    return str(cluster.pk) if cluster is not None else None
+
+
+@shared_task(name='apps.properties.tasks.rebuild_duplicate_clusters')
+def rebuild_duplicate_clusters():
+    """Nightly: every listing re-checked; stale clusters removed (T-4050)."""
+    from .duplicates import rebuild
+    return rebuild()

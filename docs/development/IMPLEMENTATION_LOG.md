@@ -678,3 +678,8 @@
 - **Added:** `LeadOffer`, `LeadActivity.ActionType.OFFER` (`leads 0029`), `apps/leads/offers.py`, `apps/leads/offer_views.py` (`/api/v1/leads/offers/`), task `expire_lead_offers` + beat `lead-offer-expiry`.
 - **Changed:** `apps/compliance/erasure.py` (`lead_offers_redacted`), `apps/compliance/tasks.py` (export `offers`), `apps/leads/urls.py`, `tests/test_mvp_data_protection.py` (relation coverage).
 - **Tests:** `tests/test_lead_offers.py` (6).
+
+### T‑4050 Duplicate clusters and fraud signals v2 (ADR‑069)
+- **Added:** `apps/properties/duplicates.py`, `apps/properties/signals.py` (+ `PropertiesConfig.ready`), `DuplicateCluster`, `Property.duplicate_key/duplicate_cluster/duplicate_distinct`, `PropertyImage.dhash` (`properties 0051`), `apps/core/images.dhash/hamming`, tasks `refresh_duplicate_cluster`, `rebuild_duplicate_clusters` + beat, command `rebuild_duplicate_clusters`, `apps/moderation/duplicate_views.py`.
+- **Changed:** `apps/core/images.sanitize_image` (dHash), photo upload stores it, `apps/moderation/checks.run` (signals v2), `apps/moderation/urls.py`.
+- **Tests:** `tests/test_duplicates.py` (7); `PLAIN` allow-list entry for `Property.duplicate_key`; staged contract migrations renumbered to 0052/0053 (`tests/test_listing_contract.py`).

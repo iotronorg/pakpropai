@@ -14,7 +14,7 @@ class Migration(migrations.Migration):
     atomic = False
 
     dependencies = [
-        ('properties', '0051_drop_listing_v1_columns'),
+        ('properties', '0052_drop_listing_v1_columns'),
     ]
 
     operations = [

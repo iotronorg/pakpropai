@@ -57,4 +57,6 @@ def run(p: Property) -> list[str]:
         out.append('price_outlier')
     if _duplicate(p):
         out.append('possible_duplicate')
+    from apps.properties.duplicates import signals
+    out.extend(signals(p))                  # T-4050: image_reused, reposted_after_takedown
     return out

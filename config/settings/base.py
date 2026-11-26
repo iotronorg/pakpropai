@@ -515,6 +515,10 @@ CELERY_BEAT_SCHEDULE = {
         'task':     'apps.preferences.tasks.purge_stale_preferences',
         'schedule': 86400,
     },
+    'duplicate-clusters-rebuild': {
+        'task':     'apps.properties.tasks.rebuild_duplicate_clusters',
+        'schedule': crontab(hour=3, minute=40),    # nightly (T-4050)
+    },
     'lead-offer-expiry': {
         'task':     'apps.leads.tasks.expire_lead_offers',
         'schedule': 900,    # every 15 minutes (T-4060)

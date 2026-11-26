@@ -225,6 +225,9 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | 2026-11-26 | Working tree, T‑4030 | `makemigrations --check`; `manage.py check` | No changes after `ai 0012`; no issues | — |
 | 2026-11-26 | Working tree, T‑4060 | `scripts/dev/test.sh tests/ apps/ -rf --tb=long` | 2650 passed, 1 skipped, **1 failed**: `test_openapi_schema` warning budget (29 > 28) — the new `DecisionSerializer` clashed by name with moderation's. Renamed `OfferDecisionSerializer`; `test_openapi_schema.py` + `test_lead_offers.py` then **18 passed** (rename only, no other change) | 10m11s |
 | 2026-11-26 | Working tree, T‑4060 | `makemigrations --check`; `manage.py check` | No changes after `leads 0029`; no issues | — |
+| 2026-11-26 | Working tree, T‑4050 (also confirms T‑4060) | `scripts/dev/test.sh tests/ apps/ -rf --tb=long` (run alone) | 2656 passed, 1 skipped, **2 failed**, both guard tests hit by T‑4050: staged contract migrations had to be renumbered on top of `0051_duplicate_clusters`, and `Property.duplicate_key` needed a `PLAIN` allow-list entry. Fixed; `test_listing_contract.py` + `test_mvp_data_protection.py` + `test_duplicates.py` **42 passed**. The T‑4060 schema-budget fix held | 10m18s |
+| 2026-11-26 | Note | A targeted run started while a full run was in progress shares the test database and corrupts both (deadlocks, mass failures); the aborted confirmation run was discarded. Run one suite at a time | — |
+| 2026-11-26 | Working tree, T‑4050 | `makemigrations --check`; `manage.py check` | No changes after `properties 0051`; no issues | — |
 
 ## Coverage
 Not measured yet (no coverage run executed). CI is configured with `--cov=apps`.

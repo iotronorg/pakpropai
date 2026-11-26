@@ -507,3 +507,9 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - **Migration `leads 0029`**: new table `lead_offers` (partial unique index, check constraint) and a new activity choice. Additive.
 - **New beat job** `lead-offer-expiry` (`apps.leads.tasks.expire_lead_offers`, every 15 min): make sure the beat schedule is reloaded on deploy.
 - New API `/api/v1/leads/offers/` (frontend: lead page offer list, counter and decide). Recording an offer moves the lead into the `offer` pipeline stage when it is earlier.
+
+## 68. Session-34 change: duplicate clusters and fraud signals v2 (T‑4050, ADR‑069)
+- **Migration `properties 0051`**: adds `duplicate_key` (indexed), `duplicate_cluster_id`, `duplicate_distinct` to `properties`, `dhash` (indexed) to `property_images`, and table `listing_duplicate_clusters`. Additive; the index on `properties` is built in the migration (size of the table decides the lock time).
+- **After deploy:** `python manage.py rebuild_duplicate_clusters` once (hashes old photos from storage, then clusters; `--limit` for batches, `--skip-images` to only cluster). Nightly beat `duplicate-clusters-rebuild` (03:40 UTC) keeps them current.
+- **Moderation:** two new flags may send listings to review (`image_reused`, `reposted_after_takedown`); brief moderators. New queue view `/api/v1/moderation/duplicates/`.
+- **Renumbered staged contract migrations** (T‑1070g‑2, not yet released): `contract_migrations/0051_drop_listing_v1_columns` → `0052_…` (now on top of `0051_duplicate_clusters`) and `0052_drop_prop_fts_gin` → `0053_…`. Earlier sections that name 0051/0052 for the listing contract mean these files.

@@ -58,6 +58,7 @@ PLAIN = {
     'sessions.Session.session_key': 'Django session id (admin only, expires)',
     'django_celery_beat.PeriodicTask.routing_key': 'queue name',
     'audit.AuditBenchmark.location_key': 'place name',
+    'properties.Property.duplicate_key': 'hash of place and listing kind (T-4050), no personal data',
 }
 
 

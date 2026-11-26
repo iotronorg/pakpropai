@@ -324,6 +324,13 @@ class Property(models.Model):
     expires_at         = models.DateTimeField(null=True, blank=True)
     expiry_reminded_at = models.DateTimeField(null=True, blank=True)
     is_sandbox    = models.BooleanField(default=True, db_index=True)
+    # T-4050 duplicate detection (FR-LST-010, ADR-069): the place/kind part of the fingerprint
+    # (size and price are compared within a tolerance), the cluster it belongs to, and a
+    # moderator's "not a duplicate" that keeps it out of automatic clustering.
+    duplicate_key     = models.CharField(max_length=40, blank=True, default='', db_default='', db_index=True)
+    duplicate_cluster = models.ForeignKey('DuplicateCluster', on_delete=models.SET_NULL, null=True, blank=True,
+                                          related_name='listings')
+    duplicate_distinct = models.BooleanField(default=False, db_default=False)
     created_at    = models.DateTimeField(auto_now_add=True)
     updated_at    = models.DateTimeField(auto_now=True)
 
@@ -696,6 +703,28 @@ class Property(models.Model):
         return f"[{self.ref_no}] {self.title} — {self.city}"
 
 
+class DuplicateCluster(models.Model):
+    """Listings that look like the same property (T-4050, FR-LST-010, ADR-069)."""
+
+    class Status(models.TextChoices):
+        AUTO      = 'auto',      'Found automatically'
+        CONFIRMED = 'confirmed', 'Confirmed by a moderator'
+
+    id         = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    status     = models.CharField(max_length=10, choices=Status.choices, default=Status.AUTO)
+    canonical  = models.ForeignKey('Property', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    evidence   = models.JSONField(default=dict, blank=True)     # {'fingerprint': n, 'image': n}
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+                                    related_name='+')
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'listing_duplicate_clusters'
+        ordering = ['-updated_at']
+
+
 class PriceHistory(models.Model):
     """Append-only log of a listing's price terms (FR-LST-002, T-1070c)."""
 
@@ -847,6 +876,8 @@ class PropertyImage(models.Model):
     size_bytes  = models.PositiveIntegerField(null=True, blank=True)
     # sha256 of the stored bytes ('' = uploaded before T-1110, not yet sanitised).
     sha256      = models.CharField(max_length=64, blank=True, default='', db_default='')
+    # T-4050: perceptual (difference) hash, 16 hex; '' until computed.
+    dhash       = models.CharField(max_length=16, blank=True, default='', db_default='', db_index=True)
     order       = models.PositiveSmallIntegerField(default=0)
     uploaded_by = models.ForeignKey(
                       settings.AUTH_USER_MODEL,

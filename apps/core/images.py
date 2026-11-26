@@ -46,6 +46,7 @@ class CleanImage:
     size: int
     sha256: str
     thumbnail: ContentFile | None = None
+    dhash: str = ''                 # 64-bit difference hash, 16 hex (T-4050 duplicate detection)
 
     @property
     def content_type(self) -> str:
@@ -96,6 +97,22 @@ def _encode(img, fmt: str, icc: bytes | None) -> bytes:
     return out.getvalue()
 
 
+def dhash(img) -> str:
+    """64-bit difference hash of a PIL image: survives resizing and recompression (T-4050)."""
+    from PIL import Image
+    g = img.convert('L').resize((9, 8), Image.Resampling.LANCZOS)
+    px = g.tobytes()                                   # 72 grey levels, row by row
+    bits = 0
+    for row in range(8):
+        for col in range(8):
+            bits = (bits << 1) | (px[row * 9 + col] > px[row * 9 + col + 1])
+    return f'{bits:016x}'
+
+
+def hamming(a: str, b: str) -> int:
+    return bin(int(a, 16) ^ int(b, 16)).count('1')
+
+
 def sanitize_image(upload, *, max_bytes: int | None = None, max_side: int | None = None,
                    thumbnail_side: int | None = None) -> CleanImage:
     from PIL import Image, ImageOps, UnidentifiedImageError
@@ -143,7 +160,7 @@ def sanitize_image(upload, *, max_bytes: int | None = None, max_side: int | None
         thumb = ContentFile(_encode(t, fmt, icc), name=f'{stem}_t.{_EXT[fmt]}')
     return CleanImage(content=ContentFile(body, name=f'{stem}.{_EXT[fmt]}'), format=fmt,
                       width=clean.width, height=clean.height, size=len(body),
-                      sha256=hashlib.sha256(body).hexdigest(), thumbnail=thumb)
+                      sha256=hashlib.sha256(body).hexdigest(), thumbnail=thumb, dhash=dhash(clean))
 
 
 def safe_upload_name(prefix: str, filename: str) -> str:
