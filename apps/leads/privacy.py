@@ -43,3 +43,20 @@ def withheld_phones(leads) -> set[str]:
     if hidden:
         hidden -= set(leads.filter(user__phone__in=hidden).exclude(withheld_q()).values_list('user__phone', flat=True))
     return hidden | {p.lstrip('+') for p in hidden}
+
+
+def hidden_session_phones(phones, organization_id) -> set[str]:
+    """
+    Of these WhatsApp session phones, those an organization's live-chat stream must
+    not show: the person withdrew the consent on every lead they have there (KI-083).
+    """
+    from .models import Lead
+    phones = {p for p in phones if p}
+    if not phones or not organization_id:
+        return set()
+    spellings = phones | {p.lstrip('+') for p in phones} | {'+' + p.lstrip('+') for p in phones}
+    return withheld_phones(Lead.objects.filter(organization_id=organization_id, user__phone__in=spellings)) & phones
+
+
+def session_phone(phone: str | None, organization_id) -> str | None:
+    return None if phone in hidden_session_phones([phone], organization_id) else phone

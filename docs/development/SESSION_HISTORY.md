@@ -509,12 +509,12 @@
 3. Dev: open KIs, or plan Milestone 3.
 
 ## Session 31 — 2026-11-26
-- **Verified:** the owner committed sessions 28–30 (`014affb`); the tree was clean. No MVP criterion is waiting on development alone, so the next ready backend KI was taken.
-- **Completed:** KI‑076 (ADR‑054): tools `my_viewings`, `cancel_viewing`, `reschedule_viewing`; changes only after YES with the viewing and time fixed in the summary; scoped to the conversation's organization; reminders say "reply here" while the tools are on; E2E journey covers move and cancel. KI‑088 mitigated (constraint named in the log).
-- **Found:** KI‑092's web path does not run: `run_verification_task` has no caller.
-- **Tests:** 2514 passed, 1 skipped, 0 failed; `test_deal_lock.py` 27 passed; E2E 94 checks; no migration drift. **Not committed.**
+- **Verified:** the owner committed sessions 28–30 (`014affb`); the tree was clean. No MVP criterion is waiting on development alone, so ready backend KIs were taken.
+- **Completed:** KI‑076 (ADR‑054): `my_viewings`, `cancel_viewing`, `reschedule_viewing`, changes only after YES, scoped to the conversation's organization; E2E covers move and cancel. KI‑083 (ADR‑055): live-chat streams hide withdrawn numbers. KI‑087: embedding cache, `sentence-transformers` and `numpy` removed. KI‑088 mitigated. KI‑121 tax sheet fixed.
+- **Found:** KI‑092's web path does not run (`run_verification_task` has no caller); KI‑121 (copilot tax sheet and document links queried fields that do not exist).
+- **Tests:** 2507 passed, 1 skipped, 0 failed on the rebuilt image; E2E 94 checks; `pip check`, `pip-audit` clean. **Not committed.**
 
 ### Handoff → session 32 (supersedes the one above)
-1. `git status`: uncommitted work is session 31. **Do not commit.**
-2. Dev: KI‑083 (streams addressed by session id; `apps/whatsapp/consumers.py`), then KI‑087, then M3 planning.
-3. Owner: servers and environments (§54), monitoring (§52), runbook roles (§53), staging E2E, T‑2072, pentest, KI‑112, KI‑114 rule.
+1. `git status`: the owner committed KI‑076/KI‑088 as `b955b80`; uncommitted is the rest of session 31 (KI‑083, KI‑121, KI‑087), including the deleted `tests/test_semantic_cache.py` (unstaged). **Do not commit.** Rebuild the test image (`REBUILD=1`) if it predates this session.
+2. Dev: M3 planning (create `milestones/MILESTONE_03_PROFESSIONAL_WORKSPACE.md` from PRODUCT_ROADMAP Phase 3), then its first task that needs no owner input.
+3. Owner: servers and environments (§54), monitoring (§52), runbook roles (§53), staging E2E, T‑2072, pentest, KI‑112, KI‑114 rule, KI‑121 document links.

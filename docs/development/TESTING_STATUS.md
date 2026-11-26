@@ -190,6 +190,7 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | Date | Code state | Command | Result | Duration |
 |---|---|---|---|---|
 | 2026-11-26 | Working tree, session 30, upgraded dependencies | `REBUILD=1 scripts/dev/test.sh` | First run: 1 failed (DRF 3.18 made `market` required on the kill-switch serializer) → fixed → **2506 passed, 1 skipped, 0 failed** | 19m06s |
+| 2026-11-26 | Working tree, session 31, continued (KI‑083, KI‑121, KI‑087; image rebuilt without `sentence-transformers`/`numpy`) | `REBUILD=1 scripts/dev/test.sh -q`; `scripts/dev/e2e.sh`; `pip check`; `pip-audit -r requirements/prod.txt` | **2507 passed, 1 skipped, 0 failed** (3 new tests; the 10 cache tests deleted). Journey 94 checks. No broken requirements; no known vulnerabilities; torch absent from the image (1.01 GB) | 13m58s |
 | 2026-11-26 | Working tree, session 31 (KI‑076, KI‑088) | `scripts/dev/test.sh -q`; `tests/test_deal_lock.py`; `scripts/dev/e2e.sh`; `makemigrations --check` | **2514 passed, 1 skipped, 0 failed** (full run; the KI‑088 test was added during it and then passed alone: `test_deal_lock.py` 27 passed). Journey **94 checks** passed, now including move and cancel by chat on the web assistant and WhatsApp. No migration drift | 10m25s |
 | 2026-11-26 | Working tree | `tests/test_deploy_pipeline.py tests/test_runbooks.py` (after the last script and entrypoint changes) | 17 + 14 passed | — |
 | 2026-11-26 | Working tree | `pip-audit -r requirements/prod.txt` | No known vulnerabilities (was 146 in 14 packages) | — |

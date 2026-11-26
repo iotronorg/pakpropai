@@ -56,8 +56,6 @@ daphne>=4.1.0
 opentelemetry-sdk>=1.24
 opentelemetry-api>=1.24
 opentelemetry-exporter-otlp>=1.24
-sentence-transformers>=3.0
-numpy>=1.26
 twilio>=9.0
 cryptography>=42,<51   # field-level encryption (already a transitive dependency)
 # Transitive (AI SDKs): floors for known vulnerabilities (pip-audit, session 30)

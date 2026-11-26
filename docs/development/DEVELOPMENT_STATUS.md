@@ -4,14 +4,14 @@ _Last updated: 2026-11-26 (session 31; git commit subjects number sessions diffe
 
 | Item | Value |
 |---|---|
-| Branch | `development`. The owner committed through session 30 (`014affb`). **Uncommitted:** session 31 (KI‑076 viewing changes in the chat, KI‑088) |
+| Branch | `development`. The owner committed the first part of session 31 (KI‑076, KI‑088) as `b955b80`. **Uncommitted:** the rest of session 31 (KI‑083, KI‑121 in part, KI‑087; `tests/test_semantic_cache.py` deleted, unstaged) |
 | Current milestone | **M2 — AI agent MVP** ([MILESTONE_02](milestones/MILESTONE_02_AI_AGENT_MVP.md)), started 2026‑11‑23. M1 code complete (contracts T‑1070g‑2 / T‑1032b‑2 release‑gated); M0 awaiting the first GitHub Actions run |
 | M0 progress | All 17 tasks complete. Remaining exit criterion: CI green on GitHub Actions (owner pushes) |
 | M1 progress | 16 of 18 tasks done (T‑1010, T‑1011, T‑1020, T‑1021, T‑1022, T‑1030, T‑1031, T‑1033, T‑1040, T‑1050, T‑1060, T‑1080, T‑1090, T‑1100, T‑1110, T‑1120) plus subtasks T‑1032a, T‑1032c, T‑1070a–f and T‑1070g‑1 |
 | M2 progress | 16 of 17 tasks done. Open: T‑2072 (owner data and paid runs) |
-| Test suite | **2514 passed, 1 skipped, 0 failed** (session 31), then `test_deal_lock.py` 27 passed with the new test; E2E journey 94 checks; no migration drift. See [TESTING_STATUS](TESTING_STATUS.md) |
-| Last completed task | KI‑076 (ADR‑054): visitors list, move and cancel their viewings in the chat (`my_viewings`, `cancel_viewing`, `reschedule_viewing`, each change after YES); prompt `agent.system` v10. KI‑088 mitigated; KI‑092 re-checked (its path has no caller) |
-| Next task | **Owner actions unblock the rest of the MVP** (unchanged): servers and GitHub environments (checklist §54), first Actions run on `main`; monitoring (§52); runbook roles (§53); staging E2E (criterion 1, now also move and cancel); T‑2072; pentest (criterion 12); KI‑112, KI‑114 rule. **Next dev task:** KI‑083 (address WhatsApp live-chat and copilot streams by session id, not phone; start in `apps/whatsapp/consumers.py` and the session list/stream views; the frontend must follow the new key), then KI‑087 (remove the unused `SemanticResponseCache`, `apps/ai/`), then M3 planning (create `milestones/MILESTONE_03_PROFESSIONAL_WORKSPACE.md` from PRODUCT_ROADMAP Phase 3). Open: KI‑055…KI‑059, KI‑068, KI‑069, KI‑071, KI‑073, KI‑075, KI‑077…KI‑089, KI‑091…KI‑093, KI‑095, KI‑096, KI‑098, KI‑101, KI‑104, KI‑105 (rest), KI‑110, KI‑112, KI‑114 |
+| Test suite | **2507 passed, 1 skipped, 0 failed** (session 31, rebuilt image); E2E journey 94 checks; `pip check` and `pip-audit` clean. See [TESTING_STATUS](TESTING_STATUS.md) |
+| Last completed task | Session 31: KI‑076 (ADR‑054, viewings changed in the chat); KI‑083 (ADR‑055, live-chat streams hide withdrawn numbers); KI‑121 tax sheet; KI‑087 (embedding cache and torch removed); KI‑088 |
+| Next task | **Owner actions unblock the rest of the MVP** (unchanged): servers and GitHub environments (checklist §54), first Actions run on `main`; monitoring (§52); runbook roles (§53); staging E2E (criterion 1, now also move and cancel); T‑2072; pentest (criterion 12); KI‑112, KI‑114 rule. **Next dev task:** M3 planning: create `milestones/MILESTONE_03_PROFESSIONAL_WORKSPACE.md` from PRODUCT_ROADMAP Phase 3, split into tasks, and start the first one that needs no owner input (likely the unified audit log, GAP‑104, or plans/entitlements as data, GAP‑100). Smaller backend KIs if preferred: KI‑101, KI‑079, KI‑057. Open: KI‑055…KI‑059, KI‑068, KI‑069, KI‑071, KI‑073, KI‑075, KI‑077…KI‑082, KI‑084…KI‑086, KI‑089, KI‑091…KI‑093, KI‑095, KI‑096, KI‑098, KI‑101, KI‑104, KI‑105 (rest), KI‑110, KI‑112, KI‑114, KI‑121 (document links) |
 
 ## Owner decisions (2026-11-25, deploys)
 - **Deploys:** Docker over SSH for staging and production. **Approval:** required reviewers on the GitHub `production` environment.
@@ -39,7 +39,7 @@ _Last updated: 2026-11-26 (session 31; git commit subjects number sessions diffe
 - Meta: re‑submit the OTP template body with the RealTron name.
 
 ## Operator actions before deploying these changes
-- **Session 31:** no migration. Prompt `agent.system` is v10 (new viewing tools). Visit reminders now say "reply here" while `feature_talk_to_agent` is on. Run the staging E2E with the new move/cancel steps.
+- **Session 31:** no migration. **Image rebuild:** `sentence-transformers` and `numpy` removed (torch no longer installed). Prompt `agent.system` is v10 (new viewing tools). Visit reminders now say "reply here" while `feature_talk_to_agent` is on. Run the staging E2E with the new move/cancel steps.
 - **Session 30** (checklist §54): no migration. Set up servers and GitHub environments; add `localhost` to `ALLOWED_HOSTS`; check uploads and PDFs on staging after the dependency upgrades.
 - **Session 29** (checklist §53): no migration. Reload the Prometheus rules; set a fixed `FIELD_HASH_KEY`; name the on-call, privacy owner and AI-stop roles in the runbooks.
 - **Session 28** (checklist §52): no migration. Deploy `docker/docker-compose.monitoring.yml` with `.env.monitoring` and `ops/secrets/`; set `PROMETHEUS_METRICS_TOKEN` on the app; Cloudinary credentials on the erasure worker.

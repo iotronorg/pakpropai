@@ -96,12 +96,14 @@ class AgentRoomConsumer(AsyncWebsocketConsumer):
 
     @sync_to_async
     def _get_active_sessions(self):
+        from apps.leads.privacy import hidden_session_phones
         from apps.whatsapp.models import WhatsAppSession
-        qs = WhatsAppSession.objects.filter(
+        qs = list(WhatsAppSession.objects.filter(
             organization_id=self.org_id,
             conversation_mode="AGENT_MANAGED",
-        ).values("id", "phone")
-        return [{"session_id": str(s["id"]), "phone": s["phone"]} for s in qs]
+        ).values("id", "phone"))
+        hidden = hidden_session_phones([s["phone"] for s in qs], self.org_id)    # KI-083
+        return [{"session_id": str(s["id"]), "phone": None if s["phone"] in hidden else s["phone"]} for s in qs]
 
     async def _handle_send(self, data):
         session_id = data.get("session_id", "")

@@ -1,22 +1,18 @@
 """
-Token governance layer — semantic caching, sliding-window budgeting, billing alerts.
+Token governance layer — sliding-window budgeting, billing alerts.
+(The embedding-similarity response cache was removed in session 31, KI-087; see apps/ai/faq.py.)
 
 All Redis operations are fail-open: any exception logs WARNING and returns a safe
 default so the WhatsApp response path is never blocked.
 """
 from __future__ import annotations
 
-import base64
-import hashlib
 import logging
-import struct
 import time
 from dataclasses import dataclass
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-_CACHE_TTL = 86400        # 24 h
 _BUDGET_WINDOW = 86400    # 24 h
 _THROTTLE_TTL = 300       # 5 min
 
@@ -39,109 +35,6 @@ def _r():
         import redis as _rlib
         from django.conf import settings
         return _rlib.from_url(getattr(settings, 'CELERY_BROKER_URL', 'redis://localhost:6379/0'))
-
-
-# ── Embedding model (singleton) ───────────────────────────────────────────────
-
-_model = None
-
-
-def _get_model():
-    global _model
-    if _model is None:
-        from sentence_transformers import SentenceTransformer
-        _model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
-    return _model
-
-
-def _embed(text: str):
-    """Return float32 ndarray of shape (384,)."""
-    import numpy as np
-    return _get_model().encode(text, normalize_embeddings=True).astype(np.float32)
-
-
-def _cosine_sim(a, b) -> float:
-    """Cosine similarity of two normalised vectors (dot product suffices)."""
-    import numpy as np
-    return float(np.dot(a, b))
-
-
-def _vec_to_b64(vec) -> str:
-    return base64.b64encode(vec.tobytes()).decode()
-
-
-def _b64_to_vec(s: str):
-    import numpy as np
-    raw = base64.b64decode(s)
-    return np.frombuffer(raw, dtype=np.float32)
-
-
-# ── SemanticResponseCache ─────────────────────────────────────────────────────
-
-class SemanticResponseCache:
-    """
-    Org-isolated semantic cache backed by Redis HSET.
-    Keys: sem_cache:{org_id}:{sha256(text)[:12]}
-    Fields: embedding_b64, response, created_at
-    """
-
-    @staticmethod
-    def lookup(text: str, org_id: str, threshold: float = 0.96) -> Optional[str]:
-        if not text or not org_id:
-            return None
-        try:
-            r = _r()
-            query_vec = _embed(text)
-            pattern = f'sem_cache:{org_id}:*'
-            best_sim = 0.0
-            best_response = None
-
-            cursor = 0
-            while True:
-                cursor, keys = r.scan(cursor, match=pattern, count=100)
-                for key in keys:
-                    entry = r.hgetall(key)
-                    if not entry:
-                        continue
-                    emb_b64 = entry.get(b'embedding_b64', entry.get('embedding_b64', b''))
-                    if isinstance(emb_b64, bytes):
-                        emb_b64 = emb_b64.decode()
-                    if not emb_b64:
-                        continue
-                    stored_vec = _b64_to_vec(emb_b64)
-                    sim = _cosine_sim(query_vec, stored_vec)
-                    if sim > best_sim:
-                        best_sim = sim
-                        resp = entry.get(b'response', entry.get('response', b''))
-                        best_response = resp.decode() if isinstance(resp, bytes) else resp
-                if cursor == 0:
-                    break
-
-            if best_sim >= threshold and best_response:
-                logger.debug("SemanticCache HIT org=%s sim=%.4f", org_id, best_sim)
-                return best_response
-            return None
-        except Exception:
-            logger.warning('SemanticResponseCache.lookup failed', exc_info=True)
-            return None
-
-    @staticmethod
-    def store(text: str, org_id: str, response: str) -> None:
-        if not text or not org_id:
-            return
-        try:
-            r = _r()
-            sha_key = hashlib.sha256(text.encode()).hexdigest()[:12]
-            key = f'sem_cache:{org_id}:{sha_key}'
-            vec = _embed(text)
-            r.hset(key, mapping={
-                'embedding_b64': _vec_to_b64(vec),
-                'response': response,
-                'created_at': int(time.time()),
-            })
-            r.expire(key, _CACHE_TTL)
-        except Exception:
-            logger.warning('SemanticResponseCache.store failed', exc_info=True)
 
 
 # ── BudgetStatus ──────────────────────────────────────────────────────────────

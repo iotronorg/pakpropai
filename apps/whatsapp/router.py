@@ -531,14 +531,20 @@ class MessageRouter:
             logger.warning("No channel layer configured — cannot broadcast to agent room.")
             return
 
+        from apps.leads.privacy import session_phone
+
         group_name = f"org_{org.id}_agent_room"
         lead_id = cls._resolve_lead_id(session_db, org)
+        # KI-083: a person who withdrew the consent is shown without their number.
+        phone = session_phone(session_db.phone, org.id)
+        if phone is None:
+            message_data = {k: v for k, v in message_data.items() if k != 'from'}
 
         payload = {
             "type":       "agent_message",
             "event":      "inbound_message",
             "session_id": str(session_db.id),
-            "phone":      session_db.phone,
+            "phone":      phone,
             "message":    message_data,
             "msg_type":   msg_type,
             "timestamp":  _tz.now().isoformat(),

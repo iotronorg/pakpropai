@@ -164,6 +164,45 @@ class WithheldTest(TestCase):
         self.stop()
         self.assertEqual(privacy.withheld_phones(mine), {self.user.phone, self.user.phone.lstrip('+')})
 
+    def test_live_chat_streams_hide_the_number(self):
+        """KI-083: the agent room's inbound events and its session list follow the same rule."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from asgiref.sync import async_to_sync
+
+        from apps.whatsapp.consumers import AgentRoomConsumer
+        from apps.whatsapp.models import WhatsAppSession
+        from apps.whatsapp.router import MessageRouter
+        digits = self.user.phone.lstrip('+')
+        session = WhatsAppSession.objects.create(phone=digits, user=self.user, organization=self.org,
+                                                 conversation_mode='AGENT_MANAGED')
+        other = WhatsAppSession.objects.create(phone='923001234567', organization=self.org,
+                                               conversation_mode='AGENT_MANAGED')
+        room = AgentRoomConsumer()
+        room.org_id = str(self.org.pk)
+
+        def streamed():
+            layer = MagicMock(group_send=AsyncMock())
+            with patch('channels.layers.get_channel_layer', return_value=layer):
+                MessageRouter._broadcast_to_agent_room(
+                    {'from': digits, 'id': 'wamid.1', 'type': 'text', 'text': {'body': 'hi'}}, session, self.org, 'text')
+            group, event = layer.group_send.await_args.args
+            self.assertEqual(group, f'org_{self.org.pk}_agent_room')
+            listed = {x['session_id']: x['phone'] for x in async_to_sync(room._get_active_sessions)()}
+            return event, listed
+
+        event, listed = streamed()
+        self.assertEqual((event['phone'], event['message']['from']), (digits, digits))
+        self.assertEqual(listed, {str(session.pk): digits, str(other.pk): '923001234567'})
+        self.stop()
+        event, listed = streamed()
+        self.assertEqual((event['phone'], event['message']['text']['body']), (None, 'hi'))
+        self.assertNotIn(digits, json.dumps(event))
+        self.assertEqual(listed, {str(session.pk): None, str(other.pk): '923001234567'})
+        E.set_sharing(self.enquiry, E.USER, True)
+        self.assertEqual(streamed()[0]['phone'], digits)
+        self.assertEqual(privacy.hidden_session_phones([digits], None), set())     # no organization: nothing to hide
+
     def test_list_does_not_query_per_lead_for_consent(self):
         Lead.objects.create(user=make_client(), organization=self.org)
         with CaptureQueriesContext(connection, ) as q:

@@ -105,6 +105,25 @@ class RecommendationEngineTests(TestCase):
                 CopilotRecommendationEngine.build_recommendations(intent, self._session, self._org)
             mock_tax.assert_called_once()
 
+    def test_tax_sheet_uses_the_persons_lead_here(self):
+        """KI-121: the lead is found by the session's user in this organization; no budget, no sheet."""
+        from apps.leads.models import Lead
+        from tests.factories import make_client
+        self.assertIsNone(CopilotRecommendationEngine._tax_sheet(self._session, self._org))   # no user
+        person = make_client()
+        WhatsAppSession.objects.filter(pk=self._session.pk).update(user=person)
+        self._session.refresh_from_db()
+        lead = Lead.objects.create(user=person, organization=self._org)
+        self.assertIsNone(CopilotRecommendationEngine._tax_sheet(self._session, self._org))   # no budget
+        Lead.objects.filter(pk=lead.pk).update(budget_max=20_000_000, budget_currency='AED')
+        self.assertIsNone(CopilotRecommendationEngine._tax_sheet(self._session, self._org))   # other currency
+        Lead.objects.filter(pk=lead.pk).update(budget_currency='PKR')
+        item = CopilotRecommendationEngine._tax_sheet(self._session, self._org)
+        self.assertEqual(item.type, 'tax_sheet')
+        self.assertGreater(item.payload['wht_amount'], 0)
+        _, other_org = make_developer()
+        self.assertIsNone(CopilotRecommendationEngine._tax_sheet(self._session, other_org))   # not another org's lead
+
     def test_m_empty_inventory_returns_no_cards(self):
         """build_recommendations() returns [] for inventory when org has no properties."""
         from apps.whatsapp.copilot_stream import CopilotIntent

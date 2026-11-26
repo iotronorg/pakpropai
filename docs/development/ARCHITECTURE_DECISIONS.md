@@ -995,3 +995,10 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - Reminders and the booking reply say "reply here" only while `feature_talk_to_agent` is on; otherwise they point to the app as before. A reminder goes from the organization's number, so a reply reaches the chat with the same scope.
 - **Not done:** the visitor does not "confirm" a visit (only the agent confirms); a reply while a person handles the chat goes to that person, not the tools.
 - **Rejected:** keyword handling of "CANCEL" replies outside the assistant: a bare "cancel" already means NO to a pending action, and a second path would skip the confirmation record (MVP criterion 8).
+
+### ADR‑055 — Live-chat streams follow the contact-withdrawal rule; the embedding cache is removed (KI‑083, KI‑087, session 31, 2026-11-26)
+- **Decision:**
+  - The organization's agent room (`ws/agent/org/<id>/`) shows a WhatsApp number only when the session lists would (KI‑074): hidden when the person withdrew the consent on every lead they have with that organization. Then the `connected` list and `inbound_message` events carry `phone: null` and the raw message has no `from`; everything else is unchanged, so the frontend keeps working and shows "number not shared" on `null`. One helper, `apps.leads.privacy.hidden_session_phones`, one query per event or per connect.
+  - The agent can still reply in the session: replies are sent by the server to the stored number, which never leaves it.
+  - `SemanticResponseCache` and its embedding model are deleted, with `sentence-transformers` and `numpy`. Answer reuse stays the exact-words FAQ path (ADR‑042).
+- **Rejected:** dropping the number from every stream event for everyone (the frontend uses it to label sessions, and the owner kept numbers visible for people who share them, KI‑074); keeping the cache "for retrieval" (RAG in M4 needs its own design, AI spec §7).

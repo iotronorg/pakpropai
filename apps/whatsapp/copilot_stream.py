@@ -171,19 +171,22 @@ class CopilotRecommendationEngine:
 
     @staticmethod
     def _tax_sheet(session, org) -> Optional[RecommendationItem]:
+        # KI-121: leads have no phone or budget field; this lookup always failed before.
         from apps.leads.models import Lead
+        from apps.markets.services import currency_for_country
         lead = Lead.objects.filter(
-            phone=session.phone,
-            organization=org,
-        ).order_by('-created_at').first()
-        budget = lead.budget if lead else None
+            user=session.user_id, organization=org,
+        ).order_by('-created_at').first() if session.user_id else None
+        budget = lead and (lead.budget_max or lead.budget_min)
+        if not budget or (lead.budget_currency or '') != currency_for_country(org.country):
+            return None              # no sheet on a made-up 0, or on a budget in another currency
 
         try:
             from apps.markets.registry import get_tax_calculator
             calc = get_tax_calculator(org.country)
             if not calc.supported:
                 return None
-            result = calc.calculate_withholding_tax(budget or 0, filer_status='filer')
+            result = calc.calculate_withholding_tax(budget, filer_status='filer')
             return RecommendationItem(
                 type='tax_sheet',
                 payload={
