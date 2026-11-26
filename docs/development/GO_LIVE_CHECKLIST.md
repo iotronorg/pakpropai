@@ -32,7 +32,7 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - [ ] Consumer search no longer shows demo/platform listings or other orgs' sandbox listings.
 - [ ] Listing a property, the agent hand‑off and audit generation via WhatsApp each ask for **YES** first.
 - [ ] Audit summaries/PDFs show the "Not a valuation" notice.
-- [ ] `/health/` returns 200. The CI deploy job uses `infra/scripts/health_check.py`.
+- [ ] `/health/` returns 200 with the deployed `version`. The deploy script (`scripts/deploy/remote_deploy.sh`) waits for it and rolls back otherwise.
 
 ## 5. CI secrets used by the deploy jobs
 `AWS_GITHUB_ACTIONS_ROLE_ARN`, `AWS_REGION`, `ECR_API_REPO`, `ECR_WORKER_REPO`, `ECS_CLUSTER_NAME`, `ECS_PRIVATE_SUBNET_IDS`, `ECS_TASKS_SG_ID`, `BASE_URL`, `FRONTEND_URL`, `STAGING_URL`, `STAGING_DEPLOY_HOOK`, `STAGING_WA_VERIFY_TOKEN`.
@@ -421,7 +421,7 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - Weekly, or before a release: `python manage.py notification_delivery_report --hours 168 --fail-under-objective` (MVP criterion 4; outbox rows are kept 7 days).
 
 ## 52. Session-28 change: monitoring stack, email alerts, export, file deletion (ADR‑051)
-- **Monitoring stack:** copy `.env.monitoring.example` to `.env.monitoring` and fill it; create `ops/secrets/metrics_token` (a random value of at least 16 characters, the same as the app's `PROMETHEUS_METRICS_TOKEN`) and `ops/secrets/smtp_password`. Same host as the app: `docker compose --env-file .env.monitoring -f docker/docker-compose.prod.yml -f docker/docker-compose.monitoring.yml up -d`. Another host: list private `host:port` targets in `ops/targets.prod/*.yml` (add `labels: {__scheme__: https}` for HTTPS) and run the monitoring file alone. Publish Grafana only, behind HTTPS (`GRAFANA_COOKIE_SECURE=true`).
+- **Monitoring stack:** copy `.env.monitoring.example` to `.env.monitoring` and fill it; create `ops/secrets/metrics_token` (a random value of at least 16 characters, the same as the app's `PROMETHEUS_METRICS_TOKEN`) and `ops/secrets/smtp_password`. Same host as the app: `docker compose --env-file .env --env-file .env.monitoring -f docker/docker-compose.prod.yml -f docker/docker-compose.monitoring.yml up -d`. Another host: list private `host:port` targets in `ops/targets.prod/*.yml` (add `labels: {__scheme__: https}` for HTTPS) and run the monitoring file alone. Publish Grafana only, behind HTTPS (`GRAFANA_COOKIE_SECURE=true`).
 - **Worker port 9808 has no login:** reachable from the monitoring host only (same Docker network, VPN or firewall rule).
 - **Check:** in Prometheus, *Status → Targets* shows `realtron_api` and `realtron_worker` up; send a test alert (`docker compose … exec alertmanager amtool alert add Test severity=critical --alertmanager.url=http://localhost:9093`) and confirm the email arrives.
 - **Export:** consumers in every market can now request their data (`POST /api/v1/compliance/export/`); the frontend can show the button to everyone.
@@ -431,3 +431,9 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - No migration. Reload the Prometheus rules (alerts now carry `runbook`) and restart web and workers.
 - **Before launch:** fill the roles in the runbooks: who is on call, who is the privacy owner (data incidents, 72-hour notification), who may stop the assistant. Rehearse on staging: an AI stop and release, a token check (`check_whatsapp_token_health`), and `rotate_field_keys --dry-run`.
 - **Set `FIELD_HASH_KEY`** to a fixed value now, so a key rotation in an incident does not change the lookup hashes.
+
+## 54. Session-30 change: deploys over SSH, production approval (ADR‑053)
+- **Before the first deploy:** set up both servers and the GitHub environments as in [docs/runbooks/deploy.md](../runbooks/deploy.md): environment secrets, `PUBLIC_URL`, and **required reviewers on `production`**. CI refuses production without them.
+- **Dependencies upgraded** (KI‑118): Pillow 13, Django 5.2.17, DRF 3.18.2, PyJWT 2.15, simplejwt 5.5.1, requests 2.33, urllib3 2.8, lxml 6.1 and others. The full suite passes; check image upload and PDF reports on staging.
+- **`/health/` now reports `version`** and hides error details outside DEBUG. Add `localhost` to `ALLOWED_HOSTS`.
+- **First run on GitHub:** the pipeline has been linted and rehearsed locally, not yet run on Actions. Watch the first `main` run, especially the production gate's access to the environment API.

@@ -12,6 +12,11 @@ from rest_framework.views import APIView
 logger = logging.getLogger(__name__)
 
 
+def _detail(exc) -> str:
+    """/health/ is public: outside DEBUG only the error type is shown (messages can name hosts and users, KI-116)."""
+    return str(exc) if settings.DEBUG else type(exc).__name__
+
+
 class HealthCheckView(APIView):
     """
     GET /health/
@@ -32,7 +37,7 @@ class HealthCheckView(APIView):
                 cursor.execute('SELECT 1')
             checks['database'] = {'status': 'ok', 'latency_ms': round((time.monotonic() - t) * 1000)}
         except Exception as exc:
-            checks['database'] = {'status': 'error', 'detail': str(exc)}
+            checks['database'] = {'status': 'error', 'detail': _detail(exc)}
             overall_ok = False
 
         # ── Redis / Cache ─────────────────────────────────────────────────────
@@ -44,7 +49,7 @@ class HealthCheckView(APIView):
                 raise RuntimeError('cache read/write mismatch')
             checks['redis'] = {'status': 'ok', 'latency_ms': round((time.monotonic() - t) * 1000)}
         except Exception as exc:
-            checks['redis'] = {'status': 'error', 'detail': str(exc)}
+            checks['redis'] = {'status': 'error', 'detail': _detail(exc)}
             overall_ok = False
 
         # ── Celery (broker reachability via Redis — fast path) ────────────────
@@ -85,7 +90,7 @@ class HealthCheckView(APIView):
                     'status':  'error',
                     'backend': 'ollama',
                     'url':     ollama_url,
-                    'detail':  str(exc),
+                    'detail':  _detail(exc),
                     'hint':    'Run: ollama serve',
                 }
                 overall_ok = False
@@ -102,6 +107,7 @@ class HealthCheckView(APIView):
         return Response(
             {
                 'status': 'ok' if overall_ok else 'degraded',
+                'version': settings.APP_VERSION,
                 'checks': checks,
             },
             status=status_code,

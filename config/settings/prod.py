@@ -7,6 +7,9 @@ ALLOWED_HOSTS = env.list('ALLOWED_HOSTS')
 # ── HTTPS / SSL ────────────────────────────────────────────────────────────────
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 SECURE_SSL_REDIRECT = True
+# Probes inside the Docker network speak plain HTTP: the container healthcheck, the deploy
+# script and Prometheus. Without this they get a 301 to https://web:8000 and fail (KI-117).
+SECURE_REDIRECT_EXEMPT = [r'^health/$', r'^metrics/$']
 
 # ── HSTS ──────────────────────────────────────────────────────────────────────
 # 1-year duration. Only enable once you are certain the domain is HTTPS-only.

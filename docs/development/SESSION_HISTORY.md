@@ -496,3 +496,14 @@
 1. `git status`: uncommitted work is sessions 28 and 29. **Do not commit.**
 2. Next: MVP criterion 13 (CI, staging auto-deploy, production approval).
 3. Owner: deploy the monitoring stack (§52), runbook roles (§53), KI‑112, KI‑114 rule, KI‑098, staging E2E run, T‑2072, pentest (criterion 12).
+
+## Session 30 — 2026-11-25/26
+- **Asked the owner:** deploy target (Docker over SSH) and approval (GitHub environment reviewers).
+- **Completed:** MVP criterion 13 (ADR‑053). Dependency vulnerabilities fixed and gated in CI.
+- **Found and fixed:** KI‑116…KI‑120. The production compose stack could not have started before this session (KI‑119, KI‑120).
+- **Tests:** 2506 passed, 1 skipped, 0 failed; deploy rehearsed on the real images. **Not committed.**
+
+### Handoff → session 31 (supersedes the one above)
+1. `git status`: uncommitted work is sessions 28–30. **Do not commit.**
+2. Owner: servers and GitHub environments (§54), then watch the first `main` run; monitoring (§52); runbook roles (§53); staging E2E; T‑2072; pentest; KI‑112; KI‑114 rule.
+3. Dev: open KIs, or plan Milestone 3.

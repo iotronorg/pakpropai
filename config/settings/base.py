@@ -595,6 +595,9 @@ TWILIO_PHONE_NUMBER = env('TWILIO_PHONE_NUMBER',  default='')
 OPENAI_API_KEY = env('OPENAI_API_KEY', default='')
 
 # Gemini
+# Image tag of the running build (set by the Dockerfile from CI); shown by /health/.
+APP_VERSION = env('APP_VERSION', default='dev')
+
 GEMINI_API_KEY = env('GEMINI_API_KEY', default='')
 GEMINI_MODEL   = env('GEMINI_MODEL',   default='gemini-2.5-flash-lite')
 

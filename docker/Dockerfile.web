@@ -22,10 +22,14 @@ RUN pip install --upgrade pip --no-cache-dir \
 # ─────────────────────────────────────────────────────────────────────────────
 FROM python:3.12-slim AS web
 
+# The image tag CI built this from (git short sha); /health/ reports it so a deploy can verify what runs.
+ARG APP_VERSION=dev
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONFAULTHANDLER=1 \
     DJANGO_SETTINGS_MODULE=config.settings.prod \
+    APP_VERSION=${APP_VERSION} \
     PORT=8000
 
 RUN apt-get update \
@@ -40,7 +44,10 @@ COPY --from=builder /install /usr/local
 WORKDIR /app
 COPY --chown=realtron:realtron . .
 
-RUN chmod +x docker/entrypoint.web.sh
+# Directories the app writes to (mounted as volumes in compose: a new named volume takes this ownership).
+RUN chmod +x docker/entrypoint.web.sh \
+    && mkdir -p /app/staticfiles /app/media \
+    && chown realtron:realtron /app /app/staticfiles /app/media
 
 USER realtron
 

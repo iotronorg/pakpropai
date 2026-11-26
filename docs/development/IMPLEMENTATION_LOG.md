@@ -600,3 +600,10 @@
 - **Changed:** every alert has a `runbook` annotation; the token check covers organization tokens, treats 403 as invalid and emails admins; guardrail blocks are counted.
 - **Fixed:** KI‑113 (outbox WhatsApp sends counted as sent when only buffered), KI‑115 (guardrail metric never counted). **Recorded:** KI‑114.
 - **Tests:** `tests/test_runbooks.py` (14 tests).
+
+### 2026-11-26 — session 30: deploys (MVP criterion 13)
+- **Owner decisions:** Docker over SSH for staging and production; production approved by required reviewers of the GitHub `production` environment.
+- **Added:** `.github/workflows/deploy.yml` (reusable, per-environment secrets, pinned host key), `scripts/deploy/remote_deploy.sh` (pull, migrate, start, wait for the new version on `/health/`, roll back), `docs/runbooks/deploy.md`, `APP_VERSION` in images and `/health/`.
+- **Changed:** `ci.yml`: one build per commit → staging → production gate → production with the same tag; ECS jobs removed (`infra/scripts/health_check.py` deleted); `main` never cancelled; `pip-audit` gate; TruffleHog pinned by commit; the fake migration-rollback step removed. Smoke test requires `ok`, the deployed version and a refused unsigned webhook.
+- **Fixed:** KI‑116 (health leaked error text), KI‑117 (HTTPS redirect broke internal probes and scraping), KI‑118 (14 vulnerable packages; DRF 3.18 needed `validators = []` on the kill-switch serializer), KI‑119 (prod entrypoint ignored commands; unwritable static directory), KI‑120 (compose read the wrong `.env`).
+- **Tests:** `tests/test_deploy_pipeline.py` (17 tests); local rehearsal with a registry and the real images.

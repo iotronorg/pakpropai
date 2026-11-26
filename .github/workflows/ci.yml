@@ -10,10 +10,14 @@ env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ${{ github.repository }}
 
-# Cancel in-flight runs on the same branch when a new push arrives
+# A newer push cancels checks still running on a branch, but never a run on main: that run may
+# be deploying (each deploy also has its own non-cancelling lock in deploy.yml).
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
 
 jobs:
 
@@ -52,8 +56,13 @@ jobs:
           print(f"Bandit: 0 HIGH issues ({len(report['results'])} total findings)")
           EOF
 
+      - name: Dependency vulnerabilities (pip-audit)
+        run: |
+          pip install "pip-audit==2.*"
+          pip-audit -r requirements/prod.txt --progress-spinner off
+
       - name: TruffleHog — secret scanning
-        uses: trufflesecurity/trufflehog@main
+        uses: trufflesecurity/trufflehog@4ef51f69ca6347aaa76a5e64a87eac9c0c909f71  # v3.100.1
         with:
           path: ./
           base: ${{ github.event.repository.default_branch }}
@@ -115,12 +124,8 @@ jobs:
       - name: Check for unapplied model changes
         run: python manage.py makemigrations --check --dry-run
 
-      - name: Verify migration rollback safety (backwards compatibility)
-        run: |
-          python manage.py migrate --noinput
-          # Roll back to zero for every app to validate down() methods compile
-          python manage.py migrate --noinput users zero 2>/dev/null || true
-          python manage.py migrate --noinput
+      - name: Apply all migrations to an empty database
+        run: python manage.py migrate --noinput
 
       - name: Generate and validate OpenAPI schema (ADR-016)
         run: python manage.py spectacular --validate --file openapi.yaml
@@ -173,6 +178,7 @@ jobs:
           fail_ci_if_error: false
 
   # ── 3. Build & push Docker images (main only) ────────────────────────────
+  # One build per commit; staging and production run exactly these images (tag = short sha).
   build:
     name: Build & Push Images
     needs: [test, security]
@@ -200,7 +206,7 @@ jobs:
 
       - name: Compute image tag
         id: tag
-        run: echo "short_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+        run: echo "short_sha=$(git rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Build & push web image
         uses: docker/build-push-action@v5
@@ -208,9 +214,8 @@ jobs:
           context: .
           file: docker/Dockerfile.web
           push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/web:${{ steps.tag.outputs.short_sha }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/web:latest
+          build-args: APP_VERSION=${{ steps.tag.outputs.short_sha }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/web:${{ steps.tag.outputs.short_sha }}
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
 
@@ -220,190 +225,47 @@ jobs:
           context: .
           file: docker/Dockerfile.worker
           push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/worker:${{ steps.tag.outputs.short_sha }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/worker:latest
+          build-args: APP_VERSION=${{ steps.tag.outputs.short_sha }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/worker:${{ steps.tag.outputs.short_sha }}
           cache-from: type=gha,scope=worker
           cache-to: type=gha,mode=max,scope=worker
 
-  # ── 4. Staging deploy + automated smoke tests ────────────────────────────
+  # ── 4. Staging: deployed automatically, then smoke-tested ─────────────────
   deploy-staging:
-    name: Deploy to Staging
+    name: Staging
     needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: staging
-      url: ${{ secrets.STAGING_URL }}
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: staging
+      image_tag: ${{ needs.build.outputs.image_tag }}
+    secrets: inherit
 
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Trigger staging deployment
-        env:
-          DEPLOY_HOOK: ${{ secrets.STAGING_DEPLOY_HOOK }}
-          IMAGE_TAG:   ${{ needs.build.outputs.image_tag }}
-        run: |
-          # Replace with your hosting platform's deploy hook.
-          # Render, Railway, Coolify, and Dokku all accept a POST to a webhook URL.
-          curl -fsSL -X POST "$DEPLOY_HOOK" \
-            -H "Content-Type: application/json" \
-            -d "{\"imageTag\": \"$IMAGE_TAG\"}"
-
-      - name: Wait for deployment to stabilize
-        run: sleep 45
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install smoke test runtime
-        run: pip install requests
-
-      - name: Run smoke tests
-        env:
-          STAGING_URL:           ${{ secrets.STAGING_URL }}
-          SMOKE_WA_VERIFY_TOKEN: ${{ secrets.STAGING_WA_VERIFY_TOKEN }}
-        run: python scripts/smoke_test.py
-
-  # ── 3b. Push to AWS ECR (main branch only) ──────────────────────────────
-  push-ecr:
-    name: Push to AWS ECR
-    needs: [test, security]
+  # ── 5. Production gate: refuse to wait for approval nobody is required to give ─
+  production-gate:
+    name: Production approval is configured
+    needs: build
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
-
     permissions:
-      id-token: write   # required for OIDC → AWS
+      actions: read
       contents: read
-
-    outputs:
-      image_tag: ${{ steps.tag.outputs.short_sha }}
-
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Compute image tag
-        id: tag
-        run: echo "short_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
-
-      - name: Configure AWS credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_GITHUB_ACTIONS_ROLE_ARN }}
-          aws-region:     ${{ secrets.AWS_REGION }}
-
-      - name: Log in to ECR
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - uses: docker/setup-buildx-action@v3
-
-      - name: Build & push API image to ECR
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file:    docker/Dockerfile.web
-          push:    true
-          tags: |
-            ${{ secrets.ECR_API_REPO }}:${{ steps.tag.outputs.short_sha }}
-            ${{ secrets.ECR_API_REPO }}:latest
-          cache-from: type=gha,scope=ecr-api
-          cache-to:   type=gha,mode=max,scope=ecr-api
-
-      - name: Build & push Worker image to ECR
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file:    docker/Dockerfile.worker
-          push:    true
-          tags: |
-            ${{ secrets.ECR_WORKER_REPO }}:${{ steps.tag.outputs.short_sha }}
-            ${{ secrets.ECR_WORKER_REPO }}:latest
-          cache-from: type=gha,scope=ecr-worker
-          cache-to:   type=gha,mode=max,scope=ecr-worker
-
-      # Frontend image is built by the frontend repository's own pipeline
-      # (pakpropaiweb is not part of this repo).
-
-  # ── 4. Zero-downtime ECS deploy + health-check rollback ─────────────────
-  deploy-prod:
-    name: Deploy to Production (ECS)
-    needs: push-ecr
-    runs-on: ubuntu-latest
-    environment:
-      name: production
-      url: ${{ secrets.FRONTEND_URL }}
-
-    permissions:
-      id-token: write
-      contents: read
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Configure AWS credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_GITHUB_ACTIONS_ROLE_ARN }}
-          aws-region:     ${{ secrets.AWS_REGION }}
-
-      - name: Run database migrations (one-off ECS task)
-        run: |
-          TASK_ARN=$(aws ecs run-task \
-            --cluster "${{ secrets.ECS_CLUSTER_NAME }}" \
-            --task-definition "${{ secrets.ECS_CLUSTER_NAME }}-api" \
-            --launch-type FARGATE \
-            --network-configuration "awsvpcConfiguration={subnets=[${{ secrets.ECS_PRIVATE_SUBNET_IDS }}],securityGroups=[${{ secrets.ECS_TASKS_SG_ID }}],assignPublicIp=DISABLED}" \
-            --overrides '{"containerOverrides":[{"name":"api","command":["python","manage.py","migrate","--noinput"],"environment":[{"name":"RUN_MIGRATIONS","value":"true"}]}]}' \
-            --query 'tasks[0].taskArn' --output text)
-          echo "Migration task: $TASK_ARN"
-          aws ecs wait tasks-stopped \
-            --cluster "${{ secrets.ECS_CLUSTER_NAME }}" \
-            --tasks "$TASK_ARN"
-          EXIT_CODE=$(aws ecs describe-tasks \
-            --cluster "${{ secrets.ECS_CLUSTER_NAME }}" \
-            --tasks "$TASK_ARN" \
-            --query 'tasks[0].containers[0].exitCode' --output text)
-          echo "Migration exit code: $EXIT_CODE"
-          [ "$EXIT_CODE" = "0" ] || (echo "Migration failed"; exit 1)
-
-      - name: Update ECS services (rolling deploy)
+      - name: The production environment requires a reviewer
         env:
-          CLUSTER: ${{ secrets.ECS_CLUSTER_NAME }}
+          GH_TOKEN: ${{ secrets.ENVIRONMENTS_READ_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
-          # frontend service is deployed by the frontend repository's pipeline
-          for SERVICE in api worker worker-hr beat; do
-            echo "Updating ${CLUSTER}-${SERVICE}..."
-            aws ecs update-service \
-              --cluster "$CLUSTER" \
-              --service "${CLUSTER}-${SERVICE}" \
-              --force-new-deployment \
-              --query 'service.serviceName' --output text
-          done
+          rules=$(gh api "repos/${{ github.repository }}/environments/production" \
+                    --jq '[.protection_rules[]? | select(.type == "required_reviewers") | .reviewers | length] | add // 0') \
+            || { echo "::error::Cannot read the production environment. Create it (Settings → Environments) or set ENVIRONMENTS_READ_TOKEN."; exit 1; }
+          [ "$rules" -gt 0 ] || { echo "::error::The production environment has no required reviewers: production deploys need a manual approval (MVP criterion 13)."; exit 1; }
+          echo "production requires approval from $rules reviewer(s)"
 
-      - name: Wait for API service to stabilise (up to 10 min)
-        run: |
-          aws ecs wait services-stable \
-            --cluster "${{ secrets.ECS_CLUSTER_NAME }}" \
-            --services "${{ secrets.ECS_CLUSTER_NAME }}-api" \
-            --cli-read-timeout 600
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install health-check dependencies
-        run: pip install requests boto3
-
-      - name: Run post-deploy health checks (auto-rollback on failure)
-        env:
-          HEALTH_URL:  ${{ secrets.BASE_URL }}/health/
-          ECS_CLUSTER: ${{ secrets.ECS_CLUSTER_NAME }}
-          ECS_SERVICE: ${{ secrets.ECS_CLUSTER_NAME }}-api
-          AWS_REGION:  ${{ secrets.AWS_REGION }}
-        run: python infra/scripts/health_check.py
-
-      - name: Notify on failure
-        if: failure()
-        run: |
-          echo "::error::Production deploy failed. ECS circuit breaker should have auto-rolled back."
-          echo "Check CloudWatch: /ecs/${{ secrets.ECS_CLUSTER_NAME }}/api"
+  # ── 6. Production: the image that passed staging, after a reviewer approves ─
+  deploy-production:
+    name: Production
+    needs: [build, deploy-staging, production-gate]
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: production
+      image_tag: ${{ needs.build.outputs.image_tag }}
+    secrets: inherit

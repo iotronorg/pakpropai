@@ -8,8 +8,9 @@ MVP criterion 15. Every alert in `ops/prometheus-alerts.yaml` has a `runbook` an
 | WhatsApp token expired or revoked | [whatsapp-token-expiry.md](whatsapp-token-expiry.md) | `WhatsAppTokenInvalid`, `WhatsAppAuthErrors`, `EnquiryNotificationBacklog` |
 | Personal data exposed, lost or changed | [data-incident.md](data-incident.md) | `WebhookSignatureFailures`; usually reported by a person |
 | The assistant said something harmful or false | [harmful-ai-output.md](harmful-ai-output.md) | `AIGuardrailBlocksSpike`; usually reported by a person |
+| Setting up, approving or rolling back a deploy | [deploy.md](deploy.md) | A failed CI deploy job |
 
-**Commands** run inside a web or worker container: `docker compose -f docker/docker-compose.prod.yml exec web python manage.py …`. **Admin endpoints** need a platform admin; the kill switch takes `super_admin`, `ai_admin` or `ops_admin`.
+**Commands** run inside a web or worker container: `docker compose -p realtron --env-file .env -f docker/docker-compose.prod.yml exec web python manage.py …`, from the deploy directory. **Admin endpoints** need a platform admin; the kill switch takes `super_admin`, `ai_admin` or `ops_admin`.
 
 Write down in the incident notes: when it started, what you saw (alert, graph, report), each action and its time, and when service came back. Do not paste message text, phone numbers or tokens into tickets or chat.
 

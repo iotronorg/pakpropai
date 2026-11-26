@@ -1,6 +1,12 @@
 #!/bin/sh
 set -e
 
+# A command given to the container (compose `command:`, `docker compose run web …`) runs instead of
+# the server: the migrate services and one-off `manage.py` calls depend on it (KI-119).
+if [ "$#" -gt 0 ]; then
+    exec "$@"
+fi
+
 # Collect static files on every container start so the image doesn't need
 # build-time secrets and static assets always match the current code revision.
 echo "[web] Collecting static files..."

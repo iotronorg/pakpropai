@@ -2,7 +2,7 @@
 # Prometheus + Alertmanager (email) + Grafana, deployable on any Docker host.
 #
 #   Same host as the app (shares the app's Docker network, so service names resolve):
-#     docker compose --env-file .env.monitoring -f docker/docker-compose.prod.yml -f docker/docker-compose.monitoring.yml up -d
+#     docker compose --env-file .env --env-file .env.monitoring -f docker/docker-compose.prod.yml -f docker/docker-compose.monitoring.yml up -d
 #   Separate host: list private host:port addresses in ops/targets.prod/*.yml and run
 #     docker compose --env-file .env.monitoring -f docker/docker-compose.monitoring.yml up -d
 #

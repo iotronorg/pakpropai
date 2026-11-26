@@ -1,0 +1,138 @@
+name: Deploy (reusable)
+
+# Deploys one image tag to one Docker host over SSH (owner decision 2026-11-25, ADR-053).
+# Called by ci.yml: staging automatically, production after staging and a reviewer's approval.
+#
+# Secrets are set per GitHub environment (staging, production), with the same names:
+#   SSH_HOST          host name or IP of the Docker server
+#   SSH_USER          a user in the `docker` group
+#   SSH_PRIVATE_KEY   private key for that user (a deploy-only key)
+#   SSH_KNOWN_HOSTS   output of `ssh-keyscan -t ed25519 <host>`, checked: the host key is pinned
+#   DEPLOY_DIR        directory on the server holding .env (e.g. /srv/realtron)
+#   REGISTRY_USER, REGISTRY_TOKEN   a read-only GHCR token (packages:read) the server pulls with
+#   SMOKE_WA_VERIFY_TOKEN           optional, for the webhook probe
+# Variables (not secret) per environment:
+#   PUBLIC_URL           https://… base URL: the smoke test and the link on the run page
+#   COMPOSE_EXTRA_FILES  optional, compose files already on the server to include
+#                        (e.g. docker/docker-compose.monitoring.yml when monitoring runs on the same host)
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+      image_tag:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy ${{ inputs.image_tag }} to ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment }}
+      url: ${{ vars.PUBLIC_URL }}
+    # Never two deploys to the same environment at once, and never cancel one half way.
+    concurrency:
+      group: deploy-${{ inputs.environment }}
+      cancel-in-progress: false
+    timeout-minutes: 30
+
+    env:
+      IMAGE_TAG:    ${{ inputs.image_tag }}
+      WEB_IMAGE:    ghcr.io/${{ github.repository }}/web
+      WORKER_IMAGE: ghcr.io/${{ github.repository }}/worker
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the environment is configured
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          DEPLOY_DIR: ${{ secrets.DEPLOY_DIR }}
+          PUBLIC_URL: ${{ vars.PUBLIC_URL }}
+          REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+          COMPOSE_EXTRA_FILES: ${{ vars.COMPOSE_EXTRA_FILES }}
+        run: |
+          missing=""
+          for name in SSH_HOST SSH_USER SSH_PRIVATE_KEY SSH_KNOWN_HOSTS DEPLOY_DIR PUBLIC_URL REGISTRY_USER REGISTRY_TOKEN; do
+            [ -n "$(printenv "$name")" ] || missing="$missing $name"
+          done
+          [ -z "$missing" ] || { echo "::error::Environment '${{ inputs.environment }}' is missing secrets or variables:$missing (see docs/runbooks/deploy.md)"; exit 1; }
+          # Values are interpolated into the remote command: allow plain names and paths only.
+          echo "$DEPLOY_DIR" | grep -Eq '^/[A-Za-z0-9._/-]+$' || { echo "::error::DEPLOY_DIR must be an absolute path"; exit 1; }
+          echo "$SSH_USER@$SSH_HOST" | grep -Eq '^[a-z_][a-z0-9_-]*@[A-Za-z0-9.:-]+$' || { echo "::error::bad SSH_USER or SSH_HOST"; exit 1; }
+          echo "$REGISTRY_USER" | grep -Eq '^[A-Za-z0-9-]+$' || { echo "::error::bad REGISTRY_USER"; exit 1; }
+          echo "$COMPOSE_EXTRA_FILES" | grep -Eq '^[A-Za-z0-9._/ -]*$' || { echo "::error::bad COMPOSE_EXTRA_FILES"; exit 1; }
+          echo "$PUBLIC_URL" | grep -Eq '^https://' || { echo "::error::PUBLIC_URL must start with https://"; exit 1; }
+
+      - name: Set up SSH (pinned host key)
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Copy the compose file and deploy script
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          DEPLOY_DIR: ${{ secrets.DEPLOY_DIR }}
+        run: |
+          SSH="ssh -i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes"
+          $SSH "$SSH_USER@$SSH_HOST" "mkdir -p '$DEPLOY_DIR/docker'"
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes \
+            scripts/deploy/remote_deploy.sh "$SSH_USER@$SSH_HOST:$DEPLOY_DIR/remote_deploy.sh"
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes \
+            docker/docker-compose.prod.yml "$SSH_USER@$SSH_HOST:$DEPLOY_DIR/docker/"
+
+      - name: Log the server in to the registry
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+        run: |
+          # The token goes over stdin, never on a command line.
+          printf '%s' "$REGISTRY_TOKEN" | ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes \
+            "$SSH_USER@$SSH_HOST" "docker login ghcr.io -u '$REGISTRY_USER' --password-stdin"
+
+      - name: Deploy, wait for health, roll back on failure
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          DEPLOY_DIR: ${{ secrets.DEPLOY_DIR }}
+          COMPOSE_EXTRA_FILES: ${{ vars.COMPOSE_EXTRA_FILES }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes "$SSH_USER@$SSH_HOST" \
+            "IMAGE_TAG='$IMAGE_TAG' WEB_IMAGE='$WEB_IMAGE' WORKER_IMAGE='$WORKER_IMAGE' COMPOSE_EXTRA_FILES='$COMPOSE_EXTRA_FILES' sh '$DEPLOY_DIR/remote_deploy.sh'"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Smoke test through the public URL
+        env:
+          STAGING_URL:           ${{ vars.PUBLIC_URL }}
+          SMOKE_WA_VERIFY_TOKEN: ${{ secrets.SMOKE_WA_VERIFY_TOKEN }}
+          SMOKE_EXPECT_VERSION:  ${{ inputs.image_tag }}
+          SMOKE_LATENCY_MS:      "1500"   # measured from a GitHub runner, across the internet
+        run: |
+          pip install requests
+          python scripts/smoke_test.py
+
+      - name: Remove the key from the runner
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

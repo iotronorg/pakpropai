@@ -185,6 +185,17 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | 2026-11-25 | Working tree, session 29 | `promtool test rules ops/tests/slo-rules.test.yaml`; `promtool check rules` | Pass; 60 rules | — |
 | 2026-11-25 | Working tree, session 29 | `bandit -ll` on changed files | No high; two B608 on quoted identifiers marked `nosec` | — |
 
+### Session 30
+
+| Date | Code state | Command | Result | Duration |
+|---|---|---|---|---|
+| 2026-11-26 | Working tree, session 30, upgraded dependencies | `REBUILD=1 scripts/dev/test.sh` | First run: 1 failed (DRF 3.18 made `market` required on the kill-switch serializer) → fixed → **2506 passed, 1 skipped, 0 failed** | 19m06s |
+| 2026-11-26 | Working tree | `tests/test_deploy_pipeline.py tests/test_runbooks.py` (after the last script and entrypoint changes) | 17 + 14 passed | — |
+| 2026-11-26 | Working tree | `pip-audit -r requirements/prod.txt` | No known vulnerabilities (was 146 in 14 packages) | — |
+| 2026-11-26 | Working tree | `actionlint`; `shellcheck scripts/deploy/remote_deploy.sh` | Clean (one existing, intentional note in `ai-evals-live.yml`) | — |
+| 2026-11-26 | Working tree | Deploy rehearsal: local registry, real prod images, `docker-compose.prod.yml`, `remote_deploy.sh` | Runs 1–2 found KI‑120 and KI‑119. Run 3: good release migrated, healthy with its version, live; `/metrics/` 200 over plain HTTP; bad release not healthy → rolled back, all services on the good tag | — |
+| 2026-11-26 | Working tree | GitHub Actions | **Not run**: needs the owner's servers, environments and secrets | — |
+
 ## Coverage
 Not measured yet (no coverage run executed). CI is configured with `--cov=apps`.
 

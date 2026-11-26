@@ -1,3 +1,5 @@
+# CI deploys (scripts/deploy/remote_deploy.sh) set WEB_IMAGE / WORKER_IMAGE to the registry images and
+# IMAGE_TAG to the tested build; locally the images are built from source as before.
 services:
 
   # ── Database ───────────────────────────────────────────────────────────────
@@ -38,7 +40,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.web
-    image: realtron-web:${IMAGE_TAG:-latest}
+    image: ${WEB_IMAGE:-realtron-web}:${IMAGE_TAG:-latest}
     command: ["python", "manage.py", "migrate", "--noinput"]
     env_file: ../.env
     environment:
@@ -54,7 +56,7 @@ services:
   # exits 0 immediately (Django skips unknown databases).
   # These run AFTER the default migrate completes.
   migrate-eu:
-    image: realtron-web:${IMAGE_TAG:-latest}
+    image: ${WEB_IMAGE:-realtron-web}:${IMAGE_TAG:-latest}
     command: >
       sh -c "[ -z \"$$EU_DATABASE_URL\" ] && echo 'EU_DATABASE_URL not set — skipping' ||
              python manage.py migrate --database eu_cluster --noinput"
@@ -67,7 +69,7 @@ services:
     restart: on-failure
 
   migrate-uk:
-    image: realtron-web:${IMAGE_TAG:-latest}
+    image: ${WEB_IMAGE:-realtron-web}:${IMAGE_TAG:-latest}
     command: >
       sh -c "[ -z \"$$UK_DATABASE_URL\" ] && echo 'UK_DATABASE_URL not set — skipping' ||
              python manage.py migrate --database uk_cluster --noinput"
@@ -84,7 +86,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.web
-    image: realtron-web:${IMAGE_TAG:-latest}
+    image: ${WEB_IMAGE:-realtron-web}:${IMAGE_TAG:-latest}
     restart: unless-stopped
     env_file: ../.env
     environment:
@@ -119,7 +121,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.worker
-    image: realtron-worker:${IMAGE_TAG:-latest}
+    image: ${WORKER_IMAGE:-realtron-worker}:${IMAGE_TAG:-latest}
     restart: unless-stopped
     command: ["worker"]
     env_file: ../.env
@@ -147,7 +149,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.worker
-    image: realtron-worker:${IMAGE_TAG:-latest}
+    image: ${WORKER_IMAGE:-realtron-worker}:${IMAGE_TAG:-latest}
     restart: unless-stopped
     command: ["worker"]
     env_file: ../.env
@@ -169,7 +171,7 @@ services:
 
   # ── Celery beat scheduler ──────────────────────────────────────────────────
   beat:
-    image: realtron-worker:${IMAGE_TAG:-latest}
+    image: ${WORKER_IMAGE:-realtron-worker}:${IMAGE_TAG:-latest}
     restart: unless-stopped
     command: ["beat"]
     env_file: ../.env

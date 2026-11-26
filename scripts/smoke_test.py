@@ -12,6 +12,7 @@ Environment variables:
     STAGING_URL            — base URL of the target environment (required)
     SMOKE_WA_VERIFY_TOKEN  — WhatsApp hub.verify_token configured in that env
     SMOKE_LATENCY_MS       — per-probe latency budget in ms (default: 200)
+    SMOKE_EXPECT_VERSION   — when set (deploys), /health/ must answer 200 "ok" with this version
 """
 import json
 import os
@@ -45,8 +46,11 @@ def probe_health() -> bool:
     except Exception as exc:
         return _result("GET /health/", False, f"connection error: {exc}")
     ms = _ms(t0)
-    if r.status_code not in (200, 503):
+    expected = os.environ.get("SMOKE_EXPECT_VERSION", "")
+    if r.status_code not in ((200,) if expected else (200, 503)):
         return _result("GET /health/", False, f"HTTP {r.status_code} ({ms}ms)")
+    if expected and r.json().get("version") != expected:
+        return _result("GET /health/", False, f"version {r.json().get('version')!r}, expected {expected!r}")
     if ms > BUDGET_MS:
         return _result("GET /health/", False, f"HTTP {r.status_code} but {ms}ms > {BUDGET_MS}ms budget")
     status = r.json().get("status", "?")
@@ -83,10 +87,8 @@ def probe_webhook_verify() -> bool:
 def probe_webhook_post() -> bool:
     """
     Sends a minimal well-formed WhatsApp webhook payload with an intentionally
-    invalid HMAC signature.  Expected outcomes:
-      - 403  signature rejected — endpoint live and processing correctly
-      - 200  signature validation disabled in this environment — also fine
-    Any other status indicates a configuration or code regression.
+    invalid HMAC signature. It must be refused (403). A 200 means signatures are
+    not checked, which is a failure unless SMOKE_ALLOW_UNSIGNED=1 (local runs).
     """
     payload = json.dumps({
         "object": "whatsapp_business_account",
@@ -126,7 +128,8 @@ def probe_webhook_post() -> bool:
     except Exception as exc:
         return _result("POST /webhook/ (event)", False, f"connection error: {exc}")
     ms = _ms(t0)
-    if r.status_code not in (200, 403):
+    allowed = (200, 403) if os.environ.get("SMOKE_ALLOW_UNSIGNED") == "1" else (403,)
+    if r.status_code not in allowed:
         return _result("POST /webhook/ (event)", False, f"unexpected HTTP {r.status_code} ({ms}ms)")
     if ms > BUDGET_MS:
         return _result("POST /webhook/ (event)", False, f"HTTP {r.status_code} but {ms}ms > {BUDGET_MS}ms budget")

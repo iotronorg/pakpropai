@@ -24,6 +24,9 @@ class KillSwitchSerializer(serializers.ModelSerializer):
         fields = ['id', 'scope', 'market', 'organization', 'reason', 'created_by', 'created_at',
                   'released_by', 'released_at']
         read_only_fields = ['id', 'created_by', 'created_at', 'released_by', 'released_at']
+        # DRF >= 3.16 turns the partial unique constraints into validators that make `market` and
+        # `organization` required. One active stop per target is enforced by kill_switch.stop (409).
+        validators = []
 
     def validate(self, data):
         S = AIKillSwitch.Scope

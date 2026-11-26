@@ -2,35 +2,35 @@ amqp==5.3.1
 asgiref==3.11.1
 billiard==4.2.4
 celery==5.4.0
-certifi==2026.4.22
+certifi==2026.10.18
 charset-normalizer==3.4.7
 click==8.3.3
 click-didyoumean==0.3.1
 click-plugins==1.1.1.2
 click-repl==0.3.0
-Django==5.2.14
+Django==5.2.17
 django-celery-results==2.5.1
 django-debug-toolbar==4.4.2
 django-environ==0.11.2
-djangorestframework==3.15.2
-djangorestframework-simplejwt==5.3.1
+djangorestframework==3.18.2
+djangorestframework-simplejwt==5.5.1
 drf-spectacular==0.29.0  # OpenAPI 3 schema (T-1090a, ADR-016)
 gunicorn==22.0.0
-idna==3.13
+idna==3.18
 kombu==5.6.2
 packaging==26.2
-pillow==12.2.0
+pillow==13.0.0
 prompt_toolkit==3.0.52
 psycopg[binary]>=3.1.0
-PyJWT==2.12.1
+PyJWT==2.15.0
 python-dateutil==2.9.0.post0
-python-dotenv==1.0.1
+python-dotenv==1.2.2
 redis==5.0.6
-requests==2.32.3
+requests==2.33.0
 six==1.17.0
-sqlparse==0.5.5
+sqlparse==0.6.0
 tzdata==2026.2
-urllib3==2.6.3
+urllib3==2.8.0
 vine==5.1.0
 wcwidth==0.7.0
 whitenoise==6.7.0
@@ -39,7 +39,7 @@ google-genai>=1.0.0
 openai>=1.0.0
 django-celery-beat==2.9.0
 beautifulsoup4==4.12.3
-lxml==5.4.0
+lxml==6.1.0
 reportlab>=4.0.0
 qrcode[pil]>=7.4.2
 cloudinary>=1.40.0
@@ -60,3 +60,6 @@ sentence-transformers>=3.0
 numpy>=1.26
 twilio>=9.0
 cryptography>=42,<51   # field-level encryption (already a transitive dependency)
+# Transitive (AI SDKs): floors for known vulnerabilities (pip-audit, session 30)
+httpx2>=2.12.0
+httpcore2>=2.10.0

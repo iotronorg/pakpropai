@@ -110,4 +110,4 @@ Priority: P0 (blocker) → P3.
 | MVP‑14 | [x] | P1 | SLO dashboards and alerts for API, search, AI reply, webhooks | Session 27, ADR‑050; session 28, ADR‑051: self-hosted stack with email alerts, verified end to end. **Live** once deployed (checklist §52) |
 | OD‑1125 | [x] | P1 | Owner decisions 2026‑11‑25: email alerts, self-hosted monitoring, export for everyone, Cloudinary files erased | Session 28, ADR‑051. `tests/test_owner_decisions_s28.py`. Open: KI‑112 |
 | MVP‑15 | [x] | P1 | Runbooks: LLM outage, WhatsApp token expiry, data incidents, harmful AI output | Session 29, ADR‑052. `docs/runbooks/`, `tests/test_runbooks.py`. Fixed KI‑113, KI‑115; recorded KI‑114 |
-| MVP‑13 | [ ] | P1 | CI green with eval gate; staging deploys automatically, production by manual approval | Next |
+| MVP‑13 | [x] | P1 | CI green with eval gate; staging deploys automatically, production by manual approval | Session 30, ADR‑053. `.github/workflows/{ci,deploy}.yml`, `scripts/deploy/remote_deploy.sh`, `tests/test_deploy_pipeline.py`, [deploy runbook](../runbooks/deploy.md). Fixed KI‑116…KI‑120. **First Actions run** waits for the owner's servers and environments |

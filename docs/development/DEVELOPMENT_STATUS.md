@@ -1,17 +1,20 @@
 # Development Status
 
-_Last updated: 2026-11-25 (session 29; git commit subjects number sessions differently: `7d95593` "session 47" is session 27 here)_
+_Last updated: 2026-11-26 (session 30; git commit subjects number sessions differently: `7d95593` "session 47" is session 27 here)_
 
 | Item | Value |
 |---|---|
-| Branch | `development`. The owner committed through session 27 (`7d95593`). **Uncommitted:** sessions 28 (owner decisions on monitoring, alerts, export, file deletion) and 29 (runbooks) |
+| Branch | `development`. The owner committed through session 27 (`7d95593`). **Uncommitted:** sessions 28 (monitoring, alerts, export, file deletion), 29 (runbooks) and 30 (deploys, dependency upgrades) |
 | Current milestone | **M2 — AI agent MVP** ([MILESTONE_02](milestones/MILESTONE_02_AI_AGENT_MVP.md)), started 2026‑11‑23. M1 code complete (contracts T‑1070g‑2 / T‑1032b‑2 release‑gated); M0 awaiting the first GitHub Actions run |
 | M0 progress | All 17 tasks complete. Remaining exit criterion: CI green on GitHub Actions (owner pushes) |
 | M1 progress | 16 of 18 tasks done (T‑1010, T‑1011, T‑1020, T‑1021, T‑1022, T‑1030, T‑1031, T‑1033, T‑1040, T‑1050, T‑1060, T‑1080, T‑1090, T‑1100, T‑1110, T‑1120) plus subtasks T‑1032a, T‑1032c, T‑1070a–f and T‑1070g‑1 |
 | M2 progress | 16 of 17 tasks done. Open: T‑2072 (owner data and paid runs) |
-| Test suite | **2491 passed, 1 skipped, 0 failed** (session 29); promtool rule tests pass (60 rules). See [TESTING_STATUS](TESTING_STATUS.md) |
-| Last completed task | MVP criterion 15 (ADR‑052): runbooks in `docs/runbooks/`, linked from every alert, with alerts for LLM outage, WhatsApp token and guardrail spikes; incident commands `rotate_field_keys`, `revoke_sessions`; fixed KI‑113, KI‑115 |
-| Next task | **MVP criterion 13** (MVP_SCOPE §6): CI green with the eval gate; staging deploys automatically and production needs a manual approval. Start in `.github/workflows/`, `docker/docker-compose.prod.yml`, GO_LIVE_CHECKLIST. Deploy credentials and environments are the owner's. Waiting on the owner: deploy the monitoring stack (checklist §52), KI‑112 (self-service deletion outside GDPR markets), T‑2072, staging E2E run, KI‑098. Open: KI‑055…KI‑059, KI‑068, KI‑069, KI‑071, KI‑073, KI‑075…KI‑089, KI‑091…KI‑093, KI‑095, KI‑096 (deploy), KI‑098, KI‑101, KI‑104, KI‑105 (rest), KI‑110, KI‑112, KI‑114 |
+| Test suite | **2506 passed, 1 skipped, 0 failed** (session 30, on the upgraded dependencies) plus the 2 entrypoint tests added after; promtool 60 rules; `pip-audit` clean; deploy rehearsed on real images. See [TESTING_STATUS](TESTING_STATUS.md) |
+| Last completed task | MVP criterion 13 (ADR‑053): one build per commit, automatic staging deploy over SSH with health-checked rollback, production behind a required reviewer; dependency vulnerabilities fixed and gated; KI‑116…KI‑120 fixed |
+| Next task | **Owner actions unblock the rest of the MVP**: servers and GitHub environments (checklist §54, [deploy runbook](../runbooks/deploy.md)), then the first Actions run on `main`; monitoring stack (§52); runbook roles (§53); staging E2E run (criterion 1); T‑2072 (criteria 6–7); pentest (criterion 12); KI‑112, KI‑114. **Next dev task:** none of the MVP criteria is blocked on development alone; pick from the open KIs (KI‑114 needs a product rule; KI‑110, KI‑104, KI‑101) or start Milestone 3 planning. Open: KI‑055…KI‑059, KI‑068, KI‑069, KI‑071, KI‑073, KI‑075…KI‑089, KI‑091…KI‑093, KI‑095, KI‑096, KI‑098, KI‑101, KI‑104, KI‑105 (rest), KI‑110, KI‑112, KI‑114 |
+
+## Owner decisions (2026-11-25, deploys)
+- **Deploys:** Docker over SSH for staging and production. **Approval:** required reviewers on the GitHub `production` environment.
 
 ## Owner decisions (2026-11-25)
 - **KI‑108:** alerts by **email**. **KI‑109:** **self-hosted Docker** monitoring stack, deployable anywhere. **KI‑085:** **any signed-in person** may export. **KI‑105:** 30-day SLA kept; **delete Cloudinary PDFs** on erasure.
@@ -36,6 +39,7 @@ _Last updated: 2026-11-25 (session 29; git commit subjects number sessions diffe
 - Meta: re‑submit the OTP template body with the RealTron name.
 
 ## Operator actions before deploying these changes
+- **Session 30** (checklist §54): no migration. Set up servers and GitHub environments; add `localhost` to `ALLOWED_HOSTS`; check uploads and PDFs on staging after the dependency upgrades.
 - **Session 29** (checklist §53): no migration. Reload the Prometheus rules; set a fixed `FIELD_HASH_KEY`; name the on-call, privacy owner and AI-stop roles in the runbooks.
 - **Session 28** (checklist §52): no migration. Deploy `docker/docker-compose.monitoring.yml` with `.env.monitoring` and `ops/secrets/`; set `PROMETHEUS_METRICS_TOKEN` on the app; Cloudinary credentials on the erasure worker.
 - **Session 27** (checklist §51): migrations `notifications 0005` (additive) and `0006` (concurrent index; direct DB connection). Scrape the workers on :9808, keep 35 days, choose an alert receiver.
