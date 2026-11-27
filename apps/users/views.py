@@ -63,6 +63,7 @@ from .serializers import (
     PasswordResetConfirmSerializer, PasswordChangeSerializer,
     RegistrationOTPVerifySerializer,
 )
+from . import openapi as API
 from .services import OTPService
 from apps.core.errors import ApiError
 
@@ -74,6 +75,7 @@ class SendOTPView(APIView):
     ALLOWED_PURPOSES = ('otp_login', 'registration_verify')
     throttle_classes = [OtpSendThrottle, OtpDailyThrottle]
 
+    @API.send_otp
     def post(self, request):
         serializer = SendOTPSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -112,6 +114,7 @@ class VerifyOTPView(APIView):
     permission_classes = [AllowAny]
     throttle_classes = [OtpSendThrottle, OtpDailyThrottle]
 
+    @API.verify_otp
     def post(self, request):
         serializer = VerifyOTPSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -134,9 +137,11 @@ class VerifyOTPView(APIView):
 class MeView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @API.me
     def get(self, request):
         return Response(UserSerializer(request.user).data)
 
+    @API.me_update
     def patch(self, request):
         serializer = UserSerializer(request.user, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
@@ -153,6 +158,7 @@ class CookieTokenRefreshView(APIView):
     """
     permission_classes = [AllowAny]
 
+    @API.token_refresh
     def post(self, request):
         from rest_framework_simplejwt.settings import api_settings as jwt_settings
 
@@ -216,6 +222,7 @@ class LogoutView(APIView):
     """POST /auth/logout/ — blacklist the refresh token and clear auth cookies."""
     permission_classes = [IsAuthenticated]
 
+    @API.logout
     def post(self, request):
         raw_refresh = request.COOKIES.get('refresh_token') or request.data.get('refresh', '')
         response = Response({'detail': 'Logged out.'}, status=status.HTTP_200_OK)
@@ -235,6 +242,7 @@ class UserListView(APIView):
         if request.user.role != User.Role.ADMIN:
             raise ApiError('Admin access required.', 'users.admin_required', 403)
 
+    @API.users_list
     def get(self, request):
         self._require_admin(request)
         qs = User.objects.all().order_by('-created_at')
@@ -247,6 +255,7 @@ class UserListView(APIView):
         serializer = UserListSerializer(qs, many=True)
         return Response({'count': qs.count(), 'results': serializer.data})
 
+    @API.users_create
     def post(self, request):
         self._require_admin(request)
         serializer = UserCreateSerializer(data=request.data)
@@ -254,6 +263,7 @@ class UserListView(APIView):
         user = serializer.save()
         return Response(UserListSerializer(user).data, status=status.HTTP_201_CREATED)
 
+    @API.user_update
     def patch(self, request, pk):
         self._require_admin(request)
         try:
@@ -265,6 +275,7 @@ class UserListView(APIView):
         serializer.save()
         return Response(serializer.data)
 
+    @API.user_delete
     def delete(self, request, pk):
         self._require_admin(request)
         try:
@@ -277,6 +288,16 @@ class UserListView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+class UserCollectionView(UserListView):
+    """``/auth/users/``: list and create. ``PATCH``/``DELETE`` here had no ``pk`` and failed with a 500."""
+    http_method_names = ['get', 'post', 'head', 'options']
+
+
+class UserDetailView(UserListView):
+    """``/auth/users/<pk>/``: update and delete one account."""
+    http_method_names = ['patch', 'delete', 'options']
+
+
 class NotificationPreferencesView(APIView):
     """GET/PATCH /auth/me/notification-preferences/ — per-user channel + event opt-outs."""
     permission_classes = [IsAuthenticated]
@@ -286,10 +307,12 @@ class NotificationPreferencesView(APIView):
         prefs, _ = UserNotificationPreference.objects.get_or_create(user=user)
         return prefs
 
+    @API.preferences
     def get(self, request):
         from apps.notifications.serializers import NotificationPreferenceSerializer
         return Response(NotificationPreferenceSerializer(self._get_prefs(request.user)).data)
 
+    @API.preferences_update
     def patch(self, request):
         from apps.notifications.serializers import NotificationPreferenceSerializer
         prefs = self._get_prefs(request.user)
@@ -308,6 +331,7 @@ class CsrfTokenView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []  # no auth so CSRF middleware can set the cookie freely
 
+    @API.csrf
     def get(self, request):
         return Response({'csrfToken': get_csrf_token(request)})
 
@@ -316,6 +340,7 @@ class PasswordLoginView(APIView):
     permission_classes = [AllowAny]
     throttle_classes   = [OtpSendThrottle]
 
+    @API.password_login
     def post(self, request):
         serializer = PasswordLoginSerializer(data=request.data)
         if not serializer.is_valid():
@@ -350,6 +375,7 @@ class RegistrationOTPVerifyView(APIView):
     permission_classes = [AllowAny]
     throttle_classes   = [OtpSendThrottle]
 
+    @API.registration_verify
     def post(self, request):
         serializer = RegistrationOTPVerifySerializer(data=request.data)
         if not serializer.is_valid():
@@ -378,6 +404,7 @@ class PasswordResetRequestView(APIView):
     permission_classes = [AllowAny]
     throttle_classes   = [OtpSendThrottle, OtpDailyThrottle]
 
+    @API.reset_request
     def post(self, request):
         serializer = PasswordResetRequestSerializer(data=request.data)
         if not serializer.is_valid():
@@ -408,6 +435,7 @@ class PasswordResetConfirmView(APIView):
     permission_classes = [AllowAny]
     throttle_classes   = [OtpSendThrottle]
 
+    @API.reset_confirm
     def post(self, request):
         serializer = PasswordResetConfirmSerializer(data=request.data)
         if not serializer.is_valid():
@@ -443,6 +471,7 @@ class PasswordResetConfirmView(APIView):
 class PasswordChangeView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @API.password_change
     def post(self, request):
         serializer = PasswordChangeSerializer(data=request.data)
         if not serializer.is_valid():

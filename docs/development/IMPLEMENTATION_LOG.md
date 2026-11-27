@@ -701,3 +701,10 @@
 - **Added:** `apps/core/errors.ApiError`; `attach_envelope` keeps the legacy `error` key for it; `apps/security/exception_handler.py` skips the auth-failure counter for it.
 - **Changed:** `apps/verification/views.py` (14), `apps/users/views.py` (8 + 2 `code` keys; `_require_admin` raises), `apps/leads/admin_views.py` (6), `apps/properties/views.py` (5), `apps/audit/views.py` (2).
 - **Tests:** `tests/test_error_envelope.py` (+4 `ApiErrorTest`, 1 expectation updated from `permission_denied` to `listing.admin_only`).
+
+### T‑1091 batch 1: schema descriptions (ADR‑016 addendum) — session 35
+- **Added:** `apps/verification/openapi.py`, `apps/users/openapi.py`, `apps/compliance/openapi.py`, `apps/reports/openapi.py`.
+- **Changed:** their `views.py` (decorators; compliance export status now a real shape instead of a generic object), `apps/verification/serializers.py` (return type hints), `apps/users/views.py` + `urls.py` (`UserCollectionView`/`UserDetailView`; a `PATCH`/`DELETE` on `/auth/users/` was a 500).
+- **Tests:** `tests/test_openapi_schema.py` (budgets 153/28 → 98/22; documented-paths test), `tests/test_user_admin_routes.py` (3).
+- **Learned:** the project's `IsAdminUser` already requires role admin, so `UserListView._require_admin` is a second line only.
+- **How to list what remains:** in the test image, `SchemaGenerator().get_schema(request=None, public=True)` inside `GENERATOR_STATS.silence()`, then read `GENERATOR_STATS._error_cache` / `_warn_cache` (as `tests/test_openapi_schema._build_schema` does); each "unable to guess serializer … Ignoring view" names the view class.

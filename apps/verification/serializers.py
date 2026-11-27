@@ -16,7 +16,7 @@ class DocumentScanSerializer(serializers.ModelSerializer):
         )
         read_only_fields = ('id', 'created_at')
 
-    def get_red_flag_count(self, obj):
+    def get_red_flag_count(self, obj) -> int:
         return len(obj.red_flags) if obj.red_flags else 0
 
 
@@ -46,11 +46,11 @@ class VerificationSerializer(serializers.ModelSerializer):
             'fraud_flags', 'created_at',
         )
 
-    def get_document_count(self, obj):
+    def get_document_count(self, obj) -> int:
         return obj.document_scans.count()
 
-    def get_total_red_flags(self, obj):
+    def get_total_red_flags(self, obj) -> int:
         return sum(len(s.red_flags) for s in obj.document_scans.all())
 
-    def get_document_types(self, obj):
+    def get_document_types(self, obj) -> list[str]:
         return list(obj.document_scans.values_list('document_type', flat=True).distinct())

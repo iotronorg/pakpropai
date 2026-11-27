@@ -16,6 +16,7 @@ from rest_framework.response import Response
 
 from apps.core.permissions import IsAdminUser, IsAdminOrOrgAdmin, get_user_org
 
+from . import openapi as API
 from .models import (
     ConsentRecord, DataExportFile, DataExportRequest, DataDeletionRequest,
     PIIDetectionEvent, PrivacyAuditLog,
@@ -40,6 +41,7 @@ def _require_gdpr(request):
 class ConsentView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @API.consent
     def post(self, request):
         _require_gdpr(request)
         purpose = request.data.get('purpose')
@@ -104,7 +106,7 @@ class DataExportStatusView(APIView):
     """State of one's own export."""
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(responses=OpenApiTypes.OBJECT)
+    @API.export_status
     def get(self, request, request_id):
         req = get_object_or_404(DataExportRequest, pk=request_id, user=request.user)
         f = DataExportFile.objects.filter(request=req).only('expires_at').first()
@@ -129,6 +131,7 @@ class DataExportDownloadView(APIView):
 class DataDeletionView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @API.deletion
     def delete(self, request):
         _require_gdpr(request)
         from .erasure import blocked_reason
@@ -148,6 +151,7 @@ class DataDeletionView(APIView):
 class PrivacyAuditLogView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @API.privacy_log
     def get(self, request):
         user = request.user
         if user.role == 'agent':
@@ -175,6 +179,7 @@ class PrivacyAuditLogView(APIView):
 class RightToBeForgottenView(APIView):
     permission_classes = [IsAdminOrOrgAdmin]
 
+    @API.rtbf
     def post(self, request):
         import re
         phone = request.data.get('phone_e164', '').strip()
@@ -202,6 +207,7 @@ class RightToBeForgottenView(APIView):
 class RTBFStatusView(APIView):
     permission_classes = [IsAdminOrOrgAdmin]
 
+    @API.rtbf_status
     def get(self, request, request_id):
         try:
             req = DataDeletionRequest.objects.get(id=request_id)
@@ -229,6 +235,7 @@ class RTBFStatusView(APIView):
 class PrivacyAuditExportView(APIView):
     permission_classes = [IsAdminOrOrgAdmin]
 
+    @API.privacy_export
     def get(self, request):
         user = request.user
         qs = PrivacyAuditLog.objects.order_by('-created_at')
@@ -257,6 +264,7 @@ class PrivacyAuditExportView(APIView):
 class PIIDetectionSummaryView(APIView):
     permission_classes = [IsAdminOrOrgAdmin]
 
+    @API.pii_summary
     def get(self, request):
         from django.db.models import Count
         from django.utils import timezone as tz
@@ -280,6 +288,7 @@ class ComplianceScreeningListView(APIView):
     """GET /compliance/screenings/ — list screening results scoped to org."""
     permission_classes = [IsAuthenticated]
 
+    @API.screenings
     def get(self, request):
         user = request.user
         if user.role == 'agent':
@@ -310,6 +319,7 @@ class ComplianceScreeningDetailView(APIView):
     """GET /compliance/screenings/<uuid:screening_id>/ — single result."""
     permission_classes = [IsAuthenticated]
 
+    @API.screening
     def get(self, request, screening_id):
         user = request.user
         if user.role == 'agent':
@@ -343,6 +353,7 @@ class ComplianceSanctionListView(APIView):
     """GET /compliance/sanctions/ — admin only list; POST — admin only create."""
     permission_classes = [IsAdminUser]
 
+    @API.sanctions
     def get(self, request):
         qs = ComplianceSanctionRecord.objects.filter(is_active=True).order_by('-created_at')
         data = list(qs.values(
@@ -351,6 +362,7 @@ class ComplianceSanctionListView(APIView):
         )[:500])
         return Response(data)
 
+    @API.sanction_add
     def post(self, request):
         import hashlib as _hl
         name       = (request.data.get('name') or '').strip()
@@ -381,6 +393,7 @@ class ComplianceSanctionDetailView(APIView):
     """PATCH/DELETE /compliance/sanctions/<id>/ — admin only."""
     permission_classes = [IsAdminUser]
 
+    @API.sanction_update
     def patch(self, request, record_id):
         try:
             rec = ComplianceSanctionRecord.objects.get(id=record_id)
@@ -393,6 +406,7 @@ class ComplianceSanctionDetailView(APIView):
         rec.save()
         return Response({'id': str(rec.id), 'is_active': rec.is_active})
 
+    @API.sanction_delete
     def delete(self, request, record_id):
         try:
             rec = ComplianceSanctionRecord.objects.get(id=record_id)
@@ -407,6 +421,7 @@ class ComplianceReportExportView(APIView):
     """GET /compliance/export/ — org-scoped CSV of screening results."""
     permission_classes = [IsAdminOrOrgAdmin]
 
+    @API.screenings_export
     def get(self, request):
         user = request.user
         qs = SanctionScreeningResult.objects.order_by('-screened_at')

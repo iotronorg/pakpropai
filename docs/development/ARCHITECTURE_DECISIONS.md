@@ -1168,3 +1168,9 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
 - Views raise `apps.core.errors.ApiError(message, code, status)` instead of returning `Response({'error': …}, status=4xx)`. The body keeps `error` (same string) and gains `detail` plus the envelope with the given code (namespaced: `verification.*`, `auth.*`, `users.*`, `leads.*`, `listing.*`, `compare.*`, `audit.*`). Additive for clients.
 - **Not an authentication failure:** `security_exception_handler` does not feed `ApiError` 401/403 into the consecutive-failure IP blocker. The hand-built responses never reached it; counting them now would let ordinary refusals (a client opening an agent page) block an address.
 - Responses that must be modified (token refresh clears cookies) stay Responses and carry a `code` key, which `ErrorEnvelopeMiddleware` already honours. A guard test refuses any new `{'error'}` response without a code.
+
+### ADR‑016 addendum — Schema descriptions for hand-built `APIView`s (T‑1091, KI‑037, session 35, 2026-11-27)
+- Each app keeps the descriptions in `apps/<app>/openapi.py` (prebuilt `extend_schema` decorators, `inline_serializer` shapes) and the views apply them as `@API.<name>`; the views stay readable and the shapes are next to each other for review. Describe what the view really returns: the serializers it uses where it uses one, inline shapes for fixed dicts, a generic object only where the body is free-form.
+- Choice sets that already exist under another enum name are written as strings with the values in `help_text`, so no existing enum component is renamed.
+- Provider callbacks (identity providers; later payment/WhatsApp webhooks) are `exclude=True`: clients never call them and their contract is the provider's.
+- Two views on one class for a collection and an item are split into two classes (`http_method_names`), which also removes the 500 for a method without its `pk`.

@@ -15,6 +15,7 @@ from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_sche
 from apps.core.throttles import ReportGenerateThrottle
 from apps.core.permissions import IsAdminUser, IsAdminOrOrgAdmin, IsAgentOrAdmin, get_user_org
 from apps.markets.services import user_timezone
+from . import openapi as API
 from .models import Report, MonthlyReport
 
 
@@ -60,6 +61,7 @@ class ReportGenerateView(APIView):
     permission_classes = [IsAuthenticated]
     throttle_classes = [ReportGenerateThrottle]
 
+    @API.generate
     def post(self, request):
         report_type = request.data.get('report_type', '')
         if report_type not in Report.ReportType.values:
@@ -111,6 +113,7 @@ class ReportStatusView(APIView):
     """GET /reports/<id>/ — poll status of a report."""
     permission_classes = [IsAuthenticated]
 
+    @API.status_
     def get(self, request, report_id):
         try:
             report = Report.objects.get(id=report_id)
@@ -134,6 +137,7 @@ class ReportDownloadView(APIView):
     """GET /reports/<id>/download/ — redirect to PDF or return inline content."""
     permission_classes = [IsAuthenticated]
 
+    @API.download
     def get(self, request, report_id):
         try:
             report = Report.objects.get(id=report_id)
@@ -161,6 +165,7 @@ class MyReportsView(APIView):
     """GET /reports/mine/ — authenticated user's own report history."""
     permission_classes = [IsAuthenticated]
 
+    @API.mine
     def get(self, request):
         reports = Report.objects.filter(user=request.user).order_by('-created_at')[:50]
         return Response([{
@@ -177,6 +182,7 @@ class AgentPersonalReportView(APIView):
     """GET /reports/my-stats/ — personal performance report for the logged-in agent."""
     permission_classes = [IsAgentOrAdmin]
 
+    @API.my_stats
     def get(self, request):
         from apps.leads.models import Lead
         from apps.properties.models import Property
@@ -225,6 +231,7 @@ class LeadReportView(APIView):
     """GET /reports/leads/ — lead funnel and conversion analytics."""
     permission_classes = [IsAdminOrOrgAdmin]
 
+    @API.leads
     def get(self, request):
         from apps.leads.models import Lead
 
@@ -263,6 +270,7 @@ class AgentReportView(APIView):
     """GET /reports/agents/ — agent performance summary. Admin + developer."""
     permission_classes = [IsAdminOrOrgAdmin]
 
+    @API.agents
     def get(self, request):
         from apps.agents.models import Agent
         from apps.leads.models import Lead
@@ -304,6 +312,7 @@ class PropertyReportView(APIView):
     """GET /reports/properties/ — property inventory stats."""
     permission_classes = [IsAdminOrOrgAdmin]
 
+    @API.properties
     def get(self, request):
         from apps.properties.models import Property
 
@@ -337,6 +346,7 @@ class DealReportView(APIView):
     """GET /reports/deals/ — deal lock analytics. Admin + developer."""
     permission_classes = [IsAdminOrOrgAdmin]
 
+    @API.deals
     def get(self, request):
         from apps.escrow.models import EscrowDeal
         from django.db.models import ExpressionWrapper, DurationField, F
@@ -381,6 +391,7 @@ class RevenueReportView(APIView):
     """GET /reports/revenue/ — deal + payment revenue analytics. Admin only."""
     permission_classes = [IsAdminUser]
 
+    @API.revenue
     def get(self, request):
         from apps.escrow.models import EscrowDeal
         from apps.payments.models import Payment
@@ -445,6 +456,7 @@ class BotReportView(APIView):
     """GET /reports/bot/ — WhatsApp bot activity analytics. Admin only."""
     permission_classes = [IsAdminUser]
 
+    @API.bot
     def get(self, request):
         from apps.leads.models import UnifiedMessage
         from apps.whatsapp.models import WhatsAppSession
@@ -505,6 +517,7 @@ class MonthlyReportListView(APIView):
     """GET /reports/monthly/ — list monthly org reports."""
     permission_classes = [IsAuthenticated]
 
+    @API.monthly
     def get(self, request):
         role = request.user.role
 

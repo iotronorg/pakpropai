@@ -19,8 +19,8 @@ SCHEMA_URL = '/api/v1/schema/'
 
 # Unique generator messages at introduction (session 6). Lower these when
 # views are annotated; never raise them.
-ERROR_BUDGET = 153      # almost all: APIView without serializer_class (T-1032a: members API documented)
-WARNING_BUDGET = 28     # T-1032a: members view split + enum overrides
+ERROR_BUDGET = 98       # almost all: APIView without serializer_class (T-1091: verification, users, compliance, reports)
+WARNING_BUDGET = 22     # T-1091: users list/detail split, type hints and operation ids
 
 
 def _build_schema():
@@ -64,6 +64,17 @@ class SchemaGenerationTest(TestCase):
         # The list endpoint's OrderingFilter is picked up from filter_backends.
         params = {p['name'] for p in self.schema['paths']['/api/v1/properties/']['get']['parameters']}
         self.assertIn('ordering', params)
+
+    def test_t1091_endpoints_are_documented(self):
+        paths = self.schema['paths']
+        for path in ('/api/v1/verification/queue/', '/api/v1/verification/fraud/blacklist/',
+                     '/api/v1/auth/otp/verify/', '/api/v1/auth/login/', '/api/v1/auth/users/{id}/',
+                     '/api/v1/compliance/screenings/', '/api/v1/compliance/rtbf/{request_id}/',
+                     '/api/v1/reports/leads/', '/api/v1/reports/generate/', '/api/v1/reports/monthly/'):
+            self.assertIn(path, paths)
+        self.assertNotIn('/api/v1/verification/webhook/jumio/', paths)           # provider callbacks stay out
+        self.assertEqual(set(paths['/api/v1/auth/users/']) - {'parameters'}, {'get', 'post'})
+        self.assertEqual(set(paths['/api/v1/auth/users/{id}/']) - {'parameters'}, {'patch', 'delete'})
 
     def test_generator_error_budget_does_not_grow(self):
         self.assertLessEqual(

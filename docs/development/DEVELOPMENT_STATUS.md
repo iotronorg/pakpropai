@@ -4,16 +4,16 @@ _Last updated: 2026-11-27 (session 35; git commit subjects number sessions diffe
 
 | Item | Value |
 |---|---|
-| Branch | `development`. The owner committed T‑4051 and the KI‑125 fix (`8586a35`). **Uncommitted:** KI‑126 alerts half, T‑1092 (session 35, continued) |
+| Branch | `development`. The owner committed through KI‑126/T‑1092 (`61fb555`). **Uncommitted:** T‑1091 batch 1 (session 35, continued) |
 | Current milestone | **M4 — AI intelligence** ([MILESTONE_04](milestones/MILESTONE_04_AI_INTELLIGENCE.md)). M3 is done apart from owner work (T‑3080, T‑3110) and the release‑gated T‑3100c. M2 open only T‑2072 (owner). M1 contracts release‑gated; M0 awaiting the first Actions run |
 | M0 progress | All 17 tasks complete. Remaining exit criterion: CI green on GitHub Actions (owner pushes) |
-| M1 progress | 16 of 18 tasks done; T‑1032b‑2 and T‑1070g‑2 staged (release‑gated); API debt: T‑1092 done, T‑1091 open |
+| M1 progress | 16 of 18 tasks done; T‑1032b‑2 and T‑1070g‑2 staged (release‑gated); API debt: T‑1092 done, T‑1091 in progress (98 views left) |
 | M2 progress | 16 of 17 tasks done. Open: T‑2072 (owner data and paid runs) |
 | M3 progress | 8 of 11 tasks done + T‑3100a/b; T‑3100c waits for the production backfill; T‑3080, T‑3110 owner-blocked |
 | M4 progress | 5 of 10 tasks done (T‑4010, T‑4020, T‑4030, T‑4060, T‑4050) + follow-up T‑4051. Rest owner-gated (T‑4040 embedding model, T‑4070 OCR vendor, T‑4080 POI licence, T‑4100 accounts) or needs volume (T‑4090) |
-| Test suite | Last full run (session 35, end): **2678 passed, 1 skipped, 0 failed**. No migration drift; `manage.py check` clean. See [TESTING_STATUS](TESTING_STATUS.md) |
-| Last completed task | T‑1092 (ADR‑017 addendum): 35 hand-built `{'error'}` refusals raise `ApiError` with specific codes, legacy `error` kept, not counted as auth failures. Before it: KI‑126 alerts skip copies of announced/saved properties; T‑4051 search collapse; KI‑125 slot-id masking fix |
-| Next task | **Dev:** T‑1091 (schema annotations for the ~153 schema-less `APIView`s; lower the budgets in `tests/test_openapi_schema.py` as they go; start with the views changed in T‑1092: `apps/verification/views.py`, `apps/users/views.py`). T‑4040 RAG waits for the owner's embedding-model choice. **Owner:** as before plus checklist §69 ("also listed" card) and §70 (new error codes) |
+| Test suite | Last full run (session 35, end): **2682 passed, 1 skipped, 0 failed**. No migration drift; `manage.py check` clean; schema valid. See [TESTING_STATUS](TESTING_STATUS.md) |
+| Last completed task | T‑1091 batch 1 (ADR‑016 addendum): verification, users, compliance and reports documented in the OpenAPI schema (152 → 98 views missing); `/auth/users/` split, so item methods on the collection are 405, not 500. Before it: T‑1092, KI‑126 alerts, T‑4051, KI‑125 |
+| Next task | **Dev:** T‑1091 batch 2 — `apps/organizations/views.py` (11), `external_api.py` (5), `theme_views.py` (2), then agents (10), payments (9), whatsapp (9 + 3 provisioning), billing (8); same pattern (`apps/<app>/openapi.py`), ratchet the budgets in `tests/test_openapi_schema.py`. List what remains with a generator run (see IMPLEMENTATION_LOG T‑1091). T‑4040 waits for the owner's embedding-model choice. **Owner:** as before plus checklist §69, §70 (regenerate the frontend API client) |
 
 ## Owner decisions (2026-11-25, deploys)
 - **Deploys:** Docker over SSH for staging and production. **Approval:** required reviewers on the GitHub `production` environment.

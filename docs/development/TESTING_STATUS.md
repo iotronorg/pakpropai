@@ -235,6 +235,8 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | 2026-11-27 | Working tree | `makemigrations --check --dry-run`; `manage.py check` | No changes; no issues | — |
 | 2026-11-27 | `8586a35` + working tree: KI‑126 alerts, T‑1092 | `scripts/dev/test.sh tests/ apps/ -rf --tb=long` (run alone) | **2678 passed, 1 skipped, 0 failed**, 303 subtests (+4 alert, +4 `ApiErrorTest`); covers the earlier `_also_listed` ordering fix | 10m22s |
 | 2026-11-27 | Working tree | `makemigrations --check --dry-run`; `manage.py check` | No changes; no issues (first attempt hit a Docker `ENOMEM` on the bind mount; rerun clean) | — |
+| 2026-11-27 | `61fb555` + working tree: T‑1091 batch 1 | `scripts/dev/test.sh tests/ apps/ -rf --tb=long` (run alone) | **2682 passed, 1 skipped, 0 failed**, 303 subtests (+3 user routes, +1 schema) | 11m12s |
+| 2026-11-27 | Working tree | `makemigrations --check --dry-run`; `manage.py check`; `spectacular --validate` | No changes; no issues; schema valid (generator errors 98, warnings 22) | — |
 
 ## Coverage
 Not measured yet (no coverage run executed). CI is configured with `--cov=apps`.

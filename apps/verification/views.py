@@ -11,6 +11,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from . import openapi as API
 from .models import Verification, DocumentScan, FraudBlacklist
 from .serializers import VerificationSerializer, DocumentScanSerializer
 from .services import FraudCheckService, VerificationSignalService
@@ -32,6 +33,7 @@ class FraudCheckView(APIView):
     permission_classes = [IsAuthenticated]
     throttle_classes = [FraudCheckThrottle]
 
+    @API.fraud_check
     def post(self, request):
         query = (request.data.get('query') or '').strip()
         if not query:
@@ -50,6 +52,7 @@ class VerificationQueueView(APIView):
     def _is_dashboard(self, user):
         return user.role in ('admin', 'agent', 'developer')
 
+    @API.queue
     def get(self, request):
         role = request.user.role
         if not self._is_dashboard(request.user):
@@ -85,6 +88,7 @@ class VerificationReviewView(APIView):
     """Admin-only: approve or reject a verification and update property legal_status."""
     permission_classes = [IsAdmin]
 
+    @API.review
     def patch(self, request, pk):
         try:
             verification = (
@@ -132,6 +136,7 @@ class VerificationReviewView(APIView):
 class DocumentScanListView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @API.scans
     def get(self, request):
         role = request.user.role
         if role not in ('admin', 'agent', 'developer'):
@@ -168,6 +173,7 @@ class DocumentScanDetailView(APIView):
     """GET /verification/documents/<id>/ — single document scan detail."""
     permission_classes = [IsAuthenticated]
 
+    @API.scan_detail
     def get(self, request, pk):
         role = request.user.role
         if role not in ('admin', 'agent', 'developer'):
@@ -198,6 +204,7 @@ class LinkDocumentToVerificationView(APIView):
     """Link a DocumentScan to a Verification and recompute signal score."""
     permission_classes = [IsAdmin]
 
+    @API.link_scan
     def post(self, request, scan_id, verification_id):
         try:
             scan = DocumentScan.objects.get(pk=scan_id)
@@ -232,6 +239,7 @@ class FraudStatsView(APIView):
     """GET /verification/fraud/stats/ — aggregate numbers for the dashboard."""
     permission_classes = [IsAdmin]
 
+    @API.fraud_stats
     def get(self, request):
         now     = timezone.now()
         day30   = now - timedelta(days=30)
@@ -275,6 +283,7 @@ class FraudAlertsView(APIView):
     """GET /verification/fraud/alerts/ — chronological feed of fraud signals."""
     permission_classes = [IsAdmin]
 
+    @API.fraud_alerts
     def get(self, request):
         from apps.core.query_params import int_param
         limit = int_param(request.query_params, 'limit', 50, min_value=1, max_value=200)
@@ -357,6 +366,7 @@ class FraudBlacklistView(APIView):
     """GET/POST /verification/fraud/blacklist/ — list and add blacklist tokens."""
     permission_classes = [IsAdmin]
 
+    @API.blacklist_list
     def get(self, request):
         now     = timezone.now()
         entries = FraudBlacklist.objects.select_related('added_by').filter(
@@ -375,6 +385,7 @@ class FraudBlacklistView(APIView):
         ]
         return Response({'count': len(data), 'results': data})
 
+    @API.blacklist_add
     def post(self, request):
         token      = (request.data.get('token') or '').strip().lower()
         reason     = request.data.get('reason', '')
@@ -411,6 +422,7 @@ class FraudBlacklistDeleteView(APIView):
     """DELETE /verification/fraud/blacklist/<id>/ — remove a token."""
     permission_classes = [IsAdmin]
 
+    @API.blacklist_delete
     def delete(self, request, pk):
         try:
             entry = FraudBlacklist.objects.get(pk=pk)
@@ -424,6 +436,7 @@ class FlaggedUsersView(APIView):
     """GET /verification/fraud/users/ — users with suspicious activity."""
     permission_classes = [IsAdmin]
 
+    @API.flagged_users
     def get(self, request):
         # Users who submitted suspicious document scans
         suspicious_user_phones = (
@@ -504,6 +517,7 @@ class BulkRejectVerificationsView(APIView):
     permission_classes = [IsAdmin]
     throttle_classes = [BulkOperationThrottle]
 
+    @API.bulk_reject
     def post(self, request):
         ids   = request.data.get('verification_ids', [])
         notes = request.data.get('notes', '')
@@ -538,6 +552,7 @@ class TrustCertificateView(APIView):
     """GET /verification/<property_id>/certificate/ — return trust certificate URL."""
     permission_classes = [IsAuthenticated]
 
+    @API.certificate
     def get(self, request, property_id):
         role = request.user.role
 
@@ -594,6 +609,7 @@ class IDVerificationSessionView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @API.id_session
     def post(self, request):
         from apps.markets.registry import get_verification_provider
         from apps.core.permissions import get_user_org
@@ -680,6 +696,7 @@ class JumioWebhookView(APIView):
     permission_classes  = [AllowAny]
     authentication_classes = []
 
+    @API.provider_callback
     def post(self, request):
         try:
             payload = json.loads(request.body)
@@ -716,6 +733,7 @@ class OnfidoWebhookView(APIView):
     permission_classes  = [AllowAny]
     authentication_classes = []
 
+    @API.provider_callback
     def post(self, request):
         raw = request.body
         sig = request.headers.get('X-SHA2-Signature', '')
@@ -744,6 +762,7 @@ class StripeIdentityWebhookView(APIView):
     permission_classes  = [AllowAny]
     authentication_classes = []
 
+    @API.provider_callback
     def post(self, request):
         import stripe
         from django.conf import settings
