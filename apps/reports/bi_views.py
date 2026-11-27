@@ -10,6 +10,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from . import openapi as API
 from apps.core.permissions import IsAdminOrOrgAdmin, get_user_org
 from .analytics_engine import (
     compute_funnel,
@@ -53,6 +54,7 @@ class FunnelAnalyticsView(APIView):
     """GET /reports/funnel/ — 6-stage sales funnel conversion rates."""
     permission_classes = [IsAdminOrOrgAdmin]
 
+    @API.funnel
     def get(self, request):
         org, err = _org_or_403(request)
         if err:
@@ -64,6 +66,7 @@ class WaTokenUsageView(APIView):
     """GET /reports/wa-tokens/ — rolling 6-month WhatsApp AI token usage."""
     permission_classes = [IsAdminOrOrgAdmin]
 
+    @API.wa_tokens
     def get(self, request):
         org, err = _org_or_403(request)
         if err:
@@ -75,6 +78,7 @@ class AgentSpeedLeaderboardView(APIView):
     """GET /reports/leaderboard/ — top agents ranked by response speed."""
     permission_classes = [IsAdminOrOrgAdmin]
 
+    @API.speed_leaderboard
     def get(self, request):
         org, err = _org_or_403(request)
         if err:

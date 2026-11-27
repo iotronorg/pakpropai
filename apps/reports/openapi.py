@@ -82,3 +82,26 @@ monthly = extend_schema(
         'status': s.CharField(), 'pdf_url': s.URLField(allow_null=True), 'created_at': s.DateTimeField(),
         'ready_at': s.DateTimeField(allow_null=True)}, many=True), 400: ERROR, 403: ERROR},
     description='The 24 most recent; an organization admin sees their own.')
+
+# ── BI analytics (bi_views.py) ───────────────────────────────────────────────
+
+BI_ORG = OpenApiParameter('org', str, description='Required for platform admins: the organization (UUID)')
+BI_REFUSED = {400: ERROR, 403: ERROR, 404: ERROR}
+funnel = extend_schema(parameters=[BI_ORG], responses={200: inline_serializer('SalesFunnel', {
+    'stages': inline_serializer('SalesFunnelStage', {
+        'stage': s.CharField(help_text='Discover, Qualify, Verify, Connect, Negotiate, Transact'),
+        'count': s.IntegerField(), 'conversion': s.FloatField(help_text='Percent of Discover')}, many=True),
+    'total_leads': s.IntegerField(), 'overall_conversion': s.FloatField()}), **BI_REFUSED})
+wa_tokens = extend_schema(parameters=[BI_ORG], responses={200: inline_serializer('WaTokenUsage', {
+    'monthly': inline_serializer('WaTokenMonth', {'period': s.CharField(help_text='YYYY-MM'),
+                                                  'tokens': s.IntegerField()}, many=True),
+    'current_period': s.CharField(), 'current_month': s.IntegerField(), 'total_6m': s.IntegerField()}),
+    **BI_REFUSED}, description='The last six months.')
+speed_leaderboard = extend_schema(
+    parameters=[BI_ORG, OpenApiParameter('top_n', int, description='1–50, default 10'),
+                OpenApiParameter('refresh', str, enum=['1'], description='Recompute instead of the cached ranking')],
+    responses={200: inline_serializer('AgentSpeedRow', {
+        'rank': s.IntegerField(), 'agent_id': s.IntegerField(), 'name': s.CharField(),
+        'avg_response_time_hours': s.FloatField(allow_null=True), 'closed_deals': s.IntegerField(),
+        'rating': s.FloatField()}, many=True), **BI_REFUSED},
+    description='Agents ranked by response speed.')

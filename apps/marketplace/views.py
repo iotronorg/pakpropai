@@ -10,6 +10,7 @@ from rest_framework.viewsets import GenericViewSet, ModelViewSet
 
 from apps.core.permissions import FeatureEnabled, IsAdminUser, get_user_org
 
+from . import openapi as API
 from .broker_network import BrokerNetworkService
 from .commission_ledger import CommissionLedger
 from .models import (
@@ -211,6 +212,7 @@ class SyndicationBrowseView(APIView):
     """GET /marketplace/browse/ — visible syndicated listings for broker/agent."""
     permission_classes = [permissions.IsAuthenticated, FeatureEnabled('feature_syndication')]
 
+    @API.browse
     def get(self, request):
         user = request.user
         if _is_developer(user) or _is_admin(user):

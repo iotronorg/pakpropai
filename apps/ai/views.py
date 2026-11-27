@@ -10,6 +10,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.permissions import IsAdminOrOrgAdmin, get_admin_org
+from . import openapi as API
 from apps.ai.models import TokenUsageRecord
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,7 @@ class TokenUsageStatsView(APIView):
     """
     permission_classes = [IsAdminOrOrgAdmin]
 
+    @API.token_usage
     def get(self, request):
         qs = TokenUsageRecord.objects.all()
         org = _scope_org(request)
@@ -119,6 +121,7 @@ class TokenBudgetStatusView(APIView):
     """
     permission_classes = [IsAdminOrOrgAdmin]
 
+    @API.token_budget
     def get(self, request):
         from apps.ai.token_governor import SlidingWindowTokenBudget
 

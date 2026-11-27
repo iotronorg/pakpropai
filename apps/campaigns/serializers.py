@@ -20,7 +20,7 @@ class CampaignSerializer(serializers.ModelSerializer):
             'sent_at', 'created_by', 'created_by_name', 'created_at', 'updated_at',
         ]
 
-    def get_created_by_name(self, obj):
+    def get_created_by_name(self, obj) -> str | None:
         if obj.created_by:
             return obj.created_by.name or obj.created_by.phone
         return None

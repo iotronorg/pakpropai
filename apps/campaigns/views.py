@@ -8,6 +8,7 @@ from rest_framework.viewsets import ModelViewSet
 
 from apps.core.permissions import get_user_org
 
+from . import openapi as API
 from .models import Campaign
 from .serializers import CampaignSerializer
 
@@ -22,6 +23,8 @@ class CampaignViewSet(ModelViewSet):
     http_method_names  = ['get', 'post', 'patch', 'delete', 'head', 'options']
 
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):     # schema generation (T-1091)
+            return Campaign.objects.none()
         user = self.request.user
         if user.role != 'developer':
             return Campaign.objects.none()
@@ -153,6 +156,7 @@ class CampaignTemplateListView(APIView):
     """GET /campaigns/templates/ — list Meta-approved templates for this org."""
     permission_classes = [IsAuthenticated]
 
+    @API.templates
     def get(self, request):
         user = request.user
         if user.role not in ('developer', 'admin'):

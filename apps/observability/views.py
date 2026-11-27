@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.permissions import IsAdminUser
+from . import openapi as API
 from apps.observability.metrics_collector import MetricsCollector
 
 logger = logging.getLogger(__name__)
@@ -22,6 +23,7 @@ _ROUTES = [
 class ObservabilityMetricsView(APIView):
     permission_classes = [IsAdminUser]
 
+    @API.metrics
     def get(self, request):
         return Response({
             "error_distribution": MetricsCollector.get_error_distribution(),
@@ -35,6 +37,7 @@ class ObservabilityMetricsView(APIView):
 class TraceSearchView(APIView):
     permission_classes = [IsAdminUser]
 
+    @API.traces
     def get(self, request):
         route = request.query_params.get("route", "whatsapp.webhook")
         from apps.core.query_params import int_param
@@ -46,6 +49,7 @@ class TraceSearchView(APIView):
 class OtelHealthView(APIView):
     permission_classes = [IsAdminUser]
 
+    @API.otel_health
     def get(self, request):
         from django.conf import settings
         endpoint = getattr(settings, "OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317")

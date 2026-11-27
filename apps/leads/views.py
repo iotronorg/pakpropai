@@ -42,6 +42,8 @@ class LeadViewSet(viewsets.ModelViewSet):
         return super().create(request, *args, **kwargs)
 
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):     # schema generation (T-1091)
+            return Lead.objects.none()
         from .privacy import withheld_q
         qs = Lead.objects.select_related('user', 'assigned_agent', 'stage', 'organization').annotate(
             contact_withheld=Case(When(withheld_q(), then=True), default=False, output_field=BooleanField()))

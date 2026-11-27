@@ -5,6 +5,7 @@ from django.db import connection
 from django.core.cache import cache
 from django.http import HttpResponse, HttpResponseForbidden
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from . import openapi as API
 from .permissions import IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -26,6 +27,7 @@ class HealthCheckView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
 
+    @API.health
     def get(self, request):
         checks = {}
         overall_ok = True
@@ -129,6 +131,7 @@ class AuditLogView(APIView):
     """
     permission_classes = [IsAdminUser]
 
+    @API.audit_log
     def get(self, request):
         from .models import AuditLog
 

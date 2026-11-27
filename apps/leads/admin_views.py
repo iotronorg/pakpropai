@@ -7,6 +7,7 @@ from rest_framework.views import APIView
 from apps.core.errors import ApiError
 from apps.core.throttles import BulkOperationThrottle
 
+from . import openapi as API
 from .models import Lead, ConversationMessage, Appointment
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,7 @@ class DuplicateLeadView(APIView):
     """
     permission_classes = [permissions.IsAuthenticated]
 
+    @API.duplicates
     def get(self, request):
         if request.user.role != 'admin':
             return Response({'detail': 'Admin access required.'}, status=status.HTTP_403_FORBIDDEN)
@@ -79,6 +81,7 @@ class MergeLeadsView(APIView):
     """
     permission_classes = [permissions.IsAuthenticated]
 
+    @API.merge
     def post(self, request):
         if request.user.role != 'admin':
             return Response({'detail': 'Admin access required.'}, status=403)
@@ -137,6 +140,7 @@ class BulkAssignLeadsView(APIView):
     throttle_classes = [BulkOperationThrottle]
     MAX_LEADS = 200
 
+    @API.bulk_assign
     def post(self, request):
         if request.user.role not in ('admin', 'developer'):
             raise ApiError('Admin or developer access required.', 'leads.admin_required', 403)

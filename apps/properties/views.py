@@ -16,6 +16,7 @@ from apps.core.errors import ApiError
 from apps.core.permissions import IsOwnerOrReadOnly, IsAgentOrAdmin, get_user_org
 from apps.core.query_params import choice_param, int_param
 from apps.core.throttles import PropertySearchThrottle, ScorePropertyThrottle
+from . import openapi as API
 from .models import Amenity, Property, PropertyImage
 from .taxonomy import property_type_expression
 from .serializers import (AmenitySerializer, ListingTransitionSerializer, PriceHistorySerializer,
@@ -662,6 +663,7 @@ class PropertyCompareView(APIView):
     """
     permission_classes = [IsAgentOrAdmin]
 
+    @API.compare
     def get(self, request):
         ids_raw = request.query_params.get('ids', '')
         ids = [i.strip() for i in ids_raw.split(',') if i.strip()]
@@ -699,6 +701,7 @@ class PropertyMarketTrendsView(APIView):
     """
     permission_classes = [IsAgentOrAdmin]
 
+    @API.market_trends
     def get(self, request):
         city   = request.query_params.get('city', '').strip()
         period = request.query_params.get('period', 'monthly')

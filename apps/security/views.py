@@ -3,6 +3,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.permissions import IsAdminUser
+from . import openapi as API
 from apps.security.models import ApiSecurityEvent
 from apps.security.serializers import ApiSecurityEventSerializer
 
@@ -28,6 +29,7 @@ class SecurityEventListView(ListAPIView):
 class ChainVerifyView(APIView):
     permission_classes = [IsAdminUser]
 
+    @API.chain_verify
     def get(self, request):
         from apps.core.query_params import int_param
         limit = int_param(request.query_params, 'limit', 1000, min_value=1, max_value=10_000)

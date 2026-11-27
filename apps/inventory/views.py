@@ -102,6 +102,8 @@ class ExternalPlatformConnectionViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, _IsOrgAdminOrAdmin]
 
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):     # schema generation (T-1091)
+            return ExternalPlatformConnection.objects.none()
         user = self.request.user
         if user.role == 'admin':
             return ExternalPlatformConnection.objects.select_related('org').all()
@@ -150,6 +152,8 @@ class SyncConflictAlertViewSet(viewsets.GenericViewSet,
     permission_classes = [IsAuthenticated, _IsOrgAdminOrAdmin]
 
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):     # schema generation (T-1091)
+            return SyncConflictAlert.objects.none()
         user = self.request.user
         if user.role == 'admin':
             return SyncConflictAlert.objects.select_related('org', 'property', 'connection').all()

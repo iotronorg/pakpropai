@@ -240,6 +240,8 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | 2026-11-27 | `d0b6d15` + working tree: T‑1091 batch 2 | `scripts/dev/test.sh tests/ apps/ -rf` (run alone) | 2684 passed, 1 skipped, **1 failed**: `test_membership_phase_c::AdminUserReadersTest::test_no_new_readers` — a schema description in `organizations/openapi.py` named `admin_user`; reworded (guard kept as is), affected suites rerun: 30 passed | 10m42s |
 | 2026-11-27 | Working tree | `makemigrations --check --dry-run`; `manage.py check`; `spectacular --validate` | No changes; no issues; schema valid (generator errors 29 unique, warnings 11) | — |
 | 2026-11-27 | Working tree: T‑1091 batch 2 (after the fix) | `scripts/dev/test.sh tests/ apps/ -rf` (run alone) | **2685 passed, 1 skipped, 0 failed**, 303 subtests (+2 config routes, +1 schema) | 15m31s |
+| 2026-11-27 | `e9782ac` + working tree: T‑1091 batch 3 | `scripts/dev/test.sh tests/ apps/ -rf` (run alone) | **2686 passed, 1 skipped, 0 failed**, 303 subtests (+1 schema) | 10m04s |
+| 2026-11-27 | Working tree | `makemigrations --check --dry-run`; `manage.py check`; `spectacular --validate --fail-on-warn` | No changes; no issues; schema valid with **0 errors, 0 warnings** | — |
 
 ## Coverage
 Not measured yet (no coverage run executed). CI is configured with `--cov=apps`.

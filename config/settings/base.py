@@ -322,6 +322,12 @@ SPECTACULAR_SETTINGS = {
         'LeadTaskStatusEnum': 'apps.leads.models.LeadTask.Status',
         'AlertChannelEnum': 'apps.preferences.models.SavedSearch.Channel',
         'AlertFrequencyEnum': 'apps.preferences.models.SavedSearch.Frequency',
+        # T-1091: stable names instead of hash-suffixed or field-derived ones (RoleB53Enum, ToEnum, …)
+        'OrgMemberRoleEnum': 'apps.organizations.models.OrganizationMembership.Role',
+        'UserRoleEnum': 'apps.users.models.User.Role',
+        'AppointmentStatusEnum': 'apps.leads.models.Appointment.Status',
+        'ListingStatusEnum': 'apps.properties.models.Property.Status',
+        'CommissionTypeEnum': 'apps.marketplace.models.SyndicationListing.CommissionType',
     },
     # ADR-017 error envelope, added to every /api/ JSON error body.
     'APPEND_COMPONENTS': {'schemas': {'ErrorEnvelope': {

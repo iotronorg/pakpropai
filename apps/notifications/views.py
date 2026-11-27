@@ -2,6 +2,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from . import openapi as API
 from .models import Notification
 
 
@@ -22,6 +23,7 @@ class NotificationListView(APIView):
     """GET /notifications/ — authenticated user's own notification inbox."""
     permission_classes = [IsAuthenticated]
 
+    @API.inbox
     def get(self, request):
         qs = (
             Notification.objects
@@ -51,6 +53,7 @@ class MarkReadView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @API.mark_read
     def post(self, request):
         ids = request.data.get('ids')
         qs = Notification.objects.filter(user=request.user, is_read=False)

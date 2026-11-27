@@ -4,6 +4,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from apps.core.permissions import IsAdminUser
 
+from . import openapi as API
 from .resilience_engine import AdvancedCircuitBreaker, OutageFlagService, _REGISTRY
 from .queue_monitor import _get_isolated_orgs
 
@@ -17,6 +18,7 @@ class SlaStatusView(APIView):
     """
     permission_classes = [IsAdminUser]
 
+    @API.sla_status
     def get(self, request):
         from django.core.cache import cache
 
@@ -41,6 +43,7 @@ class SlaCircuitResetView(APIView):
     """
     permission_classes = [IsAdminUser]
 
+    @API.circuit_reset
     def post(self, request, service: str):
         circuit = _REGISTRY.get(service)
         if circuit is None:

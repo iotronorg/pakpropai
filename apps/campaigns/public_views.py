@@ -19,6 +19,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 
+from . import openapi as API
 from apps.campaigns.models import ReferralLink
 
 logger = logging.getLogger(__name__)
@@ -50,6 +51,7 @@ class PublicVerifyRedirectView(APIView):
     permission_classes     = [AllowAny]
     throttle_classes       = [PublicVerifyThrottle]
 
+    @API.verify_redirect
     def get(self, request):
         from django.conf import settings
         ref   = request.query_params.get('ref', '').strip()[:40]
@@ -84,6 +86,7 @@ class PublicReferralConvertView(APIView):
     permission_classes     = [AllowAny]
     throttle_classes       = [PublicConvertThrottle]
 
+    @API.referral_convert
     def post(self, request):
         ref    = (request.data.get('ref')    or '').strip()[:40]
         phone  = (request.data.get('phone')  or '').strip()
@@ -154,6 +157,7 @@ class PublicPlatformStatsView(APIView):
     authentication_classes = []
     permission_classes     = [AllowAny]
 
+    @API.platform_stats
     def get(self, request):
         data = cache.get(_STATS_CACHE_KEY)
         if data is None:

@@ -4,16 +4,16 @@ _Last updated: 2026-11-27 (session 35; git commit subjects number sessions diffe
 
 | Item | Value |
 |---|---|
-| Branch | `development`. The owner committed through T‑1091 batch 1 (`d0b6d15`). **Uncommitted:** T‑1091 batch 2 (session 35, continued) |
+| Branch | `development`. The owner committed through T‑1091 batch 2 (`e9782ac`). **Uncommitted:** T‑1091 batch 3 (session 35, continued) |
 | Current milestone | **M4 — AI intelligence** ([MILESTONE_04](milestones/MILESTONE_04_AI_INTELLIGENCE.md)). M3 is done apart from owner work (T‑3080, T‑3110) and the release‑gated T‑3100c. M2 open only T‑2072 (owner). M1 contracts release‑gated; M0 awaiting the first Actions run |
 | M0 progress | All 17 tasks complete. Remaining exit criterion: CI green on GitHub Actions (owner pushes) |
-| M1 progress | 16 of 18 tasks done; T‑1032b‑2 and T‑1070g‑2 staged (release‑gated); API debt: T‑1092 done, T‑1091 in progress (29 views left) |
+| M1 progress | 16 of 18 tasks done; T‑1032b‑2 and T‑1070g‑2 staged (release‑gated); API debt cleared: T‑1092 and T‑1091 done (schema complete, 0 errors / 0 warnings) |
 | M2 progress | 16 of 17 tasks done. Open: T‑2072 (owner data and paid runs) |
 | M3 progress | 8 of 11 tasks done + T‑3100a/b; T‑3100c waits for the production backfill; T‑3080, T‑3110 owner-blocked |
 | M4 progress | 5 of 10 tasks done (T‑4010, T‑4020, T‑4030, T‑4060, T‑4050) + follow-up T‑4051. Rest owner-gated (T‑4040 embedding model, T‑4070 OCR vendor, T‑4080 POI licence, T‑4100 accounts) or needs volume (T‑4090) |
-| Test suite | Last full run (session 35, end): **2685 passed, 1 skipped, 0 failed**. No migration drift; `manage.py check` clean; schema valid. See [TESTING_STATUS](TESTING_STATUS.md) |
-| Last completed task | T‑1091 batch 2 (ADR‑016 addendum): organizations (+ external API, theme), agents, payments, whatsapp (+ provisioning), billing, deal locks and voice documented (98 → 29 views missing; warnings 22 → 11); webhooks excluded; organization feature-flag `<key>/` routes split (500 → 405). Before it: T‑1091 batch 1, T‑1092, KI‑126 alerts, T‑4051 |
-| Next task | **Dev:** finish T‑1091 (29 views: reports BI 3, leads admin 3, audit 3, campaigns 4 + viewset warnings, observability 3, ai 2, core 2, notifications 2, properties 2, resilience 2, config, marketplace, security), ratchet the budgets to 0; then start M6 production readiness (load test, security review pass, DR restore drill) and the dev-side issues KI‑114, KI‑055, KI‑058 (each needs a small decision). T‑4040 waits for the owner's embedding-model choice. **Owner:** as before plus checklist §69, §70 (regenerate the frontend API client) |
+| Test suite | Last full run (session 35, end): **2686 passed, 1 skipped, 0 failed**. No migration drift; `manage.py check` clean; `spectacular --validate --fail-on-warn` clean. See [TESTING_STATUS](TESTING_STATUS.md) |
+| Last completed task | T‑1091 complete (batch 3): the last 29 views documented, viewset path types fixed, enum components given stable names; KI‑037 resolved. Before it: T‑1091 batches 1–2, T‑1092, KI‑126 alerts, T‑4051 |
+| Next task | **Dev:** start M6 production readiness — create `milestones/MILESTONE_06_PRODUCTION_READINESS.md` from the PRD roadmap (load test against the `load_tests/` scenarios, security review pass, DR restore drill, then fixes), and in parallel the dev-side issues KI‑114 (resend buffered chat replies), KI‑055 (agent edit rule), KI‑058 (document upload scanning) — each needs a small owner decision first. T‑4040 waits for the owner's embedding-model choice. **Owner:** as before plus checklist §69, §70 (regenerate the frontend API client once; enum types renamed) |
 
 ## Owner decisions (2026-11-25, deploys)
 - **Deploys:** Docker over SSH for staging and production. **Approval:** required reviewers on the GitHub `production` environment.

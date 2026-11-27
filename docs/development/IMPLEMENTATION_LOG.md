@@ -714,3 +714,9 @@
 - **Changed:** their views (decorators; webhooks `exclude=True`), return type hints in `organizations/serializers.py`, `organizations/external_api.py`, `escrow/serializers.py`, `voice/serializers.py`; `apps/organizations/views.py` + `urls.py` (`OrgConfigKeyView`, `AdminOrgConfigKeyView`: the `<key>/` routes shared a view with the collection, so `DELETE` without a key was a 500).
 - **Tests:** `tests/test_openapi_schema.py` (budgets 98/22 → 29/11; batch-2 paths, callbacks excluded, idempotency header kept on checkout), `tests/test_org_config_routes.py` (2).
 - **Learned:** `external_api.py` has a docstring that quotes `class ExternalLeadsView(APIView):`; anchor source edits on `\nclass ` at line start.
+
+### T‑1091 batch 3: schema complete (ADR‑016 addendum) — session 35, continued
+- **Added:** `openapi.py` in `apps/leads` (admin views), `apps/audit`, `apps/notifications`, `apps/properties`, `apps/ai`, `apps/config`, `apps/security`, `apps/resilience`, `apps/campaigns`, `apps/marketplace`, `apps/observability`; core view descriptions appended to `apps/core/openapi.py`; reports BI added to `apps/reports/openapi.py`.
+- **Changed:** the matching views (decorators only); `swagger_fake_view` guards in `CampaignViewSet`, `ExternalPlatformConnectionViewSet`, `SyncConflictAlertViewSet`, `LeadViewSet`; return hint in `campaigns/serializers.py`; `SPECTACULAR_SETTINGS['ENUM_NAME_OVERRIDES']` (+5) in `config/settings/base.py`.
+- **Tests:** `tests/test_openapi_schema.py` (budgets 29/11 → 0/0; batch-3 paths; stable enum names, no `ToEnum`).
+- **Schema renames for clients:** `RoleB53Enum` → `OrgMemberRoleEnum`, `RoleC3bEnum` → `UserRoleEnum`, `StatusDf2Enum` → `AppointmentStatusEnum`, `ToEnum` → `ListingStatusEnum`; `CommissionOverrideTypeEnum` folds into `CommissionTypeEnum`.

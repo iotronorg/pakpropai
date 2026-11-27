@@ -5,6 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from . import openapi as API
 from .models import AuditBenchmark, PropertyAudit
 from apps.core.errors import ApiError
 
@@ -18,6 +19,7 @@ class AuditListView(APIView):
     """GET /audit/ — admin list of all property audits."""
     permission_classes = [IsAdmin]
 
+    @API.audits
     def get(self, request):
         qs = PropertyAudit.objects.select_related('user').order_by('-created_at')[:100]
         return Response([{
@@ -75,6 +77,7 @@ class BenchmarkListView(APIView):
     """
     permission_classes = [IsAdmin]
 
+    @API.benchmarks
     def get(self, request):
         qs = AuditBenchmark.objects.all()
         city = request.query_params.get('city')
@@ -82,6 +85,7 @@ class BenchmarkListView(APIView):
             qs = qs.filter(city=city.lower().strip())
         return Response([_serialize_benchmark(b) for b in qs])
 
+    @API.benchmark_create
     def post(self, request):
         data = request.data
         required = ('city', 'location_key', 'price_per_unit_min', 'price_per_unit_max', 'yield_pct', 'appr_pct', 'liq_months')
@@ -126,6 +130,7 @@ class BenchmarkDetailView(APIView):
     _UPDATABLE = ('price_per_unit_min', 'price_per_unit_max', 'size_unit', 'currency',
                   'yield_pct', 'appr_pct', 'liq_months', 'approved', 'is_active')
 
+    @API.benchmark_update
     def patch(self, request, benchmark_id):
         b = get_object_or_404(AuditBenchmark, id=benchmark_id)
         for field in self._UPDATABLE:
@@ -135,6 +140,7 @@ class BenchmarkDetailView(APIView):
         b.save()
         return Response(_serialize_benchmark(b))
 
+    @API.benchmark_delete
     def delete(self, request, benchmark_id):
         b = get_object_or_404(AuditBenchmark, id=benchmark_id)
         b.delete()

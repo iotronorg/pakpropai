@@ -577,7 +577,10 @@
 - **Continued again** (the owner committed batch 1 as `d0b6d15`): T‑1091 batch 2 — organizations (+ external API, theme), agents, payments, whatsapp (+ provisioning), billing, deal locks, voice (generator errors 98 → 29, warnings 22 → 11; budgets ratcheted). Gateway, Meta and Twilio webhooks excluded. **Found and fixed:** the organization feature-flag routes shared one view with their `<key>/` routes, so `DELETE` without a key (and `GET`/`PATCH` with one) were 500s — now 405. The `admin_user` guard test caught a schema description naming the field; reworded.
 - **Tests:** full run 2684 passed, 1 failed (that guard; fixed, affected suites 30/30); full rerun **2685 passed, 1 skipped, 0 failed**. Schema valid; no migration drift. **Not committed.**
 
+- **Continued again** (the owner committed batch 2 as `e9782ac`): T‑1091 batch 3 — the last 29 views (leads admin, audit, reports BI, notifications, properties, ai, config, core, security, resilience, campaigns, marketplace, observability), `swagger_fake_view` guards on four viewsets, five `ENUM_NAME_OVERRIDES`. **T‑1091 done, KI‑037 resolved:** generator errors and warnings 0 (from 152/28); budgets 0.
+- **Tests:** 2686 passed, 1 skipped, 0 failed (full run, alone); `spectacular --validate --fail-on-warn` clean; no migration drift. **Not committed.**
+
 ### Handoff → session 36 (supersedes the one above)
-1. `git status`: the owner committed through `d0b6d15`; uncommitted is T‑1091 batch 2 (seven new `openapi.py`, `tests/test_org_config_routes.py`). **Do not commit.** Run the full suite first, alone (expect 2685/0).
-2. Dev: finish T‑1091 (29 views left, list in DEVELOPMENT_STATUS); then M6 production readiness and KI‑114/055/058. T‑4040 waits for the owner's embedding-model choice; KI‑126 detail-page copies wait for the frontend card.
+1. `git status`: the owner committed through `e9782ac`; uncommitted is T‑1091 batch 3 (eleven new `openapi.py`, view decorators, settings enum overrides). **Do not commit.** Run the full suite first, alone (expect 2686/0).
+2. Dev: start M6 production readiness (milestone file, load test, security review, DR drill); KI‑114/055/058 after the owner's small decisions. T‑4040 waits for the owner's embedding-model choice; KI‑126 detail-page copies wait for the frontend card.
 3. Owner: as before (§54, §52, §53, staging E2E, T‑2072, pentest, KI‑112, KI‑114, KI‑121 document links, pricing for T‑3080, weekly-use metric, §61–§68, embedding model for T‑4040); new: §69 ("also listed" card), §70 (new error codes for clients).

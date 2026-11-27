@@ -3,6 +3,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from . import openapi as API
 from .models import SystemConfig
 from .services import SystemConfigService, SENTINEL
 
@@ -19,6 +20,7 @@ class ConfigView(APIView):
     """
     permission_classes = [IsAdmin]
 
+    @API.config
     def get(self, request):
         raw = SystemConfigService.get_all()
         data = {}
@@ -33,6 +35,7 @@ class ConfigView(APIView):
         data['missing_required'] = missing
         return Response(data)
 
+    @API.config_update
     def patch(self, request):
         incoming = request.data
         to_save  = {}

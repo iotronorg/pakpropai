@@ -19,8 +19,8 @@ SCHEMA_URL = '/api/v1/schema/'
 
 # Unique generator messages at introduction (session 6). Lower these when
 # views are annotated; never raise them.
-ERROR_BUDGET = 29       # almost all: APIView without serializer_class (T-1091 batches 1–2)
-WARNING_BUDGET = 11     # T-1091: route splits, type hints and operation ids
+ERROR_BUDGET = 0        # T-1091 done: every view is described; keep it at zero
+WARNING_BUDGET = 0      # T-1091 done: type hints, operation ids, ENUM_NAME_OVERRIDES
 
 
 def _build_schema():
@@ -91,6 +91,18 @@ class SchemaGenerationTest(TestCase):
         self.assertEqual(set(paths['/api/v1/organizations/me/config/{key}/']) - {'parameters'}, {'delete'})
         checkout = {p['name'] for p in paths['/api/v1/payments/checkout/{deal_id}/']['post']['parameters']}
         self.assertIn('Idempotency-Key', checkout)                               # stacked extend_schema kept it
+
+    def test_t1091_batch3_endpoints_are_documented(self):
+        paths = self.schema['paths']
+        for path in ('/api/v1/leads/merge/', '/api/v1/audit/benchmarks/{benchmark_id}/', '/api/v1/reports/funnel/',
+                     '/api/v1/notifications/', '/api/v1/properties/compare/', '/api/v1/ai/token-usage/',
+                     '/api/v1/config/', '/api/v1/audit-log/', '/api/v1/sla/status/', '/api/v1/campaigns/templates/',
+                     '/api/v1/marketplace/browse/', '/api/v1/observability/metrics/'):
+            self.assertIn(path, paths)
+        components = self.schema['components']['schemas']
+        for name in ('OrgMemberRoleEnum', 'UserRoleEnum', 'AppointmentStatusEnum', 'ListingStatusEnum'):
+            self.assertIn(name, components)                                      # stable, not hash-suffixed
+        self.assertNotIn('ToEnum', components)
 
     def test_generator_error_budget_does_not_grow(self):
         self.assertLessEqual(
