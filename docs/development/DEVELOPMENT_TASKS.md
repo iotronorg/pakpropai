@@ -137,6 +137,16 @@ Priority: P0 (blocker) → P3.
 | T‑4090 | [ ] | P3 | Learned re-ranking A/B | Needs volume |
 | T‑4100 | [ ] | P2 | Push; calendar sync | Owner: provider accounts |
 
+## M6 — Production readiness ([MILESTONE_06](milestones/MILESTONE_06_PRODUCTION_READINESS.md))
+
+| ID | Status | P | Task | Notes |
+|---|---|---|---|---|
+| T‑6010 | [x] | P1 | Backups and restore drill | ADR‑071. `scripts/ops/{common,backup,restore_drill}.sh` (encrypted `pg_dump` in the db container, `pg_restore --list` check, checksum, off-host hook, retention; drill into a throwaway networkless container), `ops/systemd/` timers (daily backup, monthly drill), `BackupRun` (`core 0005`) + `record_backup_run` + admin, `/metrics/` backup gauges, four alerts + promtool tests, deploy ships the scripts, `docs/runbooks/backups.md` (setup, alerts, reversible production restore). Verified end to end with real `pg_dump`/`gpg`/`pg_restore` on `postgres:15-alpine`. **Owner:** off-host storage, key custody, RPO/RTO; install the timers and run the first drill on each server (checklist §71) |
+| T‑6020 | [ ] | P1 | Load test vs NFR targets | 100k listings; search v2 and public API in k6 |
+| T‑6030 | [ ] | P1 | Security review pass | bandit/pip-audit triage; permission matrix; `scan_plaintext` data scan; pentest scope |
+| T‑6040 | [ ] | P2 | Release check command | Next |
+| T‑6050 | [ ] | P2 | Capacity and recovery notes | After T‑6020; owner RPO/RTO |
+
 ## MVP acceptance criteria (MVP_SCOPE §6) — cross-milestone
 
 | ID | Status | P | Task | Notes |

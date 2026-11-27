@@ -234,3 +234,67 @@ tests:
               summary: "More than 5% of assistant turns are blocked by the guardrails"
               description: "16.67% of turns were blocked in the last 30 minutes."
               runbook: "docs/runbooks/harmful-ai-output.md"
+
+  # Backups (T-6010): a backup at 1 min then nothing → BackupMissing after 26 h; a later failure →
+  # BackupFailed; no drill since the start → RestoreDrillOverdue only after 35 days.
+  - interval: 1h
+    input_series:
+      - series: 'realtron_backup_last_success_timestamp_seconds{kind="backup", instance="web:8000", job="realtron_api"}'
+        values: '60x900'
+      - series: 'realtron_backup_last_failure_timestamp_seconds{kind="backup", instance="web:8000", job="realtron_api"}'
+        values: '0x2 7200x898'
+      - series: 'realtron_backup_last_success_timestamp_seconds{kind="drill", instance="web:8000", job="realtron_api"}'
+        values: '60x900'
+    alert_rule_test:
+      - eval_time: 25h
+        alertname: BackupMissing
+        exp_alerts: []
+      - eval_time: 27h
+        alertname: BackupMissing
+        exp_alerts:
+          - exp_labels: {severity: critical, kind: backup}
+            exp_annotations:
+              summary: "No successful database backup in the last 26 hours"
+              description: "The last successful backup finished 1d 2h 59m 0s ago (a value of decades means never). Data written since then is at risk."
+              runbook: "docs/runbooks/backups.md#backupmissing"
+      - eval_time: 1h
+        alertname: BackupFailed
+        exp_alerts: []
+      - eval_time: 3h
+        alertname: BackupFailed
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations:
+              summary: "The latest database backup failed"
+              description: "A backup failed after the last successful one. The next scheduled run may recover; if not, BackupMissing follows."
+              runbook: "docs/runbooks/backups.md#backupfailed"
+      - eval_time: 34d
+        alertname: RestoreDrillOverdue
+        exp_alerts: []
+      - eval_time: 36d
+        alertname: RestoreDrillOverdue
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations:
+              summary: "No successful restore drill in 35 days"
+              description: "Backups are only known to work once one has been restored. Last successful drill: 35d 23h 59m 0s ago."
+              runbook: "docs/runbooks/backups.md#restoredrilloverdue"
+
+  # The API is scraped but reports no backup status (e.g. the table cannot be read).
+  - interval: 1m
+    input_series:
+      - series: 'up{job="realtron_api", instance="web:8000"}'
+        values: '1x60'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: BackupStatusAbsent
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: BackupStatusAbsent
+        exp_alerts:
+          - exp_labels: {severity: warning, kind: backup}
+            exp_annotations:
+              summary: "Backup status is not being reported"
+              description: "The API's /metrics/ has no backup samples: it cannot read backup_runs, or the build predates T-6010."
+              runbook: "docs/runbooks/backups.md#backupstatusabsent"
+

@@ -1,0 +1,10 @@
+# T-6010 — monthly, on the 1st at 04:00 UTC (after that day's backup). RestoreDrillOverdue fires after 35 days.
+[Unit]
+Description=Monthly RealTron restore drill
+
+[Timer]
+OnCalendar=*-*-01 04:00:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

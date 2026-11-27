@@ -9,6 +9,7 @@ MVP criterion 15. Every alert in `ops/prometheus-alerts.yaml` has a `runbook` an
 | Personal data exposed, lost or changed | [data-incident.md](data-incident.md) | `WebhookSignatureFailures`; usually reported by a person |
 | The assistant said something harmful or false | [harmful-ai-output.md](harmful-ai-output.md) | `AIGuardrailBlocksSpike`; usually reported by a person |
 | Setting up, approving or rolling back a deploy | [deploy.md](deploy.md) | A failed CI deploy job |
+| Backups, restore drills, restoring production | [backups.md](backups.md) | `BackupMissing`, `BackupFailed`, `RestoreDrillOverdue`, `BackupStatusAbsent` |
 
 **Commands** run inside a web or worker container: `docker compose -p realtron --env-file .env -f docker/docker-compose.prod.yml exec web python manage.py …`, from the deploy directory. **Admin endpoints** need a platform admin; the kill switch takes `super_admin`, `ai_admin` or `ops_admin`.
 

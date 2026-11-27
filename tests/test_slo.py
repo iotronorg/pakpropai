@@ -430,7 +430,9 @@ class RulesAgreeWithCodeTest(SimpleTestCase):
     def test_rules_name_only_metrics_that_exist(self):
         from apps.core import metrics
         ours = {m._name for m in vars(metrics).values() if hasattr(m, '_name') and hasattr(m, '_type')}
-        ours |= {'realtron_outbox_undelivered', 'realtron_outbox_oldest_undelivered_seconds'}
+        ours |= {'realtron_outbox_undelivered', 'realtron_outbox_oldest_undelivered_seconds',
+                 'realtron_backup_last_success_timestamp_seconds',      # apps.core.backups (T-6010)
+                 'realtron_backup_last_failure_timestamp_seconds', 'realtron_backup_last_size_bytes'}
         dash = ''.join(p.read_text() for p in (ROOT / 'ops/grafana/dashboards').glob('*.json'))
         groups = set(re.findall(r'- name: (\S+)', RULES))
         # Quoted names are job labels (up{job="realtron_api"}), not metrics.

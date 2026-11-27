@@ -10,6 +10,15 @@ Milestones follow the PRD roadmap phases (ADR‑000). Source: [PRODUCT_ROADMAP](
 | [M3 Professional workspace](milestones/MILESTONE_03_PROFESSIONAL_WORKSPACE.md) | Phase 3 | **In progress** (8/11 + T‑3100a/b: T‑3010, T‑3020, T‑3060, T‑3050, T‑3070, T‑3090, T‑3030, T‑3040; T‑3100c waits for the production backfill; owner-blocked T‑3080, T‑3110) | Agency workspace, listing assistant, plans |
 | [M4 AI intelligence](milestones/MILESTONE_04_AI_INTELLIGENCE.md) | Phase 4 | **In progress** (5/10: T‑4010, T‑4020, T‑4030, T‑4060, T‑4050; + follow-up T‑4051) | RAG, price context, investment, documents |
 | M5 Expansion | Phase 5 | Not started | Second market, partners |
-| M6 Production readiness | cross‑phase | Not started | Ops, security review, load, DR |
+| [M6 Production readiness](milestones/MILESTONE_06_PRODUCTION_READINESS.md) | cross‑phase | **In progress** (1/5: T‑6010 backups and restore drill) | Proven restore, load vs NFRs, security review, release flag audit |
 
-Milestone files for M5–M6 will be created when each milestone starts. Their scope is defined in the PRD roadmap.
+The M5 milestone file will be created when it starts. Their scope is defined in the PRD roadmap.
+
+## M6 — Production readiness ([MILESTONE_06](milestones/MILESTONE_06_PRODUCTION_READINESS.md))
+| ID | Status | P | Task | Notes |
+|---|---|---|---|---|
+| T‑6010 | [x] | P1 | Backups and restore drill | ADR‑071; owner: off-host storage, install timers, first drill (§71) |
+| T‑6020 | [ ] | P1 | Load test vs NFR targets | |
+| T‑6030 | [ ] | P1 | Security review pass | |
+| T‑6040 | [ ] | P2 | Release check command | |
+| T‑6050 | [ ] | P2 | Capacity and recovery notes | Owner: RPO/RTO |

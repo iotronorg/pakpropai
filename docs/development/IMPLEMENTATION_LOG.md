@@ -720,3 +720,11 @@
 - **Changed:** the matching views (decorators only); `swagger_fake_view` guards in `CampaignViewSet`, `ExternalPlatformConnectionViewSet`, `SyncConflictAlertViewSet`, `LeadViewSet`; return hint in `campaigns/serializers.py`; `SPECTACULAR_SETTINGS['ENUM_NAME_OVERRIDES']` (+5) in `config/settings/base.py`.
 - **Tests:** `tests/test_openapi_schema.py` (budgets 29/11 → 0/0; batch-3 paths; stable enum names, no `ToEnum`).
 - **Schema renames for clients:** `RoleB53Enum` → `OrgMemberRoleEnum`, `RoleC3bEnum` → `UserRoleEnum`, `StatusDf2Enum` → `AppointmentStatusEnum`, `ToEnum` → `ListingStatusEnum`; `CommissionOverrideTypeEnum` folds into `CommissionTypeEnum`.
+
+### T‑6010 Backups and restore drill (ADR‑071) — session 35, continued
+- **Added:** `scripts/ops/common.sh`, `backup.sh`, `restore_drill.sh`; `ops/systemd/realtron-{backup,restore-drill}.{service,timer}`; `apps/core/models.BackupRun` (`core 0005`), `apps/core/admin.py` (read-only), `manage.py record_backup_run`, `apps/core/backups.BackupStatusCollector`; `docs/runbooks/backups.md`; `docs/development/milestones/MILESTONE_06_PRODUCTION_READINESS.md`.
+- **Changed:** `apps/core/views.py` (`/metrics/` adds the backup collector), `ops/prometheus-alerts.yaml` (group `realtron_backups`), `.github/workflows/deploy.yml` (ships the scripts and units), `docs/runbooks/README.md`.
+- **Tests:** `tests/test_backups.py` (18: command validation, metrics incl. never/cached/DB error, the scripts against stub docker/gpg — encrypted output, checksum, recording, upload, retention, every failure path, drill never targets the live db, cleanup), `ops/tests/slo-rules.test.yaml` (+2 blocks), `tests/test_slo.py` (metric names).
+- **Verified for real:** a throwaway compose project (db on `postgres:15-alpine`, web from the test image): migrate, seed, `backup.sh` (OpenPGP output, no `PGDMP` or SQL visible, 600/700 modes), `restore_drill.sh` (4 users / 3 organizations restored in 3–4 s), tampered file, wrong key, open key file, db down, retention and the upload hook; shellcheck clean.
+- **Found while testing:** with `set -E` the failure trap also ran in the pipeline's subshells, so one failure was recorded twice; the trap now acts only in the main shell and exits 1.
+

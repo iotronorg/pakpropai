@@ -203,3 +203,41 @@ class IdempotencyRecord(models.Model):
 
     def __str__(self):
         return f'{self.scope} {self.key} [{self.status}]'
+
+
+class BackupRun(models.Model):
+    """
+    One database backup or restore drill (T-6010).
+
+    Written by ``manage.py record_backup_run``, which the host-side scripts in
+    ``scripts/ops/`` call after each run. ``apps.core.backups`` exposes the latest
+    successes as metrics so Prometheus can alert when backups stop. The backup
+    files themselves never pass through the application.
+    """
+
+    class Kind(models.TextChoices):
+        BACKUP = 'backup', 'Backup'
+        DRILL = 'drill', 'Restore drill'
+
+    class Status(models.TextChoices):
+        OK = 'ok', 'Succeeded'
+        FAILED = 'failed', 'Failed'
+
+    kind = models.CharField(max_length=10, choices=Kind.choices)
+    status = models.CharField(max_length=10, choices=Status.choices)
+    started_at = models.DateTimeField()
+    finished_at = models.DateTimeField()
+    file_name = models.CharField(max_length=200, blank=True)
+    size_bytes = models.BigIntegerField(null=True, blank=True)
+    sha256 = models.CharField(max_length=64, blank=True)
+    host = models.CharField(max_length=100, blank=True)
+    detail = models.TextField(blank=True, help_text='Checks run, durations, or the error')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'backup_runs'
+        ordering = ['-finished_at']
+        indexes = [models.Index(fields=['kind', 'status', '-finished_at'], name='backup_runs_latest_idx')]
+
+    def __str__(self):
+        return f'{self.kind} {self.status} {self.finished_at:%Y-%m-%d %H:%M}'

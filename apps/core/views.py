@@ -219,5 +219,7 @@ def metrics_view(request):
 
     from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
     from apps.core.metrics import metrics_registry
+    from apps.core.backups import backup_status
     from apps.core.slo import outbox_backlog
-    return HttpResponse(generate_latest(metrics_registry(outbox_backlog)), content_type=CONTENT_TYPE_LATEST)
+    return HttpResponse(generate_latest(metrics_registry(outbox_backlog, backup_status)),
+                        content_type=CONTENT_TYPE_LATEST)

@@ -1,0 +1,11 @@
+# T-6010 — daily at 02:15 UTC; a missed run (server off) runs at the next boot.
+[Unit]
+Description=Daily RealTron database backup
+
+[Timer]
+OnCalendar=*-*-* 02:15:00 UTC
+RandomizedDelaySec=10m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

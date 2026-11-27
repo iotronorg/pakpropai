@@ -243,6 +243,17 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | 2026-11-27 | `e9782ac` + working tree: T‑1091 batch 3 | `scripts/dev/test.sh tests/ apps/ -rf` (run alone) | **2686 passed, 1 skipped, 0 failed**, 303 subtests (+1 schema) | 10m04s |
 | 2026-11-27 | Working tree | `makemigrations --check --dry-run`; `manage.py check`; `spectacular --validate --fail-on-warn` | No changes; no issues; schema valid with **0 errors, 0 warnings** | — |
 
+### Session 35, continued (T‑6010)
+
+| Date | Code state | Command | Result | Duration |
+|---|---|---|---|---|
+| 2026-11-27 | Working tree, T‑6010 | `scripts/dev/test.sh tests/ apps/` (alone) | **2704 passed, 1 skipped, 0 failed** | 10 min 32 s |
+| 2026-11-27 | Working tree | `tests/test_backups.py` (+ `test_slo`, `test_runbooks`, `test_deploy_pipeline`, `test_mvp_data_protection`) | 18 passed; affected suites passed | ~45 s |
+| 2026-11-27 | Working tree | `promtool test rules tests/slo-rules.test.yaml`; `promtool check config` | SUCCESS; 64 rules | — |
+| 2026-11-27 | Working tree | `shellcheck -x scripts/ops/*.sh` | Clean | — |
+| 2026-11-27 | Working tree | Real drill: throwaway compose project (`postgres:15-alpine` db, web from the test image), `backup.sh` then `restore_drill.sh` | Backup ~554 KB, OpenPGP output (no `PGDMP`/SQL visible), modes 600/700; drill restored in 3–4 s, migrations=311, users=4, organizations=3. Tampered file → checksum mismatch, exit 1, recorded failed; wrong key → exit 1, one failed record; key file 644 → refused; db down → partial removed; retention removed a >14-day file; upload hook copied dump + `.sha256`; no drill containers left | — |
+| 2026-11-27 | — | On a real server with systemd timers and an off-host destination | **Not run**: needs the owner's servers and storage (checklist §71) | — |
+
 ## Coverage
 Not measured yet (no coverage run executed). CI is configured with `--cov=apps`.
 

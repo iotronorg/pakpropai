@@ -433,6 +433,48 @@ groups:
           description: "Cache miss rate is {{ $value | humanizePercentage }}. Redis may be cold or evicting keys."
           runbook: "docs/runbooks/README.md#highcachemissrate"
 
+  # ── Backups and restore drills (T-6010, MVP §7) ─────────────────────────────
+  # Timestamps from BackupRun (apps/core/backups.py); 0 means "never", which reads as stale.
+  - name: realtron_backups
+    interval: 60s
+    rules:
+      - alert: BackupMissing
+        expr: time() - max by (kind) (realtron_backup_last_success_timestamp_seconds{kind="backup"}) > 26 * 3600
+        labels:
+          severity: critical
+        annotations:
+          summary: "No successful database backup in the last 26 hours"
+          description: "The last successful backup finished {{ $value | humanizeDuration }} ago (a value of decades means never). Data written since then is at risk."
+          runbook: "docs/runbooks/backups.md#backupmissing"
+
+      - alert: BackupFailed
+        expr: max(realtron_backup_last_failure_timestamp_seconds{kind="backup"}) > max(realtron_backup_last_success_timestamp_seconds{kind="backup"})
+        labels:
+          severity: warning
+        annotations:
+          summary: "The latest database backup failed"
+          description: "A backup failed after the last successful one. The next scheduled run may recover; if not, BackupMissing follows."
+          runbook: "docs/runbooks/backups.md#backupfailed"
+
+      - alert: RestoreDrillOverdue
+        expr: time() - max(realtron_backup_last_success_timestamp_seconds{kind="drill"}) > 35 * 86400
+        labels:
+          severity: warning
+        annotations:
+          summary: "No successful restore drill in 35 days"
+          description: "Backups are only known to work once one has been restored. Last successful drill: {{ $value | humanizeDuration }} ago."
+          runbook: "docs/runbooks/backups.md#restoredrilloverdue"
+
+      - alert: BackupStatusAbsent
+        expr: absent(realtron_backup_last_success_timestamp_seconds{kind="backup"})
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Backup status is not being reported"
+          description: "The API's /metrics/ has no backup samples: it cannot read backup_runs, or the build predates T-6010."
+          runbook: "docs/runbooks/backups.md#backupstatusabsent"
+
   # ── Runbook alerts (MVP criterion 15) ───────────────────────────────────────
   - name: realtron_runbook_alerts
     interval: 60s

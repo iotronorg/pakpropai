@@ -85,18 +85,26 @@ jobs:
           printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
 
-      - name: Copy the compose file and deploy script
+      - name: Copy the compose file, deploy script and backup scripts
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
           DEPLOY_DIR: ${{ secrets.DEPLOY_DIR }}
         run: |
           SSH="ssh -i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes"
-          $SSH "$SSH_USER@$SSH_HOST" "mkdir -p '$DEPLOY_DIR/docker'"
+          $SSH "$SSH_USER@$SSH_HOST" "mkdir -p '$DEPLOY_DIR/docker' '$DEPLOY_DIR/ops'"
           scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes \
             scripts/deploy/remote_deploy.sh "$SSH_USER@$SSH_HOST:$DEPLOY_DIR/remote_deploy.sh"
           scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes \
             docker/docker-compose.prod.yml "$SSH_USER@$SSH_HOST:$DEPLOY_DIR/docker/"
+          # T-6010: backups and restore drills run on the server from a timer (docs/runbooks/backups.md).
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes \
+            scripts/ops/common.sh scripts/ops/backup.sh scripts/ops/restore_drill.sh "$SSH_USER@$SSH_HOST:$DEPLOY_DIR/ops/"
+          $SSH "$SSH_USER@$SSH_HOST" "mkdir -p '$DEPLOY_DIR/ops/systemd'"
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes \
+            ops/systemd/realtron-backup.service ops/systemd/realtron-backup.timer \
+            ops/systemd/realtron-restore-drill.service ops/systemd/realtron-restore-drill.timer \
+            "$SSH_USER@$SSH_HOST:$DEPLOY_DIR/ops/systemd/"
 
       - name: Log the server in to the registry
         env:
