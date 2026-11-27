@@ -19,8 +19,8 @@ SCHEMA_URL = '/api/v1/schema/'
 
 # Unique generator messages at introduction (session 6). Lower these when
 # views are annotated; never raise them.
-ERROR_BUDGET = 98       # almost all: APIView without serializer_class (T-1091: verification, users, compliance, reports)
-WARNING_BUDGET = 22     # T-1091: users list/detail split, type hints and operation ids
+ERROR_BUDGET = 29       # almost all: APIView without serializer_class (T-1091 batches 1–2)
+WARNING_BUDGET = 11     # T-1091: route splits, type hints and operation ids
 
 
 def _build_schema():
@@ -75,6 +75,22 @@ class SchemaGenerationTest(TestCase):
         self.assertNotIn('/api/v1/verification/webhook/jumio/', paths)           # provider callbacks stay out
         self.assertEqual(set(paths['/api/v1/auth/users/']) - {'parameters'}, {'get', 'post'})
         self.assertEqual(set(paths['/api/v1/auth/users/{id}/']) - {'parameters'}, {'patch', 'delete'})
+
+    def test_t1091_batch2_endpoints_are_documented(self):
+        paths = self.schema['paths']
+        for path in ('/api/v1/organizations/', '/api/v1/organizations/me/dashboard/',
+                     '/api/v1/organizations/register/verify-otp/', '/api/v1/external/keys/',
+                     '/api/v1/agents/leaderboard/', '/api/v1/agents/{id}/stats/', '/api/v1/payments/checkout/{deal_id}/',
+                     '/api/v1/whatsapp/history/{id}/', '/api/v1/provisioning/status/', '/api/v1/billing/usage/',
+                     '/api/v1/deals/lock/', '/api/v1/voice/calls/'):
+            self.assertIn(path, paths)
+        for callback in ('/api/v1/payments/webhook/safepay/', '/api/v1/whatsapp/webhook/',
+                         '/api/v1/billing/webhook/stripe/', '/api/v1/voice/webhook/inbound/'):
+            self.assertNotIn(callback, paths)                                    # gateway callbacks stay out
+        self.assertEqual(set(paths['/api/v1/organizations/me/config/']) - {'parameters'}, {'get', 'patch'})
+        self.assertEqual(set(paths['/api/v1/organizations/me/config/{key}/']) - {'parameters'}, {'delete'})
+        checkout = {p['name'] for p in paths['/api/v1/payments/checkout/{deal_id}/']['post']['parameters']}
+        self.assertIn('Idempotency-Key', checkout)                               # stacked extend_schema kept it
 
     def test_generator_error_budget_does_not_grow(self):
         self.assertLessEqual(

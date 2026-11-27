@@ -5,6 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from . import openapi as API
 from apps.core.permissions import IsOrgAdmin
 
 logger = logging.getLogger(__name__)
@@ -27,6 +28,7 @@ class ProvisioningRecordSerializer(serializers.Serializer):
 class ProvisioningStatusView(APIView):
     permission_classes = [IsAuthenticated, IsOrgAdmin]
 
+    @API.provisioning_status
     def get(self, request):
         from apps.organizations.models import OrgProvisioningRecord
         from apps.core.permissions import get_admin_org
@@ -45,6 +47,7 @@ class ProvisioningStatusView(APIView):
 class ProvisioningStartView(APIView):
     permission_classes = [IsAuthenticated, IsOrgAdmin]
 
+    @API.provisioning_start
     def post(self, request):
         from apps.organizations.models import OrgProvisioningRecord
         from apps.whatsapp.tasks import provision_organization_live
@@ -88,6 +91,7 @@ class ProvisioningStartView(APIView):
 class ProvisioningRetryView(APIView):
     permission_classes = [IsAuthenticated, IsOrgAdmin]
 
+    @API.provisioning_retry
     def post(self, request):
         from apps.organizations.models import OrgProvisioningRecord
         from apps.whatsapp.tasks import provision_organization_live

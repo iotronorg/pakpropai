@@ -29,7 +29,7 @@ class EscrowDealSerializer(serializers.ModelSerializer):
             'buyer_confirmed', 'seller_confirmed', 'created_at', 'updated_at',
         )
 
-    def get_hours_remaining(self, obj):
+    def get_hours_remaining(self, obj) -> float | None:
         return obj.hours_remaining()
 
 

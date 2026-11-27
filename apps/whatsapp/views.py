@@ -15,12 +15,14 @@ from apps.core.throttles import WhatsAppWebhookThrottle
 from apps.core.permissions import IsAgentOrAdmin, get_user_org
 from apps.observability.decorators import trace_whatsapp_webhook, _trace_context
 import requests as _http_requests
+from . import openapi as API
 from .models import OrgWhatsAppConfig, WhatsAppSession, WhatsAppMessage
 from .serializers import OrgWhatsAppConfigSerializer
 
 logger = logging.getLogger(__name__)
 
 
+@API.webhook
 class WhatsAppWebhookView(APIView):
     permission_classes     = [AllowAny]
     authentication_classes = []
@@ -207,6 +209,7 @@ class NotificationListView(APIView):
     """
     permission_classes = [_IsDashboard]
 
+    @API.sessions
     def get(self, request):
         role = request.user.role
         qs = (
@@ -296,6 +299,7 @@ class NotificationDetailView(APIView):
     """
     permission_classes = [_IsDashboard]
 
+    @API.session
     def get(self, request, pk):
         try:
             session = WhatsAppSession.objects.select_related('user').get(pk=pk)
@@ -392,6 +396,7 @@ class OrgWhatsAppConfigView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @API.config
     def get(self, request):
         org, err = _get_org_for_wa(request)
         if err:
@@ -399,6 +404,7 @@ class OrgWhatsAppConfigView(APIView):
         config, _ = OrgWhatsAppConfig.objects.get_or_create(organization=org)
         return Response(OrgWhatsAppConfigSerializer(config).data)
 
+    @API.config_update
     def patch(self, request):
         org, err = _get_org_for_wa(request)
         if err:
@@ -423,6 +429,7 @@ class OrgWhatsAppVerifyView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @API.verify
     def post(self, request):
         org, err = _get_org_for_wa(request)
         if err:
@@ -462,6 +469,7 @@ class OrgWhatsAppTestMessageView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @API.test_message
     def post(self, request):
         org, err = _get_org_for_wa(request)
         if err:
@@ -490,6 +498,7 @@ class WaProfileSyncView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @API.sync
     def post(self, request):
         org, err = _get_org_for_wa(request)
         if err:
@@ -518,6 +527,7 @@ class WaProfileSyncView(APIView):
 class TakeControlView(APIView):
     permission_classes = [IsAuthenticated, IsAgentOrAdmin]
 
+    @API.take_control
     def post(self, request, session_id):
         from apps.leads.models import Lead, LeadActivity
         session = get_object_or_404(WhatsAppSession, id=session_id)
@@ -581,6 +591,7 @@ class TakeControlView(APIView):
 class ReleaseControlView(APIView):
     permission_classes = [IsAuthenticated, IsAgentOrAdmin]
 
+    @API.release_control
     def post(self, request, session_id):
         from apps.leads.models import Lead, LeadActivity
         session = get_object_or_404(WhatsAppSession, id=session_id)

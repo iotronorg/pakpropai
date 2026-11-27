@@ -31,7 +31,7 @@ class OrgVoiceConfigSerializer(serializers.ModelSerializer):
         fields = ('account_sid', 'auth_token', 'phone_number',
                   'is_active', 'record_calls', 'ai_voice_name')
 
-    def get_auth_token(self, obj):
+    def get_auth_token(self, obj) -> str:
         return _MASKED if obj.auth_token else ''
 
     def update(self, instance, validated_data):

@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 
 from apps.core.permissions import IsAdminOrOrgAdmin, get_user_org
+from . import openapi as API
 from .models import OrganizationTheme
 from .serializers import OrganizationThemeSerializer
 
@@ -31,6 +32,7 @@ class ThemeConfigView(APIView):
     permission_classes     = []
     authentication_classes = []
 
+    @API.public_theme
     def get(self, request):
         host = request.get_host().split(':')[0].lower()
         cache_key = f'theme_cfg:{host}'
@@ -64,6 +66,7 @@ class OrgThemeView(APIView):
     def _get_org(self, request):
         return get_user_org(request.user)
 
+    @API.org_theme
     def get(self, request):
         org = self._get_org(request)
         if org is None:
@@ -74,6 +77,7 @@ class OrgThemeView(APIView):
         except OrganizationTheme.DoesNotExist:
             return Response(_PLATFORM_DEFAULTS)
 
+    @API.org_theme_update
     def put(self, request):
         org = self._get_org(request)
         if org is None:

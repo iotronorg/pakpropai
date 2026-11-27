@@ -32,15 +32,15 @@ class OrganizationListSerializer(serializers.ModelSerializer):
     def get_admin_phone(self, obj) -> str | None:
         return _owner_attr(obj, 'phone')
 
-    def get_agent_count(self, obj):
+    def get_agent_count(self, obj) -> int:
         from apps.agents.models import Agent
         return Agent.objects.filter(organization=obj, is_active=True).count()
 
-    def get_lead_count(self, obj):
+    def get_lead_count(self, obj) -> int:
         from apps.leads.models import Lead
         return Lead.objects.filter(organization=obj).count()
 
-    def get_property_count(self, obj):
+    def get_property_count(self, obj) -> int:
         from apps.properties.models import Property
         return Property.objects.filter(organization=obj, is_active=True).count()
 
@@ -71,15 +71,15 @@ class OrganizationDetailSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at',
         )
 
-    def get_agent_count(self, obj):
+    def get_agent_count(self, obj) -> int:
         from apps.agents.models import Agent
         return Agent.objects.filter(organization=obj, is_active=True).count()
 
-    def get_lead_count(self, obj):
+    def get_lead_count(self, obj) -> int:
         from apps.leads.models import Lead
         return Lead.objects.filter(organization=obj).count()
 
-    def get_property_count(self, obj):
+    def get_property_count(self, obj) -> int:
         from apps.properties.models import Property
         return Property.objects.filter(organization=obj, is_active=True).count()
 

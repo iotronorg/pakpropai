@@ -237,6 +237,9 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | 2026-11-27 | Working tree | `makemigrations --check --dry-run`; `manage.py check` | No changes; no issues (first attempt hit a Docker `ENOMEM` on the bind mount; rerun clean) | — |
 | 2026-11-27 | `61fb555` + working tree: T‑1091 batch 1 | `scripts/dev/test.sh tests/ apps/ -rf --tb=long` (run alone) | **2682 passed, 1 skipped, 0 failed**, 303 subtests (+3 user routes, +1 schema) | 11m12s |
 | 2026-11-27 | Working tree | `makemigrations --check --dry-run`; `manage.py check`; `spectacular --validate` | No changes; no issues; schema valid (generator errors 98, warnings 22) | — |
+| 2026-11-27 | `d0b6d15` + working tree: T‑1091 batch 2 | `scripts/dev/test.sh tests/ apps/ -rf` (run alone) | 2684 passed, 1 skipped, **1 failed**: `test_membership_phase_c::AdminUserReadersTest::test_no_new_readers` — a schema description in `organizations/openapi.py` named `admin_user`; reworded (guard kept as is), affected suites rerun: 30 passed | 10m42s |
+| 2026-11-27 | Working tree | `makemigrations --check --dry-run`; `manage.py check`; `spectacular --validate` | No changes; no issues; schema valid (generator errors 29 unique, warnings 11) | — |
+| 2026-11-27 | Working tree: T‑1091 batch 2 (after the fix) | `scripts/dev/test.sh tests/ apps/ -rf` (run alone) | **2685 passed, 1 skipped, 0 failed**, 303 subtests (+2 config routes, +1 schema) | 15m31s |
 
 ## Coverage
 Not measured yet (no coverage run executed). CI is configured with `--cov=apps`.

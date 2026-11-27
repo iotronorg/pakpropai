@@ -11,6 +11,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.permissions import FeatureEnabled, IsAdminOrOrgAdmin, IsAgentOrAdmin, get_user_org
+from . import openapi as API
 from .models import VoiceCallSession, OrgVoiceConfig
 from .serializers import VoiceCallSessionSerializer, OrgVoiceConfigSerializer
 
@@ -24,6 +25,7 @@ def _get_full_url(request, path: str) -> str:
 
 
 @method_decorator(csrf_exempt, name='dispatch')
+@API.webhook
 class VoiceInboundWebhookView(APIView):
     """POST /api/v1/voice/webhook/inbound/ — Twilio calls this on every inbound call."""
     permission_classes     = [AllowAny]
@@ -129,6 +131,7 @@ class VoiceOutboundInitiateView(APIView):
     # Frozen for MVP (MVP_SCOPE §4.2) unless feature_voice_calls is enabled.
     permission_classes = [IsAuthenticated, IsAdminOrOrgAdmin, FeatureEnabled('feature_voice_calls')]
 
+    @API.initiate
     def post(self, request):
         lead_id = request.data.get('lead_id')
         if not lead_id:
@@ -187,6 +190,7 @@ class VoiceBargeInView(APIView):
     """POST /api/v1/voice/calls/<call_sid>/barge-in/ — agent takes over from AI."""
     permission_classes = [IsAuthenticated, IsAgentOrAdmin]
 
+    @API.barge_in
     def post(self, request, call_sid: str):
         org = get_user_org(request.user) if request.user.role != 'admin' else None
 
@@ -220,6 +224,7 @@ class VoiceCallListView(APIView):
     """GET /api/v1/voice/calls/ — org-scoped call history."""
     permission_classes = [IsAuthenticated, IsAdminOrOrgAdmin]
 
+    @API.calls
     def get(self, request):
         org = get_user_org(request.user) if request.user.role != 'admin' else None
         qs  = VoiceCallSession.objects.all()
@@ -238,6 +243,7 @@ class VoiceCallDetailView(APIView):
     """GET /api/v1/voice/calls/<call_sid>/"""
     permission_classes = [IsAuthenticated, IsAdminOrOrgAdmin]
 
+    @API.call
     def get(self, request, call_sid: str):
         org = get_user_org(request.user) if request.user.role != 'admin' else None
         try:
@@ -261,12 +267,14 @@ class OrgVoiceConfigView(APIView):
         cfg, _ = OrgVoiceConfig.objects.get_or_create(organization=org)
         return cfg, None
 
+    @API.config
     def get(self, request):
         cfg, err = self._get_config(request)
         if err:
             return err
         return Response(OrgVoiceConfigSerializer(cfg).data)
 
+    @API.config_update
     def patch(self, request):
         cfg, err = self._get_config(request)
         if err:

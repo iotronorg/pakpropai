@@ -10,6 +10,7 @@ from django.shortcuts import get_object_or_404
 from apps.properties.models import Property
 from apps.core.metrics import deal_locks_total
 from apps.core.permissions import get_user_org
+from . import openapi as API
 from .models import EscrowDeal
 from .serializers import EscrowDealSerializer, InitiateDealLockSerializer, ConfirmPaymentSerializer
 from drf_spectacular.utils import extend_schema
@@ -97,6 +98,7 @@ class DealLockInitiateView(APIView):
     """POST /deals/lock/ — buyer requests a 48h deal lock on a property."""
     permission_classes = [permissions.IsAuthenticated]
 
+    @API.initiate
     @extend_schema(parameters=[IDEMPOTENCY_PARAMETER])
     @idempotent
     def post(self, request):
@@ -229,6 +231,7 @@ class DealLockConfirmView(APIView):
     """PATCH /deals/lock/<id>/confirm/ — admin or org developer confirms payment."""
     permission_classes = [IsDashboardUser]
 
+    @API.confirm
     def patch(self, request, pk):
         deal = get_object_or_404(EscrowDeal, pk=pk)
         if request.user.role == 'developer':
@@ -265,6 +268,7 @@ class DealLockCancelView(APIView):
     """PATCH /deals/lock/<id>/cancel/ — buyer, admin, or org developer cancels a lock."""
     permission_classes = [permissions.IsAuthenticated]
 
+    @API.cancel
     def patch(self, request, pk):
         deal = get_object_or_404(EscrowDeal, pk=pk)
         is_admin = request.user.role == 'admin'
@@ -359,6 +363,7 @@ class DealLockSellerConfirmView(APIView):
     """POST /deals/lock/<id>/seller-confirm/ — seller confirms awareness of deal lock."""
     permission_classes = [permissions.IsAuthenticated]
 
+    @API.seller_confirm
     def post(self, request, pk):
         deal = get_object_or_404(EscrowDeal, pk=pk)
 
@@ -402,6 +407,7 @@ class DealLockReleaseView(APIView):
     """PATCH /deals/lock/<id>/release/ — admin or org developer marks deal completed."""
     permission_classes = [IsDashboardUser]
 
+    @API.release
     def patch(self, request, pk):
         deal = get_object_or_404(EscrowDeal, pk=pk)
         if request.user.role == 'developer':
@@ -428,6 +434,7 @@ class DealLockDisputeView(APIView):
     """PATCH /deals/lock/<id>/dispute/ — admin flags a deal as disputed."""
     permission_classes = [IsAdmin]
 
+    @API.dispute
     def patch(self, request, pk):
         deal = get_object_or_404(EscrowDeal, pk=pk)
         if deal.status not in (EscrowDeal.Status.LOCKED, EscrowDeal.Status.INITIATED):

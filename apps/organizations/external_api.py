@@ -17,6 +17,8 @@ from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
 
+from . import openapi as API
+
 security_logger = logging.getLogger('security.api_keys')
 
 
@@ -172,7 +174,7 @@ class ApiKeyListSerializer(serializers.Serializer):
     last_used_at = serializers.DateTimeField(allow_null=True)
     expires_at   = serializers.DateTimeField(allow_null=True)
 
-    def get_key_prefix(self, obj):
+    def get_key_prefix(self, obj) -> str:
         return f"rtk_{obj.key_prefix}_{'*' * 20}"  # safe display format
 
 
@@ -194,6 +196,7 @@ class DeveloperApiKeyListCreateView(APIView):
             return None  # admins can't own an org; deny
         return None
 
+    @API.keys_list
     def get(self, request):
         org = self._get_org(request.user)
         if org is None:
@@ -202,6 +205,7 @@ class DeveloperApiKeyListCreateView(APIView):
         keys = DeveloperApiKey.objects.filter(organization=org).order_by('-created_at')
         return Response(ApiKeyListSerializer(keys, many=True).data)
 
+    @API.keys_create
     def post(self, request):
         org = self._get_org(request.user)
         if org is None:
@@ -235,6 +239,7 @@ class DeveloperApiKeyRevokeView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @API.key_revoke
     def delete(self, request, key_id):
         from apps.organizations.models import DeveloperApiKey
         role = getattr(request.user, 'role', None)
@@ -274,6 +279,7 @@ class ExternalLeadsView(APIView):
     throttle_classes       = [ApiKeyThrottle]
     required_scope         = 'leads:read'
 
+    @API.external_leads
     def get(self, request):
         from apps.leads.models import Lead
         from apps.leads.serializers import LeadSerializer
@@ -295,6 +301,7 @@ class ExternalLeadDetailView(APIView):
     throttle_classes       = [ApiKeyThrottle]
     required_scope         = 'leads:read'
 
+    @API.external_lead
     def get(self, request, lead_id):
         from apps.leads.models import Lead
         from apps.leads.serializers import LeadSerializer
@@ -324,6 +331,7 @@ class ExternalInventoryView(APIView):
     def required_scope(self):
         return self.get_required_scope()
 
+    @API.external_inventory
     def get(self, request):
         from apps.properties.models import Property
         from apps.properties.serializers import PropertyListSerializer
@@ -335,6 +343,7 @@ class ExternalInventoryView(APIView):
 
         return Response(PropertyListSerializer(props, many=True, context={'request': request}).data)
 
+    @API.external_inventory_add
     def post(self, request):
         from apps.properties.serializers import PropertyCreateSerializer
 

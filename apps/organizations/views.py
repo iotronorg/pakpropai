@@ -21,6 +21,7 @@ from .serializers import (
 )
 from apps.core.permissions import IsAdminUser, IsAdminOrOrgAdmin
 from drf_spectacular.utils import extend_schema
+from . import openapi as API
 from .services import OrgConfigService
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,7 @@ class OrganizationListView(APIView):
     permission_classes = [IsAuthenticated]
     parser_classes     = [MaskedMultiPartParser, MaskedFormParser, JSONParser]
 
+    @API.org_list
     def get(self, request):
         role = request.user.role
         if role == 'admin':
@@ -64,6 +66,7 @@ class OrganizationListView(APIView):
         serializer = OrganizationListSerializer(page, many=True)
         return paginator.get_paginated_response(serializer.data)
 
+    @API.org_create
     def post(self, request):
         if request.user.role != 'admin':
             return Response(
@@ -99,12 +102,14 @@ class OrganizationDetailView(APIView):
 
         return org, None
 
+    @API.org_detail
     def get(self, request, pk):
         org, err = self._get_org(pk, request.user)
         if err:
             return err
         return Response(OrganizationDetailSerializer(org).data)
 
+    @API.org_update
     def patch(self, request, pk):
         org, err = self._get_org(pk, request.user)
         if err:
@@ -124,6 +129,7 @@ class OrganizationDetailView(APIView):
         logger.info(f"Organization updated: {org.id} by user {request.user.id}")
         return Response(OrganizationDetailSerializer(org).data)
 
+    @API.org_delete
     def delete(self, request, pk):
         if request.user.role != 'admin':
             return Response(
@@ -163,6 +169,7 @@ class OrganizationMeView(APIView):
             status=status.HTTP_404_NOT_FOUND,
         )
 
+    @API.me
     def get(self, request):
         if request.user.role not in ('admin', 'developer'):
             return Response(status=status.HTTP_403_FORBIDDEN)
@@ -171,6 +178,7 @@ class OrganizationMeView(APIView):
             return err
         return Response(OrganizationDetailSerializer(org).data)
 
+    @API.me_update
     def patch(self, request, *args, **kwargs):
         if request.user.role not in ('admin', 'developer'):
             return Response(status=status.HTTP_403_FORBIDDEN)
@@ -199,6 +207,7 @@ class OrgConfigView(APIView):
     DELETE /api/v1/organizations/me/config/<key>/ — reset key to platform default
     """
     permission_classes = [IsAuthenticated]
+    http_method_names = ['get', 'patch', 'head', 'options']      # DELETE lives on OrgConfigKeyView
 
     def _get_org(self, user):
         if user.role not in ('admin', 'developer'):
@@ -212,6 +221,7 @@ class OrgConfigView(APIView):
             )
         return org, None
 
+    @API.config
     def get(self, request):
         org, err = self._get_org(request.user)
         if err:
@@ -226,6 +236,7 @@ class OrgConfigView(APIView):
             'allowed_keys': sorted(OrganizationConfig.ALLOWED_KEYS),
         })
 
+    @API.config_update
     def patch(self, request):
         org, err = self._get_org(request.user)
         if err:
@@ -245,6 +256,7 @@ class OrgConfigView(APIView):
         features = OrgConfigService.get_features(org)
         return Response({'features': features})
 
+    @API.config_reset
     def delete(self, request, key):
         org, err = self._get_org(request.user)
         if err:
@@ -265,6 +277,7 @@ class AdminOrgConfigView(APIView):
     Admin-only: read and override feature flags for any org.
     """
     permission_classes = [IsAdminUser]
+    http_method_names = ['get', 'patch', 'head', 'options']      # DELETE lives on AdminOrgConfigKeyView
 
     def _get_org(self, pk):
         try:
@@ -272,6 +285,7 @@ class AdminOrgConfigView(APIView):
         except Organization.DoesNotExist:
             return None, Response({'detail': 'Organization not found.'}, status=status.HTTP_404_NOT_FOUND)
 
+    @API.config
     def get(self, request, pk, key=None):
         org, err = self._get_org(pk)
         if err:
@@ -286,6 +300,7 @@ class AdminOrgConfigView(APIView):
             'allowed_keys': sorted(OrganizationConfig.ALLOWED_KEYS),
         })
 
+    @API.config_update
     def patch(self, request, pk, key=None):
         org, err = self._get_org(pk)
         if err:
@@ -302,6 +317,7 @@ class AdminOrgConfigView(APIView):
         features = OrgConfigService.get_features(org)
         return Response({'features': features})
 
+    @API.config_reset
     def delete(self, request, pk, key):
         org, err = self._get_org(pk)
         if err:
@@ -315,6 +331,16 @@ class AdminOrgConfigView(APIView):
         return Response({'detail': f"'{key}' reset to platform default."})
 
 
+class OrgConfigKeyView(OrgConfigView):
+    """``me/config/<key>/``: reset one key. One view used to serve both routes (GET/PATCH here were 500s)."""
+    http_method_names = ['delete', 'options']
+
+
+class AdminOrgConfigKeyView(AdminOrgConfigView):
+    """``<pk>/config/<key>/``: reset one key (DELETE on the collection route was a 500)."""
+    http_method_names = ['delete', 'options']
+
+
 class OrgDashboardView(APIView):
     """
     GET /api/v1/organizations/me/dashboard/
@@ -323,6 +349,7 @@ class OrgDashboardView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @API.dashboard
     def get(self, request):
         if request.user.role not in ('admin', 'developer'):
             return Response(status=status.HTTP_403_FORBIDDEN)
@@ -393,6 +420,7 @@ class OrgAIStatsView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @API.ai_stats
     def get(self, request):
         if request.user.role not in ('admin', 'developer'):
             return Response(status=status.HTTP_403_FORBIDDEN)
@@ -476,6 +504,7 @@ class OrganizationSuspendView(APIView):
     """POST /api/v1/organizations/{id}/suspend/ — admin only."""
     permission_classes = [IsAuthenticated, IsAdminUser]
 
+    @API.suspend
     def post(self, request, pk):
         try:
             org = Organization.objects.get(pk=pk)
@@ -498,6 +527,7 @@ class OrganizationActivateView(APIView):
     """POST /api/v1/organizations/{id}/activate/ — admin only."""
     permission_classes = [IsAuthenticated, IsAdminUser]
 
+    @API.activate
     def post(self, request, pk):
         try:
             org = Organization.objects.get(pk=pk)
@@ -529,6 +559,7 @@ class OrgRegistrationView(APIView):
     permission_classes = []
     authentication_classes = []
 
+    @API.register
     def post(self, request):
         from rest_framework.permissions import AllowAny
         serializer = OrgRegistrationSerializer(data=request.data)
@@ -586,6 +617,7 @@ class OrgRegistrationOTPVerifyView(APIView):
     permission_classes = []
     authentication_classes = []
 
+    @API.register_verify
     def post(self, request):
         serializer = OrgRegistrationOTPVerifySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)

@@ -708,3 +708,9 @@
 - **Tests:** `tests/test_openapi_schema.py` (budgets 153/28 → 98/22; documented-paths test), `tests/test_user_admin_routes.py` (3).
 - **Learned:** the project's `IsAdminUser` already requires role admin, so `UserListView._require_admin` is a second line only.
 - **How to list what remains:** in the test image, `SchemaGenerator().get_schema(request=None, public=True)` inside `GENERATOR_STATS.silence()`, then read `GENERATOR_STATS._error_cache` / `_warn_cache` (as `tests/test_openapi_schema._build_schema` does); each "unable to guess serializer … Ignoring view" names the view class.
+
+### T‑1091 batch 2: schema descriptions (ADR‑016 addendum) — session 35, continued
+- **Added:** `openapi.py` in `apps/organizations` (views, external API, theme), `apps/agents`, `apps/payments`, `apps/whatsapp` (views + provisioning), `apps/billing`, `apps/escrow`, `apps/voice`.
+- **Changed:** their views (decorators; webhooks `exclude=True`), return type hints in `organizations/serializers.py`, `organizations/external_api.py`, `escrow/serializers.py`, `voice/serializers.py`; `apps/organizations/views.py` + `urls.py` (`OrgConfigKeyView`, `AdminOrgConfigKeyView`: the `<key>/` routes shared a view with the collection, so `DELETE` without a key was a 500).
+- **Tests:** `tests/test_openapi_schema.py` (budgets 98/22 → 29/11; batch-2 paths, callbacks excluded, idempotency header kept on checkout), `tests/test_org_config_routes.py` (2).
+- **Learned:** `external_api.py` has a docstring that quotes `class ExternalLeadsView(APIView):`; anchor source edits on `\nclass ` at line start.

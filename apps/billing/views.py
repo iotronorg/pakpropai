@@ -8,6 +8,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from . import openapi as API
 from .ledger import UsageLedger
 from .limits import PLAN_LIMITS
 
@@ -35,6 +36,7 @@ def _safe_origin(request) -> str | None:
 class BillingUsageView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @API.usage
     def get(self, request):
         user = request.user
         if user.role not in ('developer', 'admin'):
@@ -76,6 +78,7 @@ class BillingUsageView(APIView):
 class BillingCheckoutView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @API.checkout
     def post(self, request):
         user = request.user
         if user.role != 'developer':
@@ -112,6 +115,7 @@ class BillingCheckoutView(APIView):
 
 
 @method_decorator(csrf_exempt, name='dispatch')
+@API.webhook
 class StripeWebhookView(APIView):
     authentication_classes = []
     permission_classes      = []
@@ -183,6 +187,7 @@ class OrgPaymentSettingsView(APIView):
             return None, Response({'detail': 'No organization linked to this account.'}, status=404)
         return org, None
 
+    @API.payment_settings
     def get(self, request):
         from apps.organizations.models import OrgPaymentSettings
         org, err = self._get_org(request)
@@ -199,6 +204,7 @@ class OrgPaymentSettingsView(APIView):
                 data[f] = val
         return Response(data)
 
+    @API.payment_settings_update
     def patch(self, request):
         from apps.organizations.models import OrgPaymentSettings
         org, err = self._get_org(request)
@@ -225,6 +231,7 @@ class OrgPaymentSettingsView(APIView):
 
 
 @method_decorator(csrf_exempt, name='dispatch')
+@API.webhook
 class SafepayBillingWebhookView(APIView):
     """Handles Safepay payment.success events for SaaS plan activation."""
     authentication_classes = []
@@ -272,6 +279,7 @@ class SafepayBillingWebhookView(APIView):
 
 
 @method_decorator(csrf_exempt, name='dispatch')
+@API.webhook
 class BSecureBillingWebhookView(APIView):
     """Handles bSecure order.completed events for SaaS plan activation."""
     authentication_classes = []
@@ -321,6 +329,7 @@ class BillingPortalView(APIView):
     """POST /billing/portal/ — redirect to Stripe Customer Portal for subscription management."""
     permission_classes = [IsAuthenticated]
 
+    @API.portal
     def post(self, request):
         from django.conf import settings as _settings
         import stripe as _stripe
@@ -359,6 +368,7 @@ class BillingInvoiceView(APIView):
     """GET /billing/invoices/ — list past Stripe invoices for the org."""
     permission_classes = [IsAuthenticated]
 
+    @API.invoices
     def get(self, request):
         from django.conf import settings as _settings
         import stripe as _stripe

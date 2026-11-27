@@ -13,6 +13,7 @@ from rest_framework.views import APIView
 
 from apps.escrow.models import EscrowDeal
 from apps.core.metrics import deal_locks_total, webhook_events_total
+from . import openapi as API
 from .models import Payment
 from .services import masked_payload, PaymentService
 from drf_spectacular.utils import extend_schema
@@ -46,6 +47,7 @@ class CreateCheckoutView(APIView):
     """
     permission_classes = [permissions.IsAuthenticated]
 
+    @API.checkout
     @extend_schema(parameters=[IDEMPOTENCY_PARAMETER])
     @idempotent
     def post(self, request, deal_id):
@@ -113,6 +115,7 @@ class PaymentReturnView(APIView):
     """
     permission_classes = [permissions.IsAuthenticated]
 
+    @API.payment_return
     def get(self, request):
         ret_status = request.query_params.get('status', 'unknown')
         deal_id    = request.query_params.get('deal_id', '')
@@ -149,6 +152,7 @@ class SafepayWebhookView(APIView):
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
 
+    @API.webhook
     def post(self, request):
         raw   = request.body
         sig   = request.headers.get('X-Safepay-Signature', '')
@@ -167,6 +171,7 @@ class bSecureWebhookView(APIView):
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
 
+    @API.webhook
     def post(self, request):
         raw = request.body
         sig = request.headers.get('X-bSecure-Signature', '')
@@ -208,6 +213,7 @@ class SafepayDealLockWebhookView(APIView):
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
 
+    @API.webhook
     def post(self, request):
         raw = request.body
         sig = request.headers.get('X-Safepay-Signature', '')
@@ -281,6 +287,7 @@ class bSecureDealLockWebhookView(APIView):
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
 
+    @API.webhook
     def post(self, request):
         raw = request.body
         sig = request.headers.get('X-bSecure-Signature', '')
@@ -352,6 +359,7 @@ class StripeDealLockWebhookView(APIView):
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
 
+    @API.webhook
     def post(self, request):
         import stripe
         raw = request.body
@@ -436,6 +444,7 @@ class SEPAPaymentView(APIView):
     """
     permission_classes = [permissions.IsAuthenticated]
 
+    @API.sepa
     @extend_schema(parameters=[IDEMPOTENCY_PARAMETER])
     @idempotent
     def post(self, request, deal_id):
@@ -519,6 +528,7 @@ class PaymentListView(APIView):
     """GET /payments/ — admin-only list of all payments."""
     permission_classes = [permissions.IsAuthenticated]
 
+    @API.payments
     def get(self, request):
         if request.user.role != 'admin':
             return Response({'detail': 'Admin only.'}, status=status.HTTP_403_FORBIDDEN)

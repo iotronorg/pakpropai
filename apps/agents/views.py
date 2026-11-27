@@ -9,6 +9,7 @@ from apps.billing.ledger import UsageLedger
 from apps.billing.permissions import WithinAgentSeatLimit
 from apps.core.permissions import IsAdminOrDeveloper
 from apps.organizations.models import Organization
+from . import openapi as API
 from .models import Agent
 from .serializers import AgentSerializer, AgentRegistrationSerializer
 
@@ -142,6 +143,7 @@ class AgentRegisterView(APIView):
     """POST /agents/register/ — public self-registration."""
     permission_classes = [permissions.AllowAny]
 
+    @API.register
     def post(self, request):
         serializer = AgentRegistrationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -200,6 +202,7 @@ class AgentApproveView(APIView):
     """POST /agents/{id}/approve/ — admin always; developer only for their org's applicants."""
     permission_classes = [IsAdminOrDeveloper]
 
+    @API.approve
     def post(self, request, pk):
         agent = self._get_approvable_agent(request, pk)
 
@@ -275,6 +278,7 @@ class AgentRejectView(APIView):
     """POST /agents/{id}/reject/ — admin always; developer only for their org's applicants."""
     permission_classes = [IsAdminOrDeveloper]
 
+    @API.reject
     def post(self, request, pk):
         reason = request.data.get('rejection_reason', '').strip()
         if not reason:
@@ -342,6 +346,7 @@ class AgentAvailabilityView(APIView):
     """
     permission_classes = [permissions.IsAuthenticated]
 
+    @API.availability
     def patch(self, request, pk=None):
         new_status = request.data.get('availability_status', '').strip()
         if new_status not in Agent.AvailabilityStatus.values:
@@ -374,6 +379,7 @@ class AgentStatsView(APIView):
     """GET /agents/{id}/stats/?period=weekly|monthly"""
     permission_classes = [permissions.IsAuthenticated]
 
+    @API.stats
     def get(self, request, pk):
         from .stats import compute_agent_stats
 
@@ -409,6 +415,7 @@ class AgentLeaderboardView(APIView):
     """GET /agents/leaderboard/ — ranked list by conversion rate."""
     permission_classes = [IsAdminOrDeveloper]
 
+    @API.leaderboard
     def get(self, request):
         from .stats import compute_leaderboard
 
@@ -468,6 +475,7 @@ class TeamView(APIView):
     """
     permission_classes = [permissions.IsAuthenticated]
 
+    @API.team
     def get(self, request):
         if request.user.role not in ('admin', 'developer'):
             raise PermissionDenied("Developer or admin access required.")
@@ -478,6 +486,7 @@ class TeamView(APIView):
         ).select_related('user')
         return Response(AgentSerializer(members, many=True).data)
 
+    @API.team_add
     def post(self, request):
         if request.user.role not in ('admin', 'developer'):
             raise PermissionDenied("Developer or admin access required.")
@@ -509,6 +518,7 @@ class TeamMemberView(APIView):
     """DELETE /agents/team/<agent_id>/ — remove agent from org."""
     permission_classes = [permissions.IsAuthenticated]
 
+    @API.team_remove
     def delete(self, request, agent_id):
         if request.user.role not in ('admin', 'developer'):
             raise PermissionDenied("Developer or admin access required.")
@@ -533,6 +543,7 @@ class FreelanceProfileView(APIView):
     """
     permission_classes = [permissions.IsAuthenticated]
 
+    @API.freelance
     def post(self, request):
         if request.user.role != 'agent':
             raise PermissionDenied("Only agents can create a freelance profile.")
@@ -570,6 +581,7 @@ class AgentCompaniesHouseVerifyView(APIView):
     """
     permission_classes = [permissions.IsAuthenticated]
 
+    @API.companies_house
     def post(self, request):
         if request.user.role not in ('developer', 'admin'):
             return Response({'detail': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
