@@ -64,6 +64,7 @@ from .serializers import (
     RegistrationOTPVerifySerializer,
 )
 from .services import OTPService
+from apps.core.errors import ApiError
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +88,7 @@ class SendOTPView(APIView):
         try:
             otp = OTPService.issue(phone, purpose=purpose)
         except ValueError as exc:
-            return Response({'error': str(exc)}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+            raise ApiError(str(exc), 'auth.otp_rate_limited', 429)
 
         if settings.DEBUG:
             logger.warning("OTP for %s: %s", phone, otp.code)
@@ -121,13 +122,10 @@ class VerifyOTPView(APIView):
         try:
             user = OTPService.verify_login(phone, code)
         except ValueError as exc:
-            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            raise ApiError(str(exc), 'auth.otp_invalid', 400)
 
         if not user.is_active:
-            return Response(
-                {'error': 'Your account has been deactivated. Please contact support.'},
-                status=status.HTTP_403_FORBIDDEN,
-            )
+            raise ApiError('Your account has been deactivated. Please contact support.', 'auth.account_deactivated', 403)
 
         from .mfa import login_response              # T-1011: second factor when enrolled
         return login_response(user, {'user': UserSerializer(user).data})
@@ -160,19 +158,19 @@ class CookieTokenRefreshView(APIView):
 
         raw_refresh = request.COOKIES.get('refresh_token')
         if not raw_refresh:
-            return Response({'error': 'No refresh token cookie.'}, status=status.HTTP_401_UNAUTHORIZED)
+            raise ApiError('No refresh token cookie.', 'auth.refresh_missing', 401)
         try:
             refresh = RefreshToken(raw_refresh)
             new_access = str(refresh.access_token)
         except TokenError as exc:
-            response = Response({'error': str(exc)}, status=status.HTTP_401_UNAUTHORIZED)
+            response = Response({'error': str(exc), 'code': 'auth.refresh_invalid'}, status=status.HTTP_401_UNAUTHORIZED)
             _clear_auth_cookies(response)
             return response
         # T-1011: a session that skipped the second factor cannot be renewed.
         from .mfa import token_acceptable
         owner = User.objects.filter(pk=refresh.get(jwt_settings.USER_ID_CLAIM), is_active=True).first()
         if owner is None or not token_acceptable(owner, refresh):
-            response = Response({'error': 'Multi-factor authentication required. Log in again.'},
+            response = Response({'error': 'Multi-factor authentication required. Log in again.', 'code': 'auth.mfa_required'},
                                 status=status.HTTP_401_UNAUTHORIZED)
             _clear_auth_cookies(response)
             return response
@@ -235,11 +233,10 @@ class UserListView(APIView):
 
     def _require_admin(self, request):
         if request.user.role != User.Role.ADMIN:
-            return Response({'error': 'Admin access required.'}, status=status.HTTP_403_FORBIDDEN)
+            raise ApiError('Admin access required.', 'users.admin_required', 403)
 
     def get(self, request):
-        err = self._require_admin(request)
-        if err: return err
+        self._require_admin(request)
         qs = User.objects.all().order_by('-created_at')
         role = request.query_params.get('role')
         if role:
@@ -251,34 +248,31 @@ class UserListView(APIView):
         return Response({'count': qs.count(), 'results': serializer.data})
 
     def post(self, request):
-        err = self._require_admin(request)
-        if err: return err
+        self._require_admin(request)
         serializer = UserCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
         return Response(UserListSerializer(user).data, status=status.HTTP_201_CREATED)
 
     def patch(self, request, pk):
-        err = self._require_admin(request)
-        if err: return err
+        self._require_admin(request)
         try:
             user = User.objects.get(pk=pk)
         except User.DoesNotExist:
-            return Response({'error': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+            raise ApiError('Not found.', 'users.not_found', 404)
         serializer = UserListSerializer(user, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
 
     def delete(self, request, pk):
-        err = self._require_admin(request)
-        if err: return err
+        self._require_admin(request)
         try:
             user = User.objects.get(pk=pk)
         except User.DoesNotExist:
-            return Response({'error': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+            raise ApiError('Not found.', 'users.not_found', 404)
         if str(user.pk) == str(request.user.pk):
-            return Response({'error': 'Cannot delete your own account.'}, status=status.HTTP_400_BAD_REQUEST)
+            raise ApiError('Cannot delete your own account.', 'users.cannot_delete_self', 400)
         user.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 

@@ -110,16 +110,36 @@ def stop(token: str) -> bool:
 def new_matches(search: SavedSearch, crit: C.SearchCriteria):
     """
     Public matches listed, or repriced, since the search started; never announced
-    before, not dismissed or already saved, not the person's own.
+    before, not dismissed or already saved, not the person's own. With duplicate
+    collapsing on (ADR-070, KI-126), a copy of a property already announced to this
+    search, or saved or dismissed by the person, is not new either.
     """
     from django.db.models.functions import Coalesce
     repriced = PriceHistory.objects.filter(property=OuterRef('pk'), changed_at__gt=search.since)
     mine = Favourite.objects.filter(user=search.user, listing=OuterRef('pk'))
     told = AlertDelivery.objects.filter(saved_search=search, listing=OuterRef('pk'))
-    return (S.filtered(crit).annotate(_since=Coalesce('published_at', 'created_at'))
-            .filter(Q(_since__gt=search.since) | Exists(repriced))
-            .exclude(Exists(mine)).exclude(Exists(told)).exclude(owner=search.user)
-            .exclude(listed_by_agent__user=search.user).order_by('-_since', 'pk'))
+    qs = (S.filtered(crit).annotate(_since=Coalesce('published_at', 'created_at'))
+          .filter(Q(_since__gt=search.since) | Exists(repriced))
+          .exclude(Exists(mine)).exclude(Exists(told)).exclude(owner=search.user)
+          .exclude(listed_by_agent__user=search.user))
+    if S.collapse_default():
+        # ``= NULL`` never matches, so listings outside any cluster are unaffected.
+        same = OuterRef('duplicate_cluster_id')
+        qs = (qs.exclude(Exists(AlertDelivery.objects.filter(saved_search=search, listing__duplicate_cluster_id=same)))
+              .exclude(Exists(Favourite.objects.filter(user=search.user, listing__duplicate_cluster_id=same))))
+    return qs.order_by('-_since', 'pk')
+
+
+def one_per_property(rows: list) -> list:
+    """Copies of one duplicate cluster found in the same run are announced once (the first)."""
+    if not S.collapse_default():
+        return rows
+    seen, out = set(), []
+    for p in rows:
+        if p.duplicate_cluster_id is None or p.duplicate_cluster_id not in seen:
+            out.append(p)
+            seen.add(p.duplicate_cluster_id)
+    return out
 
 
 def run(search_id) -> int:
@@ -143,11 +163,12 @@ def run(search_id) -> int:
         if s.frequency == F.INSTANT and s.last_alert_at and s.last_alert_at > now - INTERVAL[F.INSTANT]:
             s.save(update_fields=['next_run_at', 'updated_at'])
             return 0
-        rows = list(new_matches(s, crit)[:BATCH])
+        found = list(new_matches(s, crit)[:BATCH])
+        rows = one_per_property(found)
         if rows:
             AlertDelivery.objects.bulk_create([AlertDelivery(saved_search=s, listing=p) for p in rows])
             s.last_alert_at = now
-            count = f'{len(rows)}{"+" if len(rows) == BATCH else ""}'
+            count = f'{len(rows)}{"+" if len(found) == BATCH else ""}'
             lines = [f'{count} new for “{s.name}”:'] + [
                 f'• {public_text(p, p.title)[:80]} — {S.price_text(p)}' for p in rows[:SHOWN]]
             C_ = SavedSearch.Channel

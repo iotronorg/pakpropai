@@ -15,6 +15,7 @@ from .models import Verification, DocumentScan, FraudBlacklist
 from .serializers import VerificationSerializer, DocumentScanSerializer
 from .services import FraudCheckService, VerificationSignalService
 from .tasks import notify_verification_status_change
+from apps.core.errors import ApiError
 from apps.core.throttles import FraudCheckThrottle, BulkOperationThrottle
 
 logger = logging.getLogger(__name__)
@@ -34,9 +35,9 @@ class FraudCheckView(APIView):
     def post(self, request):
         query = (request.data.get('query') or '').strip()
         if not query:
-            return Response({'error': 'query is required'}, status=400)
+            raise ApiError('query is required', 'verification.query_required', 400)
         if len(query) > 500:
-            return Response({'error': 'query too long (max 500 chars)'}, status=400)
+            raise ApiError('query too long (max 500 chars)', 'verification.query_too_long', 400)
         result = FraudCheckService.check(query, user=request.user)
         return Response(result)
 
@@ -52,7 +53,7 @@ class VerificationQueueView(APIView):
     def get(self, request):
         role = request.user.role
         if not self._is_dashboard(request.user):
-            return Response({'error': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
+            raise ApiError('Not authorized.', 'verification.not_authorized', 403)
 
         qs = (
             Verification.objects
@@ -93,15 +94,12 @@ class VerificationReviewView(APIView):
                 .get(pk=pk)
             )
         except Verification.DoesNotExist:
-            return Response({'error': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+            raise ApiError('Not found.', 'verification.not_found', 404)
 
         new_status = request.data.get('status')
         if new_status not in (Verification.Status.PASSED, Verification.Status.FAILED,
                                Verification.Status.DISPUTED):
-            return Response(
-                {'error': 'status must be passed, failed, or disputed.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            raise ApiError('status must be passed, failed, or disputed.', 'verification.invalid_status', 400)
 
         verification.status      = new_status
         verification.notes       = request.data.get('notes', verification.notes)
@@ -137,7 +135,7 @@ class DocumentScanListView(APIView):
     def get(self, request):
         role = request.user.role
         if role not in ('admin', 'agent', 'developer'):
-            return Response({'error': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
+            raise ApiError('Not authorized.', 'verification.not_authorized', 403)
 
         qs = DocumentScan.objects.select_related('user', 'verification').all()
 
@@ -173,26 +171,26 @@ class DocumentScanDetailView(APIView):
     def get(self, request, pk):
         role = request.user.role
         if role not in ('admin', 'agent', 'developer'):
-            return Response({'error': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
+            raise ApiError('Not authorized.', 'verification.not_authorized', 403)
         try:
             scan = DocumentScan.objects.select_related('user', 'verification').get(pk=pk)
         except DocumentScan.DoesNotExist:
-            return Response({'error': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+            raise ApiError('Not found.', 'verification.not_found', 404)
         if role == 'agent':
             from apps.properties.models import Property
             agent_prop_ids = Property.objects.filter(owner=request.user).values_list('id', flat=True)
             if not DocumentScan.objects.filter(
                 pk=pk, verification__property_id__in=agent_prop_ids
             ).exists():
-                return Response({'error': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
+                raise ApiError('Not authorized.', 'verification.not_authorized', 403)
         elif role == 'developer':
             org = _admin_org(request.user)
             if org is None:
-                return Response({'error': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
+                raise ApiError('Not authorized.', 'verification.not_authorized', 403)
             if not DocumentScan.objects.filter(
                 pk=pk, verification__property__organization=org
             ).exists():
-                return Response({'error': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
+                raise ApiError('Not authorized.', 'verification.not_authorized', 403)
         return Response(DocumentScanSerializer(scan).data)
 
 
@@ -204,7 +202,7 @@ class LinkDocumentToVerificationView(APIView):
         try:
             scan = DocumentScan.objects.get(pk=scan_id)
         except DocumentScan.DoesNotExist:
-            return Response({'error': 'Document scan not found.'}, status=status.HTTP_404_NOT_FOUND)
+            raise ApiError('Document scan not found.', 'verification.scan_not_found', 404)
 
         try:
             verification = (
@@ -213,7 +211,7 @@ class LinkDocumentToVerificationView(APIView):
                 .get(pk=verification_id)
             )
         except Verification.DoesNotExist:
-            return Response({'error': 'Verification not found.'}, status=status.HTTP_404_NOT_FOUND)
+            raise ApiError('Verification not found.', 'verification.not_found', 404)
 
         scan.verification = verification
         scan.save(update_fields=['verification'])
@@ -511,7 +509,7 @@ class BulkRejectVerificationsView(APIView):
         notes = request.data.get('notes', '')
 
         if not ids:
-            return Response({'error': 'verification_ids (list) is required.'}, status=400)
+            raise ApiError('verification_ids (list) is required.', 'verification.ids_required', 400)
 
         qs = Verification.objects.filter(
             id__in=ids,

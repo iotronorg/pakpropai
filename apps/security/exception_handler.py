@@ -19,10 +19,10 @@ def security_exception_handler(exc, context):
     if response is None:
         return response  # unhandled → Django handler500 (apps.core.errors.server_error)
 
-    if response.status_code in (401, 403):
+    from apps.core.errors import ApiError, attach_envelope
+    if response.status_code in (401, 403) and not isinstance(exc, ApiError):
         _record_auth_failure(context.get('request'))
 
-    from apps.core.errors import attach_envelope
     return attach_envelope(response, exc)  # ADR-017
 
 

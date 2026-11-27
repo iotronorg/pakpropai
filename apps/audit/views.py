@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import AuditBenchmark, PropertyAudit
+from apps.core.errors import ApiError
 
 
 class IsAdmin(IsAuthenticated):
@@ -86,7 +87,7 @@ class BenchmarkListView(APIView):
         required = ('city', 'location_key', 'price_per_unit_min', 'price_per_unit_max', 'yield_pct', 'appr_pct', 'liq_months')
         missing = [f for f in required if f not in data]
         if missing:
-            return Response({'error': f"Missing fields: {missing}"}, status=status.HTTP_400_BAD_REQUEST)
+            raise ApiError(f"Missing fields: {missing}", 'audit.benchmark_fields_missing', 400)
 
         from apps.markets.services import country_or_default, currency_for_country
         country = country_or_default(str(data.get('country') or ''))
@@ -95,10 +96,7 @@ class BenchmarkListView(APIView):
             city=data['city'].lower().strip(),
             location_key=data['location_key'].lower().strip(),
         ).exists():
-            return Response(
-                {'error': 'A benchmark for this country + city + location_key already exists. Use PATCH to update it.'},
-                status=status.HTTP_409_CONFLICT,
-            )
+            raise ApiError('A benchmark for this country + city + location_key already exists. Use PATCH to update it.', 'audit.benchmark_exists', 409)
 
         b = AuditBenchmark.objects.create(
             country=country,

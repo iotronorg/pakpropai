@@ -141,7 +141,7 @@ class NonExceptionErrorEnvelopeTest(TestCase):
         self.assertEqual(resp.status_code, 403)
         body, info = _info(resp)
         self.assertEqual(body['error'], 'Admin only.')                         # unchanged type
-        self.assertEqual(info, {'status': 403, 'code': 'permission_denied', 'message': 'Admin only.'})
+        self.assertEqual(info, {'status': 403, 'code': 'listing.admin_only', 'message': 'Admin only.'})   # T-1092
         self.assertEqual(body['request_id'], resp['X-Request-ID'])
 
     def test_security_middleware_rejection_gets_envelope(self):
@@ -176,6 +176,53 @@ class NonExceptionErrorEnvelopeTest(TestCase):
         resp = Client().get('/definitely-not-a-page/')
         self.assertEqual(resp.status_code, 404)
         self.assertNotIn('json', resp.get('Content-Type', ''))
+
+
+class ApiErrorTest(TestCase):
+    """T-1092 / KI-038: refusals raised with specific codes; the legacy ``error`` string stays."""
+
+    def test_body_keeps_error_and_gains_detail_and_code(self):
+        api = APIClient()
+        from tests.factories import make_agent
+        api.force_authenticate(make_agent(org=make_org())[0])               # agents and admins only
+        r = api.get('/api/v1/properties/compare/', {'ids': ','.join(['00000000-0000-4000-8000-000000000000'] * 5)})
+        self.assertEqual(r.status_code, 400)
+        body, info = _info(r)
+        self.assertEqual((body['error'], body['detail']), ('Maximum 4 properties can be compared at once.',) * 2)
+        self.assertEqual(info['code'], 'compare.too_many')
+
+    def test_refusals_do_not_count_as_authentication_failures(self):
+        api = APIClient()
+        api.force_authenticate(make_client())
+        prop = make_property(org=make_org(operational_mode='production'))
+        with patch('apps.security.exception_handler._record_auth_failure') as recorded:
+            self.assertEqual(api.post(f'{PROPS}{prop.pk}/rescore/', REMOTE_ADDR='203.0.113.9').status_code, 403)
+            self.assertFalse(recorded.called)
+            self.assertEqual(APIClient().get(PROPS, REMOTE_ADDR='203.0.113.9').status_code, 401)
+            self.assertTrue(recorded.called)                    # DRF's own 401/403 still count
+
+    def test_token_refresh_codes(self):
+        r = APIClient().post('/api/v1/auth/token/refresh/')
+        self.assertEqual((r.status_code, _info(r)[1]['code'], r.json()['error']),
+                         (401, 'auth.refresh_missing', 'No refresh token cookie.'))
+        c = APIClient()
+        c.cookies['refresh_token'] = 'not-a-token'
+        r = c.post('/api/v1/auth/token/refresh/')
+        self.assertEqual((r.status_code, _info(r)[1]['code']), (401, 'auth.refresh_invalid'))
+        self.assertEqual(r.cookies['refresh_token'].value, '')              # still cleared
+
+    def test_no_hand_built_error_responses_remain(self):
+        """New code raises ``ApiError``; a kept ``Response({'error': …})`` must name its ``code``."""
+        from pathlib import Path
+        pattern = re.compile(r"(?:return\s+|=\s*)Response\(\s*\{['\"]error['\"]:[^}]*\}", re.S)
+        found = []
+        for path in Path(settings.BASE_DIR, 'apps').rglob('*.py'):
+            if 'migrations' in path.parts:
+                continue
+            for m in pattern.finditer(path.read_text()):
+                if "'code'" not in m.group(0) and '"code"' not in m.group(0):
+                    found.append(f'{path.relative_to(settings.BASE_DIR)}: {m.group(0)[:60]}')
+        self.assertEqual(found, [])
 
 
 class StatusCodeNameTest(SimpleTestCase):

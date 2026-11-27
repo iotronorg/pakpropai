@@ -84,6 +84,26 @@ def _has_envelope(data: dict) -> bool:
 
 # ── Layer 1: DRF exceptions ──────────────────────────────────────────────────
 
+class ApiError(exceptions.APIException):
+    """
+    A refusal with a stable, specific code (T-1092, KI-038). Views raise it instead
+    of returning ``Response({'error': ...}, status=4xx)``. The body keeps that
+    ``error`` string for existing clients and gains ``detail`` and the envelope::
+
+        raise ApiError('Not found.', 'verification.not_found', 404)
+
+    Not counted as an authentication failure (``security_exception_handler``): the
+    hand-built responses it replaces never were, and a 403 here is a refusal, not
+    a bad credential.
+    """
+    status_code = 400
+    default_code = 'bad_request'
+
+    def __init__(self, message: str, code: str, status_code: int = 400):
+        self.status_code = status_code
+        super().__init__(detail=message, code=code)
+
+
 def _code_for(exc, status_code: int) -> str:
     if isinstance(exc, exceptions.ValidationError):
         return 'validation_error'
@@ -110,6 +130,8 @@ def attach_envelope(response, exc):
     else:
         message = _first_message(data.get('detail', data)) or 'Error.'
 
+    if isinstance(exc, ApiError):
+        data.setdefault('error', message)          # the legacy key of the responses it replaces
     data.update(build_error(response.status_code, _code_for(exc, response.status_code), message, fields))
     return response
 

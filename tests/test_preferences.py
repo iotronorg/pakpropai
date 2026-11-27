@@ -186,6 +186,43 @@ class AlertTest(Base):
         self.make('Mine', owner=self.user)
         self.assertEqual(self.due(), 0)
 
+    def cluster(self, *listings):
+        from apps.properties.models import DuplicateCluster
+        c = DuplicateCluster.objects.create(canonical=listings[0])
+        Property.objects.filter(pk__in=[p.pk for p in listings]).update(duplicate_cluster=c)
+
+    def test_copies_of_an_announced_property_are_not_new(self):        # KI-126, ADR-070
+        first = self.make('New house')
+        self.assertEqual(self.due(), 1)
+        repost = self.make('Same house, other agency', org=make_org(operational_mode='production'))
+        self.cluster(first, repost)
+        self.assertEqual(self.due(), 0)
+        self.assertEqual(self.told(), {'New house'})
+
+    def test_copies_found_together_are_announced_once(self):
+        a, b = self.make('Copy A'), self.make('Copy B')
+        c = self.make('Other house')
+        self.cluster(a, b)
+        self.assertEqual(self.due(), 1)
+        told = self.told()
+        self.assertEqual((len(told), 'Other house' in told, len(told & {'Copy A', 'Copy B'})), (2, True, 1))
+        self.assertIn('2 new for', Notification.objects.get(user=self.user).message)
+        self.assertEqual(self.due(), 0)                  # the unannounced copy stays quiet next time
+
+    def test_copy_of_a_saved_or_dismissed_listing_is_not_new(self):
+        for kind in ('saved', 'dismissed'):
+            kept = self.make(f'Kept {kind}')
+            S.keep(self.user, kept, **({} if kind == 'saved' else {'kind': 'dismissed'}))
+            self.cluster(kept, self.make(f'Copy of {kind}'))
+        self.assertEqual(self.due(), 0)
+
+    @override_settings(SEARCH_COLLAPSE_DUPLICATES=False)
+    def test_without_collapsing_every_copy_is_announced(self):
+        first = self.make('New house')
+        self.due()
+        self.cluster(first, self.make('Same house again'))
+        self.assertEqual(self.due(), 1)
+
     def test_not_due_paused_or_inactive_person(self):
         self.make('New house')
         self.assertEqual(A.run_due(), 0)

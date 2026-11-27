@@ -518,3 +518,7 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - **No migration.** New setting `SEARCH_COLLAPSE_DUPLICATES` (default **on**). Takes effect only once clusters exist, i.e. after §68's `rebuild_duplicate_clusters`.
 - **API (additive):** each search hit (`POST /api/v1/search/`, `GET /api/v1/public/listings/search/`) gains `also_listed` (up to 5 other copies: id, ref no, slug, price, lister type, organization name) and `also_listed_count`; `total` now counts properties, not listings. `collapse_duplicates=false` returns every listing. Frontend: show "also listed by …" on the card.
 - **Behaviour:** a listing whose copy ranks higher, or which a moderator did not choose as canonical, no longer appears as its own result. Agencies may ask why their listing "disappeared": it is under another copy's card. Moderators can split a wrongly clustered listing (`/api/v1/moderation/duplicates/`).
+
+## 70. Session-35 changes (continued): alerts and error codes (KI‑126, T‑1092)
+- **No migration.** Saved-search alerts no longer announce another copy of a property already announced, saved or dismissed (only while `SEARCH_COLLAPSE_DUPLICATES` is on).
+- **API (additive):** about 35 refusals in verification, auth/users, lead bulk-assign, listing rescore/compare and audit benchmarks now answer with `detail` beside the unchanged `error`, and a specific `error_info.code` (e.g. `verification.not_found` instead of `not_found`). Clients that switch on `error_info.code` for these endpoints should use the new codes.

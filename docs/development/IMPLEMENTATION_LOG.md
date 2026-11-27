@@ -692,3 +692,12 @@
 - **Root cause:** found from a kept traceback (`Unknown slot.` on a well-formed id) and a 4000-id probe of `PIIMaskingPipeline`: 7 ids altered.
 - **Changed:** `apps/compliance/middleware.py` (`_MACHINE_ID`: UUID or `<uuid>@YYYYMMDDTHHMMZ`, full match only; anything longer is still masked).
 - **Tests:** `tests/test_viewings.py::BookTest::test_slot_ids_are_never_masked_as_card_or_account_numbers` (the exact masked id; a longer string still masked; an API booking under a masker that flags every string with a digit).
+
+### KI‑126 (alerts half): saved-search alerts skip copies — session 35
+- **Changed:** `apps/preferences/alerts.py` (`new_matches` excludes listings whose cluster has a member announced to the search or in the person's favourites/dismissals; `one_per_property` for one run; the "+" marker counts the batch before de-duplication).
+- **Tests:** `tests/test_preferences.py::AlertTest` (+4): repost after an announcement, copies found together, copy of a saved or dismissed listing, setting off.
+
+### T‑1092 Refusals raised with specific codes (ADR‑017 addendum) — session 35
+- **Added:** `apps/core/errors.ApiError`; `attach_envelope` keeps the legacy `error` key for it; `apps/security/exception_handler.py` skips the auth-failure counter for it.
+- **Changed:** `apps/verification/views.py` (14), `apps/users/views.py` (8 + 2 `code` keys; `_require_admin` raises), `apps/leads/admin_views.py` (6), `apps/properties/views.py` (5), `apps/audit/views.py` (2).
+- **Tests:** `tests/test_error_envelope.py` (+4 `ApiErrorTest`, 1 expectation updated from `permission_denied` to `listing.admin_only`).

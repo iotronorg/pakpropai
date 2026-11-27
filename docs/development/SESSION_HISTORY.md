@@ -568,7 +568,10 @@
 - **Recorded:** KI‑126 (alerts still announce reposts; detail page has no copies).
 - **Tests:** 2669 passed, 1 skipped, 0 failed (full run, alone); after the ordering fix the search suites 75 passed. No migration drift. **Not committed.**
 
+- **Continued on request** (the owner committed the above as `8586a35`): KI‑126 alerts half — saved-search alerts skip a listing whose cluster was already announced to the search or saved/dismissed, and announce copies found together once (existing `AlertDelivery` rows; no migration). T‑1092 (ADR‑017 addendum) — `ApiError(message, code, status)`; 35 hand-built `{'error'}` refusals converted (legacy `error` kept, `detail` and specific codes added); excluded from the auth-failure IP blocker so no ordinary refusal can now block an address; token-refresh 401s keep their Response with a `code`; guard test. Fixed KI‑038.
+- **Tests:** 2678 passed, 1 skipped, 0 failed (full run, alone); no migration drift. **Not committed.**
+
 ### Handoff → session 36 (supersedes the one above)
-1. `git status`: uncommitted is session 35 (T‑4051, KI‑125 fix, docs; new `tests/test_search_duplicates.py`). **Do not commit.** Run the full suite first, alone (expect 2670/0).
-2. Dev: KI‑126 (alerts: skip a new listing whose cluster already had a member announced to that saved search — needs announced ids per search; `apps/preferences/alerts.py`), then T‑1092, T‑1091. T‑4040 waits for the owner's embedding-model choice.
-3. Owner: as before (§54, §52, §53, staging E2E, T‑2072, pentest, KI‑112, KI‑114, KI‑121 document links, pricing for T‑3080, weekly-use metric, §61–§68, embedding model for T‑4040); new: §69 (frontend "also listed" card).
+1. `git status`: the owner committed T‑4051 + KI‑125 (`8586a35`); uncommitted are KI‑126 (alerts) and T‑1092. **Do not commit.** Run the full suite first, alone (expect 2678/0).
+2. Dev: T‑1091 OpenAPI annotations (budgets in `tests/test_openapi_schema.py`; start with `apps/verification/views.py`, `apps/users/views.py`). T‑4040 waits for the owner's embedding-model choice; KI‑126 detail-page copies wait for the frontend card.
+3. Owner: as before (§54, §52, §53, staging E2E, T‑2072, pentest, KI‑112, KI‑114, KI‑121 document links, pricing for T‑3080, weekly-use metric, §61–§68, embedding model for T‑4040); new: §69 ("also listed" card), §70 (new error codes for clients).

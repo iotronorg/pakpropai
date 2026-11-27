@@ -4,6 +4,7 @@ import logging
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from apps.core.errors import ApiError
 from apps.core.throttles import BulkOperationThrottle
 
 from .models import Lead, ConversationMessage, Appointment
@@ -138,24 +139,21 @@ class BulkAssignLeadsView(APIView):
 
     def post(self, request):
         if request.user.role not in ('admin', 'developer'):
-            return Response({'error': 'Admin or developer access required.'},
-                            status=status.HTTP_403_FORBIDDEN)
+            raise ApiError('Admin or developer access required.', 'leads.admin_required', 403)
 
         data = request.data if isinstance(request.data, dict) else {}
         lead_ids = data.get('lead_ids', [])
         agent_id = data.get('agent_id')
 
         if not lead_ids or not agent_id or not isinstance(lead_ids, list):
-            return Response({'error': 'lead_ids (list) and agent_id are required.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+            raise ApiError('lead_ids (list) and agent_id are required.', 'leads.bulk_assign_invalid', 400)
         if len(lead_ids) > self.MAX_LEADS:
-            return Response({'error': f'At most {self.MAX_LEADS} leads at a time.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+            raise ApiError(f'At most {self.MAX_LEADS} leads at a time.', 'leads.bulk_assign_too_many', 400)
         import uuid as _uuid
         try:
             lead_ids = [_uuid.UUID(str(i)) for i in lead_ids]
         except ValueError:
-            return Response({'error': 'lead_ids must be lead ids.'}, status=status.HTTP_400_BAD_REQUEST)
+            raise ApiError('lead_ids must be lead ids.', 'leads.bulk_assign_invalid', 400)
 
         from apps.agents.models import Agent
         from .assignment import org_agents
@@ -165,13 +163,11 @@ class BulkAssignLeadsView(APIView):
             from apps.core.permissions import get_admin_org
             org = get_admin_org(request.user)
             if org is None:
-                return Response({'error': 'Developer org not found.'},
-                                status=status.HTTP_403_FORBIDDEN)
+                raise ApiError('Developer org not found.', 'leads.organization_not_found', 403)
         agents = org_agents(org) if org is not None else Agent.objects.filter(is_active=True)
         agent = agents.filter(pk=agent_id).first() if str(agent_id).isdigit() else None
         if agent is None:
-            return Response({'error': 'Agent not found or inactive.'},
-                            status=status.HTTP_404_NOT_FOUND)
+            raise ApiError('Agent not found or inactive.', 'leads.agent_not_found', 404)
 
         qs = Lead.objects.filter(id__in=lead_ids)
         if org is not None:

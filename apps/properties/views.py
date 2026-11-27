@@ -12,6 +12,7 @@ from rest_framework.response import Response
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view, inline_serializer
 from rest_framework import serializers as drf_serializers
 
+from apps.core.errors import ApiError
 from apps.core.permissions import IsOwnerOrReadOnly, IsAgentOrAdmin, get_user_org
 from apps.core.query_params import choice_param, int_param
 from apps.core.throttles import PropertySearchThrottle, ScorePropertyThrottle
@@ -359,7 +360,7 @@ class PropertyViewSet(viewsets.ModelViewSet):
             url_path='rescore', throttle_classes=[ScorePropertyThrottle])
     def rescore(self, request, pk=None):
         if request.user.role != 'admin':
-            return Response({'error': 'Admin only.'}, status=status.HTTP_403_FORBIDDEN)
+            raise ApiError('Admin only.', 'listing.admin_only', 403)
         prop = self.get_object()
         from apps.properties.tasks import score_property_task
         score_property_task.delay(str(prop.id))
@@ -369,7 +370,7 @@ class PropertyViewSet(viewsets.ModelViewSet):
             url_path='rescore-all', throttle_classes=[ScorePropertyThrottle])
     def rescore_all(self, request):
         if request.user.role != 'admin':
-            return Response({'error': 'Admin only.'}, status=status.HTTP_403_FORBIDDEN)
+            raise ApiError('Admin only.', 'listing.admin_only', 403)
         from apps.properties.tasks import rescore_all_properties_task
         rescore_all_properties_task.delay()
         return Response({'queued': True})
@@ -665,14 +666,14 @@ class PropertyCompareView(APIView):
         ids_raw = request.query_params.get('ids', '')
         ids = [i.strip() for i in ids_raw.split(',') if i.strip()]
         if not ids:
-            return Response({'error': "Provide 'ids' as comma-separated UUIDs."}, status=400)
+            raise ApiError("Provide 'ids' as comma-separated UUIDs.", 'compare.ids_required', 400)
         if len(ids) > 4:
-            return Response({'error': 'Maximum 4 properties can be compared at once.'}, status=400)
+            raise ApiError('Maximum 4 properties can be compared at once.', 'compare.too_many', 400)
         import uuid
         try:
             ids = [str(uuid.UUID(i)) for i in ids]
         except ValueError:
-            return Response({'error': "'ids' must be valid UUIDs."}, status=400)
+            raise ApiError("'ids' must be valid UUIDs.", 'compare.invalid_ids', 400)
         props = Property.objects.filter(id__in=ids, is_active=True)
         user = request.user
         if user.role == 'developer':
