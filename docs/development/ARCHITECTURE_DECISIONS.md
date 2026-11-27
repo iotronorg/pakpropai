@@ -1197,3 +1197,17 @@ Format: ID · Date · Context · Problem · Options · Decision · Reasoning · 
   - Builds older than the command skip it, so rollbacks to them still deploy.
 - **Why after migrations:** the migration check needs the new schema, and the checks may read tables a release adds. Migrations are expand-only (ADR‑023), so the running build is unaffected when the check fails.
 - **`ENVIRONMENT` is now required** (`production` or `staging`): it selects the frozen-flag level and already tags traces.
+
+### ADR‑073 — Permission matrix from the URL conf; bandit gate on medium (T‑6030, MVP §6.10/§6.12, session 37, 2026-11-27)
+- **Context:** permission rules are spread over ~30 classes (core, and local ones in config, audit, verification, escrow, leads, whatsapp, moderation, inventory, external API) and many views. Nothing proved that a new view is not public by accident, or that a consumer cannot reach staff endpoints. CI's bandit gate failed only on HIGH, so 20 medium findings sat untriaged.
+- **Decision:**
+  - `apps/security/permission_matrix.py` enumerates every DRF endpoint under `/api/` with DRF's own enumerator, **including views hidden from the schema** (webhooks). It fills path parameters until `resolve()` returns the same view, and derives an audience from the declared permission classes. Classes are matched by identity or subclass, never by name; `A | B` takes the wider side and `A & B` the narrower.
+  - `tests/test_endpoint_matrix.py` checks real HTTP behaviour against that audience:
+    - anonymous calls must refuse unless the endpoint is in a reviewed `PUBLIC` list (each entry has a reason);
+    - consumers, org agents and org owners must be refused outside their audience;
+    - a positive control checks that the right role passes every guarded `GET`.
+  - Outbound HTTP is blocked during the test. `manage.py permission_matrix` prints the table for reviewers and the pentester.
+- **Why declared classes rather than a hand-written expected table:** about 340 routes would make the table a second copy that drifts. The declared classes are the intent, and the behavioural test catches a view whose `get_permissions()` disagrees with them.
+- **Limit:** cross-organization access inside "signed in" endpoints is scoping in querysets; module tests (47 files) and the external pentest cover it, not the matrix.
+- **Bandit:** CI now fails on medium as well as high. A false positive is annotated `# nosec <id> - <reason>` on the flagged line, so every suppression carries its argument.
+- **PDF generation never fetches URLs:** the org logo is read through the storage backend as bytes (2 MB cap). The stored report download is https-only with a 20 MB cap.

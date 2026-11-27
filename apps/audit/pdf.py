@@ -30,8 +30,9 @@ from reportlab.platypus import (
 class OrgBrandContext:
     org_name: str
     brand_color: str = '#1B4F72'
-    logo_url: str | None = None
+    logo_url: str | None = None          # deprecated: ignored, the PDF never fetches URLs (T-6030)
     measurement_system: str = 'pk_traditional'
+    logo_bytes: bytes | None = None      # read from storage by the caller
 
 
 # ─── Area display helper ──────────────────────────────────────────────────────
@@ -174,17 +175,18 @@ def _styles():
 def _header(s, brand_context=None):
     """Return page header elements, optionally branded to an org."""
     import io as _io
-    import urllib.request as _req
     from reportlab.platypus import Image as RLImage
 
     org_name = brand_context.org_name if brand_context else 'RealTron AI'
     hr_color = HexColor(brand_context.brand_color) if (brand_context and brand_context.brand_color) else BRAND_BLUE
 
     elements = []
-    if brand_context and brand_context.logo_url:
+    # T-6030: the logo comes as bytes from storage. Fetching a URL here would let the PDF
+    # worker reach internal addresses or file:// paths.
+    if brand_context and brand_context.logo_bytes:
         try:
-            raw = _req.urlopen(brand_context.logo_url, timeout=5).read()
-            img = RLImage(_io.BytesIO(raw), width=3 * cm, height=2 * cm, kind='proportional')
+            img = RLImage(_io.BytesIO(brand_context.logo_bytes), width=3 * cm, height=2 * cm,
+                          kind='proportional')
             elements.append(img)
         except Exception:
             pass

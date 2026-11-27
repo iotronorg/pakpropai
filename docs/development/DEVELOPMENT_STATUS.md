@@ -1,20 +1,20 @@
 # Development Status
 
-_Last updated: 2026-11-27 (session 36; git commit subjects number sessions differently: `21b61e5` "session 72" is session 35 here)_
+_Last updated: 2026-11-27 (session 37; git commit subjects number sessions differently: `f981b4e` "session 73" is session 36 here)_
 
 | Item | Value |
 |---|---|
-| Branch | `development`. The owner committed through T‑6010 (`21b61e5`). **Uncommitted:** T‑6040 release check (session 36) |
+| Branch | `development`. The owner committed through T‑6040 (`f981b4e`, "session 73" = session 36 here). **Uncommitted:** T‑6030 security review (session 37) |
 | Current milestone | **M6 — Production readiness** ([MILESTONE_06](milestones/MILESTONE_06_PRODUCTION_READINESS.md)), started 2026‑11‑27. M4 is done apart from owner-gated tasks (T‑4040, T‑4070, T‑4080, T‑4100) and T‑4090 (needs volume). M3 is done apart from owner work (T‑3080, T‑3110) and the release‑gated T‑3100c. M2 open only T‑2072 (owner) |
 | M0 progress | All 17 tasks complete. Remaining exit criterion: CI green on GitHub Actions (owner pushes) |
 | M1 progress | 16 of 18 tasks done; T‑1032b‑2 and T‑1070g‑2 staged (release‑gated); API debt cleared: T‑1092 and T‑1091 done (schema complete, 0 errors / 0 warnings) |
 | M2 progress | 16 of 17 tasks done. Open: T‑2072 (owner data and paid runs) |
 | M3 progress | 8 of 11 tasks done + T‑3100a/b; T‑3100c waits for the production backfill; T‑3080, T‑3110 owner-blocked |
 | M4 progress | 5 of 10 tasks done (T‑4010, T‑4020, T‑4030, T‑4060, T‑4050) + follow-up T‑4051. Rest owner-gated (T‑4040 embedding model, T‑4070 OCR vendor, T‑4080 POI licence, T‑4100 accounts) or needs volume (T‑4090) |
-| M6 progress | 2 of 5 tasks done (T‑6010 backups and restore drill, ADR‑071; T‑6040 release check, ADR‑072). Owner: off-host backup storage, key custody, RPO/RTO, timers and first drill (checklist §71); set `ENVIRONMENT` and run `check_release` on each server (§72) |
-| Test suite | Last full run (session 36): **2719 passed, 1 skipped, 0 failed**. No migration drift; `manage.py check` clean; shellcheck and bandit (`-ll`) clean on the changes. See [TESTING_STATUS](TESTING_STATUS.md) |
-| Last completed task | T‑6040 (M6): `manage.py check_release` — production settings, frozen modules (fail in production, warn on staging), org overrides, dormant modules, pending migrations, Django deploy checks; the deploy runs it before switching. Before it: T‑6010 backups and restore drill |
-| Next task | **Dev:** T‑6030 security review pass (bandit/pip-audit triage, permission matrix test, `scan_plaintext` on seeded data, pentest scope), then T‑6020 load test, T‑6050; KI‑128 small follow-up. **Owner:** §71 backups; §72 `ENVIRONMENT` + run `check_release` per server |
+| M6 progress | 3 of 5 tasks done (T‑6010 backups and restore drill, ADR‑071; T‑6040 release check, ADR‑072; T‑6030 security review, ADR‑073, [SECURITY_REVIEW](SECURITY_REVIEW.md)). Owner: pentest vendor and window (criterion 4); Owner: off-host backup storage, key custody, RPO/RTO, timers and first drill (checklist §71); set `ENVIRONMENT` and run `check_release` on each server (§72) |
+| Test suite | Last full run (session 37): **2731 passed, 1 skipped, 0 failed**. No migration drift; `manage.py check` clean; bandit `-ll` 0 findings; pip-audit 0 vulnerabilities; actionlint clean. See [TESTING_STATUS](TESTING_STATUS.md) |
+| Last completed task | T‑6030 (M6): bandit 20 medium → 0 (audit PDF URL fetch fixed, 18 false positives annotated; CI now fails on medium), pip-audit clean, permission matrix test over 427 endpoint × method + `manage.py permission_matrix`, `scan_plaintext` clean on seeded data (positive control found), `seed_data` fixed, pentest scope. Before it: T‑6040 release check |
+| Next task | **Dev:** T‑6020 load test (seed 100k listings, k6 scenarios for search v2 and the public API in `load_tests/`, p95 vs NFR‑PERF‑001/002), then T‑6050; KI‑128 small follow-up. **Owner:** §71 backups; §72 `ENVIRONMENT` + `check_release`; §73 pentest vendor, `scan_plaintext` on each server |
 
 ## Owner decisions (2026-11-25, deploys)
 - **Deploys:** Docker over SSH for staging and production. **Approval:** required reviewers on the GitHub `production` environment.
@@ -42,6 +42,7 @@ _Last updated: 2026-11-27 (session 36; git commit subjects number sessions diffe
 - Meta: re‑submit the OTP template body with the RealTron name.
 
 ## Operator actions before deploying these changes
+- **Session 37** (checklist §73): no migration. CI's bandit step fails on medium findings; audit PDFs read the logo from storage; run `scan_plaintext` once per server.
 - **Session 36** (checklist §72): no migration. **The deploy now runs `check_release` and stops on a FAIL.** Set `ENVIRONMENT=production`/`staging` and run the check once on each server first.
 - **Session 35** (checklist §69, §70): no migration; alerts skip copies of announced properties; ~35 refusals gain `detail` and specific `error_info.code`; `SEARCH_COLLAPSE_DUPLICATES` (default on); search hits gain `also_listed`/`also_listed_count`, `total` counts properties.
 - **Session 34** (checklist §61–§68): migrations `leads 0026`, `0027`, `0028` `ai 0011`, `ai 0012`, `leads 0029` and `properties 0051` (then `manage.py backfill_contact_messages` until `--check` prints `pending=0`) (additive; `0027` creates the view `unified_messages` and links old contact rows); bulk/manual assign now refuse agents outside the lead's organization; later migrations touching the viewed columns must re-create the view.

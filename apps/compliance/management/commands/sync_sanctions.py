@@ -140,7 +140,7 @@ def sync_list(list_source: str, url: str) -> dict:
     resp.raise_for_status()
 
     try:
-        root = ET.fromstring(resp.content)
+        root = ET.fromstring(resp.content)  # nosec B314 - fixed https government source; stdlib ElementTree does not resolve external entities and expat >= 2.4 caps entity expansion
     except ET.ParseError as exc:
         raise RuntimeError(f'XML parse error for {list_source}: {exc}') from exc
 

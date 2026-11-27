@@ -153,7 +153,7 @@ def _rewrite_columns(schema_editor, table: str, pk: str, columns: list[str], tra
     qn = schema_editor.quote_name
     cols = ', '.join(qn(c) for c in columns)
     with conn.cursor() as cur:
-        cur.execute(f'SELECT {qn(pk)}, {cols} FROM {qn(table)}')
+        cur.execute(f'SELECT {qn(pk)}, {cols} FROM {qn(table)}')  # nosec B608 - only constants or quoted identifiers are interpolated; values are parameters
         rows = cur.fetchall()
         for row in rows:
             pk_val, values = row[0], row[1:]
@@ -161,7 +161,7 @@ def _rewrite_columns(schema_editor, table: str, pk: str, columns: list[str], tra
             if list(new_values) == list(values):
                 continue
             sets = ', '.join(f'{qn(c)} = %s' for c in columns)
-            cur.execute(f'UPDATE {qn(table)} SET {sets} WHERE {qn(pk)} = %s', [*new_values, pk_val])
+            cur.execute(f'UPDATE {qn(table)} SET {sets} WHERE {qn(pk)} = %s', [*new_values, pk_val])  # nosec B608 - only constants or quoted identifiers are interpolated; values are parameters
 
 
 def encrypt_columns(table: str, columns: list[str], pk: str = 'id'):

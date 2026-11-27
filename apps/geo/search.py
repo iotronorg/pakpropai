@@ -88,9 +88,9 @@ def within_radius(qs, lat, lng, km: float, *, annotate: str = 'distance_km'):
                    geo_lng__gte=min_lng, geo_lng__lte=max_lng)
     if postgis_ready():
         qs = qs.filter(RawSQL(f'ST_DWithin({GEOG_EXPR}, {_point_sql()}, %s)',
-                              (lng, lat, km * 1000.0), output_field=BooleanField()))
+                              (lng, lat, km * 1000.0), output_field=BooleanField()))  # nosec B611 - only module constants are interpolated; values are parameters
         return qs.annotate(**{annotate: RawSQL(f'ST_Distance({GEOG_EXPR}, {_point_sql()}) / 1000.0',
-                                               (lng, lat), output_field=FloatField())})
+                                               (lng, lat), output_field=FloatField())})  # nosec B611 - only module constants are interpolated; values are parameters
     return qs.annotate(**{annotate: _haversine_km(lat, lng)}).filter(**{f'{annotate}__lte': km})
 
 

@@ -10,6 +10,36 @@ from celery import shared_task
 
 from apps.audit.models import AuditDeliveryFailure, PropertyAudit
 
+LOGO_MAX_BYTES = 2 * 1024 * 1024
+REPORT_MAX_BYTES = 20 * 1024 * 1024
+
+
+def _read_logo(org) -> bytes | None:
+    """The org logo through the storage backend (local disk or Cloudinary), capped; None if unreadable."""
+    if not org.logo:
+        return None
+    try:
+        with org.logo.open('rb') as fh:
+            data = fh.read(LOGO_MAX_BYTES + 1)
+    except Exception as exc:
+        logger.warning('audit pdf: logo unreadable for org %s: %s', org.pk, exc.__class__.__name__)
+        return None
+    return data if len(data) <= LOGO_MAX_BYTES else None
+
+
+def _download_report(url: str) -> bytes:
+    """The stored report PDF. Only https: the URL is ours (Cloudinary), never file:// or plain http."""
+    if not (url or '').startswith('https://'):
+        raise ValueError('report URL is not https')
+    resp = _req.urlopen(url, timeout=20)  # nosec B310 - https only, checked above
+    try:
+        data = resp.read(REPORT_MAX_BYTES + 1)
+    finally:
+        resp.close()
+    if len(data) > REPORT_MAX_BYTES:
+        raise ValueError('report too large')
+    return data
+
 logger = logging.getLogger(__name__)
 
 
@@ -49,12 +79,10 @@ def generate_audit_pdf_task(self, audit_id: int, org_id: str) -> None:
             phone=audit.phone,
         )
 
-        logo_url = org.logo.url if org.logo else None
-
         brand = OrgBrandContext(
             org_name=org.name,
             brand_color=org.brand_color or '#1B4F72',
-            logo_url=logo_url,
+            logo_bytes=_read_logo(org),
             measurement_system=org.measurement_system,
         )
 
@@ -100,7 +128,7 @@ def send_audit_via_whatsapp_task(self, audit_id: int, phone: str, org_id: str) -
     failure_type = 'wa_upload'
 
     try:
-        pdf_bytes = _req.urlopen(audit.cloudinary_url, timeout=20).read()
+        pdf_bytes = _download_report(audit.cloudinary_url)
 
         media_id = AuditMediaGateway.register_with_meta(pdf_bytes, filename, org)
 

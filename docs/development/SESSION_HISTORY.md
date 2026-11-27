@@ -597,3 +597,24 @@
 1. `git status`: uncommitted is T‑6040 (`apps/core/release_checks.py`, `apps/core/management/commands/check_release.py`, `scripts/deploy/remote_deploy.sh`, `tests/test_release_check.py`, `tests/test_deploy_pipeline.py`, docs). **Do not commit.**
 2. Dev: **T‑6030 security review pass**: start with `bandit -r apps/ -ll` and `pip-audit -r requirements/prod.txt` in the test image and triage; then a role × endpoint permission matrix test (`tests/test_permission_matrix.py`, from the URL conf and `apps/core/permissions.py`); `scan_plaintext` on a seeded DB; pentest scope document in `docs/runbooks/` or `docs/development/`. Then T‑6020 load test (`load_tests/`), T‑6050. KI‑128 is a small follow-up once the frontend settings page is checked.
 3. Owner: §71 (backups) and §72: set `ENVIRONMENT` in each server's `.env` and run `check_release` once on each before the next deploy.
+
+## Session 37 — 2026-11-27
+- **Verified:** the owner committed session 36 (T‑6040) as `f981b4e` during this session.
+- **T‑6030 done (ADR‑073, [SECURITY_REVIEW](SECURITY_REVIEW.md)):**
+  - Bandit went from 20 medium findings to 0. The audit PDF no longer fetches URLs (it reads the logo from storage; the report download is https-only, with size caps); the 18 false positives carry a `nosec` reason; CI now fails on medium findings too.
+  - pip-audit is clean.
+  - Endpoint permission matrix: `apps/security/permission_matrix.py`, `tests/test_endpoint_matrix.py` and `manage.py permission_matrix`. It covers 427 endpoint × method pairs, with a reviewed list of 30 public ones, role refusals, and positive controls.
+  - `scan_plaintext` is clean on seeded data, and its positive control was found.
+  - Fixed `seed_data` (KI‑130) and the logo fetch (KI‑129). Wrote the pentest scope.
+- **Mistake caught and fixed:** I had created `tests/test_permission_matrix.py` over an existing file (T‑1031a, 24 tests). The collection count against `HEAD` showed it. The original is restored unchanged, and the new tests are in `tests/test_endpoint_matrix.py`.
+- **Tests:** 2731 passed, 1 skipped, 0 failed. **Not committed.**
+
+### Handoff → session 38 (supersedes the one above)
+1. `git status`: the owner committed T‑6040 as `f981b4e`; uncommitted is T‑6030. New files: `apps/security/permission_matrix.py`, `apps/security/management/`, `tests/test_endpoint_matrix.py`, `tests/test_security_review.py`, `docs/development/SECURITY_REVIEW.md`. Changed: `apps/audit/{pdf,tasks}.py`, `seed_data`, `ci.yml`, and `nosec` comments on 18 lines. **Do not commit.**
+2. Dev: **T‑6020 load test.**
+   - Read `load_tests/` (existing k6 scenarios) first.
+   - Write a seeding command for 100k listings in a throwaway DB (batch `bulk_create` and the search-document backfill).
+   - Add k6 scenarios for `POST /api/v1/search/` and `GET /api/v1/public/listings/search/`, then measure p95 against NFR‑PERF‑001/002 (300 ms REST, 400 ms search) and fix what misses.
+   - Then T‑6050 (capacity and RPO/RTO notes).
+   - KI‑128 is a small follow-up.
+3. Owner: §71 backups; §72 set `ENVIRONMENT` and run `check_release` on each server; §73 choose the pentest vendor and run `scan_plaintext` on each server.

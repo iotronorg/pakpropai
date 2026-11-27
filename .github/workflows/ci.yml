@@ -43,17 +43,19 @@ jobs:
         run: bandit -r apps/ -ll -f json -o /tmp/bandit-report.json
         continue-on-error: true  # bandit exits 1 when issues found; we gate below
 
-      - name: Bandit — fail on HIGH severity
+      # T-6030: medium and high both fail. A false positive gets `# nosec <id> - <reason>` on its line
+      # (docs/development/SECURITY_REVIEW.md §1).
+      - name: Bandit — fail on MEDIUM or HIGH severity
         run: |
           python - <<'EOF'
           import json, sys
           report = json.load(open('/tmp/bandit-report.json'))
-          highs = [i for i in report['results'] if i['issue_severity'] == 'HIGH']
-          if highs:
-              for h in highs:
-                  print(f"HIGH  {h['filename']}:{h['line_number']}  {h['issue_text']}")
+          found = [i for i in report['results'] if i['issue_severity'] in ('MEDIUM', 'HIGH')]
+          if found:
+              for h in found:
+                  print(f"{h['issue_severity']}  {h['test_id']}  {h['filename']}:{h['line_number']}  {h['issue_text']}")
               sys.exit(1)
-          print(f"Bandit: 0 HIGH issues ({len(report['results'])} total findings)")
+          print(f"Bandit: 0 medium/high issues ({len(report['results'])} total findings)")
           EOF
 
       - name: Dependency vulnerabilities (pip-audit)

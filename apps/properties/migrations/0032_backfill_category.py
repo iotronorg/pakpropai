@@ -16,7 +16,7 @@ def backfill(apps, schema_editor):
             cur.execute(
                 "UPDATE properties SET category = CASE property_type WHEN 'plot' THEN 'land' "
                 "ELSE property_type END, subtype = NULL "
-                f"WHERE id IN (SELECT id FROM properties WHERE {_DRIFT} LIMIT 5000)"
+                f"WHERE id IN (SELECT id FROM properties WHERE {_DRIFT} LIMIT 5000)"  # nosec B608 - only constants or quoted identifiers are interpolated; values are parameters
             )
             if cur.rowcount < 5000:
                 break

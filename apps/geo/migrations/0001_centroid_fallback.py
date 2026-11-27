@@ -19,7 +19,7 @@ def refire(apps, schema_editor):
             cur.execute(
                 "SELECT p.id FROM properties p JOIN locations l ON l.id = p.location_ref_id "
                 "WHERE p.latitude IS NULL AND l.latitude IS NOT NULL "
-                + ("AND p.id > %s " if last else "") + "ORDER BY p.id LIMIT %s",
+                + ("AND p.id > %s " if last else "") + "ORDER BY p.id LIMIT %s",  # nosec B608 - only constants or quoted identifiers are interpolated; values are parameters
                 ([last, BATCH] if last else [BATCH]))
             ids = [r[0] for r in cur.fetchall()]
             if not ids:

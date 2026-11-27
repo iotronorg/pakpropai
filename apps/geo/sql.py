@@ -85,4 +85,4 @@ CREATE TRIGGER {TRIGGER}
     BEFORE INSERT OR UPDATE OF latitude, longitude, listing_owner_type, location_precision,
                                location_ref_id, geo_lat, geo_lng
     ON properties FOR EACH ROW EXECUTE FUNCTION {FUNCTION}();
-"""
+"""  # nosec B608 - only constants or quoted identifiers are interpolated; values are parameters

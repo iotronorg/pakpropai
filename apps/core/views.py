@@ -80,7 +80,7 @@ class HealthCheckView(APIView):
             try:
                 import urllib.request
                 t = time.monotonic()
-                urllib.request.urlopen(f'{ollama_url}/api/tags', timeout=2)
+                urllib.request.urlopen(f'{ollama_url}/api/tags', timeout=2)  # nosec B310 - OLLAMA_BASE_URL is operator configuration, not user input
                 checks['ai'] = {
                     'status':  'ok',
                     'backend': 'ollama',
@@ -178,7 +178,7 @@ class AuditLogView(APIView):
 def _scraper_allowed(remote_ip: str, allowed) -> bool:
     """Exact addresses or CIDR ranges (``10.0.0.0/8``); ``0.0.0.0`` allows any (dev/Docker only)."""
     import ipaddress
-    if '0.0.0.0' in allowed:
+    if '0.0.0.0' in allowed:  # nosec B104 - compared, not bound
         return True
     try:
         ip = ipaddress.ip_address(remote_ip)

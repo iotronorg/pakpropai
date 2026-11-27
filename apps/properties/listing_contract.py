@@ -109,12 +109,12 @@ _FIX_SUBTYPE = ("COALESCE(subtype, CASE lower(category) " + ' '.join(
 # Pre-trigger drift came from pre-v2 writers, so v1 is the newer value (ADR-023).
 _REPAIRS = (
     f"UPDATE properties SET size_value = area_marla, size_unit = area_unit, size_m2 = area_sqm "
-    f"WHERE id IN (SELECT id FROM properties WHERE {SIZE_DRIFT} LIMIT %s)",
+    f"WHERE id IN (SELECT id FROM properties WHERE {SIZE_DRIFT} LIMIT %s)",  # nosec B608 - only constants or quoted identifiers are interpolated; values are parameters
     f"UPDATE properties SET category = {_CATEGORY_FROM_PT.format(p='property_type')}, subtype = NULL "
-    f"WHERE id IN (SELECT id FROM properties WHERE {TYPE_DRIFT} LIMIT %s)",
+    f"WHERE id IN (SELECT id FROM properties WHERE {TYPE_DRIFT} LIMIT %s)",  # nosec B608 - only constants or quoted identifiers are interpolated; values are parameters
     # Last: invalid categories (the trigger then re-derives property_type).
     f"UPDATE properties SET category = {_FIX_CATEGORY}, subtype = {_FIX_SUBTYPE} "
-    f"WHERE id IN (SELECT id FROM properties WHERE {INVALID_CATEGORY} LIMIT %s)",
+    f"WHERE id IN (SELECT id FROM properties WHERE {INVALID_CATEGORY} LIMIT %s)",  # nosec B608 - only constants or quoted identifiers are interpolated; values are parameters
 )
 
 
@@ -146,14 +146,14 @@ def status(cursor=None) -> dict:
                 ['0041_repair_v1_drift'])
     repaired = cur.fetchone()[0] == 1
     columns = _columns_exist(cur)
-    cur.execute(f"SELECT count(*) FROM properties WHERE {INVALID_CATEGORY} OR category IS NULL")
+    cur.execute(f"SELECT count(*) FROM properties WHERE {INVALID_CATEGORY} OR category IS NULL")  # nosec B608 - only constants or quoted identifiers are interpolated; values are parameters
     invalid = cur.fetchone()[0]
     out = {'trigger': trigger, 'g1_applied': repaired, 'v1_columns': columns,
            'size_drift': None, 'type_drift': None, 'invalid_category': invalid}
     if columns:
-        cur.execute(f"SELECT count(*) FROM properties WHERE {SIZE_DRIFT}")
+        cur.execute(f"SELECT count(*) FROM properties WHERE {SIZE_DRIFT}")  # nosec B608 - only constants or quoted identifiers are interpolated; values are parameters
         out['size_drift'] = cur.fetchone()[0]
-        cur.execute(f"SELECT count(*) FROM properties WHERE {TYPE_DRIFT}")
+        cur.execute(f"SELECT count(*) FROM properties WHERE {TYPE_DRIFT}")  # nosec B608 - only constants or quoted identifiers are interpolated; values are parameters
         out['type_drift'] = cur.fetchone()[0]
     return out
 

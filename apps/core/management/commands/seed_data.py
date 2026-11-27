@@ -187,6 +187,8 @@ class Command(BaseCommand):
 
         created_properties = []
         for data in properties_data:
+            # Each seed listing names its owner, so it is a client listing (property_ownership_consistency).
+            data.setdefault('listing_owner_type', Property.ListingOwnerType.CLIENT)
             prop, created = Property.objects.get_or_create(
                 title=data['title'],
                 defaults=data,

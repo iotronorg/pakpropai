@@ -145,7 +145,7 @@ class Command(BaseCommand):
             try:
                 import urllib.request
                 t0 = time.monotonic()
-                urllib.request.urlopen(f"{ollama_url}/api/tags", timeout=2)
+                urllib.request.urlopen(f"{ollama_url}/api/tags", timeout=2)  # nosec B310 - OLLAMA_BASE_URL is operator configuration, not user input
                 ms = round((time.monotonic() - t0) * 1000)
                 return {"status": "ok", "backend": "ollama", "url": ollama_url, "latency_ms": ms}
             except Exception as exc:

@@ -538,3 +538,11 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - **Fails in production, warns on staging:** `feature_deal_lock`, `feature_voice_calls`, `feature_syndication`, `scraper_search_enabled` on (MVP_SCOPE §4.2; launch checklist "Feature flags verified").
 - **Warnings (do not block):** `feature_investment_commentary` or `semantic_cache_enabled` on; organization overrides that switch a frozen flag on (no effect: the gates read the platform value); regional database URLs set; active Zameen/Bayut/Rightmove/PropertyFinder/Zillow connections (confirm a signed agreement); no `EMAIL_HOST`, `SENTRY_DSN`, Cloudinary credentials or `APP_VERSION`; public OpenAPI schema in production; Django `check --deploy` warnings.
 - **Launch checklist:** "Feature flags verified: frozen modules off in production" = `check_release` passes on production (keep the output with the release record).
+
+## 73. Session-37 change: security review pass (T‑6030, ADR‑073)
+- **No migration, no setting.** Review results and the pentest scope: [SECURITY_REVIEW](SECURITY_REVIEW.md).
+- **CI:** the bandit step now fails on **medium** findings too, not only high. Annotate a reviewed false positive with `# nosec <id> - <reason>`.
+- **Audit PDFs:** the org logo is read through the storage backend (local disk or Cloudinary), not fetched by URL, and only logos up to 2 MB are used. Logos now also appear when media is on local disk. The WhatsApp delivery downloads the stored report over https only (≤ 20 MB).
+- **On staging and production:** run `manage.py scan_plaintext` once (it prints counts only; exit 1 means something is stored in plain text) and keep the output with the release record (MVP §6 criterion 10).
+- **Owner:** choose the pentest vendor and window and fill in the placeholders in SECURITY_REVIEW §4. Criterion 12 is met when the report has no open high/critical findings.
+- **Dev data:** `manage.py seed_data` works again (its listings were refused by `property_ownership_consistency`).

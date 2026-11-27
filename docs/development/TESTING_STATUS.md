@@ -261,6 +261,15 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | 2026-11-27 | Working tree | `check_release` with `config.settings.prod` and placeholder env in the test image | 10 FAIL / 5 WARN by setting name, exit 1, no values printed | — |
 | 2026-11-27 | — | `check_release` on the real staging/production servers | **Not run**: needs the owner's servers and `.env` (checklist §72) | — |
 
+| 2026-11-27 | Working tree (session 37, T‑6030) | `bandit -r apps/ -ll` (CI version) | 20 medium → **0** (2 fixed, 18 annotated) | — |
+| 2026-11-27 | Working tree | `pip-audit -r requirements/prod.txt` | No known vulnerabilities (123 packages) | — |
+| 2026-11-27 | Working tree | Data scan: throwaway DB, migrate + `seed_data` + `scripts/e2e/seed.py` + secrets/IDs/chat written through the app, then `scan_plaintext` | Clean; positive control (plain CNIC in `properties.description`, Stripe-style key in `leads.notes`) reported, exit 1 | — |
+| 2026-11-27 | Working tree | Full suite (1st run) | 1 failed: `test_markets` PK-literal ratchet caught `'PK'` in the matrix placeholders (→ `'ZZ'`) | — |
+| 2026-11-27 | Working tree | Full suite (2nd run) | 2707 passed, but 24 fewer collected than `HEAD`: creating `tests/test_permission_matrix.py` had overwritten the T‑1031a file of that name. Restored from `HEAD`; new tests moved to `tests/test_endpoint_matrix.py` | — |
+| 2026-11-27 | Working tree | Full suite (final, alone) | **2731 passed, 1 skipped, 0 failed** (+12: `test_endpoint_matrix.py` 6, `test_security_review.py` 6); collection matches `HEAD` + 12 | — |
+| 2026-11-27 | Working tree | `makemigrations --check`; `manage.py check`; `actionlint .github/workflows/ci.yml` | No changes; no issues; clean | — |
+| 2026-11-27 | — | External pentest | **Not run**: owner chooses the vendor (SECURITY_REVIEW §4) | — |
+
 ## Coverage
 Not measured yet (no coverage run executed). CI is configured with `--cov=apps`.
 

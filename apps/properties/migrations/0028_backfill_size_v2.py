@@ -18,7 +18,7 @@ def backfill(apps, schema_editor):
         while True:
             cur.execute(
                 "UPDATE properties SET size_value = area_marla, size_unit = area_unit, "
-                f"size_m2 = area_sqm WHERE id IN (SELECT id FROM properties WHERE {_DRIFT} LIMIT 5000)"
+                f"size_m2 = area_sqm WHERE id IN (SELECT id FROM properties WHERE {_DRIFT} LIMIT 5000)"  # nosec B608 - only constants or quoted identifiers are interpolated; values are parameters
             )
             if cur.rowcount < 5000:
                 break
