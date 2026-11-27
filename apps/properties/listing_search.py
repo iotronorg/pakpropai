@@ -2,6 +2,10 @@
 Listing search v2 (T-2030, ADR-034): one ``execute`` for REST, the AI tools and
 (later) alerts. Hard filters, then a match score computed in SQL from weighted
 factors, with reasons taken only from the listing's own fields.
+
+Duplicates (T-4051, ADR-070): listings of one ``DuplicateCluster`` that match the
+search are shown once, as the confirmed canonical copy or else the copy ranked
+first; the other matching copies are attached to that hit as ``also_listed``.
 """
 from __future__ import annotations
 
@@ -11,13 +15,14 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
+from django.conf import settings
 from django.contrib.postgres.search import SearchQuery
 from django.core import signing
 from django.db.models import (
     BigIntegerField, Case, Count, DurationField, ExpressionWrapper, F, FloatField, IntegerField, OuterRef, Q,
-    Subquery, Value, When,
+    Subquery, Value, When, Window,
 )
-from django.db.models.functions import Cast, Coalesce, Extract, Greatest, Least, Round
+from django.db.models.functions import Cast, Coalesce, Extract, Greatest, Least, Round, RowNumber
 from django.utils import timezone
 
 from apps.markets.services import format_price
@@ -36,6 +41,7 @@ WEIGHTS = {'price': 25, 'location': 20, 'amenities': 15, 'size': 10, 'style': 10
            'freshness': 10, 'quality': 5, 'verification': 5}
 _SALT = 'listing-search-cursor'
 _BIG = 2 ** 62
+ALSO_LISTED_SHOWN = 5               # copies listed per hit; ``also_listed_count`` has them all
 
 
 class CursorInvalid(ValueError):
@@ -48,6 +54,8 @@ class Hit:
     score: int
     reasons: list
     tradeoffs: list
+    also_listed: list = field(default_factory=list)       # other matching copies of the same property
+    also_listed_count: int = 0
 
 
 @dataclass
@@ -281,9 +289,11 @@ def _market_currency(market):
 
 # ── Cursor ────────────────────────────────────────────────────────────────────
 
-def _digest(c: SearchCriteria, sort: str, version: str, viewer_org) -> str:
-    raw = json.dumps([c.model_dump(mode='json'), sort, version, str(getattr(viewer_org, 'pk', viewer_org) or '')],
-                     sort_keys=True)
+def _digest(c: SearchCriteria, sort: str, version: str, viewer_org, collapse: bool = True) -> str:
+    parts = [c.model_dump(mode='json'), sort, version, str(getattr(viewer_org, 'pk', viewer_org) or '')]
+    if not collapse:
+        parts.append('all-copies')          # a cursor never moves between collapsed and full results
+    raw = json.dumps(parts, sort_keys=True)
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
@@ -375,6 +385,59 @@ def summary(p: Property) -> dict:
     }
 
 
+# ── Duplicates (T-4051, ADR-070) ──────────────────────────────────────────────
+
+def collapse_default() -> bool:
+    return bool(getattr(settings, 'SEARCH_COLLAPSE_DUPLICATES', True))
+
+
+def _group():
+    """One group per duplicate cluster; a listing outside any cluster is its own group."""
+    return Coalesce('duplicate_cluster_id', 'pk')
+
+
+def _collapsed(qs):
+    """
+    Keep one listing per group among the rows of ``qs`` (already filtered, scored and
+    keyed): a confirmed cluster's canonical copy when it is among them, else the
+    first in the result order. Ranked in a subquery, before any cursor condition,
+    so a hidden copy never comes back on a later page.
+    """
+    canonical = Case(When(duplicate_cluster__status='confirmed', duplicate_cluster__canonical_id=F('pk'),
+                          then=Value(1)), default=Value(0), output_field=IntegerField())
+    ranked = qs.annotate(_dup_rank=Window(RowNumber(), partition_by=[_group()],
+                                          order_by=[canonical.desc(), F('sort_key').desc(), F('pk').asc()]))
+    return qs.filter(pk__in=ranked.filter(_dup_rank=1).values('pk'))
+
+
+def _also_listed(base, rows) -> dict:
+    """
+    {shown listing id: [other matching copies]}: priced copies by price, then age; copies
+    with the price on request last, in age order (their position must not reveal the price).
+    """
+    by_cluster = {p.duplicate_cluster_id: p.pk for p in rows if p.duplicate_cluster_id}
+    if not by_cluster:
+        return {}
+    out = {pk: [] for pk in by_cluster.values()}
+    copies = (base.filter(duplicate_cluster_id__in=list(by_cluster)).exclude(pk__in=[p.pk for p in rows])
+              .select_related('organization')
+              .order_by('price_on_request', Case(When(price_on_request=False, then=F('price')), default=None),
+                        'created_at', 'pk'))
+    for q in copies:
+        out[by_cluster[q.duplicate_cluster_id]].append(q)
+    return out
+
+
+def copy_summary(p: Property) -> dict:
+    """What a result says about another copy: enough to open it and see who lists it at what price."""
+    from .public_listings import slug
+    org = p.organization if p.listing_owner_type == Property.ListingOwnerType.ORGANIZATION else None
+    return {'id': str(p.pk), 'ref_no': p.ref_no, 'slug': slug(p),
+            'price': None if p.price_on_request else p.price, 'currency': p.currency, 'price_type': p.price_type,
+            'lister_type': p.listing_owner_type, 'lister_name': org.name if org else None,
+            'verified': p.legal_status == Property.LegalStatus.VERIFIED}
+
+
 # ── Execute ───────────────────────────────────────────────────────────────────
 
 def facets(qs) -> dict:
@@ -407,32 +470,43 @@ def relaxations(c: SearchCriteria, viewer_org=None) -> list[dict]:
 
 
 def execute(c: SearchCriteria, *, viewer_org=None, sort: str = 'relevance', limit: int = 20, cursor: str = '',
-            with_facets: bool = False, with_relaxations: bool = True) -> SearchResult:
-    """``c`` must come from ``criteria.prepare``."""
+            with_facets: bool = False, with_relaxations: bool = True,
+            collapse_duplicates: bool | None = None) -> SearchResult:
+    """
+    ``c`` must come from ``criteria.prepare``. ``collapse_duplicates`` (default
+    ``SEARCH_COLLAPSE_DUPLICATES``) shows each duplicate cluster once; ``total``
+    then counts properties, not listings. Facets always count listings.
+    """
     if sort not in SORTS:
         raise ValueError('sort')
+    collapse = collapse_default() if collapse_duplicates is None else bool(collapse_duplicates)
     limit = max(1, min(int(limit), MAX_LIMIT))
     weights, version = weights_for(c.market)
-    digest = _digest(c, sort, version, viewer_org)
+    digest = _digest(c, sort, version, viewer_org, collapse)
     last, as_of = None, timezone.now()
     if cursor:
         key, pk, as_of = _read_cursor(cursor, digest)
         last = (key, pk)
 
     base = filtered(c, viewer_org)
-    total = base.count()
+    total = base.order_by().values(_g=_group()).distinct().count() if collapse else base.count()
     qs, names = _scored(base, c, as_of, weights)
     qs = qs.annotate(sort_key=_sort_key(sort, c))
+    if collapse:
+        qs = _collapsed(qs)
     if last:
         qs = qs.filter(Q(sort_key__lt=last[0]) | Q(sort_key=last[0], pk__gt=last[1]))
     rows = list(qs.prefetch_related('amenities').order_by('-sort_key', 'pk')[:limit + 1])
     more, rows = len(rows) > limit, rows[:limit]
 
     labels = _labels([*c.amenities_required, *c.amenities_preferred, *c.accessibility])
+    copies = _also_listed(base, rows) if collapse else {}
     hits = []
     for p in rows:
         reasons, tradeoffs = _explain(p, c, names, weights, labels, {a.key for a in p.amenities.all()}, as_of)
-        hits.append(Hit(p, round((p.score or 0) * 100), reasons, tradeoffs))
+        others = copies.get(p.pk, [])
+        hits.append(Hit(p, round((p.score or 0) * 100), reasons, tradeoffs,
+                        [copy_summary(q) for q in others[:ALSO_LISTED_SHOWN]], len(others)))
     next_cursor = None
     if more:
         next_cursor = signing.dumps({'k': rows[-1].sort_key, 'i': str(rows[-1].pk), 't': as_of.isoformat(),

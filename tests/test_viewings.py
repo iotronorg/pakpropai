@@ -191,6 +191,28 @@ class BookTest(Base):
         self.assertIn('10:00', e.messages.get().body)
         self.assertTrue(Notification.objects.filter(user=self.ua, title='New viewing booked').exists())
 
+    def test_slot_ids_are_never_masked_as_card_or_account_numbers(self):     # KI-125
+        from apps.compliance import middleware as M
+        seen = 'd67df734-8254-4676-bd2c-db199df3acce@20261130T0500Z'      # was masked to "…df3[ACCOUNT]T0500Z"
+        self.assertEqual(M._mask_strings_recursive({'slot_id': seen}, M._pipeline)[0], {'slot_id': seen})
+        masked, found = M._mask_strings_recursive({'slot_id': seen + ' 4111111111111111'}, M._pipeline)
+        self.assertNotEqual(masked['slot_id'], seen + ' 4111111111111111')         # only the exact format
+        self.assertTrue(found)
+        # Through the API, with a masker that flags anything containing a digit.
+        real = M._pipeline.mask
+
+        def greedy(text):
+            r = real(text)
+            if any(ch.isdigit() for ch in text):
+                r.masked_text, r.detections = '[MASKED]', [*r.detections, type('D', (), {
+                    'pattern_name': 'test', 'masked_value': '[MASKED]'})()]
+            return r
+        with patch.object(M._pipeline, 'mask', side_effect=greedy), \
+                patch.object(M, 'report_detections') as reported:            # no event thread on its own connection
+            r = self.book(note='Gate 2, please')
+        self.assertTrue(reported.called)                                    # the masker did run on this body
+        self.assertEqual(r.status_code, 201, r.data)
+
     def test_refusals_change_nothing(self):
         self.assertEqual(self.book(contact_consent=False).status_code, 400)
         self.assertEqual(self.book(hour=9).status_code, 409)

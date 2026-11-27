@@ -683,3 +683,12 @@
 - **Added:** `apps/properties/duplicates.py`, `apps/properties/signals.py` (+ `PropertiesConfig.ready`), `DuplicateCluster`, `Property.duplicate_key/duplicate_cluster/duplicate_distinct`, `PropertyImage.dhash` (`properties 0051`), `apps/core/images.dhash/hamming`, tasks `refresh_duplicate_cluster`, `rebuild_duplicate_clusters` + beat, command `rebuild_duplicate_clusters`, `apps/moderation/duplicate_views.py`.
 - **Changed:** `apps/core/images.sanitize_image` (dHash), photo upload stores it, `apps/moderation/checks.run` (signals v2), `apps/moderation/urls.py`.
 - **Tests:** `tests/test_duplicates.py` (7); `PLAIN` allow-list entry for `Property.duplicate_key`; staged contract migrations renumbered to 0052/0053 (`tests/test_listing_contract.py`).
+
+### T‑4051 Duplicate clusters collapsed in consumer search (ADR‑070) — session 35
+- **Changed:** `apps/properties/listing_search.py` (`collapse_default`, `_group`, `_collapsed` window subquery, `_also_listed`, `copy_summary`; `Hit.also_listed/also_listed_count`; `execute(collapse_duplicates=)`; `_digest` binds cursors to collapsed vs full; `total` counts groups), `apps/properties/search_views.py` (`ListingCopySerializer`, hit fields, `collapse_duplicates` body field), `apps/properties/public_views.py` (hit fields, `collapse_duplicates` query parameter), `apps/ai/_tools_listings.py` (`also_listed_count`, `duplicates_note`), `config/settings/base.py` (`SEARCH_COLLAPSE_DUPLICATES`).
+- **Tests:** `tests/test_search_duplicates.py` (11): collapse and copies, hidden prices never order the copies, shown copy by sort vs moderator canonical, invisible/non-matching copies, cursor walk in every sort, cursor binding, setting, cap, REST/public API and validation, private seller without name, AI tool count only.
+
+### KI‑125 fix: slot ids masked as card/account numbers — session 35
+- **Root cause:** found from a kept traceback (`Unknown slot.` on a well-formed id) and a 4000-id probe of `PIIMaskingPipeline`: 7 ids altered.
+- **Changed:** `apps/compliance/middleware.py` (`_MACHINE_ID`: UUID or `<uuid>@YYYYMMDDTHHMMZ`, full match only; anything longer is still masked).
+- **Tests:** `tests/test_viewings.py::BookTest::test_slot_ids_are_never_masked_as_card_or_account_numbers` (the exact masked id; a longer string still masked; an API booking under a masker that flags every string with a digit).

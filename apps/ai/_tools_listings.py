@@ -111,6 +111,9 @@ def _row(p, hit=None) -> dict:
            'area_marla': str(p.size_in('marla')) if p.size_value else 'N/A'}
     if hit is not None:
         row.update(match_score=hit.score, reasons=hit.reasons, tradeoffs=hit.tradeoffs)
+        if hit.also_listed_count:
+            # Only the number: other copies' prices are not facts the reply may cite (ADR-070).
+            row['also_listed_count'] = hit.also_listed_count
     return row
 
 
@@ -173,6 +176,9 @@ def _run(base: dict, args: dict, asked=()) -> dict:
     A.shown(None, [h.listing for h in found.hits])
     out = {'count': found.total, 'criteria': echo, 'ranking_version': found.ranking_version,
            'properties': [_row(h.listing, h) for h in found.hits]}
+    if any(h.also_listed_count for h in found.hits):
+        out['duplicates_note'] = ('also_listed_count is how many other listings of what looks like the same '
+                                  'property matched; each property is shown once.')
     if remembered:
         out['from_saved_preferences'] = remembered
         out['instruction'] = 'Say which conditions came from the saved preferences and let the user change them.'

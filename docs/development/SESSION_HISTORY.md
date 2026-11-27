@@ -559,3 +559,16 @@
 1. `git status`: the owner committed T‑3040 (`2a83b59`) and T‑3100a (`08560a1`); uncommitted are T‑3100b, T‑4010, T‑4020, T‑4030, T‑4060 and T‑4050. **Do not commit.**
 2. Dev: run the full suite first, alone (expect 2658/0). T‑4040 (RAG) waits for the owner's embedding-model choice; without it, T‑1091/T‑1092 or collapsing duplicate clusters in search; watch KI‑125 ([MILESTONE_04](milestones/MILESTONE_04_AI_INTELLIGENCE.md)). T‑3100c waits for the production backfill (§63) and an owner decision on KI‑073 mirrors.
 3. Owner: as before (§54, §52, §53, staging E2E, T‑2072, pentest, KI‑112, KI‑114, KI‑121 document links, pricing for T‑3080, weekly-use metric); new: checklist §61, §62, §63, §64 (legal sign-off, then `feature_investment_commentary`), §65 (price-context disclaimer), §66 (narrative flag on by default), §67 (beat `lead-offer-expiry`), §68 (`rebuild_duplicate_clusters` once, moderator briefing); whether web assistant chats should be visible to organizations.
+
+## Session 35 — 2026-11-27
+- **Verified:** the owner committed session 34 (`b1b5dd0`); the tree was clean. Full suite run alone first: **2658 passed, 1 skipped, 0 failed**, as handed off.
+- **Completed:** T‑4051 (ADR‑070) duplicate clusters collapsed in consumer search: one hit per cluster (the confirmed canonical when it matches, else the copy ranked first for the query and sort); other matching, visible copies as `also_listed` (≤5) and `also_listed_count`; collapse happens in a window subquery before the cursor, so paging never repeats a property; `total` counts properties; `SEARCH_COLLAPSE_DUPLICATES` and a `collapse_duplicates` switch on both search APIs; the AI tool gets only the count. Chosen from the MVP promise of de-duplicated matches; reversible by setting.
+- **Fixed on the way:** KI‑125 root cause. The full run after T‑4051 failed one viewings test with `Unknown slot.`; the kept traceback and a 4000-id probe showed that `PIIMaskingMiddleware` masks about 1 in 570 slot ids as card/account numbers. The exact slot-id format is now exempt like a UUID. A real production bug (~0.2% of bookings), not only a flaky test.
+- **Review fix:** copies with the price on request were ordered by their hidden price; now last, by age.
+- **Recorded:** KI‑126 (alerts still announce reposts; detail page has no copies).
+- **Tests:** 2669 passed, 1 skipped, 0 failed (full run, alone); after the ordering fix the search suites 75 passed. No migration drift. **Not committed.**
+
+### Handoff → session 36 (supersedes the one above)
+1. `git status`: uncommitted is session 35 (T‑4051, KI‑125 fix, docs; new `tests/test_search_duplicates.py`). **Do not commit.** Run the full suite first, alone (expect 2670/0).
+2. Dev: KI‑126 (alerts: skip a new listing whose cluster already had a member announced to that saved search — needs announced ids per search; `apps/preferences/alerts.py`), then T‑1092, T‑1091. T‑4040 waits for the owner's embedding-model choice.
+3. Owner: as before (§54, §52, §53, staging E2E, T‑2072, pentest, KI‑112, KI‑114, KI‑121 document links, pricing for T‑3080, weekly-use metric, §61–§68, embedding model for T‑4040); new: §69 (frontend "also listed" card).

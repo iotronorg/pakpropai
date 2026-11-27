@@ -399,6 +399,8 @@ MFA_ISSUER  = env('MFA_ISSUER', default='RealTron')
 # ── Listing lifecycle (T-1080). Review and TTL are per market (Market.settings:
 # listing_review_required, listing_ttl_days); both off unless configured.
 LISTING_EXPIRY_REMINDER_DAYS = env.int('LISTING_EXPIRY_REMINDER_DAYS', default=7)
+# T-4051 (ADR-070): consumer search shows each duplicate cluster once (other copies as ``also_listed``).
+SEARCH_COLLAPSE_DUPLICATES = env.bool('SEARCH_COLLAPSE_DUPLICATES', default=True)
 
 GEOCODING_ENABLED      = env.bool('GEOCODING_ENABLED', default=False)
 GOOGLE_MAPS_API_KEY    = env('GOOGLE_MAPS_API_KEY', default='')

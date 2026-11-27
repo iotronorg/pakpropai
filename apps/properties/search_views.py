@@ -31,12 +31,27 @@ class ListingSummarySerializer(serializers.Serializer):
     verified = serializers.BooleanField()
 
 
+class ListingCopySerializer(serializers.Serializer):
+    """Another listing of what looks like the same property (T-4051, ADR-070)."""
+    id = serializers.UUIDField()
+    ref_no = serializers.CharField()
+    slug = serializers.CharField()
+    price = serializers.IntegerField(allow_null=True)
+    currency = serializers.CharField()
+    price_type = serializers.CharField()
+    lister_type = serializers.CharField()
+    lister_name = serializers.CharField(allow_null=True)
+    verified = serializers.BooleanField()
+
+
 class SearchHitSerializer(serializers.Serializer):
     listing = ListingSummarySerializer()
     match_score = serializers.IntegerField()
     reasons = serializers.ListField(child=serializers.CharField())
     tradeoffs = serializers.ListField(child=serializers.CharField())
     sponsored = serializers.BooleanField()
+    also_listed = ListingCopySerializer(many=True)
+    also_listed_count = serializers.IntegerField()
 
 
 class SearchResponseSerializer(serializers.Serializer):
@@ -54,7 +69,9 @@ class SearchView(APIView):
     """
     Search visible listings. The body is ``SearchCriteria`` plus ``sort``,
     ``cursor``, ``limit`` (1–50) and ``facets``. 422 ``location.ambiguous`` lists
-    candidates; send the chosen ``location.location_ids``.
+    candidates; send the chosen ``location.location_ids``. Listings of one duplicate
+    cluster are shown once with the other copies in ``also_listed``; send
+    ``collapse_duplicates: false`` for every listing.
     """
     permission_classes = [AllowAny]
     throttle_classes = [PropertySearchThrottle]      # anonymous callers are counted by IP
@@ -68,6 +85,7 @@ class SearchView(APIView):
         body = {k: request.data[k] for k in request.data}
         sort, cursor = body.pop('sort', 'relevance'), body.pop('cursor', '') or ''
         limit, facets = body.pop('limit', 20), body.pop('facets', False)
+        collapse = body.pop('collapse_duplicates', None)
         errors = {}
         if sort not in S.SORTS:
             errors['sort'] = [f'One of {", ".join(S.SORTS)}.']
@@ -77,11 +95,14 @@ class SearchView(APIView):
             errors['cursor'] = ['Must be a string.']
         if not isinstance(facets, bool):
             errors['facets'] = ['Must be true or false.']
+        if collapse is not None and not isinstance(collapse, bool):
+            errors['collapse_duplicates'] = ['Must be true or false.']
         if errors:
             raise exceptions.ValidationError(errors)
         try:
             crit, assumed = C.prepare(C.parse(body))
-            found = S.execute(crit, sort=sort, limit=limit, cursor=cursor, with_facets=facets)
+            found = S.execute(crit, sort=sort, limit=limit, cursor=cursor, with_facets=facets,
+                              collapse_duplicates=collapse)
         except C.CriteriaInvalid as exc:
             raise exceptions.ValidationError(exc.errors) from exc
         except S.CursorInvalid as exc:
@@ -92,7 +113,8 @@ class SearchView(APIView):
         A.shown(request, [h.listing for h in found.hits])
         return Response(SearchResponseSerializer({
             'results': [{'listing': S.summary(h.listing), 'match_score': h.score, 'reasons': h.reasons,
-                         'tradeoffs': h.tradeoffs, 'sponsored': False} for h in found.hits],
+                         'tradeoffs': h.tradeoffs, 'sponsored': False, 'also_listed': h.also_listed,
+                         'also_listed_count': h.also_listed_count} for h in found.hits],
             'total': found.total, 'facets': found.facets, 'relaxations': found.relaxations,
             'next_cursor': found.next_cursor, 'criteria_echo': crit.model_dump(mode='json', exclude_defaults=True),
             'assumed': assumed, 'ranking_version': found.ranking_version}).data)

@@ -17,7 +17,7 @@ from . import analytics as A
 from . import criteria as C
 from . import listing_search as S
 from . import public_listings as P
-from .search_views import ListingSummarySerializer
+from .search_views import ListingCopySerializer, ListingSummarySerializer
 
 MAX_AGE = 60
 
@@ -85,6 +85,8 @@ class PublicHitSerializer(serializers.Serializer):
     match_score = serializers.IntegerField()
     reasons = serializers.ListField(child=serializers.CharField())
     tradeoffs = serializers.ListField(child=serializers.CharField())
+    also_listed = ListingCopySerializer(many=True)
+    also_listed_count = serializers.IntegerField()
 
 
 class PublicSearchSerializer(serializers.Serializer):
@@ -176,7 +178,8 @@ class PublicListingSearchView(PublicView):
 
     @extend_schema(
         parameters=[OpenApiParameter(n, str) for n in (*PARAMS, 'cursor')]
-        + [OpenApiParameter('sort', str, enum=S.SORTS), OpenApiParameter('limit', int)],
+        + [OpenApiParameter('sort', str, enum=S.SORTS), OpenApiParameter('limit', int),
+           OpenApiParameter('collapse_duplicates', bool)],
         responses={200: PublicSearchSerializer, 400: OpenApiResponse(description='Field errors'),
                    422: OpenApiResponse(description='Ambiguous location')})
     def get(self, request):
@@ -190,9 +193,16 @@ class PublicListingSearchView(PublicView):
                 raise ValueError
         except ValueError:
             raise exceptions.ValidationError({'limit': [f'1 to {S.MAX_LIMIT}.']}) from None
+        collapse = None
+        if q.get('collapse_duplicates', '').strip():
+            try:
+                collapse = _bool(q['collapse_duplicates'].strip())
+            except ValueError as exc:
+                raise exceptions.ValidationError({'collapse_duplicates': [str(exc)]}) from None
         try:
             crit, _ = C.prepare(C.parse(criteria_from_query(q)))
-            found = S.execute(crit, sort=sort, limit=limit, cursor=q.get('cursor', ''), with_relaxations=False)
+            found = S.execute(crit, sort=sort, limit=limit, cursor=q.get('cursor', ''), with_relaxations=False,
+                              collapse_duplicates=collapse)
         except C.CriteriaInvalid as exc:
             raise exceptions.ValidationError(exc.errors) from exc
         except S.CursorInvalid as exc:
@@ -204,7 +214,8 @@ class PublicListingSearchView(PublicView):
         A.shown(request, [h.listing for h in found.hits])
         return self.cached(request, PublicSearchSerializer({
             'results': [{'listing': P.card(h.listing, request), 'match_score': h.score, 'reasons': h.reasons,
-                         'tradeoffs': h.tradeoffs} for h in found.hits],
+                         'tradeoffs': h.tradeoffs, 'also_listed': h.also_listed,
+                         'also_listed_count': h.also_listed_count} for h in found.hits],
             'total': found.total, 'next_cursor': found.next_cursor,
             'ranking_version': found.ranking_version}).data)
 

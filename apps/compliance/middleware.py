@@ -13,6 +13,9 @@ _pipeline = PIIMaskingPipeline()
 
 _MASK_METHODS = {"POST", "PATCH", "PUT"}
 _UUID = re.compile(r'[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}', re.I)
+# Machine ids whose digits can look like a card or account number: a UUID, or a viewing slot id
+# ``<listing uuid>@YYYYMMDDTHHMMZ`` (KI-125: about 1 slot id in 570 was masked and refused as unknown).
+_MACHINE_ID = re.compile(_UUID.pattern + r'(?:@\d{8}T\d{4}Z)?', re.I)
 _DEFAULT_EXEMPT = ["/api/v1/compliance/", "/api/v1/auth/"]
 
 
@@ -45,7 +48,7 @@ def _fire_detection_events(detections, org_id, path):
 def _mask_strings_recursive(obj, pipeline):
     """Recursively mask all string values in a parsed JSON structure."""
     if isinstance(obj, str):
-        if _UUID.fullmatch(obj):              # an id: its digits can look like a card number
+        if _MACHINE_ID.fullmatch(obj):        # an id: its digits can look like a card number
             return obj, []
         result = pipeline.mask(obj)
         return result.masked_text, result.detections

@@ -1,18 +1,19 @@
 # Development Status
 
-_Last updated: 2026-11-26 (session 34; git commit subjects number sessions differently: `89982b9` "session 58" is session 33 here)_
+_Last updated: 2026-11-27 (session 35; git commit subjects number sessions differently: `b1b5dd0` "session 66" is session 34 here)_
 
 | Item | Value |
 |---|---|
-| Branch | `development`. The owner committed T‑3030 (`89982b9`), T‑3040 (`2a83b59`) and T‑3100a (`08560a1`). **Uncommitted:** T‑3100b, T‑4010, T‑4020, T‑4030, T‑4060, T‑4050 |
-| Current milestone | **M3 — Professional workspace** ([MILESTONE_03](milestones/MILESTONE_03_PROFESSIONAL_WORKSPACE.md)), started 2026‑11‑26 (session 32). M2 is code complete; open there only owner work (T‑2072, T‑2080). M1 contracts release‑gated; M0 awaiting the first Actions run |
+| Branch | `development`. The owner committed everything through T‑4050 (`b1b5dd0`). **Uncommitted:** T‑4051 and the KI‑125 fix (session 35) |
+| Current milestone | **M4 — AI intelligence** ([MILESTONE_04](milestones/MILESTONE_04_AI_INTELLIGENCE.md)). M3 is done apart from owner work (T‑3080, T‑3110) and the release‑gated T‑3100c. M2 open only T‑2072 (owner). M1 contracts release‑gated; M0 awaiting the first Actions run |
 | M0 progress | All 17 tasks complete. Remaining exit criterion: CI green on GitHub Actions (owner pushes) |
-| M1 progress | 16 of 18 tasks done (T‑1010, T‑1011, T‑1020, T‑1021, T‑1022, T‑1030, T‑1031, T‑1033, T‑1040, T‑1050, T‑1060, T‑1080, T‑1090, T‑1100, T‑1110, T‑1120) plus subtasks T‑1032a, T‑1032c, T‑1070a–f and T‑1070g‑1 |
+| M1 progress | 16 of 18 tasks done; T‑1032b‑2 and T‑1070g‑2 staged (release‑gated); T‑1091/T‑1092 API debt open |
 | M2 progress | 16 of 17 tasks done. Open: T‑2072 (owner data and paid runs) |
-| M3 progress | 8 of 11 tasks done (T‑3010, T‑3020, T‑3060, T‑3050, T‑3070, T‑3090, T‑3030, T‑3040) + T‑3100a and T‑3100b; T‑3100c waits for the production backfill; T‑3080, T‑3110 owner-blocked |
-| Test suite | Last full run (after T‑4050): 2656 passed, 1 skipped, 2 failed — two guard tests, fixed and re-verified (42 passed); expected 2658/0 next run. No migration drift. See [TESTING_STATUS](TESTING_STATUS.md) |
-| Last completed task | T‑4050 (ADR‑069): persistent duplicate clusters from a listing fingerprint (place, kind, size and price within 5%) and photo hashes; moderators confirm/split; fraud signals v2 `image_reused` and `reposted_after_takedown` as review flags. Before it T‑4060 offers, T‑4030 narrative, T‑4020 price context, T‑4010 investment |
-| Next task | **Dev:** T‑4040 RAG knowledge needs an owner decision first (embedding model = paid external dependency); until then the remaining M4 tasks are owner-gated (T‑4070 OCR vendor, T‑4080 POI licence, T‑4100 push/calendar accounts) or need volume (T‑4090), so next without owner input is API debt T‑1091/T‑1092 or a search collapse of duplicate clusters. **Owner:** as before plus §64–§68 (run `rebuild_duplicate_clusters` after deploy; brief moderators on the two new flags) |
+| M3 progress | 8 of 11 tasks done + T‑3100a/b; T‑3100c waits for the production backfill; T‑3080, T‑3110 owner-blocked |
+| M4 progress | 5 of 10 tasks done (T‑4010, T‑4020, T‑4030, T‑4060, T‑4050) + follow-up T‑4051. Rest owner-gated (T‑4040 embedding model, T‑4070 OCR vendor, T‑4080 POI licence, T‑4100 accounts) or needs volume (T‑4090) |
+| Test suite | Session start: 2658 passed, 1 skipped, 0 failed. After T‑4051 + KI‑125: **2669 passed, 1 skipped, 0 failed**; then a one-line ordering fix in `_also_listed` re-verified on the search suites (75 passed). No migration drift; `manage.py check` clean. See [TESTING_STATUS](TESTING_STATUS.md) |
+| Last completed task | T‑4051 (ADR‑070): duplicate clusters shown once in consumer search (REST, public, AI tool) with the other matching copies as `also_listed`. Fixed on the way: KI‑125 — the PII masking middleware altered ~1 in 570 viewing slot ids, so bookings failed at random |
+| Next task | **Dev:** KI‑126 (saved-search alerts skip reposts of an announced property; `apps/preferences/alerts.py`, `apps/properties/listing_search.py`), then API debt T‑1092 (raised DRF exceptions with codes; start with `apps/leads/views.py`) and T‑1091 (schema annotations; `tests/test_openapi_schema.py` budgets). T‑4040 RAG still waits for the owner's embedding-model choice. **Owner:** as before plus checklist §69 (frontend "also listed" card; `total` now counts properties) |
 
 ## Owner decisions (2026-11-25, deploys)
 - **Deploys:** Docker over SSH for staging and production. **Approval:** required reviewers on the GitHub `production` environment.
@@ -40,6 +41,7 @@ _Last updated: 2026-11-26 (session 34; git commit subjects number sessions diffe
 - Meta: re‑submit the OTP template body with the RealTron name.
 
 ## Operator actions before deploying these changes
+- **Session 35** (checklist §69): no migration; `SEARCH_COLLAPSE_DUPLICATES` (default on); search hits gain `also_listed`/`also_listed_count`, `total` counts properties.
 - **Session 34** (checklist §61–§68): migrations `leads 0026`, `0027`, `0028` `ai 0011`, `ai 0012`, `leads 0029` and `properties 0051` (then `manage.py backfill_contact_messages` until `--check` prints `pending=0`) (additive; `0027` creates the view `unified_messages` and links old contact rows); bulk/manual assign now refuse agents outside the lead's organization; later migrations touching the viewed columns must re-create the view.
 - **Session 33** (checklist §56, §57): migrations `properties 0050` (additive) and `ai 0009` (choices only); staged contract migrations are now `0051`/`0052`; new prompts `listing.describe`/`listing.extract` (paid calls, `LISTING_ASSISTANT_RATE`); migration `core 0004` (audit trail, §58), fixed `AUDIT_CHAIN_KEY`, beat `verify-audit-chain`; migration `ai 0010` and model prices entered (§59); migration `leads 0025` (§60).
 - **Session 32** (checklist §55): migration `leads 0024` (additive); restart celery beat for `lead-task-reminders`.

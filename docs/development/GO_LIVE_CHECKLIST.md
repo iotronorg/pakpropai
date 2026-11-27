@@ -513,3 +513,8 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - **After deploy:** `python manage.py rebuild_duplicate_clusters` once (hashes old photos from storage, then clusters; `--limit` for batches, `--skip-images` to only cluster). Nightly beat `duplicate-clusters-rebuild` (03:40 UTC) keeps them current.
 - **Moderation:** two new flags may send listings to review (`image_reused`, `reposted_after_takedown`); brief moderators. New queue view `/api/v1/moderation/duplicates/`.
 - **Renumbered staged contract migrations** (T‑1070g‑2, not yet released): `contract_migrations/0051_drop_listing_v1_columns` → `0052_…` (now on top of `0051_duplicate_clusters`) and `0052_drop_prop_fts_gin` → `0053_…`. Earlier sections that name 0051/0052 for the listing contract mean these files.
+
+## 69. Session-35 change: duplicates shown once in search (T‑4051, ADR‑070)
+- **No migration.** New setting `SEARCH_COLLAPSE_DUPLICATES` (default **on**). Takes effect only once clusters exist, i.e. after §68's `rebuild_duplicate_clusters`.
+- **API (additive):** each search hit (`POST /api/v1/search/`, `GET /api/v1/public/listings/search/`) gains `also_listed` (up to 5 other copies: id, ref no, slug, price, lister type, organization name) and `also_listed_count`; `total` now counts properties, not listings. `collapse_duplicates=false` returns every listing. Frontend: show "also listed by …" on the card.
+- **Behaviour:** a listing whose copy ranks higher, or which a moderator did not choose as canonical, no longer appears as its own result. Agencies may ask why their listing "disappeared": it is under another copy's card. Moderators can split a wrongly clustered listing (`/api/v1/moderation/duplicates/`).
