@@ -587,3 +587,13 @@
 1. `git status`: the owner committed through `f6a8edf`; uncommitted is T‑6010 (scripts/ops, ops/systemd, `core 0005`, `apps/core/{admin,backups}.py`, the command, alerts, runbook, deploy.yml, M6 milestone). **Do not commit.** Run the full suite first, alone.
 2. Dev: T‑6040 `check_release` → T‑6030 security review → T‑6020 load test → T‑6050 (M6 order). KI‑114/055/058 after the owner's small decisions; T‑4040 waits for the embedding-model choice.
 3. Owner: as before, plus §71 — off-host backup destination and retention, who keeps the backup passphrase off the server, RPO/RTO targets; on each server install the timers and run the first backup and drill.
+
+## Session 36 — 2026-11-27
+- **Verified:** the owner committed T‑6010 as `21b61e5`; working tree clean at start.
+- **T‑6040 done (ADR‑072):** `manage.py check_release` (`apps/core/release_checks.py`) checks production settings, frozen modules (fail in production, warn on staging), org overrides, dormant modules (regional DBs, partner feeds), pending migrations and Django's deploy checks. `remote_deploy.sh` runs it after migrating and before switching; older builds skip it. Runbook and checklist §72. Found KI‑128 (org admins can set the frozen deal-lock flag on their org; it has no effect).
+- **Tests:** full suite 2719 passed, 1 skipped, 0 failed; no migration drift; `check` clean; shellcheck and bandit clean. **Not committed.**
+
+### Handoff → session 37 (supersedes the one above)
+1. `git status`: uncommitted is T‑6040 (`apps/core/release_checks.py`, `apps/core/management/commands/check_release.py`, `scripts/deploy/remote_deploy.sh`, `tests/test_release_check.py`, `tests/test_deploy_pipeline.py`, docs). **Do not commit.**
+2. Dev: **T‑6030 security review pass**: start with `bandit -r apps/ -ll` and `pip-audit -r requirements/prod.txt` in the test image and triage; then a role × endpoint permission matrix test (`tests/test_permission_matrix.py`, from the URL conf and `apps/core/permissions.py`); `scan_plaintext` on a seeded DB; pentest scope document in `docs/runbooks/` or `docs/development/`. Then T‑6020 load test (`load_tests/`), T‑6050. KI‑128 is a small follow-up once the frontend settings page is checked.
+3. Owner: §71 (backups) and §72: set `ENVIRONMENT` in each server's `.env` and run `check_release` once on each before the next deploy.

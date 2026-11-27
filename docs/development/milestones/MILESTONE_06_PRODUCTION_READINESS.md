@@ -13,7 +13,7 @@
 | 2 | Load test against the NFR targets (REST p95 ≤ 300 ms, search p95 ≤ 400 ms at 100k listings) with the results recorded and regressions fixed | NFR‑PERF‑001/002; TR‑19 "Load" | T‑6020 |
 | 3 | Security review pass: static scans clean or triaged, permissions matrix checked, data scan finds no plaintext secrets or national IDs | MVP §6 criterion 10; TR‑19 "Security" | T‑6030 |
 | 4 | External pentest of the public API and chat with no open high/critical findings | MVP §6 criterion 12; TR 14.10 | Owner (vendor); T‑6030 prepares |
-| 5 | Release flag audit: frozen modules off in production, verified by a command | MVP §7 "Feature flags verified" | T‑6040 |
+| 5 | Release flag audit: frozen modules off in production, verified by a command | MVP §7 "Feature flags verified" | Done (T‑6040, ADR‑072): `check_release`, run by every deploy; owner: run it on each server before the first deploy (checklist §72) |
 | 6 | Documented RPO/RTO and capacity notes (PgBouncer, worker pools) | TR‑16, TR‑17 | T‑6050; targets are the owner's |
 
 ## Tasks
@@ -22,7 +22,7 @@
 | T‑6010 ✅ | P1 | Backups and restore drill: host-side encrypted `pg_dump` (version-matched, `gpg` AES‑256), retention, optional off-host upload hook, restore drill into a throwaway container with checks, runs recorded in the database and exposed as metrics, alert when backups stop | MVP §7, TR‑17, D19 | owner: off-host storage, key custody, RPO/RTO |
 | T‑6020 | P1 | Load test: seed 100k listings, extend the k6 scenarios to search v2 and the public API, measure p95 against the NFRs, fix what misses | NFR‑PERF‑001/002 | — |
 | T‑6030 | P1 | Security review pass: bandit and pip-audit locally, triage; role × endpoint permission matrix test; data scan for plaintext secrets/national IDs; pentest scope document | MVP §6.10, §6.12 | — |
-| T‑6040 | P2 | `check_release` command: frozen modules off, required settings present, safe defaults; run by the deploy before switching | MVP §7, checklist §3 | — |
+| T‑6040 ✅ | P2 | `check_release` command: frozen modules off, required settings present, safe defaults; run by the deploy before switching | MVP §7, checklist §3 | — |
 | T‑6050 | P2 | Capacity and recovery notes: RPO/RTO, PgBouncer, worker pool sizing from T‑6020 numbers; point-in-time recovery option (WAL archiving) | TR‑16, TR‑17 | T‑6020; owner targets |
 
 ## Order

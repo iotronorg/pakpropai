@@ -6,8 +6,8 @@
 #   <DEPLOY_DIR>/docker/docker-compose.prod.yml   (copied by CI on every deploy)
 #   <DEPLOY_DIR>/.env                             (the operator's; never copied by CI)
 #
-# Steps: pull the images for IMAGE_TAG → start db and redis → migrate (stop here on failure:
-# nothing has switched) → start the new containers → wait until /health/ reports IMAGE_TAG and
+# Steps: pull the images for IMAGE_TAG → start db and redis → migrate → check_release (stop at either
+# on failure: nothing has switched) → start the new containers → wait until /health/ reports IMAGE_TAG and
 # is healthy → record the tag. If health fails, the previous tag is started again and the script
 # exits 1. Migrations are not reversed: they are expand-only and safe for the previous build (ADR-023).
 #
@@ -54,6 +54,12 @@ echo "deploy: migrating"
 compose "$@" run --rm --no-deps migrate || fail "migration failed; the running build is unchanged"
 compose "$@" run --rm --no-deps migrate-eu || fail "eu migration failed; the running build is unchanged"
 compose "$@" run --rm --no-deps migrate-uk || fail "uk migration failed; the running build is unchanged"
+# T-6040: frozen modules off, required settings present. Builds older than the command (a rollback)
+# skip it. A failure leaves the running build in place; the migrations above are expand-only.
+echo "deploy: release check"
+compose "$@" run --rm --no-deps migrate sh -c \
+  'if python manage.py help check_release >/dev/null 2>&1; then exec python manage.py check_release; fi; echo "check_release is not in this build; skipped"' \
+  || fail "release check failed; the running build is unchanged (fix the settings above and deploy again)"
 # shellcheck disable=SC2086
 compose "$@" up -d --no-build web worker worker-hr beat
 

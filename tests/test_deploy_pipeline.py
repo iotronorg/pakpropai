@@ -77,6 +77,7 @@ class PipelineShapeTest(SimpleTestCase):
 FAKE_DOCKER = r"""#!/bin/sh
 echo "IMAGE_TAG=$IMAGE_TAG $*" >> "$LOG"
 case "$*" in
+  *check_release*) [ -z "$FAIL_RELEASE_CHECK" ] || exit 1 ;;
   *" run --rm --no-deps migrate"*) [ -z "$FAIL_MIGRATE" ] || exit 1 ;;
   *" exec -T web "*)
     if [ "$FAKE_VERSION" = "$IMAGE_TAG" ]; then echo "$IMAGE_TAG ok"; exit 0; fi
@@ -117,7 +118,7 @@ class RemoteDeployScriptTest(SimpleTestCase):
         self.assertEqual(tag, TAG)
         order = [next(i for i, c in enumerate(calls) if p in c)
                  for p in (' pull ', ' up -d --no-build --wait db redis', 'run --rm --no-deps migrate',
-                           ' up -d --no-build web worker')]
+                           'check_release', ' up -d --no-build web worker')]
         self.assertEqual(order, sorted(order))
         bad = [c for c in calls if not c.startswith(f'IMAGE_TAG={TAG} compose -p realtron --env-file .env -f ')]
         self.assertEqual(bad, [])
@@ -128,6 +129,23 @@ class RemoteDeployScriptTest(SimpleTestCase):
         self.assertIn('migration failed', r.stderr)
         self.assertFalse(any(' up -d --no-build web' in c for c in calls))
         self.assertEqual(tag, 'aaaaaaaaaaaa')
+
+    def test_failed_release_check_switches_nothing(self):
+        r, calls, tag = self.run_script(previous='aaaaaaaaaaaa', FAIL_RELEASE_CHECK='1')
+        self.assertEqual(r.returncode, 1)
+        self.assertIn('release check failed', r.stderr)
+        self.assertTrue(any('run --rm --no-deps migrate-uk' in c for c in calls))
+        self.assertFalse(any(' up -d --no-build web' in c for c in calls))
+        self.assertEqual(tag, 'aaaaaaaaaaaa')
+
+    def test_release_check_is_skipped_by_builds_without_it(self):
+        # A rollback to a build older than T-6040 must still deploy.
+        cmd = next(line for line in SCRIPT.read_text().splitlines() if 'help check_release' in line)
+        self.assertIn('skipped', cmd)
+        r = subprocess.run(['sh', '-c', cmd.strip().rstrip('\\').strip().strip("'").replace('python manage.py', 'false')],
+                           capture_output=True, text=True, timeout=10)
+        self.assertEqual(r.returncode, 0)
+        self.assertIn('skipped', r.stdout)
 
     def test_unhealthy_build_is_rolled_back(self):
         r, calls, tag = self.run_script(previous='aaaaaaaaaaaa', FAKE_VERSION='something-else')

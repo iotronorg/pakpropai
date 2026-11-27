@@ -254,6 +254,13 @@ REBUILD=1 scripts/dev/test.sh               # rebuild image after requirements c
 | 2026-11-27 | Working tree | Real drill: throwaway compose project (`postgres:15-alpine` db, web from the test image), `backup.sh` then `restore_drill.sh` | Backup ~554 KB, OpenPGP output (no `PGDMP`/SQL visible), modes 600/700; drill restored in 3–4 s, migrations=311, users=4, organizations=3. Tampered file → checksum mismatch, exit 1, recorded failed; wrong key → exit 1, one failed record; key file 644 → refused; db down → partial removed; retention removed a >14-day file; upload hook copied dump + `.sha256`; no drill containers left | — |
 | 2026-11-27 | — | On a real server with systemd timers and an off-host destination | **Not run**: needs the owner's servers and storage (checklist §71) | — |
 
+| 2026-11-27 | Working tree (session 36, T‑6040) | Full suite `tests/ apps/` (Docker, alone) | **2719 passed, 1 skipped, 0 failed** (+15: `tests/test_release_check.py` 13, `tests/test_deploy_pipeline.py` +2) | — |
+| 2026-11-27 | Working tree | `tests/test_release_check.py tests/test_deploy_pipeline.py` rerun after a comment-only edit made during the full run | 32 passed | — |
+| 2026-11-27 | Working tree | `makemigrations --check`; `manage.py check` | No changes; no issues | — |
+| 2026-11-27 | Working tree | `shellcheck scripts/deploy/remote_deploy.sh` (koalaman/shellcheck:stable); `bandit -ll` (CI level) on the new modules | Clean; clean (two `nosec B104` on compared, not bound, `0.0.0.0` strings) | — |
+| 2026-11-27 | Working tree | `check_release` with `config.settings.prod` and placeholder env in the test image | 10 FAIL / 5 WARN by setting name, exit 1, no values printed | — |
+| 2026-11-27 | — | `check_release` on the real staging/production servers | **Not run**: needs the owner's servers and `.env` (checklist §72) | — |
+
 ## Coverage
 Not measured yet (no coverage run executed). CI is configured with `--cov=apps`.
 

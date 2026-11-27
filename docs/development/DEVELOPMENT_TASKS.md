@@ -143,8 +143,8 @@ Priority: P0 (blocker) → P3.
 |---|---|---|---|---|
 | T‑6010 | [x] | P1 | Backups and restore drill | ADR‑071. `scripts/ops/{common,backup,restore_drill}.sh` (encrypted `pg_dump` in the db container, `pg_restore --list` check, checksum, off-host hook, retention; drill into a throwaway networkless container), `ops/systemd/` timers (daily backup, monthly drill), `BackupRun` (`core 0005`) + `record_backup_run` + admin, `/metrics/` backup gauges, four alerts + promtool tests, deploy ships the scripts, `docs/runbooks/backups.md` (setup, alerts, reversible production restore). Verified end to end with real `pg_dump`/`gpg`/`pg_restore` on `postgres:15-alpine`. **Owner:** off-host storage, key custody, RPO/RTO; install the timers and run the first drill on each server (checklist §71) |
 | T‑6020 | [ ] | P1 | Load test vs NFR targets | 100k listings; search v2 and public API in k6 |
-| T‑6030 | [ ] | P1 | Security review pass | bandit/pip-audit triage; permission matrix; `scan_plaintext` data scan; pentest scope |
-| T‑6040 | [ ] | P2 | Release check command | Next |
+| T‑6030 | [ ] | P1 | Security review pass | **Next.** bandit/pip-audit triage; permission matrix; `scan_plaintext` data scan; pentest scope |
+| T‑6040 | [x] | P2 | Release check command | ADR‑072. `apps/core/release_checks.py` + `manage.py check_release` (`--environment/--json/--strict/--verbose-ok`): settings (ENVIRONMENT, DEBUG, settings module, SECRET_KEY, hosts, encryption/hash/audit keys, https URLs, HTTPS flags, metrics token/IPs, DEFAULT_MARKET, AI provider keys, required platform config, geocoding key), frozen flags (fail in production, warn on staging; org overrides warn), dormant modules (regional DBs, partner feeds), pending migrations, Django deploy checks. `remote_deploy.sh` runs it before switching (older builds skip). Runbook + checklist §72. **Owner:** set `ENVIRONMENT`, run it on each server before the first deploy |
 | T‑6050 | [ ] | P2 | Capacity and recovery notes | After T‑6020; owner RPO/RTO |
 
 ## MVP acceptance criteria (MVP_SCOPE §6) — cross-milestone

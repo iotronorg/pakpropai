@@ -26,6 +26,7 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 ```
 - Values are encrypted now, so read them via the admin/API or `SystemConfigService.get()`, not raw SQL.
 - Expected: all `false`, or no row at all.
+- Since T‑6040 (§72) `manage.py check_release` checks these, and the deploy runs it before switching.
 
 ## 4. Smoke checks
 - [ ] Re‑verify the WhatsApp webhook from the Meta dashboard: the per‑org verify token now uses a lookup index.
@@ -530,3 +531,10 @@ WHERE key IN ('scraper_search_enabled','feature_deal_lock','feature_voice_calls'
 - **Owner decision:** where backups go off the server (`BACKUP_UPLOAD_CMD`: an S3-compatible bucket, another server, …) and its retention; until then every run is recorded as "NOT copied off this host" (KI‑127). Also the RPO/RTO targets (daily dumps: up to 24 h of data loss).
 - **Alerts:** `BackupMissing` fires on any server whose API is scraped and that has no successful backup in 26 hours, including one that has never had one. Set the timers up before the monitoring stack watches the server, or expect the alert.
 
+## 72. Session-36 change: release check (T‑6040, ADR‑072)
+- **No migration.** New command `manage.py check_release` (`--environment`, `--json`, `--strict`, `--verbose-ok`); exit 1 on any `FAIL`. Output names settings, never their values.
+- **The deploy now runs it** after migrating and before the new containers start; a `FAIL` stops the deploy with the running build unchanged. **Before the first deploy with this change, run it on each server** (`docs/runbooks/deploy.md`, one-time setup step 5) and fix what fails.
+- **New required settings in `.env`:** `ENVIRONMENT=production` or `staging` (was optional, default `development`). Already required by earlier sections and now enforced: a 50+ character `SECRET_KEY`, `FIELD_ENCRYPTION_KEYS`, a fixed `FIELD_HASH_KEY` (§53), an `AUDIT_CHAIN_KEY` different from `SECRET_KEY` (§58), https `FRONTEND_URL` and `BASE_URL`, `PROMETHEUS_METRICS_TOKEN` of 16+ characters (§52), no `0.0.0.0` in `PROMETHEUS_ALLOWED_IPS`, a key for every provider in `AI_PROVIDER_ORDER`, and the WhatsApp/Gemini platform settings.
+- **Fails in production, warns on staging:** `feature_deal_lock`, `feature_voice_calls`, `feature_syndication`, `scraper_search_enabled` on (MVP_SCOPE §4.2; launch checklist "Feature flags verified").
+- **Warnings (do not block):** `feature_investment_commentary` or `semantic_cache_enabled` on; organization overrides that switch a frozen flag on (no effect: the gates read the platform value); regional database URLs set; active Zameen/Bayut/Rightmove/PropertyFinder/Zillow connections (confirm a signed agreement); no `EMAIL_HOST`, `SENTRY_DSN`, Cloudinary credentials or `APP_VERSION`; public OpenAPI schema in production; Django `check --deploy` warnings.
+- **Launch checklist:** "Feature flags verified: frozen modules off in production" = `check_release` passes on production (keep the output with the release record).

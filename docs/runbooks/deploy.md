@@ -7,7 +7,7 @@ Staging and production are each a server with Docker (owner decision 2026‑11�
 3. waits for a **reviewer to approve** the production deployment in GitHub;
 4. deploys **the same images** to production and smoke-tests it.
 
-On each server `remote_deploy.sh` pulls the images, starts the database and Redis, migrates, and starts the new containers. It then waits until `/health/` reports the new version. If health never comes, it starts the previous version again and the run fails. A failed migration stops it before anything switches.
+On each server `remote_deploy.sh` pulls the images, starts the database and Redis, migrates, runs the release check (`manage.py check_release`), and starts the new containers. It then waits until `/health/` reports the new version. If health never comes, it starts the previous version again and the run fails. A failed migration stops it before anything switches.
 
 ## One-time setup
 
@@ -16,6 +16,7 @@ On each server `remote_deploy.sh` pulls the images, starts the database and Redi
 2. A deploy user in the `docker` group, with an SSH key used for nothing else (`ssh-keygen -t ed25519 -f realtron-deploy`).
 3. A directory, e.g. `/srv/realtron`, holding the `.env` built from `.env.example` with production values. CI never copies `.env`. Include `localhost` in `ALLOWED_HOSTS`: the health probe inside the container uses it.
 4. Set a fixed `FIELD_HASH_KEY` (checklist §53).
+5. Set `ENVIRONMENT=production` (or `staging`) and the other settings the release check needs. Run it before the first deploy: `docker compose -p realtron --env-file .env -f docker/docker-compose.prod.yml run --rm --no-deps migrate python manage.py check_release`.
 
 ### GitHub
 1. **Settings → Environments:** create `staging` and `production`.
@@ -41,6 +42,7 @@ Reject a deploy to skip it. A newer commit gets its own run.
 ## When a deploy fails
 - **"missing secrets or variables":** add the named items to that environment.
 - **Migration failed:** nothing switched. Read the job log; fix and push. Migrations must stay expand-only (ADR‑023) so the previous build keeps working on the new schema.
+- **Release check failed:** nothing switched (migrations already ran; they are expand-only). The log lists each `FAIL` by setting name, never its value: fix `.env` or the platform setting and deploy again. `FAIL frozen.<flag>` means a module that is frozen for the MVP (deal lock, voice calls, syndication, portal scraping) is on in production: switch it off in the admin unless the owner has lifted the freeze (MVP_SCOPE §4.2). `WARN` lines do not block; `--strict` makes them fail. Builds older than the check skip it, so rollbacks still deploy.
 - **Did not become healthy → rolled back:** the previous version runs again. On the server, `docker compose -p realtron --env-file .env -f docker/docker-compose.prod.yml logs web --tail 200` shows why. `/health/` lists each check: database, Redis, AI key.
 - **Smoke test failed after a healthy deploy:** the build is live but the public route is wrong (proxy, TLS, `ALLOWED_HOSTS`) or the webhook accepted an unsigned call. Roll back by hand if users are affected.
 
